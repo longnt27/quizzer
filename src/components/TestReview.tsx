@@ -1,6 +1,8 @@
 import { useRef, useEffect, useState, type FC, type ReactNode, type ReactElement, useCallback } from 'react';
-import { Button, Typography, Row, Col, Space, Tag } from 'antd';
+import { Alert, Button, Typography, Row, Col, Space, Tag } from 'antd';
 import { StoredTest } from '../db/db';
+import type { QuizAnswer } from '../types';
+import { getQuestionAnswerTexts, getQuestionType, isQuestionCorrect } from '../utils/questions';
 
 const { Title, Paragraph } = Typography;
 
@@ -97,9 +99,11 @@ const TestReview: React.FC<Props> = ({ test, onBack }) => {
 
     const q = test.questions[currentIndex];
     const userAnswer = latest.selectedAnswers[currentIndex] || [];
-    const correctAnswers = q.answer.filter((a) => a.correct).map((a) => a.content).sort();
+    const questionType = getQuestionType(q);
+    const multipleChoiceAnswers = questionType === 'multiple-choice' && 'answer' in q ? q.answer : [];
+    const correctAnswers = multipleChoiceAnswers.filter((a) => a.correct).map((a) => a.content).sort();
 
-    const getAnswerTag = (a: typeof q.answer[number]) => {
+    const getAnswerTag = (a: QuizAnswer) => {
         const picked = userAnswer.includes(a.content);
         const correct = a.correct;
         let color: string | undefined;
@@ -150,14 +154,14 @@ const TestReview: React.FC<Props> = ({ test, onBack }) => {
                 });
             }
             // Search in answers (not explanations)
-            question.answer.forEach((ans) => {
-                const answerLower = ans.content.toLowerCase();
+            (getQuestionType(question) === 'multiple-choice' ? getQuestionAnswerTexts(question) : []).forEach((answerText) => {
+                const answerLower = answerText.toLowerCase();
                 let ansStartIndex = -1;
                 while ((ansStartIndex = answerLower.indexOf(queryLower, ansStartIndex + 1)) !== -1) {
                     results.push({
                         questionIndex,
                         location: 'answer',
-                        answerContent: ans.content,
+                        answerContent: answerText,
                         match: { start: ansStartIndex, end: ansStartIndex + queryLower.length },
                     });
                 }
@@ -305,15 +309,18 @@ const TestReview: React.FC<Props> = ({ test, onBack }) => {
 
                 {/* NEW: Apply highlighting to the statement */}
                 <Paragraph style={{ fontSize: 18 }}>
+                    <Tag color={questionType === 'multiple-choice' ? 'blue' : questionType === 'fill-blank' ? 'purple' : 'gold'} style={{ marginBottom: 10 }}>
+                        {questionType === 'multiple-choice' ? 'Multiple choice' : questionType === 'fill-blank' ? 'Fill in the blank' : 'Reasoning'}
+                    </Tag><br />
                     {isSearching && searchQuery ? renderHighlightedText(q.statement, getMatchesForText('statement')) : q.statement}
                 </Paragraph>
 
-                <Paragraph type="secondary" style={{ fontStyle: 'italic' }}>
+                {questionType === 'multiple-choice' && <><Paragraph type="secondary" style={{ fontStyle: 'italic' }}>
                     Choose {correctAnswers.length} answer{correctAnswers.length > 1 ? 's' : ''}
                 </Paragraph>
 
                 <Space direction="vertical" size="middle" style={{ marginTop: 16 }}>
-                    {q.answer.map((a, idx) => (
+                    {multipleChoiceAnswers.map((a, idx) => (
                         <div key={idx}>
                             {getAnswerTag(a)}
                             <div style={{ marginLeft: 8, fontStyle: 'italic', color: 'var(--text-muted)' }}>
@@ -321,7 +328,19 @@ const TestReview: React.FC<Props> = ({ test, onBack }) => {
                             </div>
                         </div>
                     ))}
-                </Space>
+                </Space></>}
+                {questionType === 'fill-blank' && 'acceptedAnswers' in q && <Space direction="vertical" size="middle" style={{ width: '100%', marginTop: 16 }}>
+                    <Alert type={isQuestionCorrect(q, userAnswer) ? 'success' : 'error'} showIcon message="Your answer" description={userAnswer[0] || '(No answer)'} />
+                    <div><Typography.Text strong>Accepted answers</Typography.Text><div style={{ marginTop: 8 }}>{q.acceptedAnswers.map(answer => <Tag color="blue" key={answer}>{answer}</Tag>)}</div></div>
+                    <Typography.Paragraph type="secondary">{q.explanation}</Typography.Paragraph>
+                </Space>}
+                {questionType === 'reasoning' && 'referenceAnswer' in q && <Space direction="vertical" size="middle" style={{ width: '100%', marginTop: 16 }}>
+                    <Alert type={latest.selfAssessments?.[currentIndex] === true ? 'success' : 'warning'} showIcon
+                      message={`Self-assessment: ${latest.selfAssessments?.[currentIndex] === true ? 'Correct' : latest.selfAssessments?.[currentIndex] === false ? 'Needs work' : 'Not assessed'}`}
+                      description={userAnswer[0] || '(No answer)'} />
+                    <Alert type="info" showIcon message="Reference answer" description={q.referenceAnswer} />
+                    <Typography.Paragraph type="secondary">Essential reasoning: {q.explanation}</Typography.Paragraph>
+                </Space>}
 
                 <div style={{ marginTop: 'auto', paddingTop: 32 }}>
                     <Space>
@@ -337,10 +356,8 @@ const TestReview: React.FC<Props> = ({ test, onBack }) => {
             <Col flex="1" className="quiz-index review-index">
                 <Title level={5}>All Questions</Title>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, 40px)', gap: 6 }}>
-                    {test.questions.map((_, idx) => {
-                        const user = latest.selectedAnswers[idx] || [];
-                        const correct = test.questions[idx].answer.filter((a) => a.correct).map(a => a.content).sort();
-                        const correctMatch = JSON.stringify(user.sort()) === JSON.stringify(correct);
+                    {test.questions.map((question, idx) => {
+                        const correctMatch = isQuestionCorrect(question, latest.selectedAnswers[idx], latest.selfAssessments?.[idx]);
                         // NEW: Add indicator for questions with search results
                         const hasSearchResults = isSearching && searchQuery && searchResults.some(r => r.questionIndex === idx);
                         const border = currentIndex === idx ? '2px solid var(--strong-border)' : hasSearchResults ? '2px solid #ffd700' : '2px solid transparent';

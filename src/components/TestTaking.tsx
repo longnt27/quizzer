@@ -1,15 +1,20 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type FC, type ReactNode, type ReactElement } from 'react';
 import { db, type StoredTest } from '../db/db';
 import {
+    Alert,
     Radio,
     Button,
     Checkbox,
+    Input,
+    Tag,
     Typography,
     Space,
     Row,
     Col,
     Popconfirm,
 } from 'antd';
+import type { QuizAnswer } from '../types';
+import { getQuestionAnswerTexts, getQuestionType, isQuestionCorrect } from '../utils/questions';
 
 const { Title, Paragraph } = Typography;
 
@@ -61,8 +66,10 @@ const SearchBar: FC<SearchBarProps> = ({ query, setQuery, onPrev, onNext, onClos
 const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
     const [answers, setAnswers] = useState<Record<number, string[]>>({});
+    const [selfAssessments, setSelfAssessments] = useState<Record<number, boolean>>({});
+    const [revealedReasoning, setRevealedReasoning] = useState<Record<number, boolean>>({});
     const [reviewMarks, setReviewMarks] = useState<Record<number, boolean>>({});
-    const [shuffledAnswers, setShuffledAnswers] = useState<Record<number, typeof test.questions[0]['answer']>>({});
+    const [shuffledAnswers, setShuffledAnswers] = useState<Record<number, QuizAnswer[]>>({});
     const [remaining, setRemaining] = useState<number>(timeLimit ?? 0);
     const startRef = useRef(Date.now());
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -83,21 +90,23 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
 
 
     const q = test.questions[currentIndex];
-    const totalCorrect = q.answer.filter((a) => a.correct).length;
+    const questionType = getQuestionType(q);
+    const multipleChoiceAnswers = useMemo(() => questionType === 'multiple-choice' && 'answer' in q ? q.answer : [], [q, questionType]);
+    const totalCorrect = multipleChoiceAnswers.filter((a) => a.correct).length;
     const choices = useMemo(() => shuffledAnswers[currentIndex] || [], [currentIndex, shuffledAnswers]);
     const answersRef = useRef(answers);
+    const selfAssessmentsRef = useRef(selfAssessments);
     useEffect(() => { answersRef.current = answers; }, [answers]);
+    useEffect(() => { selfAssessmentsRef.current = selfAssessments; }, [selfAssessments]);
 
     const handleSubmit = useCallback(async () => {
         setIsPopconfirmVisible(false);
         const duration = Math.floor((Date.now() - startRef.current) / 1000);
         let score = 0;
         test.questions.forEach((question, idx) => {
-            const user = answersRef.current[idx] || [];
-            const correct = question.answer.filter((answer) => answer.correct).map((answer) => answer.content).sort();
-            if (JSON.stringify(correct) === JSON.stringify([...user].sort())) score++;
+            if (isQuestionCorrect(question, answersRef.current[idx], selfAssessmentsRef.current[idx])) score++;
         });
-        const attempt = { id: String(Date.now()), time: Date.now(), duration, selectedAnswers: answersRef.current, score };
+        const attempt = { id: String(Date.now()), time: Date.now(), duration, selectedAnswers: answersRef.current, selfAssessments: selfAssessmentsRef.current, score };
         test.attempts.push(attempt);
         await db.tests.put(test);
         onFinish();
@@ -127,11 +136,11 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
     }, [timeLimit, handleSubmit]);
 
     useEffect(() => {
-        if (!shuffledAnswers[currentIndex]) {
-            const shuffled = [...q.answer].sort(() => Math.random() - 0.5);
+        if (questionType === 'multiple-choice' && !shuffledAnswers[currentIndex]) {
+            const shuffled = [...multipleChoiceAnswers].sort(() => Math.random() - 0.5);
             setShuffledAnswers((prev) => ({ ...prev, [currentIndex]: shuffled }));
         }
-    }, [currentIndex, q.answer, shuffledAnswers]);
+    }, [currentIndex, multipleChoiceAnswers, questionType, shuffledAnswers]);
 
     useEffect(() => {
         if (!isSearching || !searchQuery) {
@@ -148,11 +157,11 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
             while ((startIndex = statementLower.indexOf(queryLower, startIndex + 1)) !== -1) {
                 results.push({ questionIndex, location: 'statement', match: { start: startIndex, end: startIndex + queryLower.length } });
             }
-            question.answer.forEach((ans) => {
-                const answerLower = ans.content.toLowerCase();
+            (getQuestionType(question) === 'multiple-choice' ? getQuestionAnswerTexts(question) : []).forEach((answerText) => {
+                const answerLower = answerText.toLowerCase();
                 let ansStartIndex = -1;
                 while ((ansStartIndex = answerLower.indexOf(queryLower, ansStartIndex + 1)) !== -1) {
-                    results.push({ questionIndex, location: 'answer', answerContent: ans.content, match: { start: ansStartIndex, end: ansStartIndex + queryLower.length } });
+                    results.push({ questionIndex, location: 'answer', answerContent: answerText, match: { start: ansStartIndex, end: ansStartIndex + queryLower.length } });
                 }
             });
         });
@@ -335,12 +344,16 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
                         </Popconfirm>
                     </Row>
                     <Paragraph style={{ fontSize: 18, width: '100%' }}>
+                        <Tag color={questionType === 'multiple-choice' ? 'blue' : questionType === 'fill-blank' ? 'purple' : 'gold'} style={{ marginBottom: 10 }}>
+                            {questionType === 'multiple-choice' ? 'Multiple choice' : questionType === 'fill-blank' ? 'Fill in the blank' : 'Reasoning'}
+                        </Tag><br />
                         {isSearching && searchQuery ? renderHighlightedText(q.statement, getMatchesForText('statement')) : renderWithCode(q.statement)}
                     </Paragraph>
 
-                    <Paragraph type="secondary" style={{ fontStyle: 'italic', width: '100%' }}>
-                        Choose {totalCorrect} answer{totalCorrect > 1 ? 's' : ''}
-                    </Paragraph>
+                    {questionType === 'multiple-choice' && <>
+                      <Paragraph type="secondary" style={{ fontStyle: 'italic', width: '100%' }}>
+                          Choose {totalCorrect} answer{totalCorrect > 1 ? 's' : ''}
+                      </Paragraph>
                     {totalCorrect === 1 ? (
                         <Radio.Group value={(answers[currentIndex] && answers[currentIndex][0]) || null} onChange={(e) => setAnswers((prev) => ({ ...prev, [currentIndex]: [e.target.value] }))}>
                             <Space direction="vertical" size="large">
@@ -363,6 +376,42 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
                                 ))}
                             </Space>
                         </Checkbox.Group>
+                    )}</>}
+                    {questionType === 'fill-blank' && 'acceptedAnswers' in q && (
+                      <div className="written-answer-block">
+                        <Typography.Text strong>Your answer</Typography.Text>
+                        <Input size="large" value={answers[currentIndex]?.[0] ?? ''}
+                          onChange={event => setAnswers(previous => ({ ...previous, [currentIndex]: [event.target.value] }))}
+                          placeholder="Type the missing word or phrase" autoComplete="off" />
+                        <Typography.Text type="secondary">Capitalization, punctuation, and extra spaces are ignored. Equivalent accepted wording is checked automatically.</Typography.Text>
+                      </div>
+                    )}
+                    {questionType === 'reasoning' && 'referenceAnswer' in q && (
+                      <div className="written-answer-block">
+                        <Typography.Text strong>Your reasoning</Typography.Text>
+                        <Input.TextArea rows={7} value={answers[currentIndex]?.[0] ?? ''}
+                          onChange={event => {
+                            setAnswers(previous => ({ ...previous, [currentIndex]: [event.target.value] }));
+                            setSelfAssessments(previous => {
+                              const next = { ...previous };
+                              delete next[currentIndex];
+                              return next;
+                            });
+                          }}
+                          placeholder="Explain your reasoning in your own words" />
+                        {!revealedReasoning[currentIndex] ? (
+                          <Button disabled={!answers[currentIndex]?.[0]?.trim()} onClick={() => setRevealedReasoning(previous => ({ ...previous, [currentIndex]: true }))}>
+                            Compare with reference answer
+                          </Button>
+                        ) : <>
+                          <Alert type="info" showIcon message="Reference answer" description={<div>{q.referenceAnswer}<br /><Typography.Text type="secondary">{q.explanation}</Typography.Text></div>} />
+                          <Typography.Text strong>Does your answer cover the essential reasoning?</Typography.Text>
+                          <Space wrap>
+                            <Button type={selfAssessments[currentIndex] === true ? 'primary' : 'default'} onClick={() => setSelfAssessments(previous => ({ ...previous, [currentIndex]: true }))}>Yes, count it correct</Button>
+                            <Button danger type={selfAssessments[currentIndex] === false ? 'primary' : 'default'} onClick={() => setSelfAssessments(previous => ({ ...previous, [currentIndex]: false }))}>No, needs work</Button>
+                          </Space>
+                        </>}
+                      </div>
                     )}
                     <Row justify="space-between" style={{ marginTop: 64, width: '100%' }}>
                         <Button onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))} disabled={currentIndex === 0}>Previous</Button>
@@ -373,8 +422,10 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
             <Col flex="1" className="quiz-index">
                 <Title level={5}>All Questions</Title>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, 40px)', gap: 6 }}>
-                    {test.questions.map((_, idx) => {
-                        const answered = !!answers[idx]?.length;
+                    {test.questions.map((question, idx) => {
+                        const answered = getQuestionType(question) === 'reasoning'
+                          ? Boolean(answers[idx]?.[0]?.trim()) && selfAssessments[idx] !== undefined
+                          : Boolean(answers[idx]?.[0]?.trim());
                         const marked = reviewMarks[idx];
                         const isCurrent = idx === currentIndex;
                         const hasSearchResults = isSearching && searchQuery && searchResults.some(r => r.questionIndex === idx);

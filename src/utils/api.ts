@@ -1,4 +1,4 @@
-import type { GenerationOptions, QuizQuestion } from '../types';
+import type { GenerationOptions, QuestionCounts, QuestionType, QuizQuestion } from '../types';
 import { getGeminiApiKey } from './providerSettings';
 
 export interface GenerationProgress {
@@ -6,9 +6,10 @@ export interface GenerationProgress {
   target: number;
   round: number;
   rejected: number;
+  currentType?: QuestionType;
 }
 
-const questionSchema = {
+const multipleChoiceSchema = {
   type: 'object',
   additionalProperties: false,
   required: ['questions'],
@@ -18,8 +19,9 @@ const questionSchema = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['statement', 'answer'],
+        required: ['type', 'statement', 'answer'],
         properties: {
+          type: { type: 'string', enum: ['multiple-choice'] },
           statement: { type: 'string' },
           answer: {
             type: 'array', minItems: 3, maxItems: 6,
@@ -37,6 +39,48 @@ const questionSchema = {
       },
     },
   },
+};
+
+const fillBlankSchema = {
+  type: 'object', additionalProperties: false, required: ['questions'],
+  properties: {
+    questions: {
+      type: 'array', items: {
+        type: 'object', additionalProperties: false,
+        required: ['type', 'statement', 'acceptedAnswers', 'explanation'],
+        properties: {
+          type: { type: 'string', enum: ['fill-blank'] },
+          statement: { type: 'string' },
+          acceptedAnswers: { type: 'array', minItems: 2, maxItems: 8, items: { type: 'string' } },
+          explanation: { type: 'string' },
+        },
+      },
+    },
+  },
+};
+
+const reasoningSchema = {
+  type: 'object', additionalProperties: false, required: ['questions'],
+  properties: {
+    questions: {
+      type: 'array', items: {
+        type: 'object', additionalProperties: false,
+        required: ['type', 'statement', 'referenceAnswer', 'explanation'],
+        properties: {
+          type: { type: 'string', enum: ['reasoning'] },
+          statement: { type: 'string' },
+          referenceAnswer: { type: 'string' },
+          explanation: { type: 'string' },
+        },
+      },
+    },
+  },
+};
+
+const schemas: Record<QuestionType, object> = {
+  'multiple-choice': multipleChoiceSchema,
+  'fill-blank': fillBlankSchema,
+  reasoning: reasoningSchema,
 };
 
 export function extractJson<T>(text: string): T | null {
@@ -90,20 +134,34 @@ const tryEmbeddings = async (texts: string[], signal?: AbortSignal): Promise<num
   }
 };
 
-export function validateQuestion(value: unknown): value is QuizQuestion {
+export function validateQuestion(value: unknown, expectedType?: QuestionType): value is QuizQuestion {
   if (!value || typeof value !== 'object') return false;
-  const question = value as Partial<QuizQuestion>;
+  const question = value as Record<string, unknown>;
   if (typeof question.statement !== 'string' || question.statement.trim().length < 8) return false;
+  const type = question.type === undefined ? 'multiple-choice' : question.type;
+  if (type !== 'multiple-choice' && type !== 'fill-blank' && type !== 'reasoning') return false;
+  if (expectedType && type !== expectedType) return false;
+  if (type === 'fill-blank') {
+    if (!question.statement.includes('_____') || !Array.isArray(question.acceptedAnswers) || question.acceptedAnswers.length < 2 || question.acceptedAnswers.length > 8) return false;
+    if (!question.acceptedAnswers.every(answer => typeof answer === 'string' && answer.trim())) return false;
+    if (new Set(question.acceptedAnswers.map(answer => normalize(String(answer)))).size !== question.acceptedAnswers.length) return false;
+    return typeof question.explanation === 'string' && Boolean(question.explanation.trim());
+  }
+  if (type === 'reasoning') {
+    return typeof question.referenceAnswer === 'string' && question.referenceAnswer.trim().length >= 20
+      && typeof question.explanation === 'string' && Boolean(question.explanation.trim());
+  }
   if (!Array.isArray(question.answer) || question.answer.length < 3 || question.answer.length > 6) return false;
-  if (!question.answer.every(answer => answer && typeof answer.content === 'string' && answer.content.trim()
+  const answers = question.answer as Record<string, unknown>[];
+  if (!answers.every(answer => answer && typeof answer.content === 'string' && answer.content.trim()
     && typeof answer.explanation === 'string' && answer.explanation.trim()
     && typeof answer.correct === 'boolean')) return false;
-  const correctCount = question.answer.filter(answer => answer.correct).length;
-  if (correctCount < 1 || correctCount >= question.answer.length) return false;
-  return new Set(question.answer.map(answer => normalize(answer.content))).size === question.answer.length;
+  const correctCount = answers.filter(answer => answer.correct).length;
+  if (correctCount < 1 || correctCount >= answers.length) return false;
+  return new Set(answers.map(answer => normalize(String(answer.content)))).size === answers.length;
 }
 
-const requestCandidates = async (prompt: string, options: GenerationOptions, signal?: AbortSignal, images: string[] = []) => {
+const requestCandidates = async (prompt: string, schema: object, options: GenerationOptions, signal?: AbortSignal, images: string[] = []) => {
   const response = await fetch('/api/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -112,7 +170,7 @@ const requestCandidates = async (prompt: string, options: GenerationOptions, sig
       model: options.model,
       apiKey: options.provider === 'gemini' ? getGeminiApiKey() : undefined,
       prompt,
-      schema: questionSchema,
+      schema,
       images,
     }),
     signal,
@@ -124,11 +182,21 @@ const requestCandidates = async (prompt: string, options: GenerationOptions, sig
   return parsed.questions;
 };
 
-const buildPrompt = (content: string, count: number, accepted: QuizQuestion[], focus?: string) => `
-Create exactly ${count} new, challenging quiz-question candidates from the source material below.
-Use the language of the source. Each question needs 3-6 choices, at least one correct choice,
-at least one incorrect choice, and a useful explanation for every choice. Questions must be
-self-contained and must not mention pages, slides, sections, or the source document.
+const typeInstructions: Record<QuestionType, string> = {
+  'multiple-choice': `Create multiple-choice questions. Each needs 3-6 choices, at least one correct choice,
+at least one incorrect choice, and a useful explanation for every choice. Set type to "multiple-choice".`,
+  'fill-blank': `Create fill-in-the-blank questions. Put exactly one five-underscore blank (_____) in each statement.
+Set type to "fill-blank". Provide 2-6 acceptedAnswers when legitimate wording, spelling, abbreviation, or equivalent
+forms exist; do not invent alternatives that change the meaning. Provide one explanation for the answer.`,
+  reasoning: `Create reasoning questions that require explanation, comparison, inference, or application rather than recall.
+Set type to "reasoning". Provide a clear referenceAnswer the learner can compare against and an explanation describing
+the essential points a good response should contain. Do not turn these into multiple-choice questions.`,
+};
+
+const buildPrompt = (content: string, type: QuestionType, count: number, accepted: QuizQuestion[], focus?: string) => `
+Create exactly ${count} new, challenging ${type} quiz-question candidates from the source material below.
+Use the language of the source. ${typeInstructions[type]}
+Questions must be self-contained and must not mention pages, slides, sections, or the source document.
 ${focus ? `\nAdditional goal: ${focus}\n` : ''}
 
 Do not repeat the knowledge tested by these already accepted questions:
@@ -140,6 +208,16 @@ ${content}
 </source>
 `;
 
+const getRequestedCounts = (options: GenerationOptions): QuestionCounts => {
+  if (!options.questionCounts) return { multipleChoice: Math.max(1, Math.floor(options.questionCount)), fillBlank: 0, reasoning: 0 };
+  const clamp = (value: number) => Math.max(0, Math.min(200, Math.floor(value || 0)));
+  return {
+    multipleChoice: clamp(options.questionCounts.multipleChoice),
+    fillBlank: clamp(options.questionCounts.fillBlank),
+    reasoning: clamp(options.questionCounts.reasoning),
+  };
+};
+
 export async function generateQuiz(
   content: string,
   options: GenerationOptions,
@@ -148,35 +226,50 @@ export async function generateQuiz(
   images: string[] = [],
   focus?: string,
 ): Promise<QuizQuestion[]> {
-  const target = Math.max(1, Math.min(200, Math.floor(options.questionCount)));
+  const counts = getRequestedCounts(options);
+  const target = counts.multipleChoice + counts.fillBlank + counts.reasoning;
+  if (target < 1 || target > 200) throw new Error('Choose between 1 and 200 questions in total.');
   const accepted: QuizQuestion[] = [];
   let rejected = 0;
   const maxRounds = 5;
 
-  for (let round = 1; round <= maxRounds && accepted.length < target; round++) {
-    const missing = target - accepted.length;
-    const requested = Math.min(10, missing + Math.min(2, Math.ceil(missing / 3)));
-    const candidates = await requestCandidates(buildPrompt(content, requested, accepted, focus), options, signal, images);
-    const validCandidates = candidates.filter(validateQuestion);
-    rejected += candidates.length - validCandidates.length;
-    const vectors = await tryEmbeddings([...accepted, ...validCandidates].map(question => question.statement), signal);
-    const priorAcceptedCount = accepted.length;
-    const acceptedVectors = vectors?.slice(0, accepted.length) ?? [];
-    for (const [candidateIndex, candidate] of validCandidates.entries()) {
-      const candidateVector = vectors?.[priorAcceptedCount + candidateIndex];
-      const duplicate = accepted.some(existing =>
-        normalize(existing.statement) === normalize(candidate.statement) ||
-        tokenSimilarity(existing.statement, candidate.statement) >= 0.82
-      ) || (candidateVector ? acceptedVectors.some(vector => cosineSimilarity(vector, candidateVector) >= 0.90) : false);
-      if (duplicate) { rejected++; continue; }
-      accepted.push(candidate);
-      if (candidateVector) acceptedVectors.push(candidateVector);
-      if (accepted.length === target) break;
+  const targets: [QuestionType, number][] = [
+    ['multiple-choice', counts.multipleChoice],
+    ['fill-blank', counts.fillBlank],
+    ['reasoning', counts.reasoning],
+  ];
+  for (const [type, typeTarget] of targets) {
+    let typeAccepted = 0;
+    for (let round = 1; round <= maxRounds && typeAccepted < typeTarget; round++) {
+      const missing = typeTarget - typeAccepted;
+      const requested = Math.min(10, missing + Math.min(2, Math.ceil(missing / 3)));
+      const candidates = await requestCandidates(buildPrompt(content, type, requested, accepted, focus), schemas[type], options, signal, images);
+      const validCandidates = candidates.filter(candidate => validateQuestion(candidate, type)) as QuizQuestion[];
+      rejected += candidates.length - validCandidates.length;
+      const vectors = await tryEmbeddings([...accepted, ...validCandidates].map(question => question.statement), signal);
+      const priorAcceptedCount = accepted.length;
+      const acceptedVectors = vectors?.slice(0, accepted.length) ?? [];
+      for (const [candidateIndex, candidate] of validCandidates.entries()) {
+        const candidateVector = vectors?.[priorAcceptedCount + candidateIndex];
+        const duplicate = accepted.some(existing =>
+          normalize(existing.statement) === normalize(candidate.statement) ||
+          tokenSimilarity(existing.statement, candidate.statement) >= 0.82
+        ) || (candidateVector ? acceptedVectors.some(vector => cosineSimilarity(vector, candidateVector) >= 0.90) : false);
+        if (duplicate) { rejected++; continue; }
+        accepted.push(candidate);
+        typeAccepted++;
+        if (candidateVector) acceptedVectors.push(candidateVector);
+        if (typeAccepted === typeTarget) break;
+      }
+      onProgress?.({ accepted: accepted.length, target, round, rejected, currentType: type });
     }
-    onProgress?.({ accepted: accepted.length, target, round, rejected });
   }
 
   if (!accepted.length) throw new Error('No valid questions could be generated.');
+  for (let index = accepted.length - 1; index > 0; index--) {
+    const other = Math.floor(Math.random() * (index + 1));
+    [accepted[index], accepted[other]] = [accepted[other], accepted[index]];
+  }
   return accepted;
 }
 

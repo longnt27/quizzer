@@ -48,6 +48,10 @@ button, input, textarea, select { font: inherit; }
 .plugin-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 .plugin-card-heading h5 { margin: 0 0 2px; }
 .plugin-output { max-height: 140px; margin: 8px 0 0; padding: 10px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border-radius: 6px; background: var(--code); font-size: 12px; }
+.question-count-grid { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 10px; }
+.question-count-grid label, .question-count-total { display: flex; min-width: 0; padding: 10px; flex-direction: column; gap: 7px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-soft); }
+.question-count-grid .ant-input-number { width: 100%; }
+.question-count-total { align-items: center; justify-content: center; font-size: 18px; }
 
 .mobile-header {
   position: fixed; inset: 0 0 auto 0; height: 56px; padding: 0 12px;
@@ -68,6 +72,7 @@ button, input, textarea, select { font: inherit; }
 .quiz-body { padding: 34px 30px; }
 .quiz-actions { width: 100%; margin-bottom: 32px; gap: 12px; }
 .quiz-index { background: var(--surface-muted); padding: 48px 24px; border-left: 1px solid var(--border); overflow-y: auto; }
+.written-answer-block { width: 100%; display: flex; flex-direction: column; gap: 12px; }
 .review-main { padding: 64px 48px; display: flex; flex-direction: column; min-width: 0; }
 .review-index { padding: 32px; }
 
@@ -133,6 +138,7 @@ mark { color: #111827; }
   .ant-modal-footer .ant-btn { flex: 1; }
   .ant-list-item-action { margin-inline-start: 8px !important; }
   .plugin-card-heading { flex-direction: column; gap: 8px; }
+  .question-count-grid { grid-template-columns: 1fr 1fr; }
 }
 
 @media (max-width: 420px) {

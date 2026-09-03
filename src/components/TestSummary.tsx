@@ -15,6 +15,7 @@ import { generateQuiz } from '../utils/api';
 import { QuizQuestion, TestSession } from '../types';
 import JsonFixerModal from './JsonFixerModal';
 import { getMessageApi } from '../utils/messageProvider';
+import { countQuestionTypes, getQuestionType, isQuestionCorrect } from '../utils/questions';
 
 const { Title, Paragraph, Text } = Typography;
 const shuffle = <T,>(items: T[]): T[] => {
@@ -77,7 +78,7 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
             }
 
             const key = 'regen';
-            message.loading({ content: 'Talking to Gemini…', key });
+            message.loading({ content: `Generating with ${test.generationOptions?.provider === 'codex' ? 'Codex Agent' : 'Gemini API'}…`, key });
             setIsLoading(true);
 
             try {
@@ -109,9 +110,7 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
         const handleFocusTest = async () => {
             if (!latest) return;
             const wrongQs = test.questions.filter((q, idx) => {
-                const correct = q.answer.filter(answer => answer.correct).map(answer => answer.content).sort();
-                const chosen = [...(latest.selectedAnswers[idx] || [])].sort();
-                return JSON.stringify(correct) !== JSON.stringify(chosen);
+                return !isQuestionCorrect(q, latest.selectedAnswers[idx], latest.selfAssessments?.[idx]);
             });
             if (!wrongQs.length) {
                 message.info('There are no missed concepts to focus on.');
@@ -128,7 +127,8 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
             try {
                 const weakConcepts = wrongQs.map(question => `- ${question.statement}`).join('\n');
                 const base = test.generationOptions ?? { provider: 'gemini' as const, questionCount: wrongQs.length };
-                const options = { ...base, questionCount: Math.max(5, wrongQs.length) };
+                const questionCounts = countQuestionTypes(wrongQs);
+                const options = { ...base, questionCount: wrongQs.length, questionCounts };
                 const questions = await generateQuiz(source.content, options, undefined, undefined, source.images,
                     `Focus on the concepts tested by these missed questions, but create fresh questions rather than paraphrases:\n${weakConcepts}`);
                 const newId = uuidv4();
@@ -155,9 +155,7 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
             if (!latest) return;
 
             const wrongQs = test.questions.filter((q, idx) => {
-                const correct = q.answer.filter(a => a.correct).map(a => a.content).sort();
-                const chosen = latest.selectedAnswers[idx]?.sort() || [];
-                return JSON.stringify(correct) !== JSON.stringify(chosen);
+                return !isQuestionCorrect(q, latest.selectedAnswers[idx], latest.selfAssessments?.[idx]);
             });
 
             if (!wrongQs.length) {
@@ -166,10 +164,9 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
             }
 
             const newId = uuidv4();
-            const shuffled = wrongQs.map(q => ({
-                ...q,
-                answer: shuffle(q.answer),
-            }));
+            const shuffled = wrongQs.map(q => getQuestionType(q) === 'multiple-choice' && 'answer' in q
+                ? { ...q, answer: shuffle(q.answer) }
+                : q);
 
             await db.tests.add({
                 id: newId,

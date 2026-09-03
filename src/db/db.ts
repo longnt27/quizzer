@@ -11,6 +11,7 @@ export interface StoredTest {
     time: number;
     duration: number;
     selectedAnswers: Record<number, string[]>;
+    selfAssessments?: Record<number, boolean>;
     score: number;
   }[];
   fileContent?: string;
@@ -19,6 +20,11 @@ export interface StoredTest {
     provider: 'codex' | 'gemini';
     model?: string;
     questionCount: number;
+    questionCounts?: {
+      multipleChoice: number;
+      fillBlank: number;
+      reasoning: number;
+    };
   };
 }
 

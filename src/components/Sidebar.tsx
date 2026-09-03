@@ -4,6 +4,7 @@ import { ApiOutlined, DeleteOutlined, FileTextOutlined, FormOutlined, MoonOutlin
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { getMessageApi } from '../utils/messageProvider';
+import { countQuestionTypes } from '../utils/questions';
 
 export type LibrarySelection = { kind: 'test' | 'document'; id: string } | null;
 
@@ -64,7 +65,11 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
               <List.Item onClick={() => onSelect({ kind: 'test', id: test.id })}
                 style={{ cursor: 'pointer', padding: 10, borderRadius: 8, background: selection?.kind === 'test' && selection.id === test.id ? 'var(--selected)' : undefined }}
                 actions={[<Popconfirm title="Delete this test?" onConfirm={() => remove('test', test.id)}><Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={event => event.stopPropagation()} /></Popconfirm>]}>
-                <List.Item.Meta title={test.name} description={`${test.questions.length} questions · ${test.attempts.length} attempts`} />
+                <List.Item.Meta title={test.name} description={(() => {
+                  const counts = countQuestionTypes(test.questions);
+                  const types = [counts.multipleChoice && `${counts.multipleChoice} choice`, counts.fillBlank && `${counts.fillBlank} blank`, counts.reasoning && `${counts.reasoning} reasoning`].filter(Boolean).join(' · ');
+                  return `${types} · ${test.attempts.length} attempts`;
+                })()} />
               </List.Item>
             )} />
         ) : (

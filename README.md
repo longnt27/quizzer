@@ -25,6 +25,9 @@ Quizzer is a local-first study application that turns a reusable document librar
 - Separate quiz generation for each selected document
 - Combined quiz generation across selected documents
 - Configurable question count and provider model override
+- Configurable mix of multiple-choice, fill-in-the-blank, and reasoning questions
+- Normalized fill-in-the-blank grading across generated acceptable wordings
+- Learner self-assessment against reference answers for reasoning questions
 - In-app Plugins & models panel for setup and defaults
 - Codex Agent integration using the user's existing CLI authentication
 - Gemini API integration through a local service
@@ -125,10 +128,13 @@ Scanned or visually complex documents can still require manual review. Always in
 4. Open the **Tests** tab and select **Create test**.
 5. Filter and select documents by name or tag.
 6. Choose one combined quiz or one separate quiz per document.
-7. Select a provider, question count, and optional provider-specific model.
-8. Start generation.
+7. Choose how many multiple-choice, fill-in-the-blank, and reasoning questions to create.
+8. Select a provider and optional provider-specific model.
+9. Start generation.
 
-Generation requests at most ten candidates at a time. Every candidate is validated independently. Valid questions are retained, while invalid or duplicate candidates leave empty slots for a later bounded refill round. If the target cannot be reached after five rounds, Quizzer saves the valid partial quiz and reports the final count instead of retrying forever.
+Generation requests at most ten candidates of one type at a time. Every candidate is validated independently against its type-specific schema. Valid questions are retained, while invalid or duplicate candidates leave empty slots for a later bounded refill round. If a target cannot be reached after five rounds, Quizzer saves the valid partial quiz and reports the final count instead of retrying forever.
+
+Fill-in-the-blank answers ignore capitalization, punctuation, and repeated spaces, and match any acceptable wording supplied with the generated question. Reasoning answers are never graded by another model: the learner reveals the reference answer, compares the essential points, and records a self-assessment.
 
 Application packagers can optionally bundle or provide Ollama with the default lightweight embedding model:
 

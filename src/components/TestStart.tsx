@@ -1,6 +1,7 @@
-import { Button, Typography, Checkbox, InputNumber } from 'antd';
+import { Button, Typography, Checkbox, InputNumber, Space, Tag } from 'antd';
 import type { StoredTest } from '../db/db';
 import { useState } from 'react';
+import { countQuestionTypes } from '../utils/questions';
 
 const { Title, Paragraph } = Typography;
 
@@ -12,6 +13,7 @@ interface Props {
 const TestStart: React.FC<Props> = ({ test, onStart }) => {
     const [timed, setTimed] = useState(false);
     const [durationMinutes, setDurationMinutes] = useState(15); // default to 15 mins
+    const counts = countQuestionTypes(test.questions);
 
     return (
         <div className="test-start"
@@ -36,6 +38,11 @@ const TestStart: React.FC<Props> = ({ test, onStart }) => {
             <Paragraph type="secondary" style={{ fontSize: 16, marginBottom: 32 }}>
                 This test contains <strong>{test.questions.length}</strong> questions
             </Paragraph>
+            <Space wrap style={{ justifyContent: 'center', marginBottom: 24 }}>
+                {counts.multipleChoice > 0 && <Tag color="blue">{counts.multipleChoice} multiple choice</Tag>}
+                {counts.fillBlank > 0 && <Tag color="purple">{counts.fillBlank} fill in the blank</Tag>}
+                {counts.reasoning > 0 && <Tag color="gold">{counts.reasoning} reasoning</Tag>}
+            </Space>
 
             <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
                 <Checkbox

@@ -20,12 +20,15 @@ export default function AddTestModal({ onClose, onCreated, onManagePlugins }: Pr
   const [name, setName] = useState('Combined quiz');
   const [provider, setProvider] = useState<GenerationOptions['provider']>(configuredProviders.defaultProvider);
   const [model, setModel] = useState(configuredProviders.defaultProvider === 'codex' ? configuredProviders.codexModel : configuredProviders.geminiModel);
-  const [questionCount, setQuestionCount] = useState(20);
+  const [multipleChoiceCount, setMultipleChoiceCount] = useState(15);
+  const [fillBlankCount, setFillBlankCount] = useState(3);
+  const [reasoningCount, setReasoningCount] = useState(2);
   const [query, setQuery] = useState('');
   const [working, setWorking] = useState(false);
   const [progress, setProgress] = useState<GenerationProgress | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const message = getMessageApi();
+  const questionCount = multipleChoiceCount + fillBlankCount + reasoningCount;
 
   const selected = documents.filter(document => selectedIds.includes(document.id));
   const visible = (() => {
@@ -42,6 +45,7 @@ export default function AddTestModal({ onClose, onCreated, onManagePlugins }: Pr
       provider,
       model: model.trim() || undefined,
       questionCount,
+      questionCounts: { multipleChoice: multipleChoiceCount, fillBlank: fillBlankCount, reasoning: reasoningCount },
     };
     const images = sourceDocuments.flatMap(document => document.images?.map(image => `data:${image.mimeType};base64,${image.data}`) ?? []);
     const questions = await generateQuiz(content, options, abortRef.current?.signal, setProgress, images);
@@ -64,6 +68,10 @@ export default function AddTestModal({ onClose, onCreated, onManagePlugins }: Pr
 
   const create = async () => {
     if (!selected.length) return;
+    if (questionCount < 1 || questionCount > 200) {
+      message.error('Choose between 1 and 200 questions in total');
+      return;
+    }
     if (provider === 'gemini' && !geminiKey.trim()) {
       message.error('Enter a Gemini API key');
       return;
@@ -99,7 +107,7 @@ export default function AddTestModal({ onClose, onCreated, onManagePlugins }: Pr
   return (
     <Modal open width={760} title="Create a test from documents" onCancel={close} onOk={create}
       okText={mode === 'combined' ? 'Create combined test' : `Create ${selected.length} separate test(s)`}
-      confirmLoading={working} okButtonProps={{ disabled: !selected.length || working }}>
+      confirmLoading={working} okButtonProps={{ disabled: !selected.length || working || questionCount < 1 || questionCount > 200 }}>
       {!documents.length ? (
         <Empty description="Add documents to your library before creating a test" />
       ) : <>
@@ -117,9 +125,15 @@ export default function AddTestModal({ onClose, onCreated, onManagePlugins }: Pr
               { label: 'Gemini – API', value: 'gemini' },
             ]} />
             <Input value={model} onChange={event => setModel(event.target.value)} addonBefore="Model" placeholder={provider === 'codex' ? 'Codex default' : 'gemini-2.5-flash'} style={{ width: 250 }} />
-            <Typography.Text>Questions</Typography.Text>
-            <InputNumber min={1} max={200} value={questionCount} onChange={value => setQuestionCount(value ?? 20)} />
           </Space>
+          <div className="question-count-grid">
+            <label><Typography.Text strong>Multiple choice</Typography.Text><InputNumber min={0} max={200} value={multipleChoiceCount} onChange={value => setMultipleChoiceCount(value ?? 0)} /></label>
+            <label><Typography.Text strong>Fill in the blank</Typography.Text><InputNumber min={0} max={200} value={fillBlankCount} onChange={value => setFillBlankCount(value ?? 0)} /></label>
+            <label><Typography.Text strong>Reasoning</Typography.Text><InputNumber min={0} max={200} value={reasoningCount} onChange={value => setReasoningCount(value ?? 0)} /></label>
+            <div className="question-count-total"><Typography.Text type="secondary">Total</Typography.Text><Typography.Text strong>{questionCount}</Typography.Text></div>
+          </div>
+          {questionCount < 1 && <Alert type="error" showIcon message="Choose at least one question." />}
+          {questionCount > 200 && <Alert type="error" showIcon message="A test can contain at most 200 questions." />}
           {provider === 'gemini' && !geminiKey.trim() && <Alert type="warning" showIcon message="Gemini is not connected"
             description="Add your API key in Plugins & models before creating this test."
             action={<Button size="small" onClick={onManagePlugins}>Configure</Button>} />}
@@ -136,7 +150,7 @@ export default function AddTestModal({ onClose, onCreated, onManagePlugins }: Pr
           {working && progress && <Progress percent={Math.round(progress.accepted / progress.target * 100)}
             format={() => `${progress.accepted}/${progress.target}`} status="active" />}
           {working && <Alert type="info" showIcon message={`Generating with ${provider === 'codex' ? 'Codex Agent' : 'Gemini API'}`}
-            description="Valid questions are kept. Only missing or rejected slots are requested again, with a fixed retry limit." />}
+            description={`Creating ${progress?.currentType?.replaceAll('-', ' ') ?? 'questions'}. Valid questions are kept; only missing or rejected slots are retried.`} />}
         </Space>
       </>}
     </Modal>
