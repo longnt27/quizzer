@@ -207,7 +207,15 @@ const installEmbeddings = () => {
   void (async () => {
     const update = output => { integrationJobs.embeddings.message = output || integrationJobs.embeddings.message; };
     if (!await commandWorks('ollama', ['--version'])) {
-      if (process.platform === 'darwin') await runCommand('brew', ['install', 'ollama'], { timeout: 15 * 60_000, onOutput: update });
+      if (process.platform === 'darwin') {
+        try {
+          await runCommand('brew', ['install', 'ollama'], { timeout: 15 * 60_000, onOutput: update });
+        } catch {
+          integrationJobs.embeddings.message = 'Homebrew needs repair or updated package metadata. Updating Homebrew, then retrying Ollama…';
+          await runCommand('brew', ['update'], { timeout: 15 * 60_000, onOutput: update });
+          await runCommand('brew', ['install', 'ollama'], { timeout: 15 * 60_000, onOutput: update });
+        }
+      }
       else if (process.platform === 'linux') await downloadAndRunScript('https://ollama.com/install.sh', [], update);
       else throw new Error('Install Ollama from ollama.com, then retry this button.');
     }
