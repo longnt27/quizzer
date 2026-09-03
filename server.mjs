@@ -368,7 +368,8 @@ const normalizeProviderError = error => {
 };
 
 const requireApiKey = (apiKey, label) => {
-  if (typeof apiKey !== 'string' || !apiKey.trim()) throw new ProviderError(`Enter an ${label} API key in Quizzer`, 401, 'provider_auth');
+  const article = /^[aeiou]/i.test(label) ? 'an' : 'a';
+  if (typeof apiKey !== 'string' || !apiKey.trim()) throw new ProviderError(`Enter ${article} ${label} API key in Quizzer`, 401, 'provider_auth');
 };
 
 const parseApiResponse = async (response, provider) => {

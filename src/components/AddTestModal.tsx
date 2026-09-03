@@ -94,7 +94,7 @@ export default function AddTestModal({ onClose, onCreated, onManagePlugins }: Pr
       return;
     }
     if (selectedProvider.kind === 'api' && !getApiKey(provider).trim()) {
-      message.error(`Enter an ${selectedProvider.label.replace(' – API', '')} API key`);
+      message.error(`Enter your ${selectedProvider.keyLabel ?? 'API key'}`);
       return;
     }
     setWorking(true);

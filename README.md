@@ -29,11 +29,12 @@ Quizzer is a local-first study application that turns a reusable document librar
 - Normalized fill-in-the-blank grading across generated acceptable wordings
 - Learner self-assessment against reference answers for reasoning questions
 - In-app Plugins & models panel for setup and defaults
-- Codex Agent integration using the user's existing CLI authentication
-- Gemini API integration through a local service
+- Codex, Claude Code, and Antigravity agent integrations using existing CLI authentication
+- Gemini, Anthropic Claude, OpenAI, OpenRouter, and DeepSeek API integrations
 - Structured provider output and runtime question validation
 - Live generation progress by test, question type, and retry round
 - Mid-generation cancellation that stops the active provider process
+- Provider failover that preserves accepted questions after quota, authentication, or service failures
 - Bounded refill attempts: valid questions survive when another candidate is rejected
 - Exact and lexical near-duplicate filtering
 - Optional local semantic duplicate filtering through Ollama
@@ -55,7 +56,9 @@ PDF / Markdown / text
                                       │
                          ┌────────────┴────────────┐
                          ▼                         ▼
-                   Codex Agent                Gemini API
+                  Signed-in agents            API providers
+             Codex · Claude · Antigravity   Gemini · Claude · OpenAI
+                                            OpenRouter · DeepSeek
                          └────────────┬────────────┘
                                       ▼
                          validate + reject duplicates
@@ -69,11 +72,9 @@ The React application never starts shell commands directly. It calls a loopback-
 
 - Node.js 20 or newer
 - npm
-- At least one generation provider:
-  - [Codex CLI](https://developers.openai.com/codex/) installed and authenticated; or
-  - a Gemini API key
+- At least one configured generation provider (a signed-in agent or an API key)
 
-Marker is optional and can be installed from Quizzer. Local embeddings are detected automatically when provided by an application packager. Neither is required for the basic document and quiz flow.
+Marker and the local semantic duplicate filter are optional and installable from Quizzer. Neither is required for the basic document and quiz flow.
 
 ## Quick start
 
@@ -99,8 +100,9 @@ The same launcher is available from a terminal as `npm run tailscale`. It binds 
 Open **Plugins & models** at the bottom of the sidebar. This panel is the central place to:
 
 - install and check Marker;
-- connect Codex using its device sign-in flow;
-- enter a Gemini API key;
+- install and connect supported CLI agents;
+- enter keys for Gemini, Anthropic Claude, OpenAI, OpenRouter, or DeepSeek;
+- install Ollama and the lightweight `all-minilm` semantic filter;
 - save the default provider and model for each provider.
 
 The Create Test dialog starts with those defaults and lets you choose a different provider or model for an individual test.
@@ -113,7 +115,15 @@ Install the Codex CLI once, then select **Connect Codex** in **Plugins & models*
 
 Enter the Gemini API key and default model in **Plugins & models**. The key is retained only in the current browser tab and sent to the loopback service for requests. No environment variable or terminal configuration is required.
 
-End users do not configure providers in a terminal. Provider connections, model selection, Gemini credentials, quiz settings, and theme selection all live in the application UI.
+### Claude and Antigravity agents
+
+Select **Install Claude** or **Install Antigravity** if its CLI is missing, then select **Connect** and finish the provider's browser sign-in. Quizzer uses each CLI's documented non-interactive JSON Schema mode and disables or sandboxes agent tool access during quiz generation.
+
+### API providers
+
+Gemini, Anthropic Claude, OpenAI, OpenRouter, and DeepSeek are configured the same way: enter a key and default model under **Plugins & models**, then select that provider while creating a test. Keys are retained only for the current browser tab. DeepSeek uses JSON mode plus Quizzer's runtime validation; the other adapters request schema-constrained output where supported.
+
+End users do not configure providers in a terminal. Provider installation, account connections, model selection, API credentials, quiz settings, and theme selection all live in the application UI.
 
 ## PDF conversion
 
@@ -142,21 +152,18 @@ Scanned or visually complex documents can still require manual review. Always in
 
 Generation requests at most ten candidates of one type at a time. Every candidate is validated independently against its type-specific schema. Valid questions are retained, while invalid or duplicate candidates leave empty slots for a later bounded refill round. If a target cannot be reached after five rounds, Quizzer saves the valid partial quiz and reports the final count instead of retrying forever.
 
+If a provider runs out of quota, loses authentication, or becomes unavailable, generation pauses and offers another provider. Already accepted questions remain in memory, the replacement provider requests only the missing slots, and duplicate detection compares its output against the full accepted set. Switching providers does not consume a validation retry round.
+
 Fill-in-the-blank answers ignore capitalization, punctuation, and repeated spaces, and match any acceptable wording supplied with the generated question. Reasoning answers are never graded by another model: the learner reveals the reference answer, compares the essential points, and records a self-assessment.
 
-Application packagers can optionally bundle or provide Ollama with the default lightweight embedding model:
-
-```sh
-ollama pull all-minilm
-```
-
-If Ollama is unavailable, generation continues automatically with normalized exact matching and lexical similarity. End users do not need to configure it.
+Select **Install Ollama + all-minilm** under **Plugins & models** to enable local semantic duplicate filtering. On macOS Quizzer uses Homebrew to install Ollama when needed; on Linux it uses Ollama's official installer. It then starts the local runtime and downloads `all-minilm`. If that plugin is unavailable, generation continues automatically with normalized exact matching and lexical similarity.
 
 ## Data and privacy
 
 - Documents, original uploaded blobs, extracted figures, quizzes, and attempts are stored in the browser's IndexedDB database named `QuizDB`.
-- Codex requests use the locally authenticated Codex CLI.
-- Gemini requests send selected extracted content and figures to Google's API.
+- Agent requests use the selected locally authenticated CLI.
+- API requests send selected extracted content—and figures for supported multimodal models—to the selected provider.
+- API keys pass through the loopback service only for the active request and remain in browser session storage; they are not written to IndexedDB or local storage.
 - Deleting browser site data deletes the local Quizzer library.
 - Export important quizzes before clearing browser storage.
 
@@ -178,13 +185,21 @@ The development service uses its internal loopback port automatically. Packagers
 
 ## Troubleshooting
 
-### Quizzer asks for a Gemini key
+### Quizzer asks for an API key
 
-Enter the key in **Plugins & models → Gemini API**. It is intentionally forgotten when the browser tab closes.
+Enter the provider's key in **Plugins & models → API providers**. It is intentionally forgotten when the browser tab closes.
 
 ### `spawn codex ENOENT`
 
 Install Codex CLI and ensure `codex` is available on `PATH` for the process starting Quizzer. Authentication itself can then be completed from **Plugins & models**.
+
+### An agent reaches its usage limit
+
+Leave the generation dialog open, select a configured replacement provider in the warning panel, and choose **Continue**. Accepted questions are preserved. If the replacement uses an API key you have not entered, open **Plugins & models** directly from the warning first.
+
+### Semantic filtering is not active
+
+Open **Plugins & models** and install the semantic duplicate filter. If installation fails, review the live installer output. Quiz generation still uses exact and lexical duplicate checks without it.
 
 ### Marker is not used
 
@@ -204,7 +219,7 @@ The generation pipeline reached its bounded retry limit after rejecting malforme
 
 ## Roadmap
 
-- Provider capability discovery and configurable third-party adapters
+- Provider capability discovery and custom endpoint adapters
 - Persisted generation jobs and crash recovery
 - Question/source citations in the review interface
 - Document re-extraction and converter version tracking
