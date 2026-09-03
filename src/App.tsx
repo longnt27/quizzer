@@ -10,12 +10,7 @@ import PluginsModal from './components/PluginsModal';
 import GenerationWorker from './components/GenerationWorker';
 import { GenerationActivity, GenerationCenter } from './components/GenerationCenter';
 import { setMessageApi } from './utils/messageProvider';
-
-interface TestSession {
-  mode: 'taking' | 'reviewing';
-  testId: string;
-  timeLimit?: number;
-}
+import type { TestSession } from './types';
 
 interface ShellProps { dark: boolean; onToggleTheme: () => void; }
 

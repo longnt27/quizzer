@@ -80,6 +80,10 @@ button, input, textarea, select { font: inherit; }
 .quiz-actions { width: 100%; margin-bottom: 32px; gap: 12px; }
 .quiz-index { background: var(--surface-muted); padding: 48px 24px; border-left: 1px solid var(--border); overflow-y: auto; }
 .written-answer-block { width: 100%; display: flex; flex-direction: column; gap: 12px; }
+.practice-feedback { width: 100%; display: flex; flex-direction: column; gap: 10px; margin-top: 18px; }
+.practice-choice-feedback { padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-soft); }
+.practice-choice-feedback.is-correct { border-color: #52c41a; }
+.practice-choice-feedback.is-incorrect { border-color: #ff4d4f; }
 .review-main { padding: 64px 48px; display: flex; flex-direction: column; min-width: 0; }
 .review-index { padding: 32px; }
 

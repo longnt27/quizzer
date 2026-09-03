@@ -1,4 +1,4 @@
-import { Button, Typography, Checkbox, InputNumber, Space, Tag } from 'antd';
+import { Button, Typography, Checkbox, InputNumber, Radio, Space, Tag } from 'antd';
 import type { StoredTest } from '../db/db';
 import { useState } from 'react';
 import { countQuestionTypes } from '../utils/questions';
@@ -7,12 +7,13 @@ const { Title, Paragraph } = Typography;
 
 interface Props {
     test: StoredTest;
-    onStart: (options: { timeLimit?: number }) => void;
+    onStart: (options: { timeLimit?: number; practice: boolean }) => void;
 }
 
 const TestStart: React.FC<Props> = ({ test, onStart }) => {
     const [timed, setTimed] = useState(false);
     const [durationMinutes, setDurationMinutes] = useState(15); // default to 15 mins
+    const [mode, setMode] = useState<'test' | 'practice'>('test');
     const counts = countQuestionTypes(test.questions);
 
     return (
@@ -43,6 +44,17 @@ const TestStart: React.FC<Props> = ({ test, onStart }) => {
                 {counts.fillBlank > 0 && <Tag color="purple">{counts.fillBlank} fill in the blank</Tag>}
                 {counts.reasoning > 0 && <Tag color="gold">{counts.reasoning} reasoning</Tag>}
             </Space>
+
+            <Radio.Group value={mode} onChange={event => setMode(event.target.value)} optionType="button" buttonStyle="solid" style={{ marginBottom: 20 }}
+                options={[
+                    { label: 'Test mode', value: 'test' },
+                    { label: 'Practice mode', value: 'practice' },
+                ]} />
+            <Paragraph type="secondary" style={{ maxWidth: 520, marginBottom: 20 }}>
+                {mode === 'practice'
+                    ? 'Check each answer immediately, study its explanation, then continue.'
+                    : 'Complete the questions first, then review your results after submitting the test.'}
+            </Paragraph>
 
             <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
                 <Checkbox
@@ -78,10 +90,11 @@ const TestStart: React.FC<Props> = ({ test, onStart }) => {
                 onClick={() =>
                     onStart({
                         timeLimit: timed ? durationMinutes * 60 : undefined,
+                        practice: mode === 'practice',
                     })
                 }
             >
-                Start Test
+                {mode === 'practice' ? 'Start Practice' : 'Start Test'}
             </Button>
         </div>
     );

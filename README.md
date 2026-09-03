@@ -28,6 +28,7 @@ Quizzer is a local-first study application that turns a reusable document librar
 - Configurable mix of multiple-choice, fill-in-the-blank, and reasoning questions
 - Normalized fill-in-the-blank grading across generated acceptable wordings
 - Learner self-assessment against reference answers for reasoning questions
+- Practice mode with immediate per-question answers and explanations
 - In-app Plugins & models panel for setup and defaults
 - Codex, Claude Code, and Antigravity agent integrations using existing CLI authentication
 - Gemini, Anthropic Claude, OpenAI, OpenRouter, and DeepSeek API integrations
@@ -169,6 +170,8 @@ After every validated parallel round, Quizzer checkpoints accepted questions, re
 If a provider runs out of quota, loses authentication, or becomes unavailable, generation pauses and offers another provider. Already accepted questions remain in memory, the replacement provider requests only the missing slots, and duplicate detection compares its output against the full accepted set. Switching providers does not consume a validation retry round.
 
 Fill-in-the-blank answers ignore capitalization, punctuation, and repeated spaces, and match any acceptable wording supplied with the generated question. Reasoning answers are never graded by another model: the learner reveals the reference answer, compares the essential points, and records a self-assessment.
+
+Before starting a saved test, choose **Test mode** for the traditional submit-then-review flow or **Practice mode** for immediate feedback. Practice mode locks each submitted response, shows correctness and every multiple-choice explanation or accepted fill-in answer, and requires the learner to compare reasoning responses with the reference answer before moving forward.
 
 Select **Install Ollama + all-minilm** under **Plugins & models** to enable local semantic duplicate filtering. On macOS Quizzer uses Homebrew to install Ollama when needed; on Linux it uses Ollama's official installer. It then starts the local runtime and downloads `all-minilm`. If that plugin is unavailable, generation continues automatically with normalized exact matching and lexical similarity.
 

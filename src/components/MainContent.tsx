@@ -36,10 +36,10 @@ const MainContent: React.FC<Props> = ({ selectedTestId, setSelectedTestId, sessi
         setSelectedTestId(id);
     }
 
-    const handleStartTest = (options: {timeLimit?: number}) => {
+    const handleStartTest = (options: {timeLimit?: number; practice: boolean}) => {
         if (!test) return;
         setStarting(false);
-        setSession({testId: test.id, mode: 'taking'});
+        setSession({testId: test.id, mode: 'taking', options: { instantFeedback: options.practice }});
         if (options.timeLimit)
             setTimeLimit(options.timeLimit);
         else
@@ -76,7 +76,7 @@ const MainContent: React.FC<Props> = ({ selectedTestId, setSelectedTestId, sessi
     }
 
     if (session?.mode === 'taking') {
-        return <TestTaking test={test} onFinish={() => setSession(null)} timeLimit={timeLimit} />;
+        return <TestTaking test={test} onFinish={() => setSession(null)} timeLimit={timeLimit} practice={session.options?.instantFeedback} />;
     }
 
     if (session?.mode === 'reviewing') {

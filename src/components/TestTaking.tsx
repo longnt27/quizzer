@@ -22,6 +22,7 @@ interface Props {
     test: StoredTest;
     onFinish: () => void;
     timeLimit?: number;
+    practice?: boolean;
 }
 
 // ... (renderWithCode, renderHighlightedText, and SearchBar components remain unchanged)
@@ -63,11 +64,12 @@ const SearchBar: FC<SearchBarProps> = ({ query, setQuery, onPrev, onNext, onClos
 );
 
 
-const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
+const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit, practice = false }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
     const [answers, setAnswers] = useState<Record<number, string[]>>({});
     const [selfAssessments, setSelfAssessments] = useState<Record<number, boolean>>({});
     const [revealedReasoning, setRevealedReasoning] = useState<Record<number, boolean>>({});
+    const [submittedQuestions, setSubmittedQuestions] = useState<Record<number, boolean>>({});
     const [reviewMarks, setReviewMarks] = useState<Record<number, boolean>>({});
     const [shuffledAnswers, setShuffledAnswers] = useState<Record<number, QuizAnswer[]>>({});
     const [remaining, setRemaining] = useState<number>(timeLimit ?? 0);
@@ -93,6 +95,10 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
     const questionType = getQuestionType(q);
     const multipleChoiceAnswers = useMemo(() => questionType === 'multiple-choice' && 'answer' in q ? q.answer : [], [q, questionType]);
     const totalCorrect = multipleChoiceAnswers.filter((a) => a.correct).length;
+    const submitted = Boolean(submittedQuestions[currentIndex]);
+    const answered = Boolean(answers[currentIndex]?.[0]?.trim());
+    const currentCorrect = submitted && questionType !== 'reasoning' ? isQuestionCorrect(q, answers[currentIndex]) : false;
+    const reviewComplete = submitted && (questionType !== 'reasoning' || selfAssessments[currentIndex] !== undefined);
     const choices = useMemo(() => shuffledAnswers[currentIndex] || [], [currentIndex, shuffledAnswers]);
     const answersRef = useRef(answers);
     const selfAssessmentsRef = useRef(selfAssessments);
@@ -191,6 +197,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
     }, [currentResultIndex, searchResults.length, navigateToResult]);
 
     const toggleChoice = useCallback((choice: string) => {
+        if (practice && submittedQuestions[currentIndex]) return;
         setAnswers((prev) => {
             const prevChoices = prev[currentIndex] || [];
             if (totalCorrect === 1) return { ...prev, [currentIndex]: [choice] };
@@ -198,7 +205,13 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
             const updated = exists ? prevChoices.filter((c) => c !== choice) : [...prevChoices, choice];
             return { ...prev, [currentIndex]: updated };
         });
-    }, [currentIndex, totalCorrect]);
+    }, [currentIndex, practice, submittedQuestions, totalCorrect]);
+
+    const submitPracticeAnswer = () => {
+        if (!answered) return;
+        setSubmittedQuestions(previous => ({ ...previous, [currentIndex]: true }));
+        if (questionType === 'reasoning') setRevealedReasoning(previous => ({ ...previous, [currentIndex]: true }));
+    };
 
     useEffect(() => {
         if (!isJumping) return;
@@ -249,11 +262,13 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
                 return;
             }
             if (e.key.toLowerCase() === 'h' || e.key === 'ArrowLeft') { setCurrentIndex((i) => Math.max(0, i - 1)); }
-            if (e.key.toLowerCase() === 'l' || e.key === 'ArrowRight') { setCurrentIndex((i) => Math.min(test.questions.length - 1, i + 1)); }
+            if ((e.key.toLowerCase() === 'l' || e.key === 'ArrowRight') && (!practice || reviewComplete)) {
+                setCurrentIndex((i) => Math.min(test.questions.length - 1, i + 1));
+            }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isSearching, isJumping, choices, currentIndex, totalCorrect, isPopconfirmVisible, test.questions.length, toggleChoice]);
+    }, [isSearching, isJumping, choices, currentIndex, totalCorrect, isPopconfirmVisible, practice, reviewComplete, test.questions.length, toggleChoice]);
 
     // CHANGED: Keyboard handler for popconfirm is now more direct
     useEffect(() => {
@@ -331,8 +346,8 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
                         <Title level={3} style={{ margin: 0 }}>Question {currentIndex + 1}</Title>
 
                         <Popconfirm
-                            title="Submit the test?"
-                            description="Are you sure you want to submit?"
+                            title={practice ? 'Finish practice?' : 'Submit the test?'}
+                            description={practice ? 'Your reviewed answers will be saved as an attempt.' : 'Are you sure you want to submit?'}
                             open={isPopconfirmVisible}
                             onConfirm={handleSubmit}
                             onCancel={() => setIsPopconfirmVisible(false)}
@@ -340,7 +355,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
                             okText="Yes (Y)"
                             cancelText="No (N)"
                         >
-                            <Button ref={submitButtonRef} type="primary" danger> Submit </Button>
+                            <Button ref={submitButtonRef} type="primary" danger>{practice ? 'Finish' : 'Submit'}</Button>
                         </Popconfirm>
                     </Row>
                     <Paragraph style={{ fontSize: 18, width: '100%' }}>
@@ -355,7 +370,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
                           Choose {totalCorrect} answer{totalCorrect > 1 ? 's' : ''}
                       </Paragraph>
                     {totalCorrect === 1 ? (
-                        <Radio.Group value={(answers[currentIndex] && answers[currentIndex][0]) || null} onChange={(e) => setAnswers((prev) => ({ ...prev, [currentIndex]: [e.target.value] }))}>
+                        <Radio.Group disabled={practice && submitted} value={(answers[currentIndex] && answers[currentIndex][0]) || null} onChange={(e) => setAnswers((prev) => ({ ...prev, [currentIndex]: [e.target.value] }))}>
                             <Space direction="vertical" size="large">
                                 {choices.map((a, idx) => (
                                     <Radio key={idx} value={a.content}>
@@ -366,7 +381,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
                             </Space>
                         </Radio.Group>
                     ) : (
-                        <Checkbox.Group value={answers[currentIndex] || []} onChange={(vals) => setAnswers((prev) => ({ ...prev, [currentIndex]: vals as string[] }))}>
+                        <Checkbox.Group disabled={practice && submitted} value={answers[currentIndex] || []} onChange={(vals) => setAnswers((prev) => ({ ...prev, [currentIndex]: vals as string[] }))}>
                             <Space direction="vertical" size="large">
                                 {choices.map((a, idx) => (
                                     <Checkbox key={idx} value={a.content}>
@@ -380,7 +395,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
                     {questionType === 'fill-blank' && 'acceptedAnswers' in q && (
                       <div className="written-answer-block">
                         <Typography.Text strong>Your answer</Typography.Text>
-                        <Input size="large" value={answers[currentIndex]?.[0] ?? ''}
+                        <Input size="large" disabled={practice && submitted} value={answers[currentIndex]?.[0] ?? ''}
                           onChange={event => setAnswers(previous => ({ ...previous, [currentIndex]: [event.target.value] }))}
                           placeholder="Type the missing word or phrase" autoComplete="off" />
                         <Typography.Text type="secondary">Capitalization, punctuation, and extra spaces are ignored. Equivalent accepted wording is checked automatically.</Typography.Text>
@@ -389,7 +404,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
                     {questionType === 'reasoning' && 'referenceAnswer' in q && (
                       <div className="written-answer-block">
                         <Typography.Text strong>Your reasoning</Typography.Text>
-                        <Input.TextArea rows={7} value={answers[currentIndex]?.[0] ?? ''}
+                        <Input.TextArea rows={7} disabled={practice && submitted} value={answers[currentIndex]?.[0] ?? ''}
                           onChange={event => {
                             setAnswers(previous => ({ ...previous, [currentIndex]: [event.target.value] }));
                             setSelfAssessments(previous => {
@@ -399,23 +414,46 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
                             });
                           }}
                           placeholder="Explain your reasoning in your own words" />
-                        {!revealedReasoning[currentIndex] ? (
+                        {!practice && !revealedReasoning[currentIndex] ? (
                           <Button disabled={!answers[currentIndex]?.[0]?.trim()} onClick={() => setRevealedReasoning(previous => ({ ...previous, [currentIndex]: true }))}>
                             Compare with reference answer
                           </Button>
-                        ) : <>
+                        ) : revealedReasoning[currentIndex] ? <>
                           <Alert type="info" showIcon message="Reference answer" description={<div>{q.referenceAnswer}<br /><Typography.Text type="secondary">{q.explanation}</Typography.Text></div>} />
                           <Typography.Text strong>Does your answer cover the essential reasoning?</Typography.Text>
                           <Space wrap>
                             <Button type={selfAssessments[currentIndex] === true ? 'primary' : 'default'} onClick={() => setSelfAssessments(previous => ({ ...previous, [currentIndex]: true }))}>Yes, count it correct</Button>
                             <Button danger type={selfAssessments[currentIndex] === false ? 'primary' : 'default'} onClick={() => setSelfAssessments(previous => ({ ...previous, [currentIndex]: false }))}>No, needs work</Button>
                           </Space>
-                        </>}
+                        </> : null}
                       </div>
                     )}
+                    {practice && submitted && questionType === 'multiple-choice' && 'answer' in q && (
+                      <div className="practice-feedback">
+                        <Alert type={currentCorrect ? 'success' : 'error'} showIcon message={currentCorrect ? 'Correct' : 'Not quite'} />
+                        {choices.map((choice, index) => {
+                          const selectedChoice = answers[currentIndex]?.includes(choice.content);
+                          return <div className={`practice-choice-feedback ${choice.correct ? 'is-correct' : selectedChoice ? 'is-incorrect' : ''}`} key={index}>
+                            <Space wrap><Typography.Text strong>{index + 1}. {choice.content}</Typography.Text>{choice.correct && <Tag color="success">Correct answer</Tag>}{selectedChoice && <Tag color={choice.correct ? 'success' : 'error'}>Your choice</Tag>}</Space>
+                            <Typography.Paragraph type="secondary" style={{ margin: '6px 0 0' }}>{choice.explanation}</Typography.Paragraph>
+                          </div>;
+                        })}
+                      </div>
+                    )}
+                    {practice && submitted && questionType === 'fill-blank' && 'acceptedAnswers' in q && (
+                      <div className="practice-feedback">
+                        <Alert type={currentCorrect ? 'success' : 'error'} showIcon message={currentCorrect ? 'Correct' : 'Not quite'}
+                          description={<div>Accepted answer{q.acceptedAnswers.length === 1 ? '' : 's'}: <strong>{q.acceptedAnswers.join(' · ')}</strong></div>} />
+                        <Typography.Paragraph type="secondary">{q.explanation}</Typography.Paragraph>
+                      </div>
+                    )}
+                    {practice && !submitted && <Button type="primary" size="large" disabled={!answered} onClick={submitPracticeAnswer}>Check answer</Button>}
                     <Row justify="space-between" style={{ marginTop: 64, width: '100%' }}>
                         <Button onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))} disabled={currentIndex === 0}>Previous</Button>
-                        <Button onClick={() => setCurrentIndex((i) => Math.min(test.questions.length - 1, i + 1))} disabled={currentIndex === test.questions.length - 1}>Next</Button>
+                        {practice && currentIndex === test.questions.length - 1 ? (
+                          <Button type="primary" disabled={!reviewComplete} onClick={() => void handleSubmit()}>Finish practice</Button>
+                        ) : <Button onClick={() => setCurrentIndex((i) => Math.min(test.questions.length - 1, i + 1))}
+                          disabled={currentIndex === test.questions.length - 1 || (practice && !reviewComplete)}>Next</Button>}
                     </Row>
                 </Row>
             </Col>
