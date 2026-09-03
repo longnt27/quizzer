@@ -199,8 +199,7 @@ const requestCandidates = async (prompt: string, schema: object, options: Genera
   const payload = await response.json().catch(() => ({})) as { output?: string; error?: string; code?: string };
   if (!response.ok) throw new ProviderRequestError(payload.error || `Generation failed (${response.status})`, payload.code);
   const parsed = extractJson<{ questions?: unknown[] }>(payload.output ?? '');
-  if (!parsed?.questions || !Array.isArray(parsed.questions)) throw new Error('Provider returned invalid structured output');
-  return parsed.questions;
+  return parsed?.questions && Array.isArray(parsed.questions) ? parsed.questions : [];
 };
 
 const typeInstructions: Record<QuestionType, string> = {
@@ -290,6 +289,7 @@ export async function generateQuiz(
         throw error;
       }
       onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'validating', provider: activeOptions.provider });
+      if (!candidates.length) rejected += requested;
       const validCandidates = candidates.filter(candidate => validateQuestion(candidate, type)) as QuizQuestion[];
       rejected += candidates.length - validCandidates.length;
       const vectors = await tryEmbeddings([...accepted, ...validCandidates].map(question => question.statement), signal);
