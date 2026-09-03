@@ -5,8 +5,12 @@ export interface GenerationProgress {
   accepted: number;
   target: number;
   round: number;
+  maxRounds: number;
   rejected: number;
   currentType?: QuestionType;
+  typeAccepted: number;
+  typeTarget: number;
+  phase: 'requesting' | 'validating';
 }
 
 const multipleChoiceSchema = {
@@ -243,7 +247,9 @@ export async function generateQuiz(
     for (let round = 1; round <= maxRounds && typeAccepted < typeTarget; round++) {
       const missing = typeTarget - typeAccepted;
       const requested = Math.min(10, missing + Math.min(2, Math.ceil(missing / 3)));
+      onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'requesting' });
       const candidates = await requestCandidates(buildPrompt(content, type, requested, accepted, focus), schemas[type], options, signal, images);
+      onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'validating' });
       const validCandidates = candidates.filter(candidate => validateQuestion(candidate, type)) as QuizQuestion[];
       rejected += candidates.length - validCandidates.length;
       const vectors = await tryEmbeddings([...accepted, ...validCandidates].map(question => question.statement), signal);
@@ -261,7 +267,7 @@ export async function generateQuiz(
         if (candidateVector) acceptedVectors.push(candidateVector);
         if (typeAccepted === typeTarget) break;
       }
-      onProgress?.({ accepted: accepted.length, target, round, rejected, currentType: type });
+      onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'validating' });
     }
   }
 

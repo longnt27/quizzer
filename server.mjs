@@ -38,6 +38,8 @@ const decodeImage = (dataUrl, index) => {
   return { path: `source-${index}.${extension}`, data: Buffer.from(match[2], 'base64') };
 };
 
+const cancellationError = () => Object.assign(new Error('Generation cancelled'), { name: 'AbortError' });
+
 const stripTerminalCodes = value => value.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '').replace(/\r/g, '').trim();
 
 const runCommand = (command, args, { timeout = 20_000, onOutput } = {}) => new Promise((resolve, reject) => {
@@ -125,7 +127,8 @@ const connectCodex = () => {
   });
 };
 
-const runCodex = async ({ prompt, schema, model, images = [] }) => {
+const runCodex = async ({ prompt, schema, model, images = [] }, signal) => {
+  if (signal?.aborted) throw cancellationError();
   const work = await mkdtemp(join(tmpdir(), 'quizzer-codex-'));
   const schemaPath = join(work, 'schema.json');
   const outputPath = join(work, 'result.json');
@@ -144,12 +147,27 @@ const runCodex = async ({ prompt, schema, model, images = [] }) => {
     await new Promise((resolve, reject) => {
       const child = spawn('codex', args, { stdio: ['pipe', 'ignore', 'pipe'], env: process.env });
       let errors = '';
-      const timer = setTimeout(() => { child.kill('SIGTERM'); reject(new Error('Codex timed out after 10 minutes')); }, 600_000);
-      child.stderr.on('data', chunk => { errors += chunk.toString(); });
-      child.on('error', reject);
-      child.on('close', code => {
+      let failure;
+      const cleanup = () => {
         clearTimeout(timer);
-        if (code === 0) resolve();
+        signal?.removeEventListener('abort', abort);
+      };
+      const abort = () => {
+        failure = cancellationError();
+        child.kill('SIGTERM');
+      };
+      const timer = setTimeout(() => {
+        failure = new Error('Codex timed out after 10 minutes');
+        child.kill('SIGTERM');
+      }, 600_000);
+      signal?.addEventListener('abort', abort, { once: true });
+      if (signal?.aborted) abort();
+      child.stderr.on('data', chunk => { errors += chunk.toString(); });
+      child.on('error', error => { cleanup(); reject(error); });
+      child.on('close', code => {
+        cleanup();
+        if (failure) reject(failure);
+        else if (code === 0) resolve();
         else reject(new Error(errors.trim() || `Codex exited with code ${code}`));
       });
       child.stdin.end(prompt);
@@ -160,12 +178,13 @@ const runCodex = async ({ prompt, schema, model, images = [] }) => {
   }
 };
 
-const runGemini = async ({ prompt, schema, model, images = [], apiKey }) => {
+const runGemini = async ({ prompt, schema, model, images = [], apiKey }, signal) => {
   if (typeof apiKey !== 'string' || !apiKey.trim()) throw new Error('Enter a Gemini API key in Quizzer');
   const modelName = model || 'gemini-2.5-flash';
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const response = await fetch(endpoint, {
     method: 'POST',
+    signal,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }, ...images.slice(0, 30).map(image => {
@@ -273,14 +292,19 @@ createServer(async (request, response) => {
   }
   if (request.method !== 'POST' || request.url !== '/api/generate') return send(response, 404, { error: 'Not found' });
 
+  const generationController = new AbortController();
+  request.on('aborted', () => generationController.abort());
+  response.on('close', () => {
+    if (!response.writableEnded) generationController.abort();
+  });
   try {
     const body = await readJson(request);
     if (!body || typeof body.prompt !== 'string' || !body.schema) throw new Error('prompt and schema are required');
     if (body.provider !== 'codex' && body.provider !== 'gemini') throw new Error('Unsupported provider');
-    const output = body.provider === 'codex' ? await runCodex(body) : await runGemini(body);
-    send(response, 200, { output });
+    const output = body.provider === 'codex' ? await runCodex(body, generationController.signal) : await runGemini(body, generationController.signal);
+    if (!response.destroyed) send(response, 200, { output });
   } catch (error) {
-    send(response, 500, { error: error instanceof Error ? error.message : 'Generation failed' });
+    if (!response.destroyed) send(response, error?.name === 'AbortError' ? 499 : 500, { error: error instanceof Error ? error.message : 'Generation failed' });
   }
 }).listen(port, '127.0.0.1', () => {
   process.stdout.write(`Quizzer service listening on http://127.0.0.1:${port}\n`);

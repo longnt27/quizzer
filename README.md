@@ -32,6 +32,8 @@ Quizzer is a local-first study application that turns a reusable document librar
 - Codex Agent integration using the user's existing CLI authentication
 - Gemini API integration through a local service
 - Structured provider output and runtime question validation
+- Live generation progress by test, question type, and retry round
+- Mid-generation cancellation that stops the active provider process
 - Bounded refill attempts: valid questions survive when another candidate is rejected
 - Exact and lexical near-duplicate filtering
 - Optional local semantic duplicate filtering through Ollama
