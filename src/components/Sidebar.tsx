@@ -9,6 +9,18 @@ import { serverSyncStatus, syncNow } from '../db/serverSync';
 
 export type LibrarySelection = { kind: 'test' | 'document'; id: string } | null;
 
+const formatBytes = (bytes: number) => {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`;
+};
+
 interface Props {
   selection: LibrarySelection;
   onSelect: (selection: LibrarySelection) => void;
@@ -110,7 +122,9 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
           <div>
             <Typography.Text strong>{sync.detail}</Typography.Text><br />
             <Typography.Text type="secondary">
-              {sync.total > 0 && `${sync.completed.toLocaleString()} of ${sync.total.toLocaleString()} ${sync.phase === 'uploading' || sync.phase === 'receiving' ? 'bytes' : 'records'} · `}
+              {sync.total > 0 && (sync.phase === 'uploading' || sync.phase === 'receiving'
+                ? `${formatBytes(sync.completed)} of ${formatBytes(sync.total)} · `
+                : `${sync.completed.toLocaleString()} of ${sync.total.toLocaleString()} records · `)}
               {sync.pending} pending local {sync.pending === 1 ? 'change' : 'changes'}
               {sync.lastSyncedAt && ` · Last saved ${new Date(sync.lastSyncedAt).toLocaleTimeString()}`}
             </Typography.Text>
