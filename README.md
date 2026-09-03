@@ -17,6 +17,7 @@ Quizzer is a local-first study application that turns a reusable document librar
 ## Features
 
 - Local document library with PDF, Markdown, and text uploads
+- Visible extraction progress with per-file retry on failure
 - Responsive mobile navigation and quiz layouts
 - Persistent light and dark themes
 - Tags and tag-aware document search
@@ -24,6 +25,7 @@ Quizzer is a local-first study application that turns a reusable document librar
 - Separate quiz generation for each selected document
 - Combined quiz generation across selected documents
 - Configurable question count and provider model override
+- In-app Plugins & models panel for setup and defaults
 - Codex Agent integration using the user's existing CLI authentication
 - Gemini API integration through a local service
 - Structured provider output and runtime question validation
@@ -66,7 +68,7 @@ The React application never starts shell commands directly. It calls a loopback-
   - [Codex CLI](https://developers.openai.com/codex/) installed and authenticated; or
   - a Gemini API key
 
-Optional enhancements such as Marker and local embeddings are detected automatically when included by the application packager. They are never required for the basic document and quiz flow.
+Marker is optional and can be installed from Quizzer. Local embeddings are detected automatically when provided by an application packager. Neither is required for the basic document and quiz flow.
 
 ## Quick start
 
@@ -83,22 +85,24 @@ Open the Vite URL printed in the terminal, normally `http://localhost:5173`.
 
 ## Provider setup
 
+Open **Plugins & models** at the bottom of the sidebar. This panel is the central place to:
+
+- install and check Marker;
+- connect Codex using its device sign-in flow;
+- enter a Gemini API key;
+- save the default provider and model for each provider.
+
+The Create Test dialog starts with those defaults and lets you choose a different provider or model for an individual test.
+
 ### Codex Agent
 
-Install and authenticate the Codex CLI, then verify that it is available:
-
-```sh
-codex --version
-codex login
-```
-
-Select **Codex – Agent** while creating a test. Quizzer invokes Codex ephemerally, uses a read-only sandbox, and supplies a JSON Schema for the final response. Leaving the model field blank uses the user's configured Codex default.
+Install the Codex CLI once, then select **Connect Codex** in **Plugins & models**. Quizzer starts the Codex device sign-in flow and displays its sign-in link and instructions in the popup. Quizzer invokes Codex ephemerally, uses a read-only sandbox, and supplies a JSON Schema for the final response. Leaving the model field blank uses the Codex default.
 
 ### Gemini API
 
-Select **Gemini – API** while creating a test and enter the API key in the form. It is retained only in the current browser tab and sent to the loopback service for requests. No environment variable or terminal configuration is required.
+Enter the Gemini API key and default model in **Plugins & models**. The key is retained only in the current browser tab and sent to the loopback service for requests. No environment variable or terminal configuration is required.
 
-End users do not configure providers in a terminal. Codex users only need to complete the normal `codex login` flow; model selection, Gemini credentials, quiz settings, and theme selection all live in the application UI.
+End users do not configure providers in a terminal. Provider connections, model selection, Gemini credentials, quiz settings, and theme selection all live in the application UI.
 
 ## PDF conversion
 
@@ -107,12 +111,7 @@ Quizzer offers two upload modes:
 - **Automatic:** attempts Marker and falls back to browser-based PDF text extraction.
 - **Basic:** uses PDF.js text extraction only.
 
-Developers or application packagers can include Marker for better preservation of document structure:
-
-```sh
-python -m pip install marker-pdf
-marker_single --help
-```
+Select **Install Marker** in **Plugins & models** for better preservation of document structure. Quizzer creates a private Python environment under `.quizzer-tools/marker`, downloads Marker there, and uses it automatically. Installation can take several minutes and requires an internet connection and substantial disk space.
 
 When Marker succeeds, Quizzer stores its Markdown plus up to 30 extracted images and supplies those images to the selected multimodal provider. Marker is a substantial optional dependency and its code/model licenses should be reviewed for your distribution and commercial-use requirements.
 
@@ -166,15 +165,15 @@ The development service uses its internal loopback port automatically. Packagers
 
 ### Quizzer asks for a Gemini key
 
-Enter the key in the **Gemini – API** section of the Create Test dialog. It is intentionally forgotten when the browser tab closes.
+Enter the key in **Plugins & models → Gemini API**. It is intentionally forgotten when the browser tab closes.
 
 ### `spawn codex ENOENT`
 
-Install Codex CLI and ensure `codex` is available on `PATH` for the process starting Quizzer.
+Install Codex CLI and ensure `codex` is available on `PATH` for the process starting Quizzer. Authentication itself can then be completed from **Plugins & models**.
 
 ### Marker is not used
 
-Run `marker_single --help`. If it is unavailable, Quizzer silently uses basic extraction in Automatic mode. Restart Quizzer after changing `PATH`.
+Open **Plugins & models** and select **Install Marker**. The popup shows live installation progress and any error. Until Marker is ready, Automatic mode silently uses basic extraction.
 
 ### A quiz contains fewer questions than requested
 

@@ -1,11 +1,18 @@
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const port = Number(process.env.QUIZZER_SERVICE_PORT || 8787);
 const maxBodyBytes = 25 * 1024 * 1024;
+const managedMarkerDirectory = join(process.cwd(), '.quizzer-tools', 'marker');
+const managedMarkerExecutable = join(managedMarkerDirectory, process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'marker_single.exe' : 'marker_single');
+const integrationJobs = {
+  marker: { state: 'idle', message: '' },
+  codex: { state: 'idle', message: '' },
+};
+let systemMarkerDetected;
 
 const send = (response, status, body) => {
   response.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': 'http://localhost:5173' });
@@ -29,6 +36,93 @@ const decodeImage = (dataUrl, index) => {
   if (!match) throw new Error('Invalid image input');
   const extension = match[1] === 'image/jpeg' ? 'jpg' : match[1].split('/')[1];
   return { path: `source-${index}.${extension}`, data: Buffer.from(match[2], 'base64') };
+};
+
+const stripTerminalCodes = value => value.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '').replace(/\r/g, '').trim();
+
+const runCommand = (command, args, { timeout = 20_000, onOutput } = {}) => new Promise((resolve, reject) => {
+  const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'], env: process.env });
+  let output = '';
+  const append = chunk => {
+    output = `${output}${chunk.toString()}`.slice(-12_000);
+    onOutput?.(stripTerminalCodes(output));
+  };
+  child.stdout.on('data', append);
+  child.stderr.on('data', append);
+  child.on('error', reject);
+  const timer = setTimeout(() => child.kill('SIGTERM'), timeout);
+  child.on('close', code => {
+    clearTimeout(timer);
+    const cleanOutput = stripTerminalCodes(output);
+    if (code === 0) resolve(cleanOutput);
+    else reject(new Error(cleanOutput || `${command} exited with code ${code}`));
+  });
+});
+
+const commandWorks = async (command, args, timeout = 10_000) => {
+  try { await runCommand(command, args, { timeout }); return true; }
+  catch { return false; }
+};
+
+const managedMarkerExists = async () => {
+  try { await access(managedMarkerExecutable); return true; }
+  catch { return false; }
+};
+
+const markerCommand = async () => await managedMarkerExists() ? managedMarkerExecutable : 'marker_single';
+
+const hasSystemMarker = async () => {
+  if (systemMarkerDetected === undefined) systemMarkerDetected = await commandWorks('marker_single', ['--help'], 15_000);
+  return systemMarkerDetected;
+};
+
+const integrationStatus = async () => {
+  const [codexInstalled, codexConnected, managedMarker, systemMarker] = await Promise.all([
+    commandWorks('codex', ['--version']),
+    commandWorks('codex', ['login', 'status']),
+    managedMarkerExists(),
+    hasSystemMarker(),
+  ]);
+  return {
+    marker: { installed: managedMarker || systemMarker, managed: managedMarker, job: integrationJobs.marker },
+    codex: { installed: codexInstalled, connected: codexConnected, job: integrationJobs.codex },
+    gemini: { available: true },
+  };
+};
+
+const installMarker = () => {
+  if (integrationJobs.marker.state === 'working') return;
+  integrationJobs.marker = { state: 'working', message: 'Creating Quizzer’s private Python environment…' };
+  void (async () => {
+    try {
+      await runCommand('python3', ['-m', 'venv', managedMarkerDirectory], {
+        timeout: 120_000,
+        onOutput: output => { if (output) integrationJobs.marker.message = output; },
+      });
+      const pip = join(managedMarkerDirectory, process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'pip.exe' : 'pip');
+      integrationJobs.marker.message = 'Downloading and installing Marker. This can take several minutes…';
+      await runCommand(pip, ['install', '--upgrade', 'marker-pdf'], {
+        timeout: 30 * 60_000,
+        onOutput: output => { integrationJobs.marker.message = output || integrationJobs.marker.message; },
+      });
+      integrationJobs.marker = { state: 'complete', message: 'Marker is installed and ready.' };
+    } catch (error) {
+      integrationJobs.marker = { state: 'error', message: error instanceof Error ? error.message : 'Marker installation failed' };
+    }
+  })();
+};
+
+const connectCodex = () => {
+  if (integrationJobs.codex.state === 'working') return;
+  integrationJobs.codex = { state: 'working', message: 'Starting Codex device login…' };
+  void runCommand('codex', ['login', '--device-auth'], {
+    timeout: 15 * 60_000,
+    onOutput: output => { integrationJobs.codex.message = output || integrationJobs.codex.message; },
+  }).then(output => {
+    integrationJobs.codex = { state: 'complete', message: output || 'Codex is connected.' };
+  }).catch(error => {
+    integrationJobs.codex = { state: 'error', message: error instanceof Error ? error.message : 'Codex login failed' };
+  });
 };
 
 const runCodex = async ({ prompt, schema, model, images = [] }) => {
@@ -107,8 +201,9 @@ const runMarker = async ({ name, data }) => {
   const output = join(work, 'output');
   await writeFile(input, Buffer.from(data, 'base64'));
   try {
+    const executable = await markerCommand();
     await new Promise((resolve, reject) => {
-      const child = spawn('marker_single', [input, '--output_dir', output, '--output_format', 'markdown'], { stdio: ['ignore', 'ignore', 'pipe'] });
+      const child = spawn(executable, [input, '--output_dir', output, '--output_format', 'markdown'], { stdio: ['ignore', 'ignore', 'pipe'] });
       let errors = '';
       child.stderr.on('data', chunk => { errors += chunk.toString(); });
       child.on('error', error => reject(error.code === 'ENOENT' ? new Error('Marker is not installed') : error));
@@ -136,6 +231,19 @@ createServer(async (request, response) => {
   }
   if (request.method === 'GET' && request.url === '/api/health') {
     return send(response, 200, { ok: true, providers: { codex: true, gemini: true } });
+  }
+  if (request.method === 'GET' && request.url === '/api/integrations') {
+    return send(response, 200, await integrationStatus());
+  }
+  if (request.method === 'POST' && request.url === '/api/integrations/marker/install') {
+    if (!request.headers['content-type']?.startsWith('application/json')) return send(response, 415, { error: 'JSON request required' });
+    installMarker();
+    return send(response, 202, { ok: true });
+  }
+  if (request.method === 'POST' && request.url === '/api/integrations/codex/connect') {
+    if (!request.headers['content-type']?.startsWith('application/json')) return send(response, 415, { error: 'JSON request required' });
+    connectCodex();
+    return send(response, 202, { ok: true });
   }
   if (request.method === 'POST' && request.url === '/api/extract') {
     try { return send(response, 200, await runMarker(await readJson(request))); }

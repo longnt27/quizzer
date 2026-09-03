@@ -6,6 +6,7 @@ import MainContent from './components/MainContent';
 import AddTestModal from './components/AddTestModal';
 import AddDocumentModal from './components/AddDocumentModal';
 import DocumentView from './components/DocumentView';
+import PluginsModal from './components/PluginsModal';
 import { setMessageApi } from './utils/messageProvider';
 
 interface TestSession {
@@ -20,6 +21,7 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
   const [selection, setSelection] = useState<LibrarySelection>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDocumentModal, setShowDocumentModal] = useState(false);
+  const [showPluginsModal, setShowPluginsModal] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [session, setSession] = useState<TestSession | null>(null);
   const [messageApi, contextHolder] = message.useMessage();
@@ -38,6 +40,7 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
     onSelect: select,
     onAddTest: () => { setShowAddModal(true); setMobileMenuOpen(false); },
     onAddDocument: () => { setShowDocumentModal(true); setMobileMenuOpen(false); },
+    onOpenPlugins: () => { setShowPluginsModal(true); setMobileMenuOpen(false); },
     dark,
     onToggleTheme,
   };
@@ -67,12 +70,13 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
       <Drawer placement="left" width="min(88vw, 340px)" open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} styles={{ body: { padding: 0 } }}>
         <Sidebar {...sidebarProps} embedded />
       </Drawer>
-      {showAddModal && <AddTestModal onClose={() => setShowAddModal(false)} onCreated={id => {
+      {showAddModal && <AddTestModal onClose={() => setShowAddModal(false)} onManagePlugins={() => setShowPluginsModal(true)} onCreated={id => {
         setSelection({ kind: 'test', id }); setShowAddModal(false); setSession(null);
       }} />}
       {showDocumentModal && <AddDocumentModal onClose={() => setShowDocumentModal(false)} onCreated={id => {
         setSelection({ kind: 'document', id }); setShowDocumentModal(false);
       }} />}
+      {showPluginsModal && <PluginsModal onClose={() => setShowPluginsModal(false)} />}
     </Layout>
   </>;
 }

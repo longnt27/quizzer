@@ -1,24 +1,25 @@
 import { useRef, useState } from 'react';
-import { Alert, Checkbox, Empty, Input, InputNumber, List, Modal, Progress, Radio, Select, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Checkbox, Empty, Input, InputNumber, List, Modal, Progress, Radio, Select, Space, Tag, Typography } from 'antd';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db, type StoredDocument } from '../db/db';
 import { generateQuiz, type GenerationProgress } from '../utils/api';
 import type { GenerationOptions } from '../types';
 import { getMessageApi } from '../utils/messageProvider';
-import { getGeminiApiKey, setGeminiApiKey } from '../utils/providerSettings';
+import { getGeminiApiKey, getProviderSettings } from '../utils/providerSettings';
 
-interface Props { onClose: () => void; onCreated: (id: string) => void; }
+interface Props { onClose: () => void; onCreated: (id: string) => void; onManagePlugins: () => void; }
 type CreationMode = 'combined' | 'separate';
 
-export default function AddTestModal({ onClose, onCreated }: Props) {
+export default function AddTestModal({ onClose, onCreated, onManagePlugins }: Props) {
+  const configuredProviders = getProviderSettings();
+  const geminiKey = getGeminiApiKey();
   const documents = useLiveQuery(() => db.documents.orderBy('createdAt').reverse().toArray(), []) ?? [];
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [mode, setMode] = useState<CreationMode>('combined');
   const [name, setName] = useState('Combined quiz');
-  const [provider, setProvider] = useState<GenerationOptions['provider']>('codex');
-  const [model, setModel] = useState('');
-  const [geminiKey, setGeminiKeyState] = useState(getGeminiApiKey);
+  const [provider, setProvider] = useState<GenerationOptions['provider']>(configuredProviders.defaultProvider);
+  const [model, setModel] = useState(configuredProviders.defaultProvider === 'codex' ? configuredProviders.codexModel : configuredProviders.geminiModel);
   const [questionCount, setQuestionCount] = useState(20);
   const [query, setQuery] = useState('');
   const [working, setWorking] = useState(false);
@@ -67,7 +68,6 @@ export default function AddTestModal({ onClose, onCreated }: Props) {
       message.error('Enter a Gemini API key');
       return;
     }
-    if (provider === 'gemini') setGeminiApiKey(geminiKey.trim());
     setWorking(true);
     setProgress(null);
     abortRef.current = new AbortController();
@@ -108,18 +108,22 @@ export default function AddTestModal({ onClose, onCreated }: Props) {
             options={[{ label: 'One combined test', value: 'combined' }, { label: 'Separate test per document', value: 'separate' }]} />
           {mode === 'combined' && <Input value={name} onChange={event => setName(event.target.value)} addonBefore="Test name" />}
           <Space wrap>
-            <Select value={provider} onChange={setProvider} style={{ width: 180 }} options={[
+            <Typography.Text>Provider</Typography.Text>
+            <Select value={provider} onChange={next => {
+              setProvider(next);
+              setModel(next === 'codex' ? configuredProviders.codexModel : configuredProviders.geminiModel);
+            }} style={{ width: 180 }} options={[
               { label: 'Codex – Agent', value: 'codex' },
               { label: 'Gemini – API', value: 'gemini' },
             ]} />
-            <Input value={model} onChange={event => setModel(event.target.value)} placeholder="Default model" style={{ width: 180 }} />
+            <Input value={model} onChange={event => setModel(event.target.value)} addonBefore="Model" placeholder={provider === 'codex' ? 'Codex default' : 'gemini-2.5-flash'} style={{ width: 250 }} />
             <Typography.Text>Questions</Typography.Text>
             <InputNumber min={1} max={200} value={questionCount} onChange={value => setQuestionCount(value ?? 20)} />
           </Space>
-          {provider === 'gemini' && (
-            <Input.Password value={geminiKey} onChange={event => setGeminiKeyState(event.target.value)}
-              placeholder="Gemini API key (kept only for this browser tab)" autoComplete="off" />
-          )}
+          {provider === 'gemini' && !geminiKey.trim() && <Alert type="warning" showIcon message="Gemini is not connected"
+            description="Add your API key in Plugins & models before creating this test."
+            action={<Button size="small" onClick={onManagePlugins}>Configure</Button>} />}
+          <Typography.Text type="secondary">Provider defaults are saved in <Button type="link" size="small" onClick={onManagePlugins}>Plugins & models</Button>. You can override the model for this test.</Typography.Text>
           <Input.Search value={query} onChange={event => setQuery(event.target.value)} placeholder="Filter documents by name or tag" />
           <List bordered size="small" style={{ maxHeight: 290, overflowY: 'auto' }} dataSource={visible}
             renderItem={document => (

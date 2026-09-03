@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button, Empty, Input, Layout, List, Popconfirm, Space, Tabs, Tag, Typography } from 'antd';
-import { DeleteOutlined, FileTextOutlined, FormOutlined, MoonOutlined, PlusOutlined, SearchOutlined, SunOutlined } from '@ant-design/icons';
+import { ApiOutlined, DeleteOutlined, FileTextOutlined, FormOutlined, MoonOutlined, PlusOutlined, SearchOutlined, SunOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { getMessageApi } from '../utils/messageProvider';
@@ -12,12 +12,13 @@ interface Props {
   onSelect: (selection: LibrarySelection) => void;
   onAddTest: () => void;
   onAddDocument: () => void;
+  onOpenPlugins: () => void;
   dark: boolean;
   onToggleTheme: () => void;
   embedded?: boolean;
 }
 
-export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument, dark, onToggleTheme, embedded = false }: Props) {
+export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument, onOpenPlugins, dark, onToggleTheme, embedded = false }: Props) {
   const tests = useLiveQuery(() => db.tests.orderBy('createdAt').reverse().toArray(), []) ?? [];
   const documents = useLiveQuery(() => db.documents.orderBy('createdAt').reverse().toArray(), []) ?? [];
   const [tab, setTab] = useState<'tests' | 'documents'>(selection?.kind === 'document' ? 'documents' : 'tests');
@@ -77,9 +78,12 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
             )} />
         )}
       </div>
-      <Button type="text" className="theme-toggle" icon={dark ? <SunOutlined /> : <MoonOutlined />} onClick={onToggleTheme}>
-        {dark ? 'Light mode' : 'Dark mode'}
-      </Button>
+      <div className="sidebar-footer">
+        <Button type="text" icon={<ApiOutlined />} onClick={onOpenPlugins}>Plugins & models</Button>
+        <Button type="text" icon={dark ? <SunOutlined /> : <MoonOutlined />} onClick={onToggleTheme}>
+          {dark ? 'Light mode' : 'Dark mode'}
+        </Button>
+      </div>
     </div>
   );
   return embedded ? content : <Layout.Sider width={290} theme={dark ? 'dark' : 'light'} className="desktop-sidebar">{content}</Layout.Sider>;
