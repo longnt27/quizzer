@@ -30,6 +30,7 @@ Quizzer is a local-first study application that turns a reusable document librar
 - Normalized fill-in-the-blank grading across generated acceptable wordings
 - Learner self-assessment against reference answers for reasoning questions
 - Practice mode with immediate per-question answers and explanations
+- Automatic recovery of unfinished test and practice sessions
 - In-app Plugins & models panel for setup and defaults
 - Codex, Claude Code, and Antigravity agent integrations using existing CLI authentication
 - Gemini, Anthropic Claude, OpenAI, OpenRouter, and DeepSeek API integrations
@@ -175,12 +176,15 @@ Fill-in-the-blank answers ignore capitalization, punctuation, and repeated space
 
 Before starting a saved test, choose **Test mode** for the traditional submit-then-review flow or **Practice mode** for immediate feedback. Practice mode locks each submitted response, shows correctness and every multiple-choice explanation or accepted fill-in answer, and requires the learner to compare reasoning responses with the reference answer before moving forward. Select **Check answer** or press Enter; in a reasoning response, use Shift+Enter for a new line.
 
+Quizzer continuously saves the active test or practice session to IndexedDB, including the current question, answers, review marks, revealed feedback, self-assessments, shuffled choice order, mode, and timer start. If the connection drops or the page closes, reopening Quizzer on the same browser origin automatically restores the latest unfinished session. Submitting the attempt removes its saved draft.
+
 Select **Install Ollama + all-minilm** under **Plugins & models** to enable local semantic duplicate filtering. On macOS Quizzer uses Homebrew to install Ollama when needed; on Linux it uses Ollama's official installer. It then starts the local runtime and downloads `all-minilm`. If that plugin is unavailable, generation continues automatically with normalized exact matching and lexical similarity.
 
 ## Data and privacy
 
 - Documents, original uploaded blobs, extracted figures, quizzes, and attempts are stored in the browser's IndexedDB database named `QuizDB`.
 - Background generation jobs, accepted questions, and retry checkpoints are also stored in IndexedDB until dismissed.
+- The latest unfinished test-taking state is stored in IndexedDB until that attempt is submitted or its test is deleted.
 - Agent requests use the selected locally authenticated CLI.
 - API requests send selected extracted content—and figures for supported multimodal models—to the selected provider.
 - API keys pass through the loopback service only for the active request and remain in browser session storage; they are not written to IndexedDB or local storage.

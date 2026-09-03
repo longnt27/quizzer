@@ -11,6 +11,7 @@ import GenerationWorker from './components/GenerationWorker';
 import { GenerationActivity, GenerationCenter } from './components/GenerationCenter';
 import { setMessageApi } from './utils/messageProvider';
 import type { TestSession } from './types';
+import { db } from './db/db';
 
 interface ShellProps { dark: boolean; onToggleTheme: () => void; }
 
@@ -26,6 +27,22 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
   const screens = Grid.useBreakpoint();
   const mobile = screens.md === false;
   setMessageApi(messageApi);
+
+  useEffect(() => {
+    let active = true;
+    void db.testDrafts.orderBy('updatedAt').last().then(async draft => {
+      if (!draft || !active || !await db.tests.get(draft.testId)) return;
+      setSelection({ kind: 'test', id: draft.testId });
+      setSession({
+        testId: draft.testId,
+        mode: 'taking',
+        timeLimit: draft.timeLimit,
+        startedAt: draft.startedAt,
+        options: { instantFeedback: draft.practice },
+      });
+    });
+    return () => { active = false; };
+  }, []);
 
   const select = (next: LibrarySelection) => {
     setSelection(next);

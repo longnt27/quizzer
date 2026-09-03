@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { db, StoredTest } from '../db/db';
+import { db, type StoredTest, type StoredTestDraft } from '../db/db';
 import TestStart from './TestStart';
 import TestSummary from './TestSummary';
 import TestTaking from './TestTaking';
@@ -20,15 +20,21 @@ interface Props {
 
 const MainContent: React.FC<Props> = ({ selectedTestId, setSelectedTestId, session, setSession, onAddTest }) => {
     const [test, setTest] = useState<StoredTest | null>(null);
-    const [timeLimit, setTimeLimit] = useState<number | undefined>(0);
+    const [draft, setDraft] = useState<StoredTestDraft | undefined>();
     const [starting, setStarting] = useState(false);
 
     useEffect(() => {
         if (!selectedTestId) {
             setTest(null);
+            setDraft(undefined);
             return;
         }
-        db.tests.get(selectedTestId).then(value => setTest(value ?? null));
+        setTest(null);
+        setDraft(undefined);
+        void Promise.all([db.tests.get(selectedTestId), db.testDrafts.get(selectedTestId)]).then(([value, savedDraft]) => {
+            setTest(value ?? null);
+            setDraft(savedDraft);
+        });
         setStarting(false);
     }, [selectedTestId]);
 
@@ -39,11 +45,9 @@ const MainContent: React.FC<Props> = ({ selectedTestId, setSelectedTestId, sessi
     const handleStartTest = (options: {timeLimit?: number; practice: boolean}) => {
         if (!test) return;
         setStarting(false);
-        setSession({testId: test.id, mode: 'taking', options: { instantFeedback: options.practice }});
-        if (options.timeLimit)
-            setTimeLimit(options.timeLimit);
-        else
-            setTimeLimit(undefined);
+        setDraft(undefined);
+        void db.testDrafts.delete(test.id);
+        setSession({testId: test.id, mode: 'taking', timeLimit: options.timeLimit, startedAt: Date.now(), options: { instantFeedback: options.practice }});
     }
 
     if (!test) {
@@ -76,7 +80,8 @@ const MainContent: React.FC<Props> = ({ selectedTestId, setSelectedTestId, sessi
     }
 
     if (session?.mode === 'taking') {
-        return <TestTaking test={test} onFinish={() => setSession(null)} timeLimit={timeLimit} practice={session.options?.instantFeedback} />;
+        return <TestTaking test={test} onFinish={() => setSession(null)} timeLimit={session.timeLimit} practice={session.options?.instantFeedback}
+            startedAt={session.startedAt} initialDraft={draft} />;
     }
 
     if (session?.mode === 'reviewing') {

@@ -35,7 +35,10 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
   );
 
   const remove = async (kind: 'test' | 'document', id: string) => {
-    if (kind === 'test') await db.tests.delete(id);
+    if (kind === 'test') await db.transaction('rw', db.tests, db.testDrafts, async () => {
+      await db.tests.delete(id);
+      await db.testDrafts.delete(id);
+    });
     else await db.documents.delete(id);
     if (selection?.kind === kind && selection.id === id) onSelect(null);
     message.success(`${kind === 'test' ? 'Test' : 'Document'} deleted`);

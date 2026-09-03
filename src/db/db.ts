@@ -1,5 +1,5 @@
 import Dexie from 'dexie';
-import type { GenerationOptions, QuestionType, QuizQuestion } from '../types';
+import type { GenerationOptions, QuestionType, QuizAnswer, QuizQuestion } from '../types';
 
 export type GenerationJobStatus = 'queued' | 'running' | 'waiting' | 'paused' | 'error' | 'completed' | 'cancelled';
 
@@ -66,10 +66,26 @@ export interface StoredDocument {
   images?: { name: string; mimeType: string; data: string }[];
 }
 
+export interface StoredTestDraft {
+  testId: string;
+  updatedAt: number;
+  startedAt: number;
+  timeLimit?: number;
+  practice: boolean;
+  currentIndex: number;
+  answers: Record<number, string[]>;
+  selfAssessments: Record<number, boolean>;
+  revealedReasoning: Record<number, boolean>;
+  submittedQuestions: Record<number, boolean>;
+  reviewMarks: Record<number, boolean>;
+  shuffledAnswers: Record<number, QuizAnswer[]>;
+}
+
 class QuizDB extends Dexie {
   tests: Dexie.Table<StoredTest, string>;
   documents: Dexie.Table<StoredDocument, string>;
   generationJobs: Dexie.Table<StoredGenerationJob, string>;
+  testDrafts: Dexie.Table<StoredTestDraft, string>;
 
   constructor() {
     super('QuizDB');
@@ -85,9 +101,16 @@ class QuizDB extends Dexie {
       documents: 'id, name, createdAt, *tags',
       generationJobs: 'id, status, createdAt, updatedAt, *documentIds',
     });
+    this.version(4).stores({
+      tests: 'id, name, createdAt, *documentIds',
+      documents: 'id, name, createdAt, *tags',
+      generationJobs: 'id, status, createdAt, updatedAt, *documentIds',
+      testDrafts: 'testId, updatedAt',
+    });
     this.tests = this.table('tests');
     this.documents = this.table('documents');
     this.generationJobs = this.table('generationJobs');
+    this.testDrafts = this.table('testDrafts');
   }
 }
 

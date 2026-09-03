@@ -54,6 +54,8 @@ export interface GenerationOptions {
 export interface TestSession {
   mode: 'taking' | 'reviewing';
   testId: string;
+  timeLimit?: number;
+  startedAt?: number;
   options?: {
     instantFeedback: boolean;
   };

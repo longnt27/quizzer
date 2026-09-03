@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type FC, type ReactNode, type ReactElement } from 'react';
-import { db, type StoredTest } from '../db/db';
+import { db, type StoredTest, type StoredTestDraft } from '../db/db';
 import {
     Alert,
     Radio,
@@ -23,6 +23,8 @@ interface Props {
     onFinish: () => void;
     timeLimit?: number;
     practice?: boolean;
+    startedAt?: number;
+    initialDraft?: StoredTestDraft;
 }
 
 // ... (renderWithCode, renderHighlightedText, and SearchBar components remain unchanged)
@@ -64,16 +66,19 @@ const SearchBar: FC<SearchBarProps> = ({ query, setQuery, onPrev, onNext, onClos
 );
 
 
-const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit, practice = false }) => {
-    const [currentIndex, setCurrentIndex] = useState(0);
-    const [answers, setAnswers] = useState<Record<number, string[]>>({});
-    const [selfAssessments, setSelfAssessments] = useState<Record<number, boolean>>({});
-    const [revealedReasoning, setRevealedReasoning] = useState<Record<number, boolean>>({});
-    const [submittedQuestions, setSubmittedQuestions] = useState<Record<number, boolean>>({});
-    const [reviewMarks, setReviewMarks] = useState<Record<number, boolean>>({});
-    const [shuffledAnswers, setShuffledAnswers] = useState<Record<number, QuizAnswer[]>>({});
-    const [remaining, setRemaining] = useState<number>(timeLimit ?? 0);
-    const startRef = useRef(Date.now());
+const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit, practice = false, startedAt, initialDraft }) => {
+    const [currentIndex, setCurrentIndex] = useState(initialDraft?.currentIndex ?? 0);
+    const [answers, setAnswers] = useState<Record<number, string[]>>(initialDraft?.answers ?? {});
+    const [selfAssessments, setSelfAssessments] = useState<Record<number, boolean>>(initialDraft?.selfAssessments ?? {});
+    const [revealedReasoning, setRevealedReasoning] = useState<Record<number, boolean>>(initialDraft?.revealedReasoning ?? {});
+    const [submittedQuestions, setSubmittedQuestions] = useState<Record<number, boolean>>(initialDraft?.submittedQuestions ?? {});
+    const [reviewMarks, setReviewMarks] = useState<Record<number, boolean>>(initialDraft?.reviewMarks ?? {});
+    const [shuffledAnswers, setShuffledAnswers] = useState<Record<number, QuizAnswer[]>>(initialDraft?.shuffledAnswers ?? {});
+    const startRef = useRef(initialDraft?.startedAt ?? startedAt ?? Date.now());
+    const [remaining, setRemaining] = useState<number>(() => timeLimit
+        ? Math.max(0, Math.floor((startRef.current + timeLimit * 1000 - Date.now()) / 1000))
+        : Math.max(0, Math.floor((Date.now() - startRef.current) / 1000)));
+    const finishedRef = useRef(false);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     const [isJumping, setIsJumping] = useState(false);
@@ -105,8 +110,28 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit, practice = fal
     useEffect(() => { answersRef.current = answers; }, [answers]);
     useEffect(() => { selfAssessmentsRef.current = selfAssessments; }, [selfAssessments]);
 
+    useEffect(() => {
+        if (finishedRef.current) return;
+        void db.testDrafts.put({
+            testId: test.id,
+            updatedAt: Date.now(),
+            startedAt: startRef.current,
+            timeLimit,
+            practice,
+            currentIndex,
+            answers,
+            selfAssessments,
+            revealedReasoning,
+            submittedQuestions,
+            reviewMarks,
+            shuffledAnswers,
+        });
+    }, [answers, currentIndex, practice, revealedReasoning, reviewMarks, selfAssessments, shuffledAnswers, submittedQuestions, test.id, timeLimit]);
+
     const handleSubmit = useCallback(async () => {
+        if (finishedRef.current) return;
         setIsPopconfirmVisible(false);
+        finishedRef.current = true;
         const duration = Math.floor((Date.now() - startRef.current) / 1000);
         let score = 0;
         test.questions.forEach((question, idx) => {
@@ -114,7 +139,10 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit, practice = fal
         });
         const attempt = { id: String(Date.now()), time: Date.now(), duration, selectedAnswers: answersRef.current, selfAssessments: selfAssessmentsRef.current, score };
         test.attempts.push(attempt);
-        await db.tests.put(test);
+        await db.transaction('rw', db.tests, db.testDrafts, async () => {
+            await db.tests.put(test);
+            await db.testDrafts.delete(test.id);
+        });
         onFinish();
     }, [onFinish, test]);
 
