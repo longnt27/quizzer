@@ -25,13 +25,23 @@ const send = (response, status, body) => {
 };
 
 const readJson = (request, limit = maxBodyBytes) => new Promise((resolve, reject) => {
-  let body = '';
+  const chunks = [];
+  let size = 0;
+  let failed = false;
   request.on('data', chunk => {
-    body += chunk;
-    if (Buffer.byteLength(body) > limit) reject(new Error('Request is too large'));
+    if (failed) return;
+    size += chunk.length;
+    if (size > limit) {
+      failed = true;
+      reject(new Error('Request is too large'));
+      return;
+    }
+    chunks.push(chunk);
   });
   request.on('end', () => {
-    try { resolve(JSON.parse(body)); } catch { reject(new Error('Invalid JSON request')); }
+    if (failed) return;
+    try { resolve(JSON.parse(Buffer.concat(chunks, size).toString('utf8'))); }
+    catch { reject(new Error('Invalid JSON request')); }
   });
   request.on('error', reject);
 });

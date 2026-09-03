@@ -22,6 +22,13 @@ type ServerChange = {
   data?: SerializedRecord;
   deleted: boolean;
 };
+type OutgoingChange = {
+  collection: SyncCollection;
+  id: string;
+  data?: unknown;
+  deleted?: boolean;
+  changedAt?: number;
+};
 
 const collections: SyncCollection[] = ['tests', 'documents', 'generationJobs', 'testDrafts'];
 const listeners = new Set<() => void>();
@@ -117,12 +124,12 @@ const installHooks = () => {
   }
 };
 
-const outgoingChanges = async (bootstrap: boolean) => {
+const outgoingChanges = async (bootstrap: boolean): Promise<OutgoingChange[]> => {
   if (bootstrap) {
     const records = await Promise.all(collections.map(async collection => ({ collection, records: await tableFor(collection).toArray() })));
     const total = records.reduce((sum, item) => sum + item.records.length, 0);
     updateSnapshot({ phase: 'preparing', percent: total ? 0 : 15, completed: 0, total, pending: total, detail: 'Preparing the existing browser library…' });
-    const result = [];
+    const result: OutgoingChange[] = [];
     let completed = 0;
     for (const { collection, records: tableRecords } of records) {
       for (const record of tableRecords) {
@@ -136,7 +143,7 @@ const outgoingChanges = async (bootstrap: boolean) => {
 
   const pending = await db.syncChanges.toArray();
   updateSnapshot({ phase: 'preparing', percent: pending.length ? 0 : 15, completed: 0, total: pending.length, pending: pending.length, detail: pending.length ? 'Preparing local changes…' : 'Checking for changes from other machines…' });
-  const result = [];
+  const result: OutgoingChange[] = [];
   for (const [index, change] of pending.entries()) {
     const record = change.deleted ? undefined : await tableFor(change.collection).get(change.id);
     result.push({
@@ -151,7 +158,12 @@ const outgoingChanges = async (bootstrap: boolean) => {
   return result;
 };
 
-const applyServerChanges = async (changes: ServerChange[], cursor: number, sent: Array<{ collection: SyncCollection; id: string; changedAt?: number }>) => {
+const applyServerChanges = async (
+  changes: ServerChange[],
+  cursor: number,
+  sent: Array<{ collection: SyncCollection; id: string; changedAt?: number }>,
+  bootstrapped: boolean,
+) => {
   applyingRemoteChanges = true;
   try {
     await db.transaction('rw', [...collections.map(tableFor), db.syncChanges, db.syncState], async () => {
@@ -166,14 +178,14 @@ const applyServerChanges = async (changes: ServerChange[], cursor: number, sent:
         const marker = await db.syncChanges.get(`${item.collection}:${item.id}`);
         if (marker && marker.changedAt === item.changedAt) await db.syncChanges.delete(marker.key);
       }
-      await db.syncState.put({ id: 'server', cursor, bootstrapped: true });
+      await db.syncState.put({ id: 'server', cursor, bootstrapped });
     });
   } finally {
     applyingRemoteChanges = false;
   }
 };
 
-const postSync = (body: string) => new Promise<{ cursor: number; changes: ServerChange[] }>((resolve, reject) => {
+const postSync = (body: string, batch: number, batchCount: number) => new Promise<{ cursor: number; changes: ServerChange[] }>((resolve, reject) => {
   const request = new XMLHttpRequest();
   request.open('POST', '/api/storage/sync');
   request.setRequestHeader('Content-Type', 'application/json');
@@ -182,7 +194,7 @@ const postSync = (body: string) => new Promise<{ cursor: number; changes: Server
     const fraction = event.lengthComputable ? event.loaded / Math.max(event.total, 1) : 0;
     updateSnapshot({
       phase: 'uploading', percent: 15 + Math.round(fraction * 50), completed: event.loaded, total: event.total || body.length,
-      detail: 'Uploading changes to SQLite…',
+      detail: `Uploading batch ${batch} of ${batchCount} to SQLite…`,
     });
   };
   request.onprogress = event => {
@@ -210,10 +222,34 @@ const runSync = async () => {
   const state = await db.syncState.get('server');
   const bootstrap = !state?.bootstrapped;
   const outgoing = await outgoingChanges(bootstrap);
-  updateSnapshot({ phase: 'uploading', percent: 15, completed: 0, total: 0, detail: 'Uploading changes to SQLite…' });
-  const payload = await postSync(JSON.stringify({ cursor: state?.cursor ?? 0, bootstrap, changes: outgoing }));
-  updateSnapshot({ phase: 'applying', percent: 75, completed: 0, total: payload.changes.length, detail: payload.changes.length ? 'Applying server changes locally…' : 'Library is already up to date.' });
-  await applyServerChanges(payload.changes, payload.cursor, outgoing);
+  const batches: typeof outgoing[] = [];
+  let currentBatch: typeof outgoing = [];
+  let currentBytes = 0;
+  const targetBytes = 16 * 1024 * 1024;
+  for (const change of outgoing) {
+    const bytes = JSON.stringify(change).length;
+    if (currentBatch.length && currentBytes + bytes > targetBytes) {
+      batches.push(currentBatch);
+      currentBatch = [];
+      currentBytes = 0;
+    }
+    currentBatch.push(change);
+    currentBytes += bytes;
+  }
+  if (currentBatch.length || !batches.length) batches.push(currentBatch);
+
+  let cursor = state?.cursor ?? 0;
+  for (const [index, batch] of batches.entries()) {
+    const batchNumber = index + 1;
+    updateSnapshot({ phase: 'uploading', percent: 15, completed: 0, total: 0, detail: `Uploading batch ${batchNumber} of ${batches.length} to SQLite…` });
+    const payload = await postSync(JSON.stringify({ cursor, bootstrap, changes: batch }), batchNumber, batches.length);
+    updateSnapshot({
+      phase: 'applying', percent: 75, completed: 0, total: payload.changes.length,
+      detail: payload.changes.length ? `Applying server changes from batch ${batchNumber} of ${batches.length}…` : 'Library is already up to date.',
+    });
+    cursor = payload.cursor;
+    await applyServerChanges(payload.changes, cursor, batch, batchNumber === batches.length);
+  }
 };
 
 export const syncNow = () => {
