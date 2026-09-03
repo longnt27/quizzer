@@ -22,6 +22,7 @@ export default function AddTestModal({ onClose, onManagePlugins }: Props) {
   const [multipleChoiceCount, setMultipleChoiceCount] = useState(15);
   const [fillBlankCount, setFillBlankCount] = useState(3);
   const [reasoningCount, setReasoningCount] = useState(2);
+  const [multipleChoiceMode, setMultipleChoiceMode] = useState<'single' | 'multiple'>('single');
   const [query, setQuery] = useState('');
   const [saving, setSaving] = useState(false);
   const message = getMessageApi();
@@ -45,6 +46,7 @@ export default function AddTestModal({ onClose, onManagePlugins }: Props) {
       const options: GenerationOptions = {
         provider, model: model.trim() || undefined, questionCount,
         questionCounts: { multipleChoice: multipleChoiceCount, fillBlank: fillBlankCount, reasoning: reasoningCount },
+        multipleChoiceMode,
       };
       const sources = mode === 'combined'
         ? [{ name: name.trim() || 'Combined quiz', documentIds: selected.map(document => document.id) }]
@@ -87,6 +89,14 @@ export default function AddTestModal({ onClose, onManagePlugins }: Props) {
             <label><Typography.Text strong>Fill in the blank</Typography.Text><InputNumber disabled={saving} min={0} max={200} value={fillBlankCount} onChange={value => setFillBlankCount(value ?? 0)} /></label>
             <label><Typography.Text strong>Reasoning</Typography.Text><InputNumber disabled={saving} min={0} max={200} value={reasoningCount} onChange={value => setReasoningCount(value ?? 0)} /></label>
             <div className="question-count-total"><Typography.Text type="secondary">Total</Typography.Text><Typography.Text strong>{questionCount}</Typography.Text></div>
+          </div>
+          <div>
+            <Typography.Text strong>Multiple-choice answer style</Typography.Text><br />
+            <Radio.Group value={multipleChoiceMode} disabled={saving || multipleChoiceCount === 0} onChange={event => setMultipleChoiceMode(event.target.value)}
+              className="answer-mode-selector" optionType="button" buttonStyle="solid" style={{ marginTop: 8 }} options={[
+                { label: 'Exactly one correct answer', value: 'single' },
+                { label: 'Multiple correct answers', value: 'multiple' },
+              ]} />
           </div>
           {questionCount < 1 && <Alert type="error" showIcon message="Choose at least one question." />}
           {questionCount > 200 && <Alert type="error" showIcon message="A test can contain at most 200 questions." />}

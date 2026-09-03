@@ -207,11 +207,11 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit, practice = fal
         });
     }, [currentIndex, practice, submittedQuestions, totalCorrect]);
 
-    const submitPracticeAnswer = () => {
+    const submitPracticeAnswer = useCallback(() => {
         if (!answered) return;
         setSubmittedQuestions(previous => ({ ...previous, [currentIndex]: true }));
         if (questionType === 'reasoning') setRevealedReasoning(previous => ({ ...previous, [currentIndex]: true }));
-    };
+    }, [answered, currentIndex, questionType]);
 
     useEffect(() => {
         if (!isJumping) return;
@@ -246,6 +246,11 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit, practice = fal
                 return;
             }
             const isInputFocused = (e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA';
+            if (practice && !submitted && answered && e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                submitPracticeAnswer();
+                return;
+            }
             if (e.shiftKey && e.key.toUpperCase() === 'S' && !isInputFocused) {
                 e.preventDefault();
                 setIsPopconfirmVisible(true);
@@ -268,7 +273,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit, practice = fal
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isSearching, isJumping, choices, currentIndex, totalCorrect, isPopconfirmVisible, practice, reviewComplete, test.questions.length, toggleChoice]);
+    }, [answered, isSearching, isJumping, choices, currentIndex, totalCorrect, isPopconfirmVisible, practice, reviewComplete, submitted, submitPracticeAnswer, test.questions.length, toggleChoice]);
 
     // CHANGED: Keyboard handler for popconfirm is now more direct
     useEffect(() => {
@@ -413,7 +418,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit, practice = fal
                               return next;
                             });
                           }}
-                          placeholder="Explain your reasoning in your own words" />
+                          placeholder={practice ? 'Explain your reasoning. Press Shift+Enter for a new line.' : 'Explain your reasoning in your own words'} />
                         {!practice && !revealedReasoning[currentIndex] ? (
                           <Button disabled={!answers[currentIndex]?.[0]?.trim()} onClick={() => setRevealedReasoning(previous => ({ ...previous, [currentIndex]: true }))}>
                             Compare with reference answer
@@ -447,7 +452,9 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit, practice = fal
                         <Typography.Paragraph type="secondary">{q.explanation}</Typography.Paragraph>
                       </div>
                     )}
-                    {practice && !submitted && <Button type="primary" size="large" disabled={!answered} onClick={submitPracticeAnswer}>Check answer</Button>}
+                    {practice && !submitted && <div className="practice-check-row">
+                      <Button type="primary" size="large" disabled={!answered} onClick={submitPracticeAnswer}>Check answer <span className="practice-shortcut">Enter</span></Button>
+                    </div>}
                     <Row justify="space-between" style={{ marginTop: 64, width: '100%' }}>
                         <Button onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))} disabled={currentIndex === 0}>Previous</Button>
                         {practice && currentIndex === test.questions.length - 1 ? (

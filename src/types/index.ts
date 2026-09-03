@@ -48,6 +48,7 @@ export interface GenerationOptions {
   model?: string;
   questionCount: number;
   questionCounts?: QuestionCounts;
+  multipleChoiceMode?: 'single' | 'multiple' | 'mixed';
 }
 
 export interface TestSession {

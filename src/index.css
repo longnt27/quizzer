@@ -52,6 +52,7 @@ button, input, textarea, select { font: inherit; }
 .question-count-grid label, .question-count-total { display: flex; min-width: 0; padding: 10px; flex-direction: column; gap: 7px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-soft); }
 .question-count-grid .ant-input-number { width: 100%; }
 .question-count-total { align-items: center; justify-content: center; font-size: 18px; }
+.answer-mode-selector { display: inline-flex; flex-wrap: wrap; }
 .generation-progress { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); }
 .generation-progress-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .generation-activity { position: fixed; right: 20px; bottom: 20px; z-index: 80; box-shadow: 0 8px 24px rgb(0 0 0 / 24%); }
@@ -84,6 +85,9 @@ button, input, textarea, select { font: inherit; }
 .practice-choice-feedback { padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-soft); }
 .practice-choice-feedback.is-correct { border-color: #52c41a; }
 .practice-choice-feedback.is-incorrect { border-color: #ff4d4f; }
+.practice-check-row { width: 100%; margin-top: 16px; }
+.practice-check-row .ant-btn { min-width: 180px; }
+.practice-shortcut { margin-left: 8px; padding: 1px 6px; border: 1px solid currentColor; border-radius: 4px; font-size: 11px; opacity: .75; }
 .review-main { padding: 64px 48px; display: flex; flex-direction: column; min-width: 0; }
 .review-index { padding: 32px; }
 

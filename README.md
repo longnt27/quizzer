@@ -26,6 +26,7 @@ Quizzer is a local-first study application that turns a reusable document librar
 - Combined quiz generation across selected documents
 - Configurable question count and provider model override
 - Configurable mix of multiple-choice, fill-in-the-blank, and reasoning questions
+- Single-answer or multiple-correct-answer generation for multiple-choice questions
 - Normalized fill-in-the-blank grading across generated acceptable wordings
 - Learner self-assessment against reference answers for reasoning questions
 - Practice mode with immediate per-question answers and explanations
@@ -152,8 +153,9 @@ Scanned or visually complex documents can still require manual review. Always in
 5. Filter and select documents by name or tag.
 6. Choose one combined quiz or one separate quiz per document.
 7. Choose how many multiple-choice, fill-in-the-blank, and reasoning questions to create.
-8. Select a provider and optional provider-specific model.
-9. Queue generation and continue using Quizzer.
+8. For multiple-choice questions, require either exactly one or multiple correct answers.
+9. Select a provider and optional provider-specific model.
+10. Queue generation and continue using Quizzer.
 
 The creation dialog closes immediately after saving the job. Each instance is assigned to a different test and makes one provider request at a time. Within that test, each question type is generated sequentially using the configured batch size. The default is 20, so 45 missing questions become requests of 20, 20, and 5; each later prompt can exclude everything accepted from earlier batches. Other instances work on other tests rather than generating overlapping candidates for the same test.
 
@@ -171,7 +173,7 @@ If a provider runs out of quota, loses authentication, or becomes unavailable, g
 
 Fill-in-the-blank answers ignore capitalization, punctuation, and repeated spaces, and match any acceptable wording supplied with the generated question. Reasoning answers are never graded by another model: the learner reveals the reference answer, compares the essential points, and records a self-assessment.
 
-Before starting a saved test, choose **Test mode** for the traditional submit-then-review flow or **Practice mode** for immediate feedback. Practice mode locks each submitted response, shows correctness and every multiple-choice explanation or accepted fill-in answer, and requires the learner to compare reasoning responses with the reference answer before moving forward.
+Before starting a saved test, choose **Test mode** for the traditional submit-then-review flow or **Practice mode** for immediate feedback. Practice mode locks each submitted response, shows correctness and every multiple-choice explanation or accepted fill-in answer, and requires the learner to compare reasoning responses with the reference answer before moving forward. Select **Check answer** or press Enter; in a reasoning response, use Shift+Enter for a new line.
 
 Select **Install Ollama + all-minilm** under **Plugins & models** to enable local semantic duplicate filtering. On macOS Quizzer uses Homebrew to install Ollama when needed; on Linux it uses Ollama's official installer. It then starts the local runtime and downloads `all-minilm`. If that plugin is unavailable, generation continues automatically with normalized exact matching and lexical similarity.
 

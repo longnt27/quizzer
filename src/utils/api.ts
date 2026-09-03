@@ -157,7 +157,7 @@ const tryEmbeddings = async (texts: string[], signal?: AbortSignal): Promise<num
   }
 };
 
-export function validateQuestion(value: unknown, expectedType?: QuestionType): value is QuizQuestion {
+export function validateQuestion(value: unknown, expectedType?: QuestionType, multipleChoiceMode: GenerationOptions['multipleChoiceMode'] = 'mixed'): value is QuizQuestion {
   if (!value || typeof value !== 'object') return false;
   const question = value as Record<string, unknown>;
   if (typeof question.statement !== 'string' || question.statement.trim().length < 8) return false;
@@ -181,6 +181,8 @@ export function validateQuestion(value: unknown, expectedType?: QuestionType): v
     && typeof answer.correct === 'boolean')) return false;
   const correctCount = answers.filter(answer => answer.correct).length;
   if (correctCount < 1 || correctCount >= answers.length) return false;
+  if (multipleChoiceMode === 'single' && correctCount !== 1) return false;
+  if (multipleChoiceMode === 'multiple' && correctCount < 2) return false;
   return new Set(answers.map(answer => normalize(String(answer.content)))).size === answers.length;
 }
 
@@ -230,9 +232,11 @@ Set type to "reasoning". Provide a clear referenceAnswer the learner can compare
 the essential points a good response should contain. Do not turn these into multiple-choice questions.`,
 };
 
-const buildPrompt = (content: string, type: QuestionType, count: number, accepted: QuizQuestion[], focus?: string) => `
+const buildPrompt = (content: string, type: QuestionType, count: number, accepted: QuizQuestion[], focus?: string, multipleChoiceMode?: GenerationOptions['multipleChoiceMode']) => `
 Create exactly ${count} new, challenging ${type} quiz-question candidates from the source material below.
 Use the language of the source. ${typeInstructions[type]}
+${type === 'multiple-choice' && multipleChoiceMode === 'single' ? 'Every question must have exactly one correct choice.' : ''}
+${type === 'multiple-choice' && multipleChoiceMode === 'multiple' ? 'Every question must have at least two correct choices and at least one incorrect choice.' : ''}
 Questions must be self-contained and must not mention pages, slides, sections, or the source document.
 ${focus ? `\nAdditional goal: ${focus}\n` : ''}
 
@@ -290,7 +294,7 @@ export async function generateQuiz(
       onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'requesting', provider: activeOptions.provider, parallelRequests });
       let candidates: unknown[];
       try {
-        candidates = await requestCandidates(buildPrompt(content, type, requested, accepted, focus), schemas[type], activeOptions, signal, images);
+        candidates = await requestCandidates(buildPrompt(content, type, requested, accepted, focus, activeOptions.multipleChoiceMode), schemas[type], activeOptions, signal, images);
       } catch (error) {
         const code = error instanceof ProviderRequestError ? error.code : undefined;
         if (onProviderFailure && (code === 'provider_limit' || code === 'provider_auth' || code === 'provider_unavailable')) {
@@ -311,7 +315,7 @@ export async function generateQuiz(
       }
       onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'validating', provider: activeOptions.provider, parallelRequests });
       if (!candidates.length) rejected += requested;
-      const validCandidates = candidates.filter(candidate => validateQuestion(candidate, type)) as QuizQuestion[];
+      const validCandidates = candidates.filter(candidate => validateQuestion(candidate, type, activeOptions.multipleChoiceMode)) as QuizQuestion[];
       rejected += candidates.length - validCandidates.length;
       const vectors = await tryEmbeddings([...accepted, ...validCandidates].map(question => question.statement), signal);
       const priorAcceptedCount = accepted.length;
