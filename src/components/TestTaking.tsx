@@ -15,11 +15,14 @@ import {
     Modal,
     Progress,
 } from 'antd';
+import { PauseOutlined, RobotOutlined } from '@ant-design/icons';
 import type { QuizAnswer } from '../types';
 import { getQuestionAnswerTexts, getQuestionType, isQuestionCorrect } from '../utils/questions';
 import { judgeReasoningAnswers } from '../utils/judgeReasoning';
 import { getProviderSettings } from '../utils/providerSettings';
 import { getMessageApi } from '../utils/messageProvider';
+import { queueServerChange, serverSyncStatus, syncNow } from '../db/serverSync';
+import PracticeAnswerAskModal from './PracticeAnswerAskModal';
 
 const { Title, Paragraph } = Typography;
 
@@ -30,6 +33,7 @@ interface Props {
     practice?: boolean;
     startedAt?: number;
     initialDraft?: StoredTestDraft;
+    onPause: (draft: StoredTestDraft) => void;
 }
 
 // ... (renderWithCode, renderHighlightedText, and SearchBar components remain unchanged)
@@ -71,7 +75,7 @@ const SearchBar: FC<SearchBarProps> = ({ query, setQuery, onPrev, onNext, onClos
 );
 
 
-const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit, practice = false, startedAt, initialDraft }) => {
+const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, practice = false, startedAt, initialDraft }) => {
     const [currentIndex, setCurrentIndex] = useState(initialDraft?.currentIndex ?? 0);
     const [answers, setAnswers] = useState<Record<number, string[]>>(initialDraft?.answers ?? {});
     const [selfAssessments, setSelfAssessments] = useState<Record<number, boolean>>(initialDraft?.selfAssessments ?? {});
@@ -87,6 +91,8 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit, practice = fal
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const judgeControllerRef = useRef<AbortController | null>(null);
     const [judgeProgress, setJudgeProgress] = useState<{ completed: number; total: number; batch: number; batches: number } | null>(null);
+    const [pausing, setPausing] = useState(false);
+    const [askQuestionIndex, setAskQuestionIndex] = useState<number | null>(null);
     const message = getMessageApi();
 
     const [isJumping, setIsJumping] = useState(false);
@@ -180,6 +186,40 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit, practice = fal
     }, [message, onFinish, practice, test]);
 
     useEffect(() => () => judgeControllerRef.current?.abort(), []);
+
+    const pauseSession = async () => {
+        if (pausing || finishedRef.current) return;
+        setPausing(true);
+        const savedDraft: StoredTestDraft = {
+            testId: test.id,
+            updatedAt: Date.now(),
+            startedAt: startRef.current,
+            pausedAt: Date.now(),
+            timeLimit,
+            practice,
+            currentIndex,
+            answers,
+            selfAssessments,
+            revealedReasoning,
+            submittedQuestions,
+            reviewMarks,
+            shuffledAnswers,
+        };
+        finishedRef.current = true;
+        try {
+            await db.testDrafts.put(savedDraft);
+            await queueServerChange('testDrafts', test.id, false);
+            await syncNow();
+            if (serverSyncStatus.getSnapshot().status === 'synced') message.success('Practice paused and saved on the server');
+            else message.warning('Practice paused locally. Keep this machine online until it syncs before continuing elsewhere.');
+            onPause(savedDraft);
+        } catch (error) {
+            finishedRef.current = false;
+            message.error((error as Error).message);
+        } finally {
+            setPausing(false);
+        }
+    };
 
     // ... (All other hooks and functions up to the key listeners remain the same)
     useEffect(() => {
@@ -406,7 +446,10 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit, practice = fal
             <Col flex="3" className="quiz-main">
                 <Row className="quiz-header" justify="space-between" align="middle">
                     <Title level={4} style={{ margin: 0 }}>{test.name}</Title>
-                    <Paragraph style={{ fontSize: 16, margin: 0 }}> {timeLimit ? `Time Left: ${formatTime(remaining)}` : `Elapsed: ${formatTime(remaining)}`} </Paragraph>
+                    <Space wrap>
+                      {practice && <Button icon={<PauseOutlined />} loading={pausing} onClick={() => void pauseSession()}>Pause</Button>}
+                      <Paragraph style={{ fontSize: 16, margin: 0 }}> {timeLimit ? `Time Left: ${formatTime(remaining)}` : `Elapsed: ${formatTime(remaining)}`} </Paragraph>
+                    </Space>
                 </Row>
                 <Row className="quiz-body">
                     <Row className="quiz-actions" justify="space-between" align="middle">
@@ -511,6 +554,9 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit, practice = fal
                         <Typography.Paragraph type="secondary">{q.explanation}</Typography.Paragraph>
                       </div>
                     )}
+                    {practice && submitted && <Button icon={<RobotOutlined />} onClick={() => setAskQuestionIndex(currentIndex)}>
+                      Ask AI about this answer
+                    </Button>}
                     {practice && !submitted && <div className="practice-check-row">
                       <Button type="primary" size="large" disabled={!answered} onClick={submitPracticeAnswer}>Check answer <span className="practice-shortcut">Enter</span></Button>
                     </div>}
@@ -553,6 +599,12 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit, practice = fal
                 {judgeProgress?.completed ?? 0} of {judgeProgress?.total ?? 0} reasoning answers graded
               </Typography.Text>
             </Modal>
+            {askQuestionIndex !== null && <PracticeAnswerAskModal
+              question={test.questions[askQuestionIndex]}
+              questionNumber={askQuestionIndex + 1}
+              userAnswers={answers[askQuestionIndex] ?? []}
+              selfAssessment={selfAssessments[askQuestionIndex]}
+              onClose={() => setAskQuestionIndex(null)} />}
         </Row>
     );
 };

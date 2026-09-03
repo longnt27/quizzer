@@ -1,5 +1,5 @@
-import { Button, Typography, Checkbox, InputNumber, Radio, Space, Tag } from 'antd';
-import type { StoredTest } from '../db/db';
+import { Alert, Button, Typography, Checkbox, InputNumber, Popconfirm, Radio, Space, Tag } from 'antd';
+import type { StoredTest, StoredTestDraft } from '../db/db';
 import { useState } from 'react';
 import { countQuestionTypes } from '../utils/questions';
 
@@ -7,10 +7,12 @@ const { Title, Paragraph } = Typography;
 
 interface Props {
     test: StoredTest;
+    draft?: StoredTestDraft;
     onStart: (options: { timeLimit?: number; practice: boolean }) => void;
+    onResume: () => void;
 }
 
-const TestStart: React.FC<Props> = ({ test, onStart }) => {
+const TestStart: React.FC<Props> = ({ test, draft, onStart, onResume }) => {
     const [timed, setTimed] = useState(false);
     const [durationMinutes, setDurationMinutes] = useState(15); // default to 15 mins
     const [mode, setMode] = useState<'test' | 'practice'>('test');
@@ -39,6 +41,9 @@ const TestStart: React.FC<Props> = ({ test, onStart }) => {
             <Paragraph type="secondary" style={{ fontSize: 16, marginBottom: 32 }}>
                 This test contains <strong>{test.questions.length}</strong> questions
             </Paragraph>
+            {draft && <Alert type="info" showIcon style={{ width: 'min(100%, 560px)', marginBottom: 24 }}
+              message={`Paused ${draft.practice ? 'practice' : 'test'} available`}
+              description={`Continue from question ${draft.currentIndex + 1}. Your answers, feedback, timer, and review marks are saved.`} />}
             <Space wrap style={{ justifyContent: 'center', marginBottom: 24 }}>
                 {counts.multipleChoice > 0 && <Tag color="blue">{counts.multipleChoice} multiple choice</Tag>}
                 {counts.fillBlank > 0 && <Tag color="purple">{counts.fillBlank} fill in the blank</Tag>}
@@ -79,25 +84,18 @@ const TestStart: React.FC<Props> = ({ test, onStart }) => {
             </div>
 
 
-            <Button
-                type="primary"
-                size="large"
-                style={{
-                    borderRadius: 24,
-                    padding: '0 36px',
-                    height: 48,
-                    width: 150,
-                    fontSize: 16,
-                }}
-                onClick={() =>
-                    onStart({
-                        timeLimit: timed ? durationMinutes * 60 : undefined,
-                        practice: mode === 'practice',
-                    })
-                }
-            >
-                {mode === 'practice' ? 'Start Practice' : 'Start Test'}
-            </Button>
+            {draft ? <Space wrap style={{ justifyContent: 'center' }}>
+              <Button type="primary" size="large" onClick={onResume}>Resume {draft.practice ? 'Practice' : 'Test'}</Button>
+              <Popconfirm title="Start over?" description="This removes the paused session and its saved answers." onConfirm={() => onStart({
+                timeLimit: timed ? durationMinutes * 60 : undefined, practice: mode === 'practice',
+              })}>
+                <Button size="large">Start Over</Button>
+              </Popconfirm>
+            </Space> : <Button
+              type="primary" size="large"
+              style={{ borderRadius: 24, padding: '0 36px', height: 48, width: 150, fontSize: 16 }}
+              onClick={() => onStart({ timeLimit: timed ? durationMinutes * 60 : undefined, practice: mode === 'practice' })}
+            >{mode === 'practice' ? 'Start Practice' : 'Start Test'}</Button>}
         </div>
     );
 };

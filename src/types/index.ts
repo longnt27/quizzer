@@ -27,6 +27,11 @@ export interface ReasoningQuestion {
 export type QuizQuestion = MultipleChoiceQuestion | FillBlankQuestion | ReasoningQuestion;
 export type QuestionType = 'multiple-choice' | 'fill-blank' | 'reasoning';
 
+export interface AIConversationTurn {
+  question: string;
+  answer: string;
+}
+
 export interface QuestionCounts {
   multipleChoice: number;
   fillBlank: number;

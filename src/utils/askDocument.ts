@@ -1,11 +1,8 @@
-import type { GenerationProvider } from '../types';
+import type { AIConversationTurn, GenerationProvider } from '../types';
 import { extractJson, ProviderRequestError } from './api';
 import { getApiKey } from './providerSettings';
 
-export interface DocumentConversationTurn {
-  question: string;
-  answer: string;
-}
+export type DocumentConversationTurn = AIConversationTurn;
 
 const answerSchema = {
   type: 'object',
@@ -13,6 +10,40 @@ const answerSchema = {
   required: ['answer'],
   properties: { answer: { type: 'string' } },
 };
+
+export async function requestAIAnswer(
+  prompt: string,
+  provider: GenerationProvider,
+  model: string,
+  images: string[] = [],
+  signal?: AbortSignal,
+) {
+  let response: Response;
+  try {
+    response = await fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        provider,
+        model: model || undefined,
+        apiKey: getApiKey(provider) || undefined,
+        prompt,
+        schema: answerSchema,
+        images: images.slice(0, 30),
+      }),
+      signal,
+    });
+  } catch (error) {
+    if ((error as Error).name === 'AbortError') throw error;
+    throw new ProviderRequestError('Connection lost while contacting the local generation service', 'connection_lost');
+  }
+
+  const payload = await response.json().catch(() => ({})) as { output?: string; error?: string; code?: string };
+  if (!response.ok) throw new ProviderRequestError(payload.error || `AI request failed (${response.status})`, payload.code);
+  const parsed = extractJson<{ answer?: unknown }>(payload.output ?? '');
+  if (typeof parsed?.answer !== 'string' || !parsed.answer.trim()) throw new Error('The provider returned no readable answer');
+  return parsed.answer.trim();
+}
 
 const selectDocumentSource = (content: string, question: string) => {
   const chunkSize = 6_000;
@@ -61,29 +92,5 @@ User question: ${question}
 ${source}
 </document>`;
 
-  let response: Response;
-  try {
-    response = await fetch('/api/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        provider,
-        model: model || undefined,
-        apiKey: getApiKey(provider) || undefined,
-        prompt,
-        schema: answerSchema,
-        images: images.slice(0, 30),
-      }),
-      signal,
-    });
-  } catch (error) {
-    if ((error as Error).name === 'AbortError') throw error;
-    throw new ProviderRequestError('Connection lost while contacting the local generation service', 'connection_lost');
-  }
-
-  const payload = await response.json().catch(() => ({})) as { output?: string; error?: string; code?: string };
-  if (!response.ok) throw new ProviderRequestError(payload.error || `AI request failed (${response.status})`, payload.code);
-  const parsed = extractJson<{ answer?: unknown }>(payload.output ?? '');
-  if (typeof parsed?.answer !== 'string' || !parsed.answer.trim()) throw new Error('The provider returned no readable answer');
-  return parsed.answer.trim();
+  return requestAIAnswer(prompt, provider, model, images, signal);
 }

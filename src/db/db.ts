@@ -72,6 +72,7 @@ export interface StoredTestDraft {
   testId: string;
   updatedAt: number;
   startedAt: number;
+  pausedAt?: number;
   timeLimit?: number;
   practice: boolean;
   currentIndex: number;

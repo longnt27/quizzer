@@ -32,12 +32,17 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
     let active = true;
     void db.testDrafts.orderBy('updatedAt').last().then(async draft => {
       if (!draft || !active || !await db.tests.get(draft.testId)) return;
+      const pauseDuration = draft.pausedAt ? Math.max(0, Date.now() - draft.pausedAt) : 0;
+      const resumedStartedAt = draft.startedAt + pauseDuration;
+      if (draft.pausedAt) {
+        await db.testDrafts.put({ ...draft, pausedAt: undefined, startedAt: resumedStartedAt, updatedAt: Date.now() });
+      }
       setSelection({ kind: 'test', id: draft.testId });
       setSession({
         testId: draft.testId,
         mode: 'taking',
         timeLimit: draft.timeLimit,
-        startedAt: draft.startedAt,
+        startedAt: resumedStartedAt,
         options: { instantFeedback: draft.practice },
       });
     });

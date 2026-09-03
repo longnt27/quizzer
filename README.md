@@ -177,7 +177,7 @@ Fill-in-the-blank answers ignore capitalization, punctuation, and repeated space
 
 Before starting a saved test, choose **Test mode** for the traditional submit-then-review flow or **Practice mode** for immediate feedback. Practice mode locks each submitted response, shows correctness and every multiple-choice explanation or accepted fill-in answer, and requires the learner to compare reasoning responses with the reference answer before moving forward. Select **Check answer** or press Enter; in a reasoning response, use Shift+Enter for a new line.
 
-Quizzer continuously saves the active test or practice session locally and to SQLite, including the current question, answers, review marks, revealed feedback, self-assessments, shuffled choice order, mode, and timer start. If the connection drops or the page closes, reopening Quizzer restores the latest unfinished session. Submitting the attempt removes its saved draft on every synchronized device.
+Quizzer continuously saves the active test or practice session locally and to SQLite, including the current question, answers, review marks, revealed feedback, self-assessments, shuffled choice order, mode, and timer start. In practice mode, **Pause** freezes the timer, syncs immediately, and exposes **Resume Practice** on every connected machine. If the connection drops or the page closes, reopening Quizzer restores the latest unfinished session. Submitting the attempt removes its saved draft on every synchronized device.
 
 ## Server database and IndexedDB migration
 

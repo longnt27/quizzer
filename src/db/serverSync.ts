@@ -97,7 +97,7 @@ const deserialize = (value: unknown): unknown => {
   return value;
 };
 
-const markChanged = (collection: SyncCollection, id: string, deleted: boolean) => {
+export const queueServerChange = async (collection: SyncCollection, id: string, deleted: boolean) => {
   if (applyingRemoteChanges) return;
   const change: StoredSyncChange = {
     key: `${collection}:${id}`,
@@ -106,7 +106,12 @@ const markChanged = (collection: SyncCollection, id: string, deleted: boolean) =
     deleted,
     changedAt: Date.now(),
   };
-  void db.syncChanges.put(change).then(() => scheduleSync(250));
+  await db.syncChanges.put(change);
+  scheduleSync(250);
+};
+
+const markChanged = (collection: SyncCollection, id: string, deleted: boolean) => {
+  void queueServerChange(collection, id, deleted);
 };
 
 const installHooks = () => {

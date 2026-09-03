@@ -50,6 +50,21 @@ const MainContent: React.FC<Props> = ({ selectedTestId, setSelectedTestId, sessi
         setSession({testId: test.id, mode: 'taking', timeLimit: options.timeLimit, startedAt: Date.now(), options: { instantFeedback: options.practice }});
     }
 
+    const handleResume = async () => {
+        if (!draft) return;
+        const pauseDuration = draft.pausedAt ? Math.max(0, Date.now() - draft.pausedAt) : 0;
+        const resumed = { ...draft, pausedAt: undefined, updatedAt: Date.now(), startedAt: draft.startedAt + pauseDuration };
+        await db.testDrafts.put(resumed);
+        setDraft(resumed);
+        setSession({
+            testId: draft.testId,
+            mode: 'taking',
+            timeLimit: draft.timeLimit,
+            startedAt: resumed.startedAt,
+            options: { instantFeedback: draft.practice },
+        });
+    };
+
     if (!test) {
         return (
             <div
@@ -75,12 +90,12 @@ const MainContent: React.FC<Props> = ({ selectedTestId, setSelectedTestId, sessi
 
     const latest = test.attempts[test.attempts.length - 1];
 
-    if (!test.attempts.length && !session) {
-        return <TestStart test={test} onStart={handleStartTest} />;
+    if ((!test.attempts.length || draft) && !session) {
+        return <TestStart test={test} draft={draft} onStart={handleStartTest} onResume={() => void handleResume()} />;
     }
 
     if (session?.mode === 'taking') {
-        return <TestTaking test={test} onFinish={() => setSession(null)} timeLimit={session.timeLimit} practice={session.options?.instantFeedback}
+        return <TestTaking test={test} onFinish={() => setSession(null)} onPause={savedDraft => { setDraft(savedDraft); setSession(null); }} timeLimit={session.timeLimit} practice={session.options?.instantFeedback}
             startedAt={session.startedAt} initialDraft={draft} />;
     }
 
@@ -92,7 +107,9 @@ const MainContent: React.FC<Props> = ({ selectedTestId, setSelectedTestId, sessi
         return (
             <TestStart
                 test={test}
+                draft={draft}
                 onStart={handleStartTest}
+                onResume={() => void handleResume()}
             />
         );
     }
