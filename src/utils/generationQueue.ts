@@ -1,8 +1,9 @@
 import { db, type StoredGenerationJob } from '../db/db';
 import type { GenerationOptions } from '../types';
+import { v4 as uuidv4 } from 'uuid';
 import { generateQuiz, getGenerationErrorCode } from './api';
 
-const workerId = crypto.randomUUID();
+const workerId = uuidv4();
 const active = new Map<string, AbortController>();
 let recovering: Promise<void> | null = null;
 let pumping = false;
