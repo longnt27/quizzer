@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button, Empty, Input, Layout, List, Popconfirm, Space, Tabs, Tag, Typography } from 'antd';
-import { ApiOutlined, DeleteOutlined, FileTextOutlined, FormOutlined, MoonOutlined, PlusOutlined, SearchOutlined, SunOutlined } from '@ant-design/icons';
+import { ApiOutlined, DeleteOutlined, FileTextOutlined, FormOutlined, MoonOutlined, PlusOutlined, SearchOutlined, SyncOutlined, SunOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { getMessageApi } from '../utils/messageProvider';
@@ -14,12 +14,13 @@ interface Props {
   onAddTest: () => void;
   onAddDocument: () => void;
   onOpenPlugins: () => void;
+  onOpenGeneration: () => void;
   dark: boolean;
   onToggleTheme: () => void;
   embedded?: boolean;
 }
 
-export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument, onOpenPlugins, dark, onToggleTheme, embedded = false }: Props) {
+export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument, onOpenPlugins, onOpenGeneration, dark, onToggleTheme, embedded = false }: Props) {
   const tests = useLiveQuery(() => db.tests.orderBy('createdAt').reverse().toArray(), []) ?? [];
   const documents = useLiveQuery(() => db.documents.orderBy('createdAt').reverse().toArray(), []) ?? [];
   const [tab, setTab] = useState<'tests' | 'documents'>(selection?.kind === 'document' ? 'documents' : 'tests');
@@ -84,6 +85,7 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
         )}
       </div>
       <div className="sidebar-footer">
+        <Button type="text" icon={<SyncOutlined />} onClick={onOpenGeneration}>Generation queue</Button>
         <Button type="text" icon={<ApiOutlined />} onClick={onOpenPlugins}>Plugins & models</Button>
         <Button type="text" icon={dark ? <SunOutlined /> : <MoonOutlined />} onClick={onToggleTheme}>
           {dark ? 'Light mode' : 'Dark mode'}

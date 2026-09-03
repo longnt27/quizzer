@@ -12,6 +12,7 @@ export interface GenerationProgress {
   typeTarget: number;
   phase: 'requesting' | 'validating';
   provider: GenerationProvider;
+  parallelRequests?: number;
 }
 
 export interface ProviderFailure {
@@ -283,11 +284,17 @@ export async function generateQuiz(
     let round = (rounds[type] ?? 0) + 1;
     while (round <= maxRounds && typeAccepted < typeTarget) {
       const missing = typeTarget - typeAccepted;
-      const requested = Math.min(10, missing + Math.min(2, Math.ceil(missing / 3)));
-      onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'requesting', provider: activeOptions.provider });
+      const parallelRequests = Math.min(5, missing);
+      const requestSizes = Array.from({ length: parallelRequests }, (_, index) =>
+        Math.floor(missing / parallelRequests) + (index < missing % parallelRequests ? 1 : 0));
+      onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'requesting', provider: activeOptions.provider, parallelRequests });
       let candidates: unknown[];
       try {
-        candidates = await requestCandidates(buildPrompt(content, type, requested, accepted, focus), schemas[type], activeOptions, signal, images);
+        const results = await Promise.allSettled(requestSizes.map(requested =>
+          requestCandidates(buildPrompt(content, type, requested, accepted, focus), schemas[type], activeOptions, signal, images)));
+        const successful = results.filter(result => result.status === 'fulfilled');
+        if (!successful.length) throw (results[0] as PromiseRejectedResult).reason;
+        candidates = successful.flatMap(result => (result as PromiseFulfilledResult<unknown[]>).value);
       } catch (error) {
         const code = error instanceof ProviderRequestError ? error.code : undefined;
         if (onProviderFailure && (code === 'provider_limit' || code === 'provider_auth' || code === 'provider_unavailable')) {
@@ -306,8 +313,8 @@ export async function generateQuiz(
         }
         throw error;
       }
-      onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'validating', provider: activeOptions.provider });
-      if (!candidates.length) rejected += requested;
+      onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'validating', provider: activeOptions.provider, parallelRequests });
+      if (!candidates.length) rejected += missing;
       const validCandidates = candidates.filter(candidate => validateQuestion(candidate, type)) as QuizQuestion[];
       rejected += candidates.length - validCandidates.length;
       const vectors = await tryEmbeddings([...accepted, ...validCandidates].map(question => question.statement), signal);
@@ -325,7 +332,7 @@ export async function generateQuiz(
         if (candidateVector) acceptedVectors.push(candidateVector);
         if (typeAccepted === typeTarget) break;
       }
-      onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'validating', provider: activeOptions.provider });
+      onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'validating', provider: activeOptions.provider, parallelRequests });
       rounds[type] = round;
       await onCheckpoint?.({ questions: [...accepted], rejected, rounds: { ...rounds }, options: activeOptions });
       round++;

@@ -54,6 +54,10 @@ button, input, textarea, select { font: inherit; }
 .question-count-total { align-items: center; justify-content: center; font-size: 18px; }
 .generation-progress { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); }
 .generation-progress-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.generation-activity { position: fixed; right: 20px; bottom: 20px; z-index: 80; box-shadow: 0 8px 24px rgb(0 0 0 / 24%); }
+.generation-activity .ant-badge { color: inherit; }
+.generation-job { padding: 16px !important; margin-bottom: 10px; border: 1px solid var(--border) !important; border-radius: 10px; background: var(--surface-soft); }
+.generation-job-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 
 .mobile-header {
   position: fixed; inset: 0 0 auto 0; height: 56px; padding: 0 12px;
@@ -142,6 +146,7 @@ mark { color: #111827; }
   .plugin-card-heading { flex-direction: column; gap: 8px; }
   .question-count-grid { grid-template-columns: 1fr 1fr; }
   .generation-progress-heading { align-items: stretch; flex-direction: column; }
+  .generation-activity { right: 12px; bottom: 12px; max-width: calc(100vw - 24px); }
 }
 
 @media (max-width: 420px) {

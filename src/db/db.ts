@@ -27,6 +27,7 @@ export interface StoredGenerationJob {
     typeTarget: number;
     phase: 'requesting' | 'validating';
     provider: GenerationOptions['provider'];
+    parallelRequests?: number;
   };
   error?: string;
   errorCode?: string;
