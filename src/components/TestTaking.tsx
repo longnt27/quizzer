@@ -390,7 +390,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                 return;
             }
             if (e.key.toLowerCase() === 'h' || e.key === 'ArrowLeft') { setCurrentIndex((i) => Math.max(0, i - 1)); }
-            if ((e.key.toLowerCase() === 'l' || e.key === 'ArrowRight') && (!practice || reviewComplete)) {
+            if (e.key.toLowerCase() === 'l' || e.key === 'ArrowRight') {
                 setCurrentIndex((i) => Math.min(test.questions.length - 1, i + 1));
             }
         };
@@ -584,7 +584,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                         <div>{currentIndex > 0 && <Button onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}>Previous</Button>}</div>
                         {practice && currentIndex === test.questions.length - 1
                           ? reviewComplete && <Button type="primary" onClick={() => void handleSubmit()}>Finish practice</Button>
-                          : currentIndex < test.questions.length - 1 && (!practice || reviewComplete) && <Button onClick={() => setCurrentIndex((i) => Math.min(test.questions.length - 1, i + 1))}>Next</Button>}
+                          : currentIndex < test.questions.length - 1 && <Button onClick={() => setCurrentIndex((i) => Math.min(test.questions.length - 1, i + 1))}>Next</Button>}
                     </Row>
                 </Row>
             </Col>
