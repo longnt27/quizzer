@@ -354,6 +354,16 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
         const handleKeyDown = (e: KeyboardEvent) => {
             if (isPopconfirmVisible || isSearching) return;
 
+            const target = e.target as HTMLElement;
+            const isInputFocused = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+            if (isInputFocused) {
+                if (practice && !submitted && answered && e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    submitPracticeAnswer();
+                }
+                return;
+            }
+
             if (!isJumping && (e.key === 'ArrowUp' || e.key === ' ')) {
                 e.preventDefault();
                 setIsJumping(true);
@@ -365,18 +375,11 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                 else if (e.key === 'Escape') { setIsJumping(false); setJumpBuffer(''); }
                 return;
             }
-            const isInputFocused = (e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA';
-            if (practice && !submitted && answered && e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                submitPracticeAnswer();
-                return;
-            }
-            if (e.shiftKey && e.key.toUpperCase() === 'S' && !isInputFocused) {
+            if (e.shiftKey && e.key.toUpperCase() === 'S') {
                 e.preventDefault();
                 setIsPopconfirmVisible(true);
                 return;
             }
-            if (isInputFocused) return;
             if (/^[0-9]$/.test(e.key)) {
                 const idx = parseInt(e.key, 10) - 1;
                 if (choices[idx]) { toggleChoice(choices[idx].content); }
