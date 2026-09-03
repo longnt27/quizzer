@@ -20,7 +20,7 @@ interface Props {
 
 const MainContent: React.FC<Props> = ({ selectedTestId, setSelectedTestId, session, setSession, onAddTest }) => {
     const [test, setTest] = useState<StoredTest | null>(null);
-    const [timeLimit, setTimeLimit] = useState(0);
+    const [timeLimit, setTimeLimit] = useState<number | undefined>(0);
     const [starting, setStarting] = useState(false);
 
     useEffect(() => {
@@ -28,7 +28,7 @@ const MainContent: React.FC<Props> = ({ selectedTestId, setSelectedTestId, sessi
             setTest(null);
             return;
         }
-        db.tests.get(selectedTestId).then(setTest);
+        db.tests.get(selectedTestId).then(value => setTest(value ?? null));
         setStarting(false);
     }, [selectedTestId]);
 
@@ -37,6 +37,7 @@ const MainContent: React.FC<Props> = ({ selectedTestId, setSelectedTestId, sessi
     }
 
     const handleStartTest = (options: {timeLimit?: number}) => {
+        if (!test) return;
         setStarting(false);
         setSession({testId: test.id, mode: 'taking'});
         if (options.timeLimit)
@@ -95,4 +96,3 @@ const MainContent: React.FC<Props> = ({ selectedTestId, setSelectedTestId, sessi
 };
 
 export default MainContent;
-

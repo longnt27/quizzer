@@ -9,6 +9,14 @@ export interface QuizQuestion {
   answer: QuizAnswer[];
 }
 
+export type GenerationProvider = 'codex' | 'gemini';
+
+export interface GenerationOptions {
+  provider: GenerationProvider;
+  model?: string;
+  questionCount: number;
+}
+
 export interface TestSession {
   mode: 'taking' | 'reviewing';
   testId: string;
@@ -16,4 +24,3 @@ export interface TestSession {
     instantFeedback: boolean;
   };
 }
-

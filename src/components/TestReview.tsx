@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, FC, ReactNode, useCallback } from 'react'; // NEW: Added FC, ReactNode, useCallback
+import { useRef, useEffect, useState, type FC, type ReactNode, type ReactElement, useCallback } from 'react';
 import { Button, Typography, Row, Col, Space, Tag } from 'antd';
 import { StoredTest } from '../db/db';
 
@@ -19,7 +19,7 @@ const renderHighlightedText = (
     }
     const sortedMatches = [...matches].sort((a, b) => a.start - b.start);
     let lastIndex = 0;
-    const parts: (string | JSX.Element)[] = [];
+    const parts: (string | ReactElement)[] = [];
     sortedMatches.forEach((match, i) => {
         if (match.start > lastIndex) {
             parts.push(text.substring(lastIndex, match.start));
@@ -52,7 +52,7 @@ interface SearchBarProps {
     onClose: () => void;
     current: number;
     total: number;
-    inputRef: React.RefObject<HTMLInputElement>;
+    inputRef: React.RefObject<HTMLInputElement | null>;
 }
 const SearchBar: FC<SearchBarProps> = ({ query, setQuery, onPrev, onNext, onClose, current, total, inputRef }) => (
     <div style={{
@@ -127,7 +127,7 @@ const TestReview: React.FC<Props> = ({ test, onBack }) => {
     // CHANGED: Refactored jump-to-question logic to be consistent with TestTaking component
     const bufferRef = useRef('');
     const spacePressedRef = useRef(false);
-    const bufferTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const bufferTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // NEW: Search logic effect
     useEffect(() => {
@@ -261,14 +261,14 @@ const TestReview: React.FC<Props> = ({ test, onBack }) => {
 
             if (isInputFocused && e.key === 'Enter') {
                 e.preventDefault();
-                e.shiftKey ? handlePrevResult() : handleNextResult();
+                if (e.shiftKey) handlePrevResult(); else handleNextResult();
                 searchInputRef.current?.blur();
             }
 
             if (!isInputFocused) {
                  if (e.key.toLowerCase() === 'n') {
                     e.preventDefault();
-                    e.shiftKey ? handlePrevResult() : handleNextResult();
+                    if (e.shiftKey) handlePrevResult(); else handleNextResult();
                 } else if (e.key === 'ArrowDown') {
                     e.preventDefault();
                     handleNextResult();

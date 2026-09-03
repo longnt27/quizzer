@@ -11,15 +11,21 @@ import {
 import { StoredTest } from '../db/db';
 import { db } from '../db/db';
 import { v4 as uuidv4 } from 'uuid';
-import shuffle from 'lodash/shuffle';
-import { extractJson, uploadToGeminiAndGenerateQuiz } from '../utils/api';
-import { fixSmartQuotes } from '../utils/repairJson';
+import { generateQuiz } from '../utils/api';
 import { QuizQuestion, TestSession } from '../types';
 import JsonFixerModal from './JsonFixerModal';
 import { getMessageApi } from '../utils/messageProvider';
 import Item from 'antd/es/list/Item';
 
 const { Title, Paragraph, Text } = Typography;
+const shuffle = <T,>(items: T[]): T[] => {
+    const result = [...items];
+    for (let index = result.length - 1; index > 0; index--) {
+        const other = Math.floor(Math.random() * (index + 1));
+        [result[index], result[other]] = [result[other], result[index]];
+    }
+    return result;
+};
 
 interface Props {
     test: StoredTest;
@@ -48,12 +54,25 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
     const latest = test.attempts[test.attempts.length - 1];
     const message = getMessageApi();
 
+    const getSourceMaterial = async () => {
+        if (test.documentIds?.length) {
+            const documents = await db.documents.bulkGet(test.documentIds);
+            const found = documents.filter(document => Boolean(document));
+            if (found.length) return {
+                content: found.map(document => `# Document: ${document!.name}\n\n${document!.content}`).join('\n\n---\n\n'),
+                images: found.flatMap(document => document!.images?.map(image => `data:${image.mimeType};base64,${image.data}`) ?? []),
+            };
+        }
+        return { content: test.fileContent ?? '', images: [] as string[] };
+    };
+
     const handleRetake = () => {
         setStarting(true);
     }
 
     const handleNewTestSameFile = async () => {
-            if (!test.fileContent) {
+            const source = await getSourceMaterial();
+            if (!source.content) {
                 message.error('No original file content found. Cannot regenerate.');
                 return;
             }
@@ -63,16 +82,8 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
             setIsLoading(true);
 
             try {
-                const result = await uploadToGeminiAndGenerateQuiz(test.fileContent);
-                const fixed = fixSmartQuotes(result);
-                const parsed = extractJson<QuizQuestion[]>(fixed);
-
-                if (!parsed) {
-                    setJsonError('Failed to parse Gemini output');
-                    setRawJson(fixed);
-                    message.destroy(key);
-                    return;
-                }
+                const options = test.generationOptions ?? { provider: 'gemini' as const, questionCount: test.questions.length };
+                const parsed = await generateQuiz(source.content, options, undefined, undefined, source.images);
 
                 const newId = uuidv4();
                 await db.tests.add({
@@ -81,14 +92,61 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
                     createdAt: Date.now(),
                     questions: parsed,
                     attempts: [],
-                    fileContent: test.fileContent,
+                    fileContent: source.content,
+                    documentIds: test.documentIds,
+                    generationOptions: options,
                 });
 
                 message.success({ content: 'New quiz generated!', key });
                 onNewTestCreated(newId);
 
-            } catch (err: any) {
-                message.error({ content: err.message || 'Something exploded internally', key });
+            } catch (err: unknown) {
+                message.error({ content: err instanceof Error ? err.message : 'Something went wrong', key });
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        const handleFocusTest = async () => {
+            if (!latest) return;
+            const wrongQs = test.questions.filter((q, idx) => {
+                const correct = q.answer.filter(answer => answer.correct).map(answer => answer.content).sort();
+                const chosen = [...(latest.selectedAnswers[idx] || [])].sort();
+                return JSON.stringify(correct) !== JSON.stringify(chosen);
+            });
+            if (!wrongQs.length) {
+                message.info('There are no missed concepts to focus on.');
+                return;
+            }
+            const source = await getSourceMaterial();
+            if (!source.content) {
+                message.error('The source document is unavailable for this older quiz.');
+                return;
+            }
+            const key = 'focus';
+            setIsLoading(true);
+            message.loading({ content: 'Generating new questions for missed concepts…', key });
+            try {
+                const weakConcepts = wrongQs.map(question => `- ${question.statement}`).join('\n');
+                const base = test.generationOptions ?? { provider: 'gemini' as const, questionCount: wrongQs.length };
+                const options = { ...base, questionCount: Math.max(5, wrongQs.length) };
+                const questions = await generateQuiz(source.content, options, undefined, undefined, source.images,
+                    `Focus on the concepts tested by these missed questions, but create fresh questions rather than paraphrases:\n${weakConcepts}`);
+                const newId = uuidv4();
+                await db.tests.add({
+                    id: newId,
+                    name: `${test.name} (focused practice)`,
+                    createdAt: Date.now(),
+                    questions,
+                    attempts: [],
+                    fileContent: source.content,
+                    documentIds: test.documentIds,
+                    generationOptions: options,
+                });
+                message.success({ content: 'Focused practice quiz created', key });
+                onNewTestCreated(newId);
+            } catch (error) {
+                message.error({ content: (error as Error).message, key });
             } finally {
                 setIsLoading(false);
             }
@@ -231,7 +289,10 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
                                 New Test (same file)
                             </Button>
                             <Button size="large" onClick={handleWrongOnlyTest}>
-                                Focus on Mistakes
+                                Retry Mistakes
+                            </Button>
+                            <Button size="large" loading={isLoading} type="primary" onClick={handleFocusTest}>
+                                Generate Focus Test
                             </Button>
                         </Space>
                     </Card>
@@ -274,7 +335,7 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
                     <JsonFixerModal
                         rawJson={rawJson}
                         errorMessage={jsonError}
-                        onTryAgain={async (fixedJson) => {
+                        onFixed={async (fixedJson: string) => {
                             try {
                                 const parsed: QuizQuestion[] = JSON.parse(fixedJson);
                                 const newId = uuidv4();
@@ -308,4 +369,3 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
     };
 
     export default TestSummary;
-

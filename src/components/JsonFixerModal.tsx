@@ -1,4 +1,4 @@
-import { Modal, Input } from 'antd';
+import { Modal } from 'antd';
 import { useState } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { json } from '@codemirror/lang-json';
@@ -35,4 +35,3 @@ const JsonFixerModal: React.FC<Props> = ({ rawJson, errorMessage, onFixed, onClo
 };
 
 export default JsonFixerModal;
-

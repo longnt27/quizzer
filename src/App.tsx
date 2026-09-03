@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Layout, message } from 'antd';
 import Sidebar from './components/Sidebar';
 import MainContent from './components/MainContent';
 import AddTestModal from './components/AddTestModal';
+import AddDocumentModal from './components/AddDocumentModal';
+import DocumentView from './components/DocumentView';
+import type { LibrarySelection } from './components/Sidebar';
 import { setMessageApi } from './utils/messageProvider';
 
 interface TestSession {
@@ -12,14 +15,13 @@ interface TestSession {
 }
 
 const App = () => {
-    const [selectedTestId, setSelectedTestId] = useState<string | null>(null);
+    const [selection, setSelection] = useState<LibrarySelection>(null);
     const [showAddModal, setShowAddModal] = useState(false);
+    const [showDocumentModal, setShowDocumentModal] = useState(false);
     const [session, setSession] = useState<TestSession | null>(null);
     const [messageApi, contextHolder] = message.useMessage();
 
-    useEffect(() => {
-        setMessageApi(messageApi);
-    }, [messageApi]);
+    setMessageApi(messageApi);
 
     return (
         <>
@@ -27,30 +29,42 @@ const App = () => {
             <Layout style={{ display: 'flex', height: '100vh', width: '99vw' }}>
                 {session?.mode !== 'taking' && (
                     <Sidebar
-                        selectedId={selectedTestId}
-                        onSelect={(id) => {
-                            setSelectedTestId(id);
+                        selection={selection}
+                        onSelect={(next) => {
+                            setSelection(next);
                             setSession(null);
                         }}
-                        onAdd={() => setShowAddModal(true)}
+                        onAddTest={() => setShowAddModal(true)}
+                        onAddDocument={() => setShowDocumentModal(true)}
                     />
                 )}
                 <div style={{ flex: 1, minWidth: 0, overflow: 'auto', height: '100%' }}>
-                    <MainContent
-                        selectedTestId={selectedTestId}
-                        setSelectedTestId={setSelectedTestId}
-                        session={session}
-                        setSession={setSession}
-                        onAddTest={() => setShowAddModal(true)}
-                    />
+                    {selection?.kind === 'document' ? <DocumentView documentId={selection.id} /> : (
+                        <MainContent
+                            selectedTestId={selection?.kind === 'test' ? selection.id : null}
+                            setSelectedTestId={(id) => setSelection({ kind: 'test', id })}
+                            session={session}
+                            setSession={setSession}
+                            onAddTest={() => setShowAddModal(true)}
+                        />
+                    )}
                 </div>
                 {showAddModal && (
                     <AddTestModal
                         onClose={() => setShowAddModal(false)}
                         onCreated={(id) => {
-                            setSelectedTestId(id);
+                            setSelection({ kind: 'test', id });
                             setShowAddModal(false);
                             setSession(null);
+                        }}
+                    />
+                )}
+                {showDocumentModal && (
+                    <AddDocumentModal
+                        onClose={() => setShowDocumentModal(false)}
+                        onCreated={(id) => {
+                            setSelection({ kind: 'document', id });
+                            setShowDocumentModal(false);
                         }}
                     />
                 )}
@@ -60,4 +74,3 @@ const App = () => {
 };
 
 export default App;
-

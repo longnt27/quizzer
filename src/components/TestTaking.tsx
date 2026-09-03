@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback, FC, ReactNode } from 'react';
-import { StoredTest } from '../db/db';
+import { useState, useEffect, useRef, useCallback, useMemo, type FC, type ReactNode, type ReactElement } from 'react';
+import { db, type StoredTest } from '../db/db';
 import {
     Radio,
     Button,
@@ -12,6 +12,12 @@ import {
 } from 'antd';
 
 const { Title, Paragraph } = Typography;
+
+interface Props {
+    test: StoredTest;
+    onFinish: () => void;
+    timeLimit?: number;
+}
 
 // ... (renderWithCode, renderHighlightedText, and SearchBar components remain unchanged)
 const renderWithCode = (text: string): ReactNode => {
@@ -30,7 +36,7 @@ const renderHighlightedText = (text: string, matches: { start: number; end: numb
     if (!matches || matches.length === 0) { return <>{text}</>; }
     const sortedMatches = [...matches].sort((a, b) => a.start - b.start);
     let lastIndex = 0;
-    const parts: (string | JSX.Element)[] = [];
+    const parts: (string | ReactElement)[] = [];
     sortedMatches.forEach((match, i) => {
         if (match.start > lastIndex) { parts.push(text.substring(lastIndex, match.start)); }
         const style = { backgroundColor: match.isCurrent ? '#ffffa0' : '#ffd700', padding: '0', margin: '0', borderRadius: '3px' };
@@ -40,7 +46,7 @@ const renderHighlightedText = (text: string, matches: { start: number; end: numb
     if (lastIndex < text.length) { parts.push(text.substring(lastIndex)); }
     return <>{parts}</>;
 };
-interface SearchBarProps { query: string; setQuery: (q: string) => void; onPrev: () => void; onNext: () => void; onClose: () => void; current: number; total: number; inputRef: React.RefObject<HTMLInputElement>; }
+interface SearchBarProps { query: string; setQuery: (q: string) => void; onPrev: () => void; onNext: () => void; onClose: () => void; current: number; total: number; inputRef: React.RefObject<HTMLInputElement | null>; }
 const SearchBar: FC<SearchBarProps> = ({ query, setQuery, onPrev, onNext, onClose, current, total, inputRef }) => (
     <div style={{ position: 'fixed', bottom: 0, left: 0, width: '100%', padding: '8px 16px', display: 'flex', alignItems: 'center', background: 'white', gap: '16px', zIndex: 1000, boxShadow: '0 -2px 10px rgba(0,0,0,0.2)' }}>
         <input ref={inputRef} type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search all questions..." style={{ padding: '6px 10px', borderRadius: '4px', border: '1px solid #ddd', background: '#f0f2f5', color: 'black' }} />
@@ -59,12 +65,12 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
     const [shuffledAnswers, setShuffledAnswers] = useState<Record<number, typeof test.questions[0]['answer']>>({});
     const [remaining, setRemaining] = useState<number>(timeLimit ?? 0);
     const startRef = useRef(Date.now());
-    const timerRef = useRef<NodeJS.Timeout | null>(null);
+    const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     const [isJumping, setIsJumping] = useState(false);
     const [jumpBuffer, setJumpBuffer] = useState('');
-    const jumpTimerRef = useRef<NodeJS.Timeout | null>(null);
-    const submitButtonRef = useRef<HTMLElement>(null);
+    const jumpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const submitButtonRef = useRef<HTMLButtonElement>(null);
 
     const [isSearching, setIsSearching] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -78,7 +84,24 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
 
     const q = test.questions[currentIndex];
     const totalCorrect = q.answer.filter((a) => a.correct).length;
-    const choices = shuffledAnswers[currentIndex] || [];
+    const choices = useMemo(() => shuffledAnswers[currentIndex] || [], [currentIndex, shuffledAnswers]);
+    const answersRef = useRef(answers);
+    useEffect(() => { answersRef.current = answers; }, [answers]);
+
+    const handleSubmit = useCallback(async () => {
+        setIsPopconfirmVisible(false);
+        const duration = Math.floor((Date.now() - startRef.current) / 1000);
+        let score = 0;
+        test.questions.forEach((question, idx) => {
+            const user = answersRef.current[idx] || [];
+            const correct = question.answer.filter((answer) => answer.correct).map((answer) => answer.content).sort();
+            if (JSON.stringify(correct) === JSON.stringify([...user].sort())) score++;
+        });
+        const attempt = { id: String(Date.now()), time: Date.now(), duration, selectedAnswers: answersRef.current, score };
+        test.attempts.push(attempt);
+        await db.tests.put(test);
+        onFinish();
+    }, [onFinish, test]);
 
     // ... (All other hooks and functions up to the key listeners remain the same)
     useEffect(() => {
@@ -101,7 +124,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
             }, 1000);
         }
         return () => clearInterval(timerRef.current!);
-    }, [timeLimit]);
+    }, [timeLimit, handleSubmit]);
 
     useEffect(() => {
         if (!shuffledAnswers[currentIndex]) {
@@ -109,23 +132,6 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
             setShuffledAnswers((prev) => ({ ...prev, [currentIndex]: shuffled }));
         }
     }, [currentIndex, q.answer, shuffledAnswers]);
-
-    const handleSubmit = async () => {
-        setIsPopconfirmVisible(false); // Ensure popconfirm is closed on submit
-        const duration = Math.floor((Date.now() - startRef.current) / 1000);
-        let score = 0;
-        test.questions.forEach((q, idx) => {
-            const user = answers[idx] || [];
-            const correct = q.answer.filter((a) => a.correct).map((a) => a.content).sort();
-            const userSorted = [...user].sort();
-            if (JSON.stringify(correct) === JSON.stringify(userSorted)) score++;
-        });
-        const attempt = { id: String(Date.now()), time: Date.now(), duration, selectedAnswers: answers, score };
-        await test.attempts.push(attempt);
-        const { db } = await import('../db/db');
-        await db.tests.put(test);
-        onFinish();
-    };
 
     useEffect(() => {
         if (!isSearching || !searchQuery) {
@@ -175,7 +181,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
         navigateToResult(prevIndex);
     }, [currentResultIndex, searchResults.length, navigateToResult]);
 
-    const toggleChoice = (choice: string) => {
+    const toggleChoice = useCallback((choice: string) => {
         setAnswers((prev) => {
             const prevChoices = prev[currentIndex] || [];
             if (totalCorrect === 1) return { ...prev, [currentIndex]: [choice] };
@@ -183,7 +189,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
             const updated = exists ? prevChoices.filter((c) => c !== choice) : [...prevChoices, choice];
             return { ...prev, [currentIndex]: updated };
         });
-    };
+    }, [currentIndex, totalCorrect]);
 
     useEffect(() => {
         if (!isJumping) return;
@@ -238,7 +244,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isSearching, isJumping, choices, currentIndex, totalCorrect, isPopconfirmVisible]);
+    }, [isSearching, isJumping, choices, currentIndex, totalCorrect, isPopconfirmVisible, test.questions.length, toggleChoice]);
 
     // CHANGED: Keyboard handler for popconfirm is now more direct
     useEffect(() => {
@@ -256,7 +262,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
 
         window.addEventListener('keydown', handlePopconfirmKeys);
         return () => window.removeEventListener('keydown', handlePopconfirmKeys);
-    }, [isPopconfirmVisible]); // Dependency is correct
+    }, [isPopconfirmVisible, handleSubmit]);
 
 
     useEffect(() => {
@@ -279,11 +285,11 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
             const isInputFocused = document.activeElement === searchInputRef.current;
             if (isInputFocused && e.key === 'Enter') {
                 e.preventDefault();
-                e.shiftKey ? handlePrevResult() : handleNextResult();
+                if (e.shiftKey) handlePrevResult(); else handleNextResult();
                 searchInputRef.current?.blur();
             }
             if (!isInputFocused) {
-                 if (e.key.toLowerCase() === 'n') { e.preventDefault(); e.shiftKey ? handlePrevResult() : handleNextResult(); }
+                 if (e.key.toLowerCase() === 'n') { e.preventDefault(); if (e.shiftKey) handlePrevResult(); else handleNextResult(); }
                  else if (e.key === 'ArrowDown') { e.preventDefault(); handleNextResult(); }
                  else if (e.key === 'ArrowUp') { e.preventDefault(); handlePrevResult(); }
             }

@@ -1,4 +1,3 @@
-import { message } from 'antd';
 import type { MessageInstance } from 'antd/es/message/interface';
 
 let messageApi: MessageInstance | null = null;
@@ -9,9 +8,8 @@ export const setMessageApi = (api: MessageInstance) => {
 
 export const getMessageApi = (): MessageInstance => {
   if (!messageApi) {
-      return undefined;
+      throw new Error('Message API has not been initialized');
   }
   return messageApi;
 };
-
 
