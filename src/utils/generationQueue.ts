@@ -4,7 +4,6 @@ import { generateQuiz, getGenerationErrorCode } from './api';
 
 const workerId = crypto.randomUUID();
 const active = new Map<string, AbortController>();
-const concurrency = 1;
 let recovering: Promise<void> | null = null;
 let pumping = false;
 
@@ -105,7 +104,7 @@ export const pumpGenerationQueue = async () => {
   pumping = true;
   try {
     await recoverInterruptedJobs();
-    while (active.size < concurrency && navigator.onLine) {
+    while (navigator.onLine) {
       const job = await claimNextJob();
       if (!job || active.has(job.id)) break;
       void processJob(job);

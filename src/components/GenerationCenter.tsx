@@ -48,12 +48,14 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
     <Space direction="vertical" size="small" style={{ width: '100%' }}>
       <div className="generation-job-heading">
         <div><Typography.Text strong>{job.name}</Typography.Text><br /><Typography.Text type="secondary">{getProviderDefinition(job.options.provider).label}</Typography.Text></div>
-        <Tag color={statusColor[job.status]}>{job.status === 'waiting' ? 'Waiting for connection' : job.status}</Tag>
+        <Tag color={job.status === 'completed' && accepted < target ? 'warning' : statusColor[job.status]}>
+          {job.status === 'waiting' ? 'Waiting for connection' : job.status === 'completed' && accepted < target ? 'completed partial' : job.status}
+        </Tag>
       </div>
       <Progress percent={percent} status={job.status === 'error' ? 'exception' : job.status === 'completed' ? 'success' : 'active'}
         format={() => `${accepted}/${target}`} />
       {job.progress && !terminalStatuses.has(job.status) && <Typography.Text type="secondary">
-        {job.progress.phase === 'requesting' ? 'Requesting' : 'Checking'} {job.progress.currentType?.replaceAll('-', ' ')} · round {job.progress.round}/{job.progress.maxRounds} · {job.rejected} rejected
+        {job.progress.phase === 'requesting' ? 'Requesting' : 'Checking'} {job.progress.currentType?.replaceAll('-', ' ')} · round {job.progress.round}/{job.progress.maxRounds} · {job.progress.parallelRequests ?? 1} active slot{job.progress.parallelRequests === 1 ? '' : 's'} max · {job.rejected} rejected
       </Typography.Text>}
       {job.error && <Alert type={job.status === 'error' ? 'error' : 'warning'} showIcon message={job.error} />}
       {job.status === 'paused' && <Space direction="vertical" style={{ width: '100%' }}>
@@ -85,7 +87,7 @@ export function GenerationCenter({ open, onClose, onOpenTest, onManagePlugins }:
   return <Modal open={open} width={780} title="Generation queue" footer={null} onCancel={onClose}>
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <Alert type="info" showIcon message="Background generation survives reloads and connection interruptions"
-        description="Verified batches are stored locally. Quizzer runs up to five provider calls for the active test, filters their combined output, and automatically retries only missing questions." />
+        description="Verified batches are stored locally. Every test shares a global pool of five provider calls, so spare slots immediately work on other tests." />
       {!!jobs.some(job => terminalStatuses.has(job.status)) && <Button size="small" onClick={() => void clearFinished()}>Clear finished</Button>}
       <List locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No generation jobs" /> }} dataSource={jobs}
         renderItem={job => <JobItem job={job} onOpenTest={id => { onOpenTest(id); onClose(); }} onManagePlugins={onManagePlugins} />} />
@@ -99,6 +101,6 @@ export function GenerationActivity({ onOpen }: { onOpen: () => void }) {
   const running = jobs.filter(job => job.status === 'running').length;
   const paused = jobs.filter(job => job.status === 'paused' || job.status === 'waiting').length;
   return <Button className="generation-activity" type="primary" onClick={onOpen} icon={running ? <LoadingOutlined spin /> : <PlayCircleOutlined />}>
-    <Badge count={jobs.length} size="small" offset={[10, -5]}>{running ? `${running} generating` : paused ? `${paused} need attention` : 'Generation queued'}</Badge>
+    <Badge count={jobs.length} size="small" offset={[10, -5]}>{running ? `${running} test${running === 1 ? '' : 's'} active` : paused ? `${paused} need attention` : 'Generation queued'}</Badge>
   </Button>;
 }

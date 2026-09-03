@@ -33,8 +33,11 @@ Quizzer is a local-first study application that turns a reusable document librar
 - Gemini, Anthropic Claude, OpenAI, OpenRouter, and DeepSeek API integrations
 - Structured provider output and runtime question validation
 - Live generation progress by test, question type, and retry round
-- Mid-generation cancellation that stops the active provider process
+- Persistent background generation queue, usable while you take completed tests
+- A global five-request pool shared efficiently across every test
+- Mid-generation cancellation that stops all active provider processes
 - Provider failover that preserves accepted questions after quota, authentication, or service failures
+- Automatic recovery from reloads and network interruptions at the latest verified checkpoint
 - Bounded refill attempts: valid questions survive when another candidate is rejected
 - Exact and lexical near-duplicate filtering
 - Optional local semantic duplicate filtering through Ollama
@@ -66,7 +69,7 @@ PDF / Markdown / text
                               saved local quiz
 ```
 
-The React application never starts shell commands directly. It calls a loopback-only Node service, which invokes provider adapters and keeps API credentials outside browser bundles.
+The React application never starts shell commands directly. It calls a loopback-only Node service, which invokes provider adapters and keeps API credentials outside browser bundles. Generation jobs and their verified checkpoints live in IndexedDB, so the browser can resume unfinished work after reconnecting or reopening Quizzer.
 
 ## Requirements
 
@@ -148,9 +151,15 @@ Scanned or visually complex documents can still require manual review. Always in
 6. Choose one combined quiz or one separate quiz per document.
 7. Choose how many multiple-choice, fill-in-the-blank, and reasoning questions to create.
 8. Select a provider and optional provider-specific model.
-9. Start generation.
+9. Queue generation and continue using Quizzer.
 
-Generation requests at most ten candidates of one type at a time. Every candidate is validated independently against its type-specific schema. Valid questions are retained, while invalid or duplicate candidates leave empty slots for a later bounded refill round. If a target cannot be reached after five rounds, Quizzer saves the valid partial quiz and reports the final count instead of retrying forever.
+The creation dialog closes immediately after saving the job. Quizzer divides each type's exact missing count into requests of at most ten questions, then schedules those requests through one global five-slot pool shared by every unfinished test. For example, 15 missing questions become requests of ten and five. If another test has only five questions left, it occupies one slot while the other four slots continue other tests. There is no limit on the number of test jobs waiting or making progress, but no more than five provider requests run at once.
+
+Results from a parallel round are merged and every candidate is independently validated and deduplicated. Rejected candidates leave only their missing slots for the next bounded refill round. If a target cannot be reached after five rounds, Quizzer saves the valid partial quiz instead of retrying forever.
+
+Open **Generation queue** from the sidebar or the floating activity indicator to inspect every job, cancel work, retry an error, or switch providers. As each separate test completes it appears in the Tests sidebar immediately, where you can take it while later jobs continue.
+
+After every validated parallel round, Quizzer checkpoints accepted questions, retry counters, and provider settings to IndexedDB. A dropped connection moves the job into a waiting state and retries automatically when connectivity returns. Reloading or closing the page stops active computation, but reopening Quizzer requeues interrupted jobs from the latest checkpoint; it never restarts accepted batches from zero.
 
 If a provider runs out of quota, loses authentication, or becomes unavailable, generation pauses and offers another provider. Already accepted questions remain in memory, the replacement provider requests only the missing slots, and duplicate detection compares its output against the full accepted set. Switching providers does not consume a validation retry round.
 
@@ -161,6 +170,7 @@ Select **Install Ollama + all-minilm** under **Plugins & models** to enable loca
 ## Data and privacy
 
 - Documents, original uploaded blobs, extracted figures, quizzes, and attempts are stored in the browser's IndexedDB database named `QuizDB`.
+- Background generation jobs, accepted questions, and retry checkpoints are also stored in IndexedDB until dismissed.
 - Agent requests use the selected locally authenticated CLI.
 - API requests send selected extracted content—and figures for supported multimodal models—to the selected provider.
 - API keys pass through the loopback service only for the active request and remain in browser session storage; they are not written to IndexedDB or local storage.
@@ -195,7 +205,11 @@ Install Codex CLI and ensure `codex` is available on `PATH` for the process star
 
 ### An agent reaches its usage limit
 
-Leave the generation dialog open, select a configured replacement provider in the warning panel, and choose **Continue**. Accepted questions are preserved. If the replacement uses an API key you have not entered, open **Plugins & models** directly from the warning first.
+Open **Generation queue**, select a configured replacement provider on the paused job, and choose **Continue**. Accepted questions are preserved. If the replacement uses an API key you have not entered, open **Plugins & models** directly from the job first.
+
+### Generation was interrupted
+
+Keep or reopen Quizzer on the same browser origin. Network failures retry automatically after connectivity returns. Jobs that were active when the page closed are requeued from their latest verified batch when the application opens again. API keys remain session-only, so a restored job may pause for authentication if its browser session ended.
 
 ### Semantic filtering is not active
 
@@ -220,7 +234,7 @@ The generation pipeline reached its bounded retry limit after rejecting malforme
 ## Roadmap
 
 - Provider capability discovery and custom endpoint adapters
-- Persisted generation jobs and crash recovery
+- Optional control over generation concurrency and provider cost limits
 - Question/source citations in the review interface
 - Document re-extraction and converter version tracking
 - Full automated unit, integration, and browser test suites
