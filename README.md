@@ -159,6 +159,8 @@ Scanned or visually complex documents can still require manual review. Always in
 9. Select a provider and optional provider-specific model.
 10. Queue generation and continue using Quizzer.
 
+If a requested test name already exists, Quizzer keeps both tests by adding a numeric postfix such as `(2)` or `(3)`.
+
 The creation dialog closes immediately after saving the job. Each instance is assigned to a different test and makes one provider request at a time. Within that test, each question type is generated sequentially using the configured batch size. The default is 20, so 45 missing questions become requests of 20, 20, and 5; each later prompt can exclude everything accepted from earlier batches. Other instances work on other tests rather than generating overlapping candidates for the same test.
 
 Open **Generation queue** to choose between 1 and 10 concurrent test instances; the default is 5. Lower values reduce simultaneous provider usage and memory pressure. Higher values complete multi-document queues faster. Reducing the value does not abort requests already running—the new limit takes effect as they finish.

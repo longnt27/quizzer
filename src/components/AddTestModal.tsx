@@ -12,6 +12,15 @@ import { useConfiguredProviders } from '../utils/useConfiguredProviders';
 interface Props { onClose: () => void; onManagePlugins: () => void; }
 type CreationMode = 'combined' | 'separate';
 
+const uniqueTestName = (requestedName: string, usedNames: Set<string>) => {
+  const base = requestedName.trim() || 'Untitled test';
+  let candidate = base;
+  let suffix = 2;
+  while (usedNames.has(candidate.toLocaleLowerCase())) candidate = `${base} (${suffix++})`;
+  usedNames.add(candidate.toLocaleLowerCase());
+  return candidate;
+};
+
 export default function AddTestModal({ onClose, onManagePlugins }: Props) {
   const settings = useMemo(getProviderSettings, []);
   const configured = useConfiguredProviders();
@@ -58,9 +67,15 @@ export default function AddTestModal({ onClose, onManagePlugins }: Props) {
         questionCounts: { multipleChoice: multipleChoiceCount, fillBlank: fillBlankCount, reasoning: reasoningCount, coding: codingCount },
         multipleChoiceMode,
       };
-      const sources = mode === 'combined'
+      const requestedSources = mode === 'combined'
         ? [{ name: name.trim() || 'Combined quiz', documentIds: selected.map(document => document.id) }]
         : selected.map(document => ({ name: document.name, documentIds: [document.id] }));
+      const [savedTests, existingJobs] = await Promise.all([db.tests.toArray(), db.generationJobs.toArray()]);
+      const usedNames = new Set([
+        ...savedTests.map(test => test.name.toLocaleLowerCase()),
+        ...existingJobs.filter(job => job.status !== 'cancelled').map(job => job.name.toLocaleLowerCase()),
+      ]);
+      const sources = requestedSources.map(source => ({ ...source, name: uniqueTestName(source.name, usedNames) }));
       const now = Date.now();
       const jobs: StoredGenerationJob[] = sources.map((source, index) => ({
         id: uuidv4(), testId: uuidv4(), name: source.name, documentIds: source.documentIds,
