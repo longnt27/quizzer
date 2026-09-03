@@ -355,14 +355,14 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
             if (isPopconfirmVisible || isSearching) return;
 
             const target = e.target as HTMLElement;
-            const isInputFocused = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
-            if (isInputFocused) {
-                if (practice && !submitted && answered && e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    submitPracticeAnswer();
-                }
+            if (practice && !submitted && answered && e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                submitPracticeAnswer();
                 return;
             }
+            const isTextEntry = target.tagName === 'TEXTAREA' || target.isContentEditable
+                || (target instanceof HTMLInputElement && !['radio', 'checkbox', 'button', 'submit', 'reset'].includes(target.type));
+            if (isTextEntry) return;
 
             if (!isJumping && (e.key === 'ArrowUp' || e.key === ' ')) {
                 e.preventDefault();
