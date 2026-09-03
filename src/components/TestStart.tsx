@@ -48,6 +48,7 @@ const TestStart: React.FC<Props> = ({ test, draft, onStart, onResume }) => {
                 {counts.multipleChoice > 0 && <Tag color="blue">{counts.multipleChoice} multiple choice</Tag>}
                 {counts.fillBlank > 0 && <Tag color="purple">{counts.fillBlank} fill in the blank</Tag>}
                 {counts.reasoning > 0 && <Tag color="gold">{counts.reasoning} reasoning</Tag>}
+                {counts.coding > 0 && <Tag color="cyan">{counts.coding} coding</Tag>}
             </Space>
 
             <Radio.Group value={mode} onChange={event => setMode(event.target.value)} optionType="button" buttonStyle="solid" style={{ marginBottom: 20 }}
@@ -58,8 +59,8 @@ const TestStart: React.FC<Props> = ({ test, draft, onStart, onResume }) => {
             <Paragraph type="secondary" style={{ maxWidth: 520, marginBottom: 20 }}>
                 {mode === 'practice'
                     ? 'Check each answer immediately, study its explanation, then continue.'
-                    : counts.reasoning
-                        ? 'Complete the questions without seeing answers. After submission, reasoning responses are graded by the configured AI provider before review.'
+                    : counts.reasoning || counts.coding
+                        ? 'Complete the questions without seeing answers. After submission, reasoning and coding responses are graded by the configured AI provider before review.'
                         : 'Complete the questions first, then review your results after submitting the test.'}
             </Paragraph>
 

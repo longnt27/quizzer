@@ -33,8 +33,9 @@ export const countQuestionTypes = (questions: QuizQuestion[]): QuestionCounts =>
   const type = getQuestionType(question);
   if (type === 'multiple-choice') counts.multipleChoice++;
   else if (type === 'fill-blank') counts.fillBlank++;
-  else counts.reasoning++;
+  else if (type === 'reasoning') counts.reasoning++;
+  else counts.coding++;
   return counts;
-}, { multipleChoice: 0, fillBlank: 0, reasoning: 0 });
+}, { multipleChoice: 0, fillBlank: 0, reasoning: 0, coding: 0 });
 
-export const totalQuestionCount = (counts: QuestionCounts) => counts.multipleChoice + counts.fillBlank + counts.reasoning;
+export const totalQuestionCount = (counts: QuestionCounts) => counts.multipleChoice + counts.fillBlank + counts.reasoning + counts.coding;

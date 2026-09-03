@@ -100,10 +100,29 @@ const reasoningSchema = {
   },
 };
 
+const codingSchema = {
+  type: 'object', additionalProperties: false, required: ['questions'],
+  properties: {
+    questions: {
+      type: 'array', items: {
+        type: 'object', additionalProperties: false,
+        required: ['type', 'statement', 'referenceAnswer', 'explanation'],
+        properties: {
+          type: { type: 'string', enum: ['coding'] },
+          statement: { type: 'string' },
+          referenceAnswer: { type: 'string' },
+          explanation: { type: 'string' },
+        },
+      },
+    },
+  },
+};
+
 const schemas: Record<QuestionType, object> = {
   'multiple-choice': multipleChoiceSchema,
   'fill-blank': fillBlankSchema,
   reasoning: reasoningSchema,
+  coding: codingSchema,
 };
 
 export function extractJson<T>(text: string): T | null {
@@ -162,7 +181,7 @@ export function validateQuestion(value: unknown, expectedType?: QuestionType, mu
   const question = value as Record<string, unknown>;
   if (typeof question.statement !== 'string' || question.statement.trim().length < 8) return false;
   const type = question.type === undefined ? 'multiple-choice' : question.type;
-  if (type !== 'multiple-choice' && type !== 'fill-blank' && type !== 'reasoning') return false;
+  if (type !== 'multiple-choice' && type !== 'fill-blank' && type !== 'reasoning' && type !== 'coding') return false;
   if (expectedType && type !== expectedType) return false;
   if (type === 'fill-blank') {
     if (!question.statement.includes('_____') || !Array.isArray(question.acceptedAnswers) || question.acceptedAnswers.length < 2 || question.acceptedAnswers.length > 8) return false;
@@ -170,7 +189,7 @@ export function validateQuestion(value: unknown, expectedType?: QuestionType, mu
     if (new Set(question.acceptedAnswers.map(answer => normalize(String(answer)))).size !== question.acceptedAnswers.length) return false;
     return typeof question.explanation === 'string' && Boolean(question.explanation.trim());
   }
-  if (type === 'reasoning') {
+  if (type === 'reasoning' || type === 'coding') {
     return typeof question.referenceAnswer === 'string' && question.referenceAnswer.trim().length >= 20
       && typeof question.explanation === 'string' && Boolean(question.explanation.trim());
   }
@@ -230,6 +249,10 @@ forms exist; do not invent alternatives that change the meaning. Provide one exp
   reasoning: `Create reasoning questions that require explanation, comparison, inference, or application rather than recall.
 Set type to "reasoning". Provide a clear referenceAnswer the learner can compare against and an explanation describing
 the essential points a good response should contain. Do not turn these into multiple-choice questions.`,
+  coding: `Create practical coding challenges grounded in programming concepts from the source material.
+Set type to "coding". Each statement must specify the task, expected behavior, and any important constraints without relying
+on hidden context. Provide a correct example solution in referenceAnswer and a concise explanation of the essential approach,
+edge cases, and correctness criteria. Do not turn these into general reasoning or multiple-choice questions.`,
 };
 
 const buildPrompt = (content: string, type: QuestionType, count: number, accepted: QuizQuestion[], focus?: string, multipleChoiceMode?: GenerationOptions['multipleChoiceMode']) => `
@@ -250,12 +273,13 @@ ${content}
 `;
 
 const getRequestedCounts = (options: GenerationOptions): QuestionCounts => {
-  if (!options.questionCounts) return { multipleChoice: Math.max(1, Math.floor(options.questionCount)), fillBlank: 0, reasoning: 0 };
+  if (!options.questionCounts) return { multipleChoice: Math.max(1, Math.floor(options.questionCount)), fillBlank: 0, reasoning: 0, coding: 0 };
   const clamp = (value: number) => Math.max(0, Math.min(200, Math.floor(value || 0)));
   return {
     multipleChoice: clamp(options.questionCounts.multipleChoice),
     fillBlank: clamp(options.questionCounts.fillBlank),
     reasoning: clamp(options.questionCounts.reasoning),
+    coding: clamp(options.questionCounts.coding),
   };
 };
 
@@ -271,7 +295,7 @@ export async function generateQuiz(
   onCheckpoint?: (checkpoint: GenerationCheckpoint) => void | Promise<void>,
 ): Promise<QuizQuestion[]> {
   const counts = getRequestedCounts(options);
-  const target = counts.multipleChoice + counts.fillBlank + counts.reasoning;
+  const target = counts.multipleChoice + counts.fillBlank + counts.reasoning + counts.coding;
   if (target < 1 || target > 200) throw new Error('Choose between 1 and 200 questions in total.');
   const accepted: QuizQuestion[] = [...(initialCheckpoint?.questions ?? [])];
   let activeOptions = initialCheckpoint?.options ?? options;
@@ -283,6 +307,7 @@ export async function generateQuiz(
     ['multiple-choice', counts.multipleChoice],
     ['fill-blank', counts.fillBlank],
     ['reasoning', counts.reasoning],
+    ['coding', counts.coding],
   ];
   for (const [type, typeTarget] of targets) {
     let typeAccepted = accepted.filter(question => (question.type ?? 'multiple-choice') === type).length;

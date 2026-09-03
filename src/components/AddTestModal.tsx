@@ -24,11 +24,12 @@ export default function AddTestModal({ onClose, onManagePlugins }: Props) {
   const [multipleChoiceCount, setMultipleChoiceCount] = useState(15);
   const [fillBlankCount, setFillBlankCount] = useState(3);
   const [reasoningCount, setReasoningCount] = useState(2);
+  const [codingCount, setCodingCount] = useState(0);
   const [multipleChoiceMode, setMultipleChoiceMode] = useState<'single' | 'multiple'>('single');
   const [query, setQuery] = useState('');
   const [saving, setSaving] = useState(false);
   const message = getMessageApi();
-  const questionCount = multipleChoiceCount + fillBlankCount + reasoningCount;
+  const questionCount = multipleChoiceCount + fillBlankCount + reasoningCount + codingCount;
   const selectedProvider = getProviderDefinition(provider);
   const selected = documents.filter(document => selectedIds.includes(document.id));
   const visible = (() => {
@@ -54,7 +55,7 @@ export default function AddTestModal({ onClose, onManagePlugins }: Props) {
     try {
       const options: GenerationOptions = {
         provider, model: model.trim() || undefined, questionCount,
-        questionCounts: { multipleChoice: multipleChoiceCount, fillBlank: fillBlankCount, reasoning: reasoningCount },
+        questionCounts: { multipleChoice: multipleChoiceCount, fillBlank: fillBlankCount, reasoning: reasoningCount, coding: codingCount },
         multipleChoiceMode,
       };
       const sources = mode === 'combined'
@@ -105,6 +106,7 @@ export default function AddTestModal({ onClose, onManagePlugins }: Props) {
             <label><Typography.Text strong>Multiple choice</Typography.Text><InputNumber min={0} max={200} value={multipleChoiceCount} onChange={value => setMultipleChoiceCount(value ?? 0)} /></label>
             <label><Typography.Text strong>Fill in the blank</Typography.Text><InputNumber min={0} max={200} value={fillBlankCount} onChange={value => setFillBlankCount(value ?? 0)} /></label>
             <label><Typography.Text strong>Reasoning</Typography.Text><InputNumber min={0} max={200} value={reasoningCount} onChange={value => setReasoningCount(value ?? 0)} /></label>
+            <label><Typography.Text strong>Coding</Typography.Text><InputNumber min={0} max={200} value={codingCount} onChange={value => setCodingCount(value ?? 0)} /></label>
             <div className="question-count-total"><Typography.Text type="secondary">Total</Typography.Text><Typography.Text strong>{questionCount}</Typography.Text></div>
           </div>
           {multipleChoiceCount > 0 && <div>

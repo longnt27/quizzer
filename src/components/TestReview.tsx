@@ -100,6 +100,7 @@ const TestReview: React.FC<Props> = ({ test, onBack }) => {
     const q = test.questions[currentIndex];
     const userAnswer = latest.selectedAnswers[currentIndex] || [];
     const questionType = getQuestionType(q);
+    const isEvaluatedWritten = questionType === 'reasoning' || questionType === 'coding';
     const multipleChoiceAnswers = questionType === 'multiple-choice' && 'answer' in q ? q.answer : [];
     const correctAnswers = multipleChoiceAnswers.filter((a) => a.correct).map((a) => a.content).sort();
 
@@ -309,8 +310,8 @@ const TestReview: React.FC<Props> = ({ test, onBack }) => {
 
                 {/* NEW: Apply highlighting to the statement */}
                 <Paragraph style={{ fontSize: 18 }}>
-                    <Tag color={questionType === 'multiple-choice' ? 'blue' : questionType === 'fill-blank' ? 'purple' : 'gold'} style={{ marginBottom: 10 }}>
-                        {questionType === 'multiple-choice' ? 'Multiple choice' : questionType === 'fill-blank' ? 'Fill in the blank' : 'Reasoning'}
+                    <Tag color={questionType === 'multiple-choice' ? 'blue' : questionType === 'fill-blank' ? 'purple' : questionType === 'coding' ? 'cyan' : 'gold'} style={{ marginBottom: 10 }}>
+                        {questionType === 'multiple-choice' ? 'Multiple choice' : questionType === 'fill-blank' ? 'Fill in the blank' : questionType === 'coding' ? 'Coding' : 'Reasoning'}
                     </Tag><br />
                     {isSearching && searchQuery ? renderHighlightedText(q.statement, getMatchesForText('statement')) : q.statement}
                 </Paragraph>
@@ -334,13 +335,13 @@ const TestReview: React.FC<Props> = ({ test, onBack }) => {
                     <div><Typography.Text strong>Accepted answers</Typography.Text><div style={{ marginTop: 8 }}>{q.acceptedAnswers.map(answer => <Tag color="blue" key={answer}>{answer}</Tag>)}</div></div>
                     <Typography.Paragraph type="secondary">{q.explanation}</Typography.Paragraph>
                 </Space>}
-                {questionType === 'reasoning' && 'referenceAnswer' in q && <Space direction="vertical" size="middle" style={{ width: '100%', marginTop: 16 }}>
+                {isEvaluatedWritten && 'referenceAnswer' in q && <Space direction="vertical" size="middle" style={{ width: '100%', marginTop: 16 }}>
                     <Alert type={latest.selfAssessments?.[currentIndex] === true ? 'success' : 'warning'} showIcon
                       message={`${latest.reasoningJudgments?.[currentIndex] ? 'AI judgment' : 'Self-assessment'}: ${latest.selfAssessments?.[currentIndex] === true ? 'Correct' : latest.selfAssessments?.[currentIndex] === false ? 'Needs work' : 'Not assessed'}`}
                       description={userAnswer[0] || '(No answer)'} />
                     {latest.reasoningJudgments?.[currentIndex]?.feedback && <Alert type="info" showIcon message="Judge feedback" description={latest.reasoningJudgments[currentIndex].feedback} />}
                     <Alert type="info" showIcon message="Reference answer" description={q.referenceAnswer} />
-                    <Typography.Paragraph type="secondary">Essential reasoning: {q.explanation}</Typography.Paragraph>
+                    <Typography.Paragraph type="secondary">{questionType === 'coding' ? 'Solution criteria' : 'Essential reasoning'}: {q.explanation}</Typography.Paragraph>
                 </Space>}
 
                 <div style={{ marginTop: 'auto', paddingTop: 32 }}>

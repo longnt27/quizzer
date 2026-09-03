@@ -13,7 +13,7 @@ export const askPracticeAnswer = (
 ) => {
   const context = quizQuestion.type === 'fill-blank'
     ? { question: quizQuestion.statement, userAnswer: userAnswers[0] ?? '', acceptedAnswers: quizQuestion.acceptedAnswers, explanation: quizQuestion.explanation }
-    : quizQuestion.type === 'reasoning'
+    : quizQuestion.type === 'reasoning' || quizQuestion.type === 'coding'
       ? { question: quizQuestion.statement, userAnswer: userAnswers[0] ?? '', referenceAnswer: quizQuestion.referenceAnswer, essentialReasoning: quizQuestion.explanation, selfAssessment }
       : { question: quizQuestion.statement, userAnswers, choices: quizQuestion.answer };
   const conversation = history.slice(-6).map(turn => `User: ${turn.question}\nAssistant: ${turn.answer}`).join('\n\n');

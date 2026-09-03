@@ -86,7 +86,7 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
                 actions={[<Popconfirm title="Delete this test?" onConfirm={() => remove('test', test.id)}><Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={event => event.stopPropagation()} /></Popconfirm>]}>
                 <List.Item.Meta title={test.name} description={(() => {
                   const counts = countQuestionTypes(test.questions);
-                  const types = [counts.multipleChoice && `${counts.multipleChoice} choice`, counts.fillBlank && `${counts.fillBlank} blank`, counts.reasoning && `${counts.reasoning} reasoning`].filter(Boolean).join(' · ');
+                  const types = [counts.multipleChoice && `${counts.multipleChoice} choice`, counts.fillBlank && `${counts.fillBlank} blank`, counts.reasoning && `${counts.reasoning} reasoning`, counts.coding && `${counts.coding} coding`].filter(Boolean).join(' · ');
                   return `${types} · ${test.attempts.length} attempts`;
                 })()} />
               </List.Item>

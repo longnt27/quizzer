@@ -126,12 +126,13 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
     const questionIndex = questionOrder[currentIndex] ?? currentIndex;
     const q = test.questions[questionIndex];
     const questionType = getQuestionType(q);
+    const isEvaluatedWritten = questionType === 'reasoning' || questionType === 'coding';
     const multipleChoiceAnswers = useMemo(() => questionType === 'multiple-choice' && 'answer' in q ? q.answer : [], [q, questionType]);
     const totalCorrect = multipleChoiceAnswers.filter((a) => a.correct).length;
     const submitted = Boolean(submittedQuestions[questionIndex]);
     const answered = Boolean(answers[questionIndex]?.[0]?.trim());
-    const currentCorrect = submitted && questionType !== 'reasoning' ? isQuestionCorrect(q, answers[questionIndex]) : false;
-    const reviewComplete = submitted && (questionType !== 'reasoning' || selfAssessments[questionIndex] !== undefined);
+    const currentCorrect = submitted && !isEvaluatedWritten ? isQuestionCorrect(q, answers[questionIndex]) : false;
+    const reviewComplete = submitted && (!isEvaluatedWritten || selfAssessments[questionIndex] !== undefined);
     const choices = useMemo(() => shuffledAnswers[questionIndex] || [], [questionIndex, shuffledAnswers]);
     const answersRef = useRef(answers);
     const selfAssessmentsRef = useRef(selfAssessments);
@@ -165,7 +166,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
         let assessedAnswers = { ...selfAssessmentsRef.current };
         let reasoningJudgments;
         if (!practice) {
-            const submissions = test.questions.flatMap((question, index) => getQuestionType(question) === 'reasoning' && 'referenceAnswer' in question
+            const submissions = test.questions.flatMap((question, index) => (getQuestionType(question) === 'reasoning' || getQuestionType(question) === 'coding') && 'referenceAnswer' in question
                 ? [{ index, question, answer: answersRef.current[index]?.[0] ?? '' }]
                 : []);
             if (submissions.length) {
@@ -329,8 +330,8 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
     const submitPracticeAnswer = useCallback(() => {
         if (!answered) return;
         setSubmittedQuestions(previous => ({ ...previous, [questionIndex]: true }));
-        if (questionType === 'reasoning') setRevealedReasoning(previous => ({ ...previous, [questionIndex]: true }));
-    }, [answered, questionIndex, questionType]);
+        if (isEvaluatedWritten) setRevealedReasoning(previous => ({ ...previous, [questionIndex]: true }));
+    }, [answered, isEvaluatedWritten, questionIndex]);
 
     useEffect(() => {
         if (!isJumping) return;
@@ -486,8 +487,8 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                         </Popconfirm>
                     </Row>
                     <Paragraph style={{ fontSize: 18, width: '100%' }}>
-                        <Tag color={questionType === 'multiple-choice' ? 'blue' : questionType === 'fill-blank' ? 'purple' : 'gold'} style={{ marginBottom: 10 }}>
-                            {questionType === 'multiple-choice' ? 'Multiple choice' : questionType === 'fill-blank' ? 'Fill in the blank' : 'Reasoning'}
+                        <Tag color={questionType === 'multiple-choice' ? 'blue' : questionType === 'fill-blank' ? 'purple' : questionType === 'coding' ? 'cyan' : 'gold'} style={{ marginBottom: 10 }}>
+                            {questionType === 'multiple-choice' ? 'Multiple choice' : questionType === 'fill-blank' ? 'Fill in the blank' : questionType === 'coding' ? 'Coding' : 'Reasoning'}
                         </Tag><br />
                         {isSearching && searchQuery ? renderHighlightedText(q.statement, getMatchesForText('statement')) : renderWithCode(q.statement)}
                     </Paragraph>
@@ -528,9 +529,9 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                         <Typography.Text type="secondary">Capitalization, punctuation, and extra spaces are ignored. Equivalent accepted wording is checked automatically.</Typography.Text>
                       </div>
                     )}
-                    {questionType === 'reasoning' && 'referenceAnswer' in q && (
+                    {isEvaluatedWritten && 'referenceAnswer' in q && (
                       <div className="written-answer-block">
-                        <Typography.Text strong>Your reasoning</Typography.Text>
+                        <Typography.Text strong>{questionType === 'coding' ? 'Your solution' : 'Your reasoning'}</Typography.Text>
                         {practice && submitted ? <Alert message="Your answer" description={answers[questionIndex]?.[0] || '(No answer)'} /> : <Input.TextArea rows={7} value={answers[questionIndex]?.[0] ?? ''}
                           onChange={event => {
                             setAnswers(previous => ({ ...previous, [questionIndex]: [event.target.value] }));
@@ -540,10 +541,10 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                               return next;
                             });
                           }}
-                          placeholder={practice ? 'Explain your reasoning. Press Shift+Enter for a new line.' : 'Explain your reasoning in your own words'} />}
+                          placeholder={questionType === 'coding' ? 'Write your solution. Press Shift+Enter for a new line.' : practice ? 'Explain your reasoning. Press Shift+Enter for a new line.' : 'Explain your reasoning in your own words'} />}
                         {practice && revealedReasoning[questionIndex] ? <>
                           <Alert type="info" showIcon message="Reference answer" description={<div>{q.referenceAnswer}<br /><Typography.Text type="secondary">{q.explanation}</Typography.Text></div>} />
-                          <Typography.Text strong>Does your answer cover the essential reasoning?</Typography.Text>
+                          <Typography.Text strong>{questionType === 'coding' ? 'Does your solution satisfy the task and important edge cases?' : 'Does your answer cover the essential reasoning?'}</Typography.Text>
                           <Space wrap>
                             <Button type={selfAssessments[questionIndex] === true ? 'primary' : 'default'} onClick={() => setSelfAssessments(previous => ({ ...previous, [questionIndex]: true }))}>Yes, count it correct</Button>
                             <Button danger type={selfAssessments[questionIndex] === false ? 'primary' : 'default'} onClick={() => setSelfAssessments(previous => ({ ...previous, [questionIndex]: false }))}>No, needs work</Button>
@@ -589,7 +590,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, 40px)', gap: 6 }}>
                     {questionOrder.map((originalIndex, idx) => {
                         const question = test.questions[originalIndex];
-                        const answered = getQuestionType(question) === 'reasoning'
+                        const answered = getQuestionType(question) === 'reasoning' || getQuestionType(question) === 'coding'
                           ? Boolean(answers[originalIndex]?.[0]?.trim()) && (!practice || selfAssessments[originalIndex] !== undefined)
                           : Boolean(answers[originalIndex]?.[0]?.trim());
                         const marked = reviewMarks[originalIndex];
@@ -606,13 +607,13 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                 </div>
             </Col>
             {isSearching && ( <SearchBar query={searchQuery} setQuery={setSearchQuery} onPrev={handlePrevResult} onNext={handleNextResult} onClose={() => { setIsSearching(false); setSearchQuery(''); }} current={currentResultIndex} total={searchResults.length} inputRef={searchInputRef} /> )}
-            <Modal open={Boolean(judgeProgress)} closable={false} maskClosable={false} title="Grading reasoning answers" footer={
+            <Modal open={Boolean(judgeProgress)} closable={false} maskClosable={false} title="Grading written answers" footer={
               <Button danger onClick={() => judgeControllerRef.current?.abort()}>Cancel grading</Button>
             }>
               <Progress percent={judgeProgress ? Math.round(judgeProgress.completed / Math.max(judgeProgress.total, 1) * 100) : 0} status="active" />
               <Typography.Text type="secondary">
                 {judgeProgress?.batches ? `Batch ${Math.max(1, judgeProgress.batch)} of ${judgeProgress.batches} · ` : ''}
-                {judgeProgress?.completed ?? 0} of {judgeProgress?.total ?? 0} reasoning answers graded
+                {judgeProgress?.completed ?? 0} of {judgeProgress?.total ?? 0} written answers graded
               </Typography.Text>
             </Modal>
             {askQuestionIndex !== null && <PracticeAnswerAskModal

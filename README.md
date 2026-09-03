@@ -1,6 +1,6 @@
 # Quizzer
 
-Quizzer is a local-first study application that turns a reusable document library into validated multiple-choice quizzes. Documents are uploaded and extracted once, tagged for later discovery, and then selected whenever you want to create either separate quizzes or one combined quiz.
+Quizzer is a local-first study application that turns a reusable document library into validated mixed-format quizzes. Documents are uploaded and extracted once, tagged for later discovery, and then selected whenever you want to create either separate quizzes or one combined quiz.
 
 > **Project status:** active development. Local data and the generation pipeline are usable, but this project has not yet published a stable release or completed a security audit.
 
@@ -25,10 +25,10 @@ Quizzer is a local-first study application that turns a reusable document librar
 - Separate quiz generation for each selected document
 - Combined quiz generation across selected documents
 - Configurable question count and provider model override
-- Configurable mix of multiple-choice, fill-in-the-blank, and reasoning questions
+- Configurable mix of multiple-choice, fill-in-the-blank, reasoning, and coding questions
 - Single-answer or multiple-correct-answer generation for multiple-choice questions
 - Normalized fill-in-the-blank grading across generated acceptable wordings
-- Learner self-assessment against reference answers for reasoning questions
+- Learner self-assessment against reference answers for reasoning and coding questions
 - Practice mode with immediate per-question answers and explanations
 - Automatic recovery of unfinished test and practice sessions
 - In-app Plugins & models panel for setup and defaults
@@ -154,7 +154,7 @@ Scanned or visually complex documents can still require manual review. Always in
 4. Open the **Tests** tab and select **Create test**.
 5. Filter and select documents by name or tag.
 6. Choose one combined quiz or one separate quiz per document.
-7. Choose how many multiple-choice, fill-in-the-blank, and reasoning questions to create.
+7. Choose how many multiple-choice, fill-in-the-blank, reasoning, and coding questions to create.
 8. For multiple-choice questions, require either exactly one or multiple correct answers.
 9. Select a provider and optional provider-specific model.
 10. Queue generation and continue using Quizzer.
@@ -173,7 +173,7 @@ After every validated parallel round, Quizzer checkpoints accepted questions, re
 
 If a provider runs out of quota, loses authentication, or becomes unavailable, generation pauses and offers another provider. Already accepted questions remain in memory, the replacement provider requests only the missing slots, and duplicate detection compares its output against the full accepted set. Switching providers does not consume a validation retry round.
 
-Fill-in-the-blank answers ignore capitalization, punctuation, and repeated spaces, and match any acceptable wording supplied with the generated question. In test mode, reasoning references stay hidden until review and answers are graded by the configured LLM in sequential batches of at most 10. In practice mode, the learner still reveals the reference answer, compares the essential points, and records a self-assessment.
+Fill-in-the-blank answers ignore capitalization, punctuation, and repeated spaces, and match any acceptable wording supplied with the generated question. Coding questions ask for a practical solution based on the source and include an example implementation plus correctness criteria. In test mode, reasoning and coding references stay hidden until review and answers are graded by the configured LLM in sequential batches of at most 10. In practice mode, the learner reveals the reference answer, compares the essential points, and records a self-assessment.
 
 Before starting a saved test, choose **Test mode** for the traditional submit-then-review flow or **Practice mode** for immediate feedback. Practice mode locks each submitted response, shows correctness and every multiple-choice explanation or accepted fill-in answer, and requires the learner to compare reasoning responses with the reference answer before moving forward. Select **Check answer** or press Enter; in a reasoning response, use Shift+Enter for a new line.
 

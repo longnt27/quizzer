@@ -20,7 +20,7 @@ const statusColor: Record<StoredGenerationJob['status'], string> = {
 };
 
 const targetFor = (job: StoredGenerationJob) => job.options.questionCounts
-  ? job.options.questionCounts.multipleChoice + job.options.questionCounts.fillBlank + job.options.questionCounts.reasoning
+  ? job.options.questionCounts.multipleChoice + job.options.questionCounts.fillBlank + job.options.questionCounts.reasoning + (job.options.questionCounts.coding ?? 0)
   : job.options.questionCount;
 
 function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJob; onOpenTest: (id: string) => void; onManagePlugins: () => void }) {

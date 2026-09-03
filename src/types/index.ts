@@ -24,8 +24,15 @@ export interface ReasoningQuestion {
   explanation: string;
 }
 
-export type QuizQuestion = MultipleChoiceQuestion | FillBlankQuestion | ReasoningQuestion;
-export type QuestionType = 'multiple-choice' | 'fill-blank' | 'reasoning';
+export interface CodingQuestion {
+  type: 'coding';
+  statement: string;
+  referenceAnswer: string;
+  explanation: string;
+}
+
+export type QuizQuestion = MultipleChoiceQuestion | FillBlankQuestion | ReasoningQuestion | CodingQuestion;
+export type QuestionType = 'multiple-choice' | 'fill-blank' | 'reasoning' | 'coding';
 
 export interface AIConversationTurn {
   question: string;
@@ -36,6 +43,7 @@ export interface QuestionCounts {
   multipleChoice: number;
   fillBlank: number;
   reasoning: number;
+  coding: number;
 }
 
 export type GenerationProvider =
