@@ -99,7 +99,7 @@ Open the Vite URL printed in the terminal, normally `http://localhost:5173`.
 
 ### Tailscale access
 
-On macOS, double-click `start-tailscale.command` in Finder. It detects the active Tailscale address, installs npm dependencies when needed, and prints the private URL to open from another device on the same tailnet. Keep its Terminal window open while using Quizzer and press Control-C to stop it.
+On macOS, double-click `start-tailscale.command` in Finder. On Windows, double-click `start-tailscale.cmd`. The cross-platform launcher detects the active Tailscale address, installs npm dependencies when needed, and prints the private URL to open from another device on the same tailnet. Keep its window open while using Quizzer and press Control-C to stop it.
 
 The same launcher is available from a terminal as `npm run tailscale`. It binds Vite to the Tailscale interface rather than exposing Quizzer on every LAN interface.
 

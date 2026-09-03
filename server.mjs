@@ -10,6 +10,9 @@ const maxBodyBytes = 25 * 1024 * 1024;
 const maxStorageBodyBytes = 250 * 1024 * 1024;
 const managedMarkerDirectory = join(process.cwd(), '.quizzer-tools', 'marker');
 const managedMarkerExecutable = join(managedMarkerDirectory, process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'marker_single.exe' : 'marker_single');
+const windowsOllamaExecutable = process.env.LOCALAPPDATA
+  ? join(process.env.LOCALAPPDATA, 'Programs', 'Ollama', 'ollama.exe')
+  : 'ollama.exe';
 const integrationJobs = {
   marker: { state: 'idle', message: '' },
   codex: { state: 'idle', message: '' },
@@ -88,20 +91,29 @@ const managedMarkerExists = async () => {
 
 const markerCommand = async () => await managedMarkerExists() ? managedMarkerExecutable : 'marker_single';
 
+const ollamaCommand = async () => {
+  if (process.platform === 'win32') {
+    try { await access(windowsOllamaExecutable); return windowsOllamaExecutable; }
+    catch { /* Fall through to PATH lookup. */ }
+  }
+  return 'ollama';
+};
+
 const hasSystemMarker = async () => {
   if (systemMarkerDetected === undefined) systemMarkerDetected = await commandWorks('marker_single', ['--help'], 15_000);
   return systemMarkerDetected;
 };
 
 const integrationStatus = async () => {
+  const ollamaExecutable = await ollamaCommand();
   const [codexInstalled, codexConnected, claudeInstalled, claudeConnected, antigravityInstalled, ollamaInstalled, ollamaModels, managedMarker, systemMarker] = await Promise.all([
     commandWorks('codex', ['--version']),
     commandWorks('codex', ['login', 'status']),
     commandWorks('claude', ['--version']),
     commandWorks('claude', ['auth', 'status']),
     commandWorks('agy', ['--version']),
-    commandWorks('ollama', ['--version']),
-    runCommand('ollama', ['list'], { timeout: 8_000 }).catch(() => ''),
+    commandWorks(ollamaExecutable, ['--version']),
+    runCommand(ollamaExecutable, ['list'], { timeout: 8_000 }).catch(() => ''),
     managedMarkerExists(),
     hasSystemMarker(),
   ]);
@@ -193,6 +205,19 @@ const downloadAndRunScript = async (url, args, onOutput) => {
   }
 };
 
+const downloadAndRunPowerShell = async (url, onOutput) => {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Installer download failed (${response.status})`);
+  const directory = await mkdtemp(join(tmpdir(), 'quizzer-installer-'));
+  const path = join(directory, 'install.ps1');
+  try {
+    await writeFile(path, await response.text());
+    return await runCommand('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path], { timeout: 15 * 60_000, onOutput });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+};
+
 const installAgent = (provider, url) => {
   if (integrationJobs[provider].state === 'working') return;
   integrationJobs[provider] = { state: 'working', message: `Downloading the official ${provider === 'claude-agent' ? 'Claude' : 'Antigravity'} installer…` };
@@ -206,7 +231,8 @@ const installEmbeddings = () => {
   integrationJobs.embeddings = { state: 'working', message: 'Preparing the local embedding runtime…' };
   void (async () => {
     const update = output => { integrationJobs.embeddings.message = output || integrationJobs.embeddings.message; };
-    if (!await commandWorks('ollama', ['--version'])) {
+    let executable = await ollamaCommand();
+    if (!await commandWorks(executable, ['--version'])) {
       if (process.platform === 'darwin') {
         try {
           await runCommand('brew', ['install', 'ollama'], { timeout: 15 * 60_000, onOutput: update });
@@ -217,16 +243,18 @@ const installEmbeddings = () => {
         }
       }
       else if (process.platform === 'linux') await downloadAndRunScript('https://ollama.com/install.sh', [], update);
-      else throw new Error('Install Ollama from ollama.com, then retry this button.');
+      else if (process.platform === 'win32') await downloadAndRunPowerShell('https://ollama.com/install.ps1', update);
+      else throw new Error('Automatic Ollama installation is not supported on this operating system.');
+      executable = await ollamaCommand();
+      if (!await commandWorks(executable, ['--version'])) throw new Error('Ollama installation finished, but its command could not be found. Restart Quizzer and retry.');
     }
-    if (!await commandWorks('ollama', ['list'], 5_000)) {
-      const executable = process.platform === 'darwin' ? '/opt/homebrew/bin/ollama' : 'ollama';
+    if (!await commandWorks(executable, ['list'], 5_000)) {
       const server = spawn(executable, ['serve'], { detached: true, stdio: 'ignore', env: process.env });
       server.unref();
       await new Promise(resolve => setTimeout(resolve, 2_000));
     }
     integrationJobs.embeddings.message = 'Downloading all-minilm…';
-    await runCommand('ollama', ['pull', 'all-minilm'], { timeout: 30 * 60_000, onOutput: update });
+    await runCommand(executable, ['pull', 'all-minilm'], { timeout: 30 * 60_000, onOutput: update });
     integrationJobs.embeddings = { state: 'complete', message: 'all-minilm is installed and semantic duplicate filtering is ready.' };
   })().catch(error => {
     integrationJobs.embeddings = { state: 'error', message: error instanceof Error ? error.message : 'Embedding installation failed' };
