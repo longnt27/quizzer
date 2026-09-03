@@ -63,6 +63,14 @@ const renderHighlightedText = (text: string, matches: { start: number; end: numb
     if (lastIndex < text.length) { parts.push(text.substring(lastIndex)); }
     return <>{parts}</>;
 };
+const shuffle = <T,>(items: T[]): T[] => {
+    const result = [...items];
+    for (let index = result.length - 1; index > 0; index--) {
+        const swapWith = Math.floor(Math.random() * (index + 1));
+        [result[index], result[swapWith]] = [result[swapWith], result[index]];
+    }
+    return result;
+};
 interface SearchBarProps { query: string; setQuery: (q: string) => void; onPrev: () => void; onNext: () => void; onClose: () => void; current: number; total: number; inputRef: React.RefObject<HTMLInputElement | null>; }
 const SearchBar: FC<SearchBarProps> = ({ query, setQuery, onPrev, onNext, onClose, current, total, inputRef }) => (
     <div className="quiz-search-bar">
@@ -77,6 +85,11 @@ const SearchBar: FC<SearchBarProps> = ({ query, setQuery, onPrev, onNext, onClos
 
 const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, practice = false, startedAt, initialDraft }) => {
     const [currentIndex, setCurrentIndex] = useState(initialDraft?.currentIndex ?? 0);
+    const [questionOrder] = useState<number[]>(() => {
+        const naturalOrder = test.questions.map((_, index) => index);
+        if (initialDraft?.questionOrder?.length === naturalOrder.length) return initialDraft.questionOrder;
+        return initialDraft ? naturalOrder : shuffle(naturalOrder);
+    });
     const [answers, setAnswers] = useState<Record<number, string[]>>(initialDraft?.answers ?? {});
     const [selfAssessments, setSelfAssessments] = useState<Record<number, boolean>>(initialDraft?.selfAssessments ?? {});
     const [revealedReasoning, setRevealedReasoning] = useState<Record<number, boolean>>(initialDraft?.revealedReasoning ?? {});
@@ -110,15 +123,16 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
     const [isPopconfirmVisible, setIsPopconfirmVisible] = useState(false);
 
 
-    const q = test.questions[currentIndex];
+    const questionIndex = questionOrder[currentIndex] ?? currentIndex;
+    const q = test.questions[questionIndex];
     const questionType = getQuestionType(q);
     const multipleChoiceAnswers = useMemo(() => questionType === 'multiple-choice' && 'answer' in q ? q.answer : [], [q, questionType]);
     const totalCorrect = multipleChoiceAnswers.filter((a) => a.correct).length;
-    const submitted = Boolean(submittedQuestions[currentIndex]);
-    const answered = Boolean(answers[currentIndex]?.[0]?.trim());
-    const currentCorrect = submitted && questionType !== 'reasoning' ? isQuestionCorrect(q, answers[currentIndex]) : false;
-    const reviewComplete = submitted && (questionType !== 'reasoning' || selfAssessments[currentIndex] !== undefined);
-    const choices = useMemo(() => shuffledAnswers[currentIndex] || [], [currentIndex, shuffledAnswers]);
+    const submitted = Boolean(submittedQuestions[questionIndex]);
+    const answered = Boolean(answers[questionIndex]?.[0]?.trim());
+    const currentCorrect = submitted && questionType !== 'reasoning' ? isQuestionCorrect(q, answers[questionIndex]) : false;
+    const reviewComplete = submitted && (questionType !== 'reasoning' || selfAssessments[questionIndex] !== undefined);
+    const choices = useMemo(() => shuffledAnswers[questionIndex] || [], [questionIndex, shuffledAnswers]);
     const answersRef = useRef(answers);
     const selfAssessmentsRef = useRef(selfAssessments);
     useEffect(() => { answersRef.current = answers; }, [answers]);
@@ -133,6 +147,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
             timeLimit,
             practice,
             currentIndex,
+            questionOrder,
             answers,
             selfAssessments,
             revealedReasoning,
@@ -140,7 +155,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
             reviewMarks,
             shuffledAnswers,
         });
-    }, [answers, currentIndex, practice, revealedReasoning, reviewMarks, selfAssessments, shuffledAnswers, submittedQuestions, test.id, timeLimit]);
+    }, [answers, currentIndex, practice, questionOrder, revealedReasoning, reviewMarks, selfAssessments, shuffledAnswers, submittedQuestions, test.id, timeLimit]);
 
     const handleSubmit = useCallback(async () => {
         if (finishedRef.current) return;
@@ -175,7 +190,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
         test.questions.forEach((question, idx) => {
             if (isQuestionCorrect(question, answersRef.current[idx], assessedAnswers[idx])) score++;
         });
-        const attempt = { id: String(Date.now()), time: Date.now(), duration, selectedAnswers: answersRef.current, selfAssessments: assessedAnswers, reasoningJudgments, score };
+        const attempt = { id: String(Date.now()), time: Date.now(), duration, selectedAnswers: answersRef.current, selfAssessments: assessedAnswers, reasoningJudgments, questionOrder, score };
         test.attempts.push(attempt);
         await db.transaction('rw', db.tests, db.testDrafts, async () => {
             await db.tests.put(test);
@@ -183,7 +198,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
         });
         onFinish();
         setJudgeProgress(null);
-    }, [message, onFinish, practice, test]);
+    }, [message, onFinish, practice, questionOrder, test]);
 
     useEffect(() => () => judgeControllerRef.current?.abort(), []);
 
@@ -198,6 +213,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
             timeLimit,
             practice,
             currentIndex,
+            questionOrder,
             answers,
             selfAssessments,
             revealedReasoning,
@@ -245,11 +261,10 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
     }, [timeLimit, handleSubmit]);
 
     useEffect(() => {
-        if (questionType === 'multiple-choice' && !shuffledAnswers[currentIndex]) {
-            const shuffled = [...multipleChoiceAnswers].sort(() => Math.random() - 0.5);
-            setShuffledAnswers((prev) => ({ ...prev, [currentIndex]: shuffled }));
+        if (questionType === 'multiple-choice' && !shuffledAnswers[questionIndex]) {
+            setShuffledAnswers((prev) => ({ ...prev, [questionIndex]: shuffle(multipleChoiceAnswers) }));
         }
-    }, [currentIndex, multipleChoiceAnswers, questionType, shuffledAnswers]);
+    }, [multipleChoiceAnswers, questionIndex, questionType, shuffledAnswers]);
 
     useEffect(() => {
         if (!isSearching || !searchQuery) {
@@ -260,7 +275,8 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
         const results: typeof searchResults = [];
         const queryLower = searchQuery.toLowerCase();
         if (!queryLower) return;
-        test.questions.forEach((question, questionIndex) => {
+        questionOrder.forEach((originalIndex, questionIndex) => {
+            const question = test.questions[originalIndex];
             const statementLower = question.statement.toLowerCase();
             let startIndex = -1;
             while ((startIndex = statementLower.indexOf(queryLower, startIndex + 1)) !== -1) {
@@ -276,7 +292,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
         });
         setSearchResults(results);
         setCurrentResultIndex(results.length > 0 ? 0 : -1);
-    }, [searchQuery, isSearching, test.questions]);
+    }, [questionOrder, searchQuery, isSearching, test.questions]);
 
     const navigateToResult = useCallback((index: number) => {
         if (index < 0 || index >= searchResults.length) return;
@@ -300,21 +316,21 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
     }, [currentResultIndex, searchResults.length, navigateToResult]);
 
     const toggleChoice = useCallback((choice: string) => {
-        if (practice && submittedQuestions[currentIndex]) return;
+        if (practice && submittedQuestions[questionIndex]) return;
         setAnswers((prev) => {
-            const prevChoices = prev[currentIndex] || [];
-            if (totalCorrect === 1) return { ...prev, [currentIndex]: [choice] };
+            const prevChoices = prev[questionIndex] || [];
+            if (totalCorrect === 1) return { ...prev, [questionIndex]: [choice] };
             const exists = prevChoices.includes(choice);
             const updated = exists ? prevChoices.filter((c) => c !== choice) : [...prevChoices, choice];
-            return { ...prev, [currentIndex]: updated };
+            return { ...prev, [questionIndex]: updated };
         });
-    }, [currentIndex, practice, submittedQuestions, totalCorrect]);
+    }, [practice, questionIndex, submittedQuestions, totalCorrect]);
 
     const submitPracticeAnswer = useCallback(() => {
         if (!answered) return;
-        setSubmittedQuestions(previous => ({ ...previous, [currentIndex]: true }));
-        if (questionType === 'reasoning') setRevealedReasoning(previous => ({ ...previous, [currentIndex]: true }));
-    }, [answered, currentIndex, questionType]);
+        setSubmittedQuestions(previous => ({ ...previous, [questionIndex]: true }));
+        if (questionType === 'reasoning') setRevealedReasoning(previous => ({ ...previous, [questionIndex]: true }));
+    }, [answered, questionIndex, questionType]);
 
     useEffect(() => {
         if (!isJumping) return;
@@ -366,7 +382,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                 return;
             }
             if (e.key === '`') {
-                setReviewMarks((prev) => ({ ...prev, [currentIndex]: !prev[currentIndex] }));
+                setReviewMarks((prev) => ({ ...prev, [questionIndex]: !prev[questionIndex] }));
                 return;
             }
             if (e.key.toLowerCase() === 'h' || e.key === 'ArrowLeft') { setCurrentIndex((i) => Math.max(0, i - 1)); }
@@ -376,7 +392,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [answered, isSearching, isJumping, choices, currentIndex, totalCorrect, isPopconfirmVisible, practice, reviewComplete, submitted, submitPracticeAnswer, test.questions.length, toggleChoice]);
+    }, [answered, isSearching, isJumping, choices, currentIndex, questionIndex, totalCorrect, isPopconfirmVisible, practice, reviewComplete, submitted, submitPracticeAnswer, test.questions.length, toggleChoice]);
 
     // CHANGED: Keyboard handler for popconfirm is now more direct
     useEffect(() => {
@@ -453,7 +469,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                 </Row>
                 <Row className="quiz-body">
                     <Row className="quiz-actions" justify="space-between" align="middle">
-                        <Button type={reviewMarks[currentIndex] ? 'primary' : 'default'} onClick={() => setReviewMarks((prev) => ({ ...prev, [currentIndex]: !prev[currentIndex] }))}> {reviewMarks[currentIndex] ? '✓ Marked' : 'Mark for Review'} </Button>
+                        <Button type={reviewMarks[questionIndex] ? 'primary' : 'default'} onClick={() => setReviewMarks((prev) => ({ ...prev, [questionIndex]: !prev[questionIndex] }))}> {reviewMarks[questionIndex] ? '✓ Marked' : 'Mark for Review'} </Button>
                         <Title level={3} style={{ margin: 0 }}>Question {currentIndex + 1}</Title>
 
                         <Popconfirm
@@ -481,7 +497,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                           Choose {totalCorrect} answer{totalCorrect > 1 ? 's' : ''}
                       </Paragraph>
                     {!(practice && submitted) && (totalCorrect === 1 ? (
-                        <Radio.Group value={(answers[currentIndex] && answers[currentIndex][0]) || null} onChange={(e) => setAnswers((prev) => ({ ...prev, [currentIndex]: [e.target.value] }))}>
+                        <Radio.Group value={(answers[questionIndex] && answers[questionIndex][0]) || null} onChange={(e) => setAnswers((prev) => ({ ...prev, [questionIndex]: [e.target.value] }))}>
                             <Space direction="vertical" size="large">
                                 {choices.map((a, idx) => (
                                     <Radio key={idx} value={a.content}>
@@ -492,7 +508,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                             </Space>
                         </Radio.Group>
                     ) : (
-                        <Checkbox.Group value={answers[currentIndex] || []} onChange={(vals) => setAnswers((prev) => ({ ...prev, [currentIndex]: vals as string[] }))}>
+                        <Checkbox.Group value={answers[questionIndex] || []} onChange={(vals) => setAnswers((prev) => ({ ...prev, [questionIndex]: vals as string[] }))}>
                             <Space direction="vertical" size="large">
                                 {choices.map((a, idx) => (
                                     <Checkbox key={idx} value={a.content}>
@@ -506,8 +522,8 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                     {questionType === 'fill-blank' && 'acceptedAnswers' in q && (
                       <div className="written-answer-block">
                         <Typography.Text strong>Your answer</Typography.Text>
-                        {practice && submitted ? <Alert message="Your answer" description={answers[currentIndex]?.[0] || '(No answer)'} /> : <Input size="large" value={answers[currentIndex]?.[0] ?? ''}
-                          onChange={event => setAnswers(previous => ({ ...previous, [currentIndex]: [event.target.value] }))}
+                        {practice && submitted ? <Alert message="Your answer" description={answers[questionIndex]?.[0] || '(No answer)'} /> : <Input size="large" value={answers[questionIndex]?.[0] ?? ''}
+                          onChange={event => setAnswers(previous => ({ ...previous, [questionIndex]: [event.target.value] }))}
                           placeholder="Type the missing word or phrase" autoComplete="off" />}
                         <Typography.Text type="secondary">Capitalization, punctuation, and extra spaces are ignored. Equivalent accepted wording is checked automatically.</Typography.Text>
                       </div>
@@ -515,22 +531,22 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                     {questionType === 'reasoning' && 'referenceAnswer' in q && (
                       <div className="written-answer-block">
                         <Typography.Text strong>Your reasoning</Typography.Text>
-                        {practice && submitted ? <Alert message="Your answer" description={answers[currentIndex]?.[0] || '(No answer)'} /> : <Input.TextArea rows={7} value={answers[currentIndex]?.[0] ?? ''}
+                        {practice && submitted ? <Alert message="Your answer" description={answers[questionIndex]?.[0] || '(No answer)'} /> : <Input.TextArea rows={7} value={answers[questionIndex]?.[0] ?? ''}
                           onChange={event => {
-                            setAnswers(previous => ({ ...previous, [currentIndex]: [event.target.value] }));
+                            setAnswers(previous => ({ ...previous, [questionIndex]: [event.target.value] }));
                             setSelfAssessments(previous => {
                               const next = { ...previous };
-                              delete next[currentIndex];
+                              delete next[questionIndex];
                               return next;
                             });
                           }}
                           placeholder={practice ? 'Explain your reasoning. Press Shift+Enter for a new line.' : 'Explain your reasoning in your own words'} />}
-                        {practice && revealedReasoning[currentIndex] ? <>
+                        {practice && revealedReasoning[questionIndex] ? <>
                           <Alert type="info" showIcon message="Reference answer" description={<div>{q.referenceAnswer}<br /><Typography.Text type="secondary">{q.explanation}</Typography.Text></div>} />
                           <Typography.Text strong>Does your answer cover the essential reasoning?</Typography.Text>
                           <Space wrap>
-                            <Button type={selfAssessments[currentIndex] === true ? 'primary' : 'default'} onClick={() => setSelfAssessments(previous => ({ ...previous, [currentIndex]: true }))}>Yes, count it correct</Button>
-                            <Button danger type={selfAssessments[currentIndex] === false ? 'primary' : 'default'} onClick={() => setSelfAssessments(previous => ({ ...previous, [currentIndex]: false }))}>No, needs work</Button>
+                            <Button type={selfAssessments[questionIndex] === true ? 'primary' : 'default'} onClick={() => setSelfAssessments(previous => ({ ...previous, [questionIndex]: true }))}>Yes, count it correct</Button>
+                            <Button danger type={selfAssessments[questionIndex] === false ? 'primary' : 'default'} onClick={() => setSelfAssessments(previous => ({ ...previous, [questionIndex]: false }))}>No, needs work</Button>
                           </Space>
                         </> : null}
                       </div>
@@ -539,7 +555,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                       <div className="practice-feedback">
                         <Alert type={currentCorrect ? 'success' : 'error'} showIcon message={currentCorrect ? 'Correct' : 'Not quite'} />
                         {choices.map((choice, index) => {
-                          const selectedChoice = answers[currentIndex]?.includes(choice.content);
+                          const selectedChoice = answers[questionIndex]?.includes(choice.content);
                           return <div className={`practice-choice-feedback ${choice.correct ? 'is-correct' : selectedChoice ? 'is-incorrect' : ''}`} key={index}>
                             <Space wrap><Typography.Text strong>{index + 1}. {choice.content}</Typography.Text>{choice.correct && <Tag color="success">Correct answer</Tag>}{selectedChoice && <Tag color={choice.correct ? 'success' : 'error'}>Your choice</Tag>}</Space>
                             <Typography.Paragraph type="secondary" style={{ margin: '6px 0 0' }}>{choice.explanation}</Typography.Paragraph>
@@ -554,7 +570,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                         <Typography.Paragraph type="secondary">{q.explanation}</Typography.Paragraph>
                       </div>
                     )}
-                    {practice && submitted && <Button icon={<RobotOutlined />} onClick={() => setAskQuestionIndex(currentIndex)}>
+                    {practice && submitted && <Button icon={<RobotOutlined />} onClick={() => setAskQuestionIndex(questionIndex)}>
                       Ask AI about this answer
                     </Button>}
                     {practice && !submitted && answered && <div className="practice-check-row">
@@ -571,17 +587,18 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
             <Col flex="1" className="quiz-index">
                 <Title level={5}>All Questions</Title>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, 40px)', gap: 6 }}>
-                    {test.questions.map((question, idx) => {
+                    {questionOrder.map((originalIndex, idx) => {
+                        const question = test.questions[originalIndex];
                         const answered = getQuestionType(question) === 'reasoning'
-                          ? Boolean(answers[idx]?.[0]?.trim()) && (!practice || selfAssessments[idx] !== undefined)
-                          : Boolean(answers[idx]?.[0]?.trim());
-                        const marked = reviewMarks[idx];
+                          ? Boolean(answers[originalIndex]?.[0]?.trim()) && (!practice || selfAssessments[originalIndex] !== undefined)
+                          : Boolean(answers[originalIndex]?.[0]?.trim());
+                        const marked = reviewMarks[originalIndex];
                         const isCurrent = idx === currentIndex;
                         const hasSearchResults = isSearching && searchQuery && searchResults.some(r => r.questionIndex === idx);
                         const bg = marked ? 'gold' : answered ? '#007aff' : 'var(--muted)';
                         const border = isCurrent ? '2px solid var(--strong-border)' : hasSearchResults ? '2px solid #ffd700' : 'none';
                         return (
-                            <div key={idx} onClick={() => setCurrentIndex(idx)} style={{ width: 40, height: 40, background: bg, color: answered || marked ? '#fff' : '#000', textAlign: 'center', display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: 8, fontWeight: 500, cursor: 'pointer', border: border, boxSizing: 'border-box' }}>
+                            <div key={originalIndex} onClick={() => setCurrentIndex(idx)} style={{ width: 40, height: 40, background: bg, color: answered || marked ? '#fff' : '#000', textAlign: 'center', display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: 8, fontWeight: 500, cursor: 'pointer', border: border, boxSizing: 'border-box' }}>
                                 {idx + 1}
                             </div>
                         );
@@ -600,7 +617,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
             </Modal>
             {askQuestionIndex !== null && <PracticeAnswerAskModal
               question={test.questions[askQuestionIndex]}
-              questionNumber={askQuestionIndex + 1}
+              questionNumber={questionOrder.indexOf(askQuestionIndex) + 1}
               userAnswers={answers[askQuestionIndex] ?? []}
               selfAssessment={selfAssessments[askQuestionIndex]}
               onClose={() => setAskQuestionIndex(null)} />}

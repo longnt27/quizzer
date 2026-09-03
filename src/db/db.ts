@@ -48,6 +48,7 @@ export interface StoredTest {
     selectedAnswers: Record<number, string[]>;
     selfAssessments?: Record<number, boolean>;
     reasoningJudgments?: Record<number, ReasoningJudgment>;
+    questionOrder?: number[];
     score: number;
   }[];
   fileContent?: string;
@@ -76,6 +77,7 @@ export interface StoredTestDraft {
   timeLimit?: number;
   practice: boolean;
   currentIndex: number;
+  questionOrder?: number[];
   answers: Record<number, string[]>;
   selfAssessments: Record<number, boolean>;
   revealedReasoning: Record<number, boolean>;
