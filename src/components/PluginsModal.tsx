@@ -79,6 +79,7 @@ export default function PluginsModal({ onClose }: Props) {
   };
 
   const markerWorking = status?.marker.job.state === 'working';
+  const embeddingsWorking = status?.embeddings?.job.state === 'working';
 
   return (
     <Modal open title={<Space><ApiOutlined /> Plugins & models</Space>} width={800} onCancel={onClose} onOk={save} okText="Save settings">
@@ -105,13 +106,13 @@ export default function PluginsModal({ onClose }: Props) {
         <section className="plugin-card">
           <div className="plugin-card-heading">
             <div><Typography.Title level={5}>Semantic duplicate filter</Typography.Title><Typography.Text type="secondary">Uses the lightweight all-minilm model locally. Exact and token-based filtering remain active without it.</Typography.Text></div>
-            {statusTag(Boolean(status?.embeddings.installed), status?.embeddings.job.state === 'working', 'Installed')}
+            {statusTag(Boolean(status?.embeddings?.installed), Boolean(embeddingsWorking), 'Installed')}
           </div>
-          <Button icon={<CloudDownloadOutlined />} loading={status?.embeddings.job.state === 'working'} disabled={status?.embeddings.installed}
+          <Button icon={<CloudDownloadOutlined />} loading={embeddingsWorking} disabled={status?.embeddings?.installed || embeddingsWorking}
             onClick={() => void runAction('/api/integrations/embeddings/install')}>
-            {status?.embeddings.installed ? 'all-minilm ready' : status?.embeddings.runtimeInstalled ? 'Install all-minilm' : 'Install Ollama + all-minilm'}
+            {status?.embeddings?.installed ? 'all-minilm ready' : status?.embeddings?.runtimeInstalled ? 'Install all-minilm' : 'Install Ollama + all-minilm'}
           </Button>
-          {status?.embeddings.job.message && status.embeddings.job.state !== 'idle' && <pre className="plugin-output">{status.embeddings.job.message}</pre>}
+          {status?.embeddings?.job.message && status.embeddings.job.state !== 'idle' && <pre className="plugin-output">{status.embeddings.job.message}</pre>}
         </section>
 
         <Divider orientation="left" plain>Signed-in agents</Divider>

@@ -2,22 +2,12 @@ import { db, type StoredGenerationJob } from '../db/db';
 import type { GenerationOptions } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { generateQuiz, getGenerationErrorCode } from './api';
+import { getGenerationConcurrency } from './generationSettings';
 
 const workerId = uuidv4();
 const active = new Map<string, AbortController>();
-const concurrencyKey = 'quizzer.generationConcurrency';
 let recovering: Promise<void> | null = null;
 let pumping = false;
-
-export const getGenerationConcurrency = () => {
-  const stored = Number(localStorage.getItem(concurrencyKey) ?? 5);
-  return Number.isFinite(stored) ? Math.max(1, Math.min(10, Math.round(stored))) : 5;
-};
-
-export const setGenerationConcurrency = (value: number) => {
-  localStorage.setItem(concurrencyKey, String(Math.max(1, Math.min(10, Math.round(value)))));
-  void pumpGenerationQueue();
-};
 
 const recoverInterruptedJobs = () => {
   if (!recovering) recovering = db.generationJobs.where('status').equals('running').toArray().then(async jobs => {

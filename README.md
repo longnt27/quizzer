@@ -35,6 +35,7 @@ Quizzer is a local-first study application that turns a reusable document librar
 - Live generation progress by test, question type, and retry round
 - Persistent background generation queue, usable while you take completed tests
 - Configurable 1–10 concurrent test instances
+- Configurable 5–25 questions per provider request, defaulting to 20
 - Mid-generation cancellation that stops all active provider processes
 - Provider failover that preserves accepted questions after quota, authentication, or service failures
 - Automatic recovery from reloads and network interruptions at the latest verified checkpoint
@@ -153,9 +154,11 @@ Scanned or visually complex documents can still require manual review. Always in
 8. Select a provider and optional provider-specific model.
 9. Queue generation and continue using Quizzer.
 
-The creation dialog closes immediately after saving the job. Each instance is assigned to a different test and makes one provider request at a time. Within that test, each question type is generated sequentially in exact batches of at most ten. For example, 15 missing questions become requests of ten and five; the second prompt can exclude everything accepted from the first. Other instances work on other tests rather than generating overlapping candidates for the same test.
+The creation dialog closes immediately after saving the job. Each instance is assigned to a different test and makes one provider request at a time. Within that test, each question type is generated sequentially using the configured batch size. The default is 20, so 45 missing questions become requests of 20, 20, and 5; each later prompt can exclude everything accepted from earlier batches. Other instances work on other tests rather than generating overlapping candidates for the same test.
 
 Open **Generation queue** to choose between 1 and 10 concurrent test instances; the default is 5. Lower values reduce simultaneous provider usage and memory pressure. Higher values complete multi-document queues faster. Reducing the value does not abort requests already running—the new limit takes effect as they finish.
+
+The same panel controls batch size from 5 to 25 questions, defaulting to 20. Larger batches reduce request overhead, while smaller batches create more frequent recovery checkpoints and reduce the amount of work lost when a provider returns malformed output. Refill requests always ask for the exact remaining count when it is smaller than the configured batch size.
 
 Every candidate is independently validated and deduplicated before the next batch begins. Rejected candidates leave only their missing slots for the next bounded refill round. If a target cannot be reached after five rounds, Quizzer saves the valid partial quiz instead of retrying forever.
 

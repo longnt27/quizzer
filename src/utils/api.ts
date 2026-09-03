@@ -1,5 +1,6 @@
 import type { GenerationOptions, GenerationProvider, QuestionCounts, QuestionType, QuizQuestion } from '../types';
 import { getApiKey } from './providerSettings';
+import { getGenerationBatchSize } from './generationSettings';
 
 export interface GenerationProgress {
   accepted: number;
@@ -284,7 +285,7 @@ export async function generateQuiz(
     let round = (rounds[type] ?? 0) + 1;
     while (round <= maxRounds && typeAccepted < typeTarget) {
       const missing = typeTarget - typeAccepted;
-      const requested = Math.min(10, missing);
+      const requested = Math.min(getGenerationBatchSize(), missing);
       const parallelRequests = 1;
       onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'requesting', provider: activeOptions.provider, parallelRequests });
       let candidates: unknown[];

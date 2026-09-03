@@ -5,9 +5,11 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type StoredGenerationJob } from '../db/db';
 import type { GenerationProvider } from '../types';
 import {
-  cancelGenerationJob, getGenerationConcurrency, removeGenerationJob, resumeGenerationJob,
-  retryGenerationJob, setGenerationConcurrency,
+  cancelGenerationJob, pumpGenerationQueue, removeGenerationJob, resumeGenerationJob, retryGenerationJob,
 } from '../utils/generationQueue';
+import {
+  getGenerationBatchSize, getGenerationConcurrency, setGenerationBatchSize, setGenerationConcurrency,
+} from '../utils/generationSettings';
 import { getApiKey, getProviderDefinition, getProviderSettings, PROVIDERS } from '../utils/providerSettings';
 import { getMessageApi } from '../utils/messageProvider';
 
@@ -87,6 +89,7 @@ interface CenterProps { open: boolean; onClose: () => void; onOpenTest: (id: str
 export function GenerationCenter({ open, onClose, onOpenTest, onManagePlugins }: CenterProps) {
   const jobs = useLiveQuery(() => db.generationJobs.orderBy('createdAt').reverse().toArray(), []) ?? [];
   const [instances, setInstances] = useState(getGenerationConcurrency);
+  const [batchSize, setBatchSize] = useState(getGenerationBatchSize);
   const clearFinished = async () => db.generationJobs.bulkDelete(jobs.filter(job => terminalStatuses.has(job.status)).map(job => job.id));
   return <Modal open={open} width={780} title="Generation queue" footer={null} onCancel={onClose}>
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -95,7 +98,12 @@ export function GenerationCenter({ open, onClose, onOpenTest, onManagePlugins }:
       <div className="generation-concurrency">
         <div><Typography.Text strong>Concurrent test instances</Typography.Text><br /><Typography.Text type="secondary">One provider request per test. Changes apply as running requests finish.</Typography.Text></div>
         <Slider min={1} max={10} value={instances} marks={{ 1: '1', 5: '5', 10: '10' }} tooltip={{ formatter: value => `${value} instance${value === 1 ? '' : 's'}` }}
-          onChange={value => { setInstances(value); setGenerationConcurrency(value); }} />
+          onChange={value => { setInstances(value); setGenerationConcurrency(value); void pumpGenerationQueue(); }} />
+      </div>
+      <div className="generation-concurrency">
+        <div><Typography.Text strong>Questions per request</Typography.Text><br /><Typography.Text type="secondary">Larger batches are faster; smaller batches checkpoint more often.</Typography.Text></div>
+        <Slider min={5} max={25} value={batchSize} marks={{ 5: '5', 10: '10', 20: '20', 25: '25' }} tooltip={{ formatter: value => `${value} questions` }}
+          onChange={value => { setBatchSize(value); setGenerationBatchSize(value); }} />
       </div>
       {!!jobs.some(job => terminalStatuses.has(job.status)) && <Button size="small" onClick={() => void clearFinished()}>Clear finished</Button>}
       <List locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No generation jobs" /> }} dataSource={jobs}
