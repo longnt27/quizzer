@@ -46,14 +46,17 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
           { key: 'tests', label: 'Tests', icon: <FormOutlined /> },
           { key: 'documents', label: 'Documents', icon: <FileTextOutlined /> },
         ]} />
-      <div style={{ padding: '0 12px 12px' }}>
-        <Button block type="primary" icon={<PlusOutlined />} onClick={tab === 'tests' ? onAddTest : onAddDocument}>
+      <div className="sidebar-controls">
+        <Button block type="primary" icon={<PlusOutlined />} onClick={() => {
+          if (tab === 'tests') onAddTest();
+          else onAddDocument();
+        }}>
           {tab === 'tests' ? 'Create test' : 'Add documents'}
         </Button>
         <Input allowClear prefix={<SearchOutlined />} value={query} onChange={event => setQuery(event.target.value)}
           placeholder={tab === 'tests' ? 'Find tests' : 'Find by name or tag'} style={{ marginTop: 10 }} />
       </div>
-      <div style={{ overflowY: 'auto', height: 'calc(100vh - 190px)', padding: '0 8px' }}>
+      <div className="sidebar-list">
         {tab === 'tests' ? (
           <List locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No tests yet" /> }} dataSource={visibleTests}
             renderItem={test => (

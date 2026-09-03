@@ -4,6 +4,16 @@ Quizzer is a local-first study application that turns a reusable document librar
 
 > **Project status:** active development. Local data and the generation pipeline are usable, but this project has not yet published a stable release or completed a security audit.
 
+## Screenshots
+
+| Document library | Quiz creation |
+| --- | --- |
+| ![Document library with searchable tags and extracted content](docs/screenshots/document-library-light.jpg) | ![Dark-mode quiz creation from selected documents](docs/screenshots/quiz-creation-dark.jpg) |
+
+| Mobile quiz | Mobile results |
+| --- | --- |
+| ![Responsive quiz-taking interface on mobile](docs/screenshots/mobile-quiz-dark.jpg) | ![Responsive test summary on mobile](docs/screenshots/mobile-summary-dark.jpg) |
+
 ## Features
 
 - Local document library with PDF, Markdown, and text uploads

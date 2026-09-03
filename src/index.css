@@ -39,7 +39,8 @@ button, input, textarea, select { font: inherit; }
 .app-main { flex: 1; min-width: 0; height: 100%; overflow: auto; background: var(--page); }
 .desktop-sidebar { background: var(--surface) !important; border-right: 1px solid var(--border); overflow: hidden; }
 .sidebar-content { height: 100%; display: flex; flex-direction: column; background: var(--surface); }
-.sidebar-content > div:nth-of-type(2) { flex: 1; min-height: 0; height: auto !important; }
+.sidebar-controls { padding: 0 12px 12px; flex: 0 0 auto; }
+.sidebar-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 8px; }
 .theme-toggle { margin: 8px 12px 14px; flex: 0 0 auto; }
 
 .mobile-header {

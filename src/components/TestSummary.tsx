@@ -15,7 +15,6 @@ import { generateQuiz } from '../utils/api';
 import { QuizQuestion, TestSession } from '../types';
 import JsonFixerModal from './JsonFixerModal';
 import { getMessageApi } from '../utils/messageProvider';
-import Item from 'antd/es/list/Item';
 
 const { Title, Paragraph, Text } = Typography;
 const shuffle = <T,>(items: T[]): T[] => {
@@ -314,20 +313,21 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
                     {test.attempts.length === 0 ? (
                         <Empty description="No attempts" />
                     ) : (
-                        <Timeline style={{ marginTop: 12 }}>
-                            {test.attempts
+                        <Timeline style={{ marginTop: 12 }} items={test.attempts
                                 .slice()
                                 .reverse()
-                                .map((attempt) => (
-                                    <Item key={attempt.id}>
+                                .map((attempt) => ({
+                                  key: attempt.id,
+                                  children: (
+                                    <div>
                                         <Text style={{ fontWeight: 800 }}>{formatDate(attempt.time)}</Text>
                                         <Paragraph style={{ margin: '4px 20px' }}>
                                             Score: {attempt.score}/{test.questions.length} <br />
                                             Time: {Math.floor(attempt.duration / 60)}m {attempt.duration % 60}s
                                         </Paragraph>
-                                    </Item>
-                                ))}
-                        </Timeline>
+                                    </div>
+                                  ),
+                                }))} />
                     )}
                 </div>
 
