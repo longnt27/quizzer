@@ -1,4 +1,5 @@
 import type { GenerationOptions, QuizQuestion } from '../types';
+import { getGeminiApiKey } from './providerSettings';
 
 export interface GenerationProgress {
   accepted: number;
@@ -106,7 +107,14 @@ const requestCandidates = async (prompt: string, options: GenerationOptions, sig
   const response = await fetch('/api/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ provider: options.provider, model: options.model, prompt, schema: questionSchema, images }),
+    body: JSON.stringify({
+      provider: options.provider,
+      model: options.model,
+      apiKey: options.provider === 'gemini' ? getGeminiApiKey() : undefined,
+      prompt,
+      schema: questionSchema,
+      images,
+    }),
     signal,
   });
   const payload = await response.json().catch(() => ({})) as { output?: string; error?: string };

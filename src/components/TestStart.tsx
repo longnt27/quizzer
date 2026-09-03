@@ -14,13 +14,13 @@ const TestStart: React.FC<Props> = ({ test, onStart }) => {
     const [durationMinutes, setDurationMinutes] = useState(15); // default to 15 mins
 
     return (
-        <div
+        <div className="test-start"
             style={{
                 width: '100%',
                 height: '100%',
                 margin: '0 auto',
                 padding: '64px 24px',
-                background: '#fff',
+                background: 'var(--surface)',
                 borderRadius: 16,
                 boxShadow: '0 8px 24px rgba(0,0,0,0.06)',
                 textAlign: 'center',
@@ -81,4 +81,3 @@ const TestStart: React.FC<Props> = ({ test, onStart }) => {
 };
 
 export default TestStart;
-

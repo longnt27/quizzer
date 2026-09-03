@@ -29,7 +29,7 @@ export default function DocumentView({ documentId }: Props) {
   };
 
   return (
-    <div style={{ padding: 32, maxWidth: 1100, margin: '0 auto' }}>
+    <div className="document-view">
       <Typography.Title level={2}>{document.name}</Typography.Title>
       <Space wrap style={{ marginBottom: 16 }}>
         <Tag>{document.mimeType || 'document'}</Tag>

@@ -6,6 +6,7 @@ import { db, type StoredDocument } from '../db/db';
 import { generateQuiz, type GenerationProgress } from '../utils/api';
 import type { GenerationOptions } from '../types';
 import { getMessageApi } from '../utils/messageProvider';
+import { getGeminiApiKey, setGeminiApiKey } from '../utils/providerSettings';
 
 interface Props { onClose: () => void; onCreated: (id: string) => void; }
 type CreationMode = 'combined' | 'separate';
@@ -17,6 +18,7 @@ export default function AddTestModal({ onClose, onCreated }: Props) {
   const [name, setName] = useState('Combined quiz');
   const [provider, setProvider] = useState<GenerationOptions['provider']>('codex');
   const [model, setModel] = useState('');
+  const [geminiKey, setGeminiKeyState] = useState(getGeminiApiKey);
   const [questionCount, setQuestionCount] = useState(20);
   const [query, setQuery] = useState('');
   const [working, setWorking] = useState(false);
@@ -61,6 +63,11 @@ export default function AddTestModal({ onClose, onCreated }: Props) {
 
   const create = async () => {
     if (!selected.length) return;
+    if (provider === 'gemini' && !geminiKey.trim()) {
+      message.error('Enter a Gemini API key');
+      return;
+    }
+    if (provider === 'gemini') setGeminiApiKey(geminiKey.trim());
     setWorking(true);
     setProgress(null);
     abortRef.current = new AbortController();
@@ -109,6 +116,10 @@ export default function AddTestModal({ onClose, onCreated }: Props) {
             <Typography.Text>Questions</Typography.Text>
             <InputNumber min={1} max={200} value={questionCount} onChange={value => setQuestionCount(value ?? 20)} />
           </Space>
+          {provider === 'gemini' && (
+            <Input.Password value={geminiKey} onChange={event => setGeminiKeyState(event.target.value)}
+              placeholder="Gemini API key (kept only for this browser tab)" autoComplete="off" />
+          )}
           <Input.Search value={query} onChange={event => setQuery(event.target.value)} placeholder="Filter documents by name or tag" />
           <List bordered size="small" style={{ maxHeight: 290, overflowY: 'auto' }} dataSource={visible}
             renderItem={document => (

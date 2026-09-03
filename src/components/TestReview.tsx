@@ -55,7 +55,7 @@ interface SearchBarProps {
     inputRef: React.RefObject<HTMLInputElement | null>;
 }
 const SearchBar: FC<SearchBarProps> = ({ query, setQuery, onPrev, onNext, onClose, current, total, inputRef }) => (
-    <div style={{
+    <div className="quiz-search-bar" style={{
         position: 'fixed',
         bottom: 0,
         left: 0,
@@ -63,7 +63,6 @@ const SearchBar: FC<SearchBarProps> = ({ query, setQuery, onPrev, onNext, onClos
         padding: '8px 16px',
         display: 'flex',
         alignItems: 'center',
-        background: 'white',
         gap: '16px',
         zIndex: 1000,
         boxShadow: '0 -2px 10px rgba(0,0,0,0.2)'
@@ -74,9 +73,8 @@ const SearchBar: FC<SearchBarProps> = ({ query, setQuery, onPrev, onNext, onClos
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search all questions..."
-            style={{ padding: '6px 10px', borderRadius: '4px', border: '1px solid #ddd', background: '#f0f2f5' }}
         />
-        <span style={{ textAlign: 'center', fontSize: '14px', color: '#000' }}>
+        <span>
             {query && total > 0 ? `${current + 1} of ${total}` : query ? 'Not found' : ''}
         </span>
         <Button size="middle" onClick={onPrev} disabled={total === 0}>Previous (N)</Button>
@@ -296,8 +294,8 @@ const TestReview: React.FC<Props> = ({ test, onBack }) => {
     };
 
     return (
-        <Row style={{height: '100vh', background: '#fafafa' }}>
-            <Col flex="3" style={{ padding: '64px 48px', background: '#fff', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        <Row className="quiz-layout review-layout">
+            <Col flex="3" className="quiz-main review-main">
                 <Row justify="space-between" align="middle" style={{ marginBottom: 24 }}>
                     <Title level={3} style={{ margin: 0 }}>
                         Question {currentIndex + 1}
@@ -318,7 +316,7 @@ const TestReview: React.FC<Props> = ({ test, onBack }) => {
                     {q.answer.map((a, idx) => (
                         <div key={idx}>
                             {getAnswerTag(a)}
-                            <div style={{ marginLeft: 8, fontStyle: 'italic', color: '#888' }}>
+                            <div style={{ marginLeft: 8, fontStyle: 'italic', color: 'var(--text-muted)' }}>
                                 {a.explanation}
                             </div>
                         </div>
@@ -336,7 +334,7 @@ const TestReview: React.FC<Props> = ({ test, onBack }) => {
                     </Space>
                 </div>
             </Col>
-            <Col flex="1" style={{ background: '#f5f5f7', padding: 32, borderLeft: '1px solid #ddd', overflowY: 'auto' }}>
+            <Col flex="1" className="quiz-index review-index">
                 <Title level={5}>All Questions</Title>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, 40px)', gap: 6 }}>
                     {test.questions.map((_, idx) => {
@@ -345,7 +343,7 @@ const TestReview: React.FC<Props> = ({ test, onBack }) => {
                         const correctMatch = JSON.stringify(user.sort()) === JSON.stringify(correct);
                         // NEW: Add indicator for questions with search results
                         const hasSearchResults = isSearching && searchQuery && searchResults.some(r => r.questionIndex === idx);
-                        const border = currentIndex === idx ? '2px solid #000' : hasSearchResults ? '2px solid #ffd700' : '2px solid transparent';
+                        const border = currentIndex === idx ? '2px solid var(--strong-border)' : hasSearchResults ? '2px solid #ffd700' : '2px solid transparent';
 
                         return (
                             <div

@@ -184,7 +184,7 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
         };
 
         return (
-            <div
+            <div className="test-summary"
                 style={{
                     display: 'flex',
                     flexDirection: 'row',
@@ -196,12 +196,12 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
                 }}
             >
                 {/* Left: Summary Card */}
-                <div style={{ flex: 1, minWidth: 300, display: 'flex', justifyContent: 'center' }}>
+                <div className="summary-main">
                     <Card
+                        className="summary-card"
                         style={{
                             borderRadius: 12,
                             boxShadow: '0 1px 6px rgba(0,0,0,0.08)',
-                            height: '420px',
                             display: 'flex',
                             flexDirection: 'column',
                         }}
@@ -219,8 +219,9 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
                         <Divider style={{ margin: '16px 0' }} />
 
                         {latest ? (
-                            <div style={{ marginBottom: 24, width: 600, marginInline: 'auto' }}>
+                            <div className="summary-metrics-wrap">
                                 <div
+                                    className="summary-metrics"
                                     style={{
                                         display: 'grid',
                                         gridTemplateColumns: '1fr 1fr',
@@ -299,13 +300,13 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
                 </div>
 
                 {/* Right: Timeline */}
-                <div
+                <div className="summary-history"
                     style={{
                         width: 280,
                         maxHeight: '100%',
                         overflowY: 'auto',
                         paddingRight: 8,
-                        borderLeft: '1px solid #f0f0f0',
+                        borderLeft: '1px solid var(--border)',
                     }}
                 >
 

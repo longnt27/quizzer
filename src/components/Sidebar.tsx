@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button, Empty, Input, Layout, List, Popconfirm, Space, Tabs, Tag, Typography } from 'antd';
-import { DeleteOutlined, FileTextOutlined, FormOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
+import { DeleteOutlined, FileTextOutlined, FormOutlined, MoonOutlined, PlusOutlined, SearchOutlined, SunOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { getMessageApi } from '../utils/messageProvider';
@@ -12,9 +12,12 @@ interface Props {
   onSelect: (selection: LibrarySelection) => void;
   onAddTest: () => void;
   onAddDocument: () => void;
+  dark: boolean;
+  onToggleTheme: () => void;
+  embedded?: boolean;
 }
 
-export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument }: Props) {
+export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument, dark, onToggleTheme, embedded = false }: Props) {
   const tests = useLiveQuery(() => db.tests.orderBy('createdAt').reverse().toArray(), []) ?? [];
   const documents = useLiveQuery(() => db.documents.orderBy('createdAt').reverse().toArray(), []) ?? [];
   const [tab, setTab] = useState<'tests' | 'documents'>(selection?.kind === 'document' ? 'documents' : 'tests');
@@ -35,8 +38,8 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument 
     message.success(`${kind === 'test' ? 'Test' : 'Document'} deleted`);
   };
 
-  return (
-    <Layout.Sider width={290} theme="light" style={{ borderRight: '1px solid #eee', overflow: 'hidden' }}>
+  const content = (
+    <div className="sidebar-content">
       <Typography.Title level={4} style={{ textAlign: 'center', margin: '22px 0 10px' }}>Quizzer</Typography.Title>
       <Tabs activeKey={tab} onChange={key => { setTab(key as typeof tab); setQuery(''); }} centered
         items={[
@@ -55,7 +58,7 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument 
           <List locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No tests yet" /> }} dataSource={visibleTests}
             renderItem={test => (
               <List.Item onClick={() => onSelect({ kind: 'test', id: test.id })}
-                style={{ cursor: 'pointer', padding: 10, borderRadius: 8, background: selection?.kind === 'test' && selection.id === test.id ? '#e6f4ff' : undefined }}
+                style={{ cursor: 'pointer', padding: 10, borderRadius: 8, background: selection?.kind === 'test' && selection.id === test.id ? 'var(--selected)' : undefined }}
                 actions={[<Popconfirm title="Delete this test?" onConfirm={() => remove('test', test.id)}><Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={event => event.stopPropagation()} /></Popconfirm>]}>
                 <List.Item.Meta title={test.name} description={`${test.questions.length} questions · ${test.attempts.length} attempts`} />
               </List.Item>
@@ -64,13 +67,17 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument 
           <List locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No documents yet" /> }} dataSource={visibleDocuments}
             renderItem={document => (
               <List.Item onClick={() => onSelect({ kind: 'document', id: document.id })}
-                style={{ cursor: 'pointer', padding: 10, borderRadius: 8, background: selection?.kind === 'document' && selection.id === document.id ? '#e6f4ff' : undefined }}
+                style={{ cursor: 'pointer', padding: 10, borderRadius: 8, background: selection?.kind === 'document' && selection.id === document.id ? 'var(--selected)' : undefined }}
                 actions={[<Popconfirm title="Delete this document? Existing quizzes will remain available." onConfirm={() => remove('document', document.id)}><Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={event => event.stopPropagation()} /></Popconfirm>]}>
                 <List.Item.Meta title={document.name} description={<Space size={[2, 2]} wrap>{document.tags.length ? document.tags.map(tag => <Tag key={tag}>{tag}</Tag>) : <Typography.Text type="secondary">No tags</Typography.Text>}</Space>} />
               </List.Item>
             )} />
         )}
       </div>
-    </Layout.Sider>
+      <Button type="text" className="theme-toggle" icon={dark ? <SunOutlined /> : <MoonOutlined />} onClick={onToggleTheme}>
+        {dark ? 'Light mode' : 'Dark mode'}
+      </Button>
+    </div>
   );
+  return embedded ? content : <Layout.Sider width={290} theme={dark ? 'dark' : 'light'} className="desktop-sidebar">{content}</Layout.Sider>;
 }

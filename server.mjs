@@ -66,9 +66,8 @@ const runCodex = async ({ prompt, schema, model, images = [] }) => {
   }
 };
 
-const runGemini = async ({ prompt, schema, model, images = [] }) => {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('GEMINI_API_KEY is not configured in the local service');
+const runGemini = async ({ prompt, schema, model, images = [], apiKey }) => {
+  if (typeof apiKey !== 'string' || !apiKey.trim()) throw new Error('Enter a Gemini API key in Quizzer');
   const modelName = model || 'gemini-2.5-flash';
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const response = await fetch(endpoint, {
@@ -136,7 +135,7 @@ createServer(async (request, response) => {
     return response.end();
   }
   if (request.method === 'GET' && request.url === '/api/health') {
-    return send(response, 200, { ok: true, providers: { codex: true, gemini: Boolean(process.env.GEMINI_API_KEY) } });
+    return send(response, 200, { ok: true, providers: { codex: true, gemini: true } });
   }
   if (request.method === 'POST' && request.url === '/api/extract') {
     try { return send(response, 200, await runMarker(await readJson(request))); }

@@ -7,6 +7,8 @@ Quizzer is a local-first study application that turns a reusable document librar
 ## Features
 
 - Local document library with PDF, Markdown, and text uploads
+- Responsive mobile navigation and quiz layouts
+- Persistent light and dark themes
 - Tags and tag-aware document search
 - Extracted-content viewer
 - Separate quiz generation for each selected document
@@ -53,8 +55,8 @@ The React application never starts shell commands directly. It calls a loopback-
 - At least one generation provider:
   - [Codex CLI](https://developers.openai.com/codex/) installed and authenticated; or
   - a Gemini API key
-- Optional: Python 3.10+, PyTorch, and [Marker](https://github.com/datalab-to/marker) for enhanced PDF conversion
-- Optional: [Ollama](https://docs.ollama.com/capabilities/embeddings) with `all-minilm` for semantic duplicate detection
+
+Optional enhancements such as Marker and local embeddings are detected automatically when included by the application packager. They are never required for the basic document and quiz flow.
 
 ## Quick start
 
@@ -84,14 +86,9 @@ Select **Codex – Agent** while creating a test. Quizzer invokes Codex ephemera
 
 ### Gemini API
 
-Set the key in the environment that starts Quizzer:
+Select **Gemini – API** while creating a test and enter the API key in the form. It is retained only in the current browser tab and sent to the loopback service for requests. No environment variable or terminal configuration is required.
 
-```sh
-export GEMINI_API_KEY="your-key"
-npm run dev
-```
-
-Select **Gemini – API** while creating a test. The key is read only by the local service; do not use a `VITE_`-prefixed secret because Vite exposes those values to browser code.
+End users do not configure providers in a terminal. Codex users only need to complete the normal `codex login` flow; model selection, Gemini credentials, quiz settings, and theme selection all live in the application UI.
 
 ## PDF conversion
 
@@ -100,7 +97,7 @@ Quizzer offers two upload modes:
 - **Automatic:** attempts Marker and falls back to browser-based PDF text extraction.
 - **Basic:** uses PDF.js text extraction only.
 
-Install Marker for better preservation of document structure:
+Developers or application packagers can include Marker for better preservation of document structure:
 
 ```sh
 python -m pip install marker-pdf
@@ -124,13 +121,13 @@ Scanned or visually complex documents can still require manual review. Always in
 
 Generation requests at most ten candidates at a time. Every candidate is validated independently. Valid questions are retained, while invalid or duplicate candidates leave empty slots for a later bounded refill round. If the target cannot be reached after five rounds, Quizzer saves the valid partial quiz and reports the final count instead of retrying forever.
 
-For semantic duplicate filtering, start Ollama and install the default lightweight embedding model:
+Application packagers can optionally bundle or provide Ollama with the default lightweight embedding model:
 
 ```sh
 ollama pull all-minilm
 ```
 
-Set `QUIZZER_EMBEDDING_MODEL` to use another installed embedding model. If Ollama is unavailable, generation continues with normalized exact matching and lexical similarity.
+If Ollama is unavailable, generation continues automatically with normalized exact matching and lexical similarity. End users do not need to configure it.
 
 ## Data and privacy
 
@@ -153,13 +150,13 @@ Do not upload confidential material unless the selected provider and your accoun
 | `npm run lint` | Run ESLint |
 | `npm run preview` | Preview the browser bundle; start the service separately for generation |
 
-Set `QUIZZER_SERVICE_PORT` to change the service port. Update the Vite proxy when using a different port during development.
+The development service uses its internal loopback port automatically. Packagers may override `QUIZZER_SERVICE_PORT` and the matching Vite proxy when building a custom distribution.
 
 ## Troubleshooting
 
-### `GEMINI_API_KEY is not configured`
+### Quizzer asks for a Gemini key
 
-Export the variable in the same terminal before starting `npm run dev`.
+Enter the key in the **Gemini – API** section of the Create Test dialog. It is intentionally forgotten when the browser tab closes.
 
 ### `spawn codex ENOENT`
 

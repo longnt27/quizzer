@@ -24,7 +24,7 @@ const renderWithCode = (text: string): ReactNode => {
     if (!text || !text.includes('`')) {
         return <>{text}</>;
     }
-    const codeStyle = { fontFamily: 'monospace', backgroundColor: '#f0f0f0', padding: '2px 4px', borderRadius: '4px', fontSize: '0.9em' };
+    const codeStyle = { fontFamily: 'monospace', backgroundColor: 'var(--code)', padding: '2px 4px', borderRadius: '4px', fontSize: '0.9em' };
     const parts = text.split('`');
     return (
         <>
@@ -48,9 +48,9 @@ const renderHighlightedText = (text: string, matches: { start: number; end: numb
 };
 interface SearchBarProps { query: string; setQuery: (q: string) => void; onPrev: () => void; onNext: () => void; onClose: () => void; current: number; total: number; inputRef: React.RefObject<HTMLInputElement | null>; }
 const SearchBar: FC<SearchBarProps> = ({ query, setQuery, onPrev, onNext, onClose, current, total, inputRef }) => (
-    <div style={{ position: 'fixed', bottom: 0, left: 0, width: '100%', padding: '8px 16px', display: 'flex', alignItems: 'center', background: 'white', gap: '16px', zIndex: 1000, boxShadow: '0 -2px 10px rgba(0,0,0,0.2)' }}>
-        <input ref={inputRef} type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search all questions..." style={{ padding: '6px 10px', borderRadius: '4px', border: '1px solid #ddd', background: '#f0f2f5', color: 'black' }} />
-        <span style={{ textAlign: 'center', fontSize: '14px', color: '#000' }}>{query && total > 0 ? `${current + 1} of ${total}` : query ? 'Not found' : ''}</span>
+    <div className="quiz-search-bar">
+        <input ref={inputRef} type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search all questions..." />
+        <span>{query && total > 0 ? `${current + 1} of ${total}` : query ? 'Not found' : ''}</span>
         <Button size="middle" onClick={onPrev} disabled={total === 0}>Previous (N)</Button>
         <Button size="middle" onClick={onNext} disabled={total === 0}>Next (n)</Button>
         <Button size="middle" onClick={onClose} type="text" style={{color: '#aaa', marginLeft: 'auto'}}>Close (Esc)</Button>
@@ -309,15 +309,15 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
     };
 
     return (
-        <Row style={{ width: '100%', height: '100vh', background: '#f9f9f9' }}>
+        <Row className="quiz-layout">
             {isJumping && ( <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: 'rgba(0, 0, 0, 0.75)', color: 'white', padding: '12px 24px', borderRadius: '8px', fontSize: '24px', zIndex: 2000, pointerEvents: 'none' }}> Jumping to: {jumpBuffer} </div> )}
-            <Col flex="3" style={{ background: '#fff' }}>
-                <Row justify="space-between" align="middle" style={{ padding: '32px 24px 18px 24px', background: '#f0f2f5', borderBottom: '1px solid #ddd' }}>
+            <Col flex="3" className="quiz-main">
+                <Row className="quiz-header" justify="space-between" align="middle">
                     <Title level={4} style={{ margin: 0 }}>{test.name}</Title>
                     <Paragraph style={{ fontSize: 16, margin: 0 }}> {timeLimit ? `Time Left: ${formatTime(remaining)}` : `Elapsed: ${formatTime(remaining)}`} </Paragraph>
                 </Row>
-                <Row style={{ padding: '34px 30px' }}>
-                    <Row justify="space-between" align="middle" style={{ width: '100%', marginBottom: 32 }}>
+                <Row className="quiz-body">
+                    <Row className="quiz-actions" justify="space-between" align="middle">
                         <Button type={reviewMarks[currentIndex] ? 'primary' : 'default'} onClick={() => setReviewMarks((prev) => ({ ...prev, [currentIndex]: !prev[currentIndex] }))}> {reviewMarks[currentIndex] ? '✓ Marked' : 'Mark for Review'} </Button>
                         <Title level={3} style={{ margin: 0 }}>Question {currentIndex + 1}</Title>
 
@@ -370,7 +370,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
                     </Row>
                 </Row>
             </Col>
-            <Col flex="1" style={{ background: '#f5f5f7', padding: '48px 24px', borderLeft: '1px solid #ddd', overflowY: 'auto' }}>
+            <Col flex="1" className="quiz-index">
                 <Title level={5}>All Questions</Title>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, 40px)', gap: 6 }}>
                     {test.questions.map((_, idx) => {
@@ -378,8 +378,8 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit }) => {
                         const marked = reviewMarks[idx];
                         const isCurrent = idx === currentIndex;
                         const hasSearchResults = isSearching && searchQuery && searchResults.some(r => r.questionIndex === idx);
-                        const bg = marked ? 'gold' : answered ? '#007aff' : '#ccc';
-                        const border = isCurrent ? '2px solid #000' : hasSearchResults ? '2px solid #ffd700' : 'none';
+                        const bg = marked ? 'gold' : answered ? '#007aff' : 'var(--muted)';
+                        const border = isCurrent ? '2px solid var(--strong-border)' : hasSearchResults ? '2px solid #ffd700' : 'none';
                         return (
                             <div key={idx} onClick={() => setCurrentIndex(idx)} style={{ width: 40, height: 40, background: bg, color: answered || marked ? '#fff' : '#000', textAlign: 'center', display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: 8, fontWeight: 500, cursor: 'pointer', border: border, boxSizing: 'border-box' }}>
                                 {idx + 1}
