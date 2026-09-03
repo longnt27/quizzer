@@ -34,7 +34,7 @@ Quizzer is a local-first study application that turns a reusable document librar
 - Structured provider output and runtime question validation
 - Live generation progress by test, question type, and retry round
 - Persistent background generation queue, usable while you take completed tests
-- A global five-request pool shared efficiently across every test
+- Configurable 1–10 concurrent test instances
 - Mid-generation cancellation that stops all active provider processes
 - Provider failover that preserves accepted questions after quota, authentication, or service failures
 - Automatic recovery from reloads and network interruptions at the latest verified checkpoint
@@ -153,9 +153,11 @@ Scanned or visually complex documents can still require manual review. Always in
 8. Select a provider and optional provider-specific model.
 9. Queue generation and continue using Quizzer.
 
-The creation dialog closes immediately after saving the job. Quizzer divides each type's exact missing count into requests of at most ten questions, then schedules those requests through one global five-slot pool shared by every unfinished test. For example, 15 missing questions become requests of ten and five. If another test has only five questions left, it occupies one slot while the other four slots continue other tests. There is no limit on the number of test jobs waiting or making progress, but no more than five provider requests run at once.
+The creation dialog closes immediately after saving the job. Each instance is assigned to a different test and makes one provider request at a time. Within that test, each question type is generated sequentially in exact batches of at most ten. For example, 15 missing questions become requests of ten and five; the second prompt can exclude everything accepted from the first. Other instances work on other tests rather than generating overlapping candidates for the same test.
 
-Results from a parallel round are merged and every candidate is independently validated and deduplicated. Rejected candidates leave only their missing slots for the next bounded refill round. If a target cannot be reached after five rounds, Quizzer saves the valid partial quiz instead of retrying forever.
+Open **Generation queue** to choose between 1 and 10 concurrent test instances; the default is 5. Lower values reduce simultaneous provider usage and memory pressure. Higher values complete multi-document queues faster. Reducing the value does not abort requests already running—the new limit takes effect as they finish.
+
+Every candidate is independently validated and deduplicated before the next batch begins. Rejected candidates leave only their missing slots for the next bounded refill round. If a target cannot be reached after five rounds, Quizzer saves the valid partial quiz instead of retrying forever.
 
 Open **Generation queue** from the sidebar or the floating activity indicator to inspect every job, cancel work, retry an error, or switch providers. As each separate test completes it appears in the Tests sidebar immediately, where you can take it while later jobs continue.
 
@@ -234,7 +236,7 @@ The generation pipeline reached its bounded retry limit after rejecting malforme
 ## Roadmap
 
 - Provider capability discovery and custom endpoint adapters
-- Optional control over generation concurrency and provider cost limits
+- Provider-specific concurrency and cost limits
 - Question/source citations in the review interface
 - Document re-extraction and converter version tracking
 - Full automated unit, integration, and browser test suites

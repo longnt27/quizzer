@@ -5,8 +5,19 @@ import { generateQuiz, getGenerationErrorCode } from './api';
 
 const workerId = uuidv4();
 const active = new Map<string, AbortController>();
+const concurrencyKey = 'quizzer.generationConcurrency';
 let recovering: Promise<void> | null = null;
 let pumping = false;
+
+export const getGenerationConcurrency = () => {
+  const stored = Number(localStorage.getItem(concurrencyKey) ?? 5);
+  return Number.isFinite(stored) ? Math.max(1, Math.min(10, Math.round(stored))) : 5;
+};
+
+export const setGenerationConcurrency = (value: number) => {
+  localStorage.setItem(concurrencyKey, String(Math.max(1, Math.min(10, Math.round(value)))));
+  void pumpGenerationQueue();
+};
 
 const recoverInterruptedJobs = () => {
   if (!recovering) recovering = db.generationJobs.where('status').equals('running').toArray().then(async jobs => {
@@ -105,7 +116,7 @@ export const pumpGenerationQueue = async () => {
   pumping = true;
   try {
     await recoverInterruptedJobs();
-    while (navigator.onLine) {
+    while (navigator.onLine && active.size < getGenerationConcurrency()) {
       const job = await claimNextJob();
       if (!job || active.has(job.id)) break;
       void processJob(job);

@@ -58,6 +58,7 @@ button, input, textarea, select { font: inherit; }
 .generation-activity .ant-badge { color: inherit; }
 .generation-job { padding: 16px !important; margin-bottom: 10px; border: 1px solid var(--border) !important; border-radius: 10px; background: var(--surface-soft); }
 .generation-job-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.generation-concurrency { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(220px, 320px); align-items: center; gap: 24px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); }
 
 .mobile-header {
   position: fixed; inset: 0 0 auto 0; height: 56px; padding: 0 12px;
@@ -147,6 +148,7 @@ mark { color: #111827; }
   .question-count-grid { grid-template-columns: 1fr 1fr; }
   .generation-progress-heading { align-items: stretch; flex-direction: column; }
   .generation-activity { right: 12px; bottom: 12px; max-width: calc(100vw - 24px); }
+  .generation-concurrency { grid-template-columns: 1fr; gap: 8px; }
 }
 
 @media (max-width: 420px) {

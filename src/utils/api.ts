@@ -186,7 +186,7 @@ export function validateQuestion(value: unknown, expectedType?: QuestionType): v
 const requestCandidates = async (prompt: string, schema: object, options: GenerationOptions, signal?: AbortSignal, images: string[] = []) => {
   let response: Response;
   try {
-    response = await withGenerationSlot(() => fetch('/api/generate', {
+    response = await fetch('/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -198,7 +198,7 @@ const requestCandidates = async (prompt: string, schema: object, options: Genera
         images,
       }),
       signal,
-    }));
+    });
   } catch (error) {
     if ((error as Error).name === 'AbortError') throw error;
     throw new ProviderRequestError('Connection lost while contacting the local generation service', 'connection_lost');
@@ -217,22 +217,6 @@ export interface GenerationCheckpoint {
   rounds: Partial<Record<QuestionType, number>>;
   options: GenerationOptions;
 }
-
-const generationWaiters: Array<() => void> = [];
-let activeGenerationRequests = 0;
-const maxGenerationRequests = 5;
-
-const withGenerationSlot = async <T>(task: () => Promise<T>): Promise<T> => {
-  if (activeGenerationRequests < maxGenerationRequests) activeGenerationRequests++;
-  else await new Promise<void>(resolve => generationWaiters.push(resolve));
-  try {
-    return await task();
-  } finally {
-    const next = generationWaiters.shift();
-    if (next) next();
-    else activeGenerationRequests--;
-  }
-};
 
 const typeInstructions: Record<QuestionType, string> = {
   'multiple-choice': `Create multiple-choice questions. Each needs 3-6 choices, at least one correct choice,
@@ -300,18 +284,12 @@ export async function generateQuiz(
     let round = (rounds[type] ?? 0) + 1;
     while (round <= maxRounds && typeAccepted < typeTarget) {
       const missing = typeTarget - typeAccepted;
-      const requestSizes = Array.from({ length: Math.ceil(missing / 10) }, (_, index) => Math.min(10, missing - index * 10));
-      const parallelRequests = Math.min(maxGenerationRequests, requestSizes.length);
+      const requested = Math.min(10, missing);
+      const parallelRequests = 1;
       onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'requesting', provider: activeOptions.provider, parallelRequests });
       let candidates: unknown[];
       try {
-        const results = await Promise.allSettled(requestSizes.map(requested =>
-          requestCandidates(buildPrompt(content, type, requested, accepted, focus), schemas[type], activeOptions, signal, images)));
-        const successful = results.filter(result => result.status === 'fulfilled');
-        const failed = results.filter(result => result.status === 'rejected') as PromiseRejectedResult[];
-        if (!successful.length) throw failed[0].reason;
-        candidates = successful.flatMap(result => (result as PromiseFulfilledResult<unknown[]>).value);
-        if (!candidates.length && failed.length) throw failed[0].reason;
+        candidates = await requestCandidates(buildPrompt(content, type, requested, accepted, focus), schemas[type], activeOptions, signal, images);
       } catch (error) {
         const code = error instanceof ProviderRequestError ? error.code : undefined;
         if (onProviderFailure && (code === 'provider_limit' || code === 'provider_auth' || code === 'provider_unavailable')) {
@@ -331,7 +309,7 @@ export async function generateQuiz(
         throw error;
       }
       onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'validating', provider: activeOptions.provider, parallelRequests });
-      if (!candidates.length) rejected += missing;
+      if (!candidates.length) rejected += requested;
       const validCandidates = candidates.filter(candidate => validateQuestion(candidate, type)) as QuizQuestion[];
       rejected += candidates.length - validCandidates.length;
       const vectors = await tryEmbeddings([...accepted, ...validCandidates].map(question => question.statement), signal);

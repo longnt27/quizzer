@@ -72,7 +72,7 @@ export default function AddTestModal({ onClose, onManagePlugins }: Props) {
       {!documents.length ? <Empty description="Add documents to your library before creating a test" /> : (
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <Alert type="info" showIcon message="Generation runs in the background"
-            description="Completed tests appear in the sidebar immediately. Five provider-request slots are shared across every test, and interrupted work resumes from its latest verified batch." />
+            description="Completed tests appear immediately. Each configured instance works on a different test, while batches within a test run sequentially to reduce duplicates." />
           <Radio.Group value={mode} disabled={saving} onChange={event => setMode(event.target.value)} optionType="button" buttonStyle="solid"
             options={[{ label: 'One combined test', value: 'combined' }, { label: 'Separate test per document', value: 'separate' }]} />
           {mode === 'combined' && <Input disabled={saving} value={name} onChange={event => setName(event.target.value)} addonBefore="Test name" />}
