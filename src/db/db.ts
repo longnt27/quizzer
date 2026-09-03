@@ -1,5 +1,5 @@
 import Dexie from 'dexie';
-import { QuizQuestion } from '../types';
+import type { GenerationOptions, QuizQuestion } from '../types';
 
 export interface StoredTest {
   id: string;
@@ -16,16 +16,7 @@ export interface StoredTest {
   }[];
   fileContent?: string;
   documentIds?: string[];
-  generationOptions?: {
-    provider: 'codex' | 'gemini';
-    model?: string;
-    questionCount: number;
-    questionCounts?: {
-      multipleChoice: number;
-      fillBlank: number;
-      reasoning: number;
-    };
-  };
+  generationOptions?: GenerationOptions;
 }
 
 export interface StoredDocument {

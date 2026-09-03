@@ -33,7 +33,15 @@ export interface QuestionCounts {
   reasoning: number;
 }
 
-export type GenerationProvider = 'codex' | 'gemini';
+export type GenerationProvider =
+  | 'codex'
+  | 'claude-agent'
+  | 'antigravity-agent'
+  | 'gemini'
+  | 'anthropic'
+  | 'openai'
+  | 'openrouter'
+  | 'deepseek';
 
 export interface GenerationOptions {
   provider: GenerationProvider;

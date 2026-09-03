@@ -4,23 +4,22 @@ import { StopOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db, type StoredDocument } from '../db/db';
-import { generateQuiz, type GenerationProgress } from '../utils/api';
+import { generateQuiz, type GenerationProgress, type ProviderFailure } from '../utils/api';
 import type { GenerationOptions } from '../types';
 import { getMessageApi } from '../utils/messageProvider';
-import { getGeminiApiKey, getProviderSettings } from '../utils/providerSettings';
+import { PROVIDERS, getApiKey, getProviderDefinition, getProviderSettings } from '../utils/providerSettings';
 
 interface Props { onClose: () => void; onCreated: (id: string) => void; onManagePlugins: () => void; }
 type CreationMode = 'combined' | 'separate';
 
 export default function AddTestModal({ onClose, onCreated, onManagePlugins }: Props) {
   const configuredProviders = getProviderSettings();
-  const geminiKey = getGeminiApiKey();
   const documents = useLiveQuery(() => db.documents.orderBy('createdAt').reverse().toArray(), []) ?? [];
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [mode, setMode] = useState<CreationMode>('combined');
   const [name, setName] = useState('Combined quiz');
   const [provider, setProvider] = useState<GenerationOptions['provider']>(configuredProviders.defaultProvider);
-  const [model, setModel] = useState(configuredProviders.defaultProvider === 'codex' ? configuredProviders.codexModel : configuredProviders.geminiModel);
+  const [model, setModel] = useState(configuredProviders.models[configuredProviders.defaultProvider]);
   const [multipleChoiceCount, setMultipleChoiceCount] = useState(15);
   const [fillBlankCount, setFillBlankCount] = useState(3);
   const [reasoningCount, setReasoningCount] = useState(2);
@@ -30,9 +29,16 @@ export default function AddTestModal({ onClose, onCreated, onManagePlugins }: Pr
   const [cancelled, setCancelled] = useState(false);
   const [progress, setProgress] = useState<GenerationProgress | null>(null);
   const [activeTest, setActiveTest] = useState({ number: 1, total: 1, name: '' });
+  const [providerFailure, setProviderFailure] = useState<ProviderFailure | null>(null);
+  const [fallbackProvider, setFallbackProvider] = useState<GenerationOptions['provider']>(() => PROVIDERS.find(item => item.id !== configuredProviders.defaultProvider)?.id ?? 'gemini');
+  const [fallbackModel, setFallbackModel] = useState('');
   const abortRef = useRef<AbortController | null>(null);
+  const resumeRef = useRef<((options: GenerationOptions | null) => void) | null>(null);
+  const activeOptionsRef = useRef<GenerationOptions | null>(null);
   const message = getMessageApi();
   const questionCount = multipleChoiceCount + fillBlankCount + reasoningCount;
+  const selectedProvider = getProviderDefinition(provider);
+  const fallbackDefinition = getProviderDefinition(fallbackProvider);
 
   const selected = documents.filter(document => selectedIds.includes(document.id));
   const visible = (() => {
@@ -47,14 +53,23 @@ export default function AddTestModal({ onClose, onCreated, onManagePlugins }: Pr
     setActiveTest({ number: testNumber, total: testTotal, name: testName });
     setProgress(null);
     const content = sourceDocuments.map(document => `# Document: ${document.name}\n\n${document.content}`).join('\n\n---\n\n');
-    const options: GenerationOptions = {
-      provider,
-      model: model.trim() || undefined,
+    const options: GenerationOptions = activeOptionsRef.current ?? {
+      provider, model: model.trim() || undefined,
       questionCount,
       questionCounts: { multipleChoice: multipleChoiceCount, fillBlank: fillBlankCount, reasoning: reasoningCount },
     };
     const images = sourceDocuments.flatMap(document => document.images?.map(image => `data:${image.mimeType};base64,${image.data}`) ?? []);
-    const questions = await generateQuiz(content, options, abortRef.current?.signal, setProgress, images);
+    const questions = await generateQuiz(content, options, abortRef.current?.signal, setProgress, images, undefined, async failure => {
+      const next = PROVIDERS.find(item => item.id !== failure.provider)?.id ?? 'gemini';
+      setProviderFailure(failure);
+      setFallbackProvider(next);
+      setFallbackModel(configuredProviders.models[next]);
+      const replacement = await new Promise<GenerationOptions | null>(resolve => { resumeRef.current = resolve; });
+      resumeRef.current = null;
+      if (replacement) activeOptionsRef.current = replacement;
+      setProviderFailure(null);
+      return replacement;
+    });
     const id = uuidv4();
     await db.tests.add({
       id,
@@ -64,7 +79,7 @@ export default function AddTestModal({ onClose, onCreated, onManagePlugins }: Pr
       attempts: [],
       documentIds: sourceDocuments.map(document => document.id),
       fileContent: content,
-      generationOptions: options,
+      generationOptions: activeOptionsRef.current ?? options,
     });
     if (questions.length < questionCount) {
       message.warning(`${testName}: saved ${questions.length}/${questionCount} verified questions after bounded retries.`);
@@ -78,8 +93,8 @@ export default function AddTestModal({ onClose, onCreated, onManagePlugins }: Pr
       message.error('Choose between 1 and 200 questions in total');
       return;
     }
-    if (provider === 'gemini' && !geminiKey.trim()) {
-      message.error('Enter a Gemini API key');
+    if (selectedProvider.kind === 'api' && !getApiKey(provider).trim()) {
+      message.error(`Enter an ${selectedProvider.label.replace(' – API', '')} API key`);
       return;
     }
     setWorking(true);
@@ -87,6 +102,10 @@ export default function AddTestModal({ onClose, onCreated, onManagePlugins }: Pr
     setCancelled(false);
     setProgress(null);
     abortRef.current = new AbortController();
+    activeOptionsRef.current = {
+      provider, model: model.trim() || undefined, questionCount,
+      questionCounts: { multipleChoice: multipleChoiceCount, fillBlank: fillBlankCount, reasoning: reasoningCount },
+    };
     let completed = 0;
     try {
       let firstId = '';
@@ -109,6 +128,8 @@ export default function AddTestModal({ onClose, onCreated, onManagePlugins }: Pr
       } else message.error((error as Error).message);
     } finally {
       abortRef.current = null;
+      activeOptionsRef.current = null;
+      resumeRef.current = null;
       setWorking(false);
       setCancelling(false);
     }
@@ -122,6 +143,24 @@ export default function AddTestModal({ onClose, onCreated, onManagePlugins }: Pr
     if (!abortRef.current || cancelling) return;
     setCancelling(true);
     abortRef.current.abort();
+    resumeRef.current?.(null);
+  };
+
+  const continueWithFallback = () => {
+    if (!resumeRef.current) return;
+    if (fallbackDefinition.kind === 'api' && !getApiKey(fallbackProvider).trim()) {
+      message.error(`Configure the ${fallbackDefinition.label} key first`);
+      return;
+    }
+    const replacement: GenerationOptions = {
+      provider: fallbackProvider,
+      model: fallbackModel.trim() || undefined,
+      questionCount,
+      questionCounts: { multipleChoice: multipleChoiceCount, fillBlank: fillBlankCount, reasoning: reasoningCount },
+    };
+    setProvider(fallbackProvider);
+    setModel(fallbackModel);
+    resumeRef.current(replacement);
   };
 
   const overallPercent = progress
@@ -145,12 +184,9 @@ export default function AddTestModal({ onClose, onCreated, onManagePlugins }: Pr
             <Typography.Text>Provider</Typography.Text>
             <Select value={provider} disabled={working} onChange={next => {
               setProvider(next);
-              setModel(next === 'codex' ? configuredProviders.codexModel : configuredProviders.geminiModel);
-            }} style={{ width: 180 }} options={[
-              { label: 'Codex – Agent', value: 'codex' },
-              { label: 'Gemini – API', value: 'gemini' },
-            ]} />
-            <Input disabled={working} value={model} onChange={event => setModel(event.target.value)} addonBefore="Model" placeholder={provider === 'codex' ? 'Codex default' : 'gemini-2.5-flash'} style={{ width: 250 }} />
+              setModel(configuredProviders.models[next]);
+            }} style={{ width: 190 }} options={PROVIDERS.map(item => ({ label: item.label, value: item.id }))} />
+            <Input disabled={working} value={model} onChange={event => setModel(event.target.value)} addonBefore="Model" placeholder={selectedProvider.defaultModel || 'Provider default'} style={{ width: 280 }} />
           </Space>
           <div className="question-count-grid">
             <label><Typography.Text strong>Multiple choice</Typography.Text><InputNumber disabled={working} min={0} max={200} value={multipleChoiceCount} onChange={value => setMultipleChoiceCount(value ?? 0)} /></label>
@@ -160,7 +196,7 @@ export default function AddTestModal({ onClose, onCreated, onManagePlugins }: Pr
           </div>
           {questionCount < 1 && <Alert type="error" showIcon message="Choose at least one question." />}
           {questionCount > 200 && <Alert type="error" showIcon message="A test can contain at most 200 questions." />}
-          {provider === 'gemini' && !geminiKey.trim() && <Alert type="warning" showIcon message="Gemini is not connected"
+          {selectedProvider.kind === 'api' && !getApiKey(provider).trim() && <Alert type="warning" showIcon message={`${selectedProvider.label} is not connected`}
             description="Add your API key in Plugins & models before creating this test."
             action={<Button disabled={working} size="small" onClick={onManagePlugins}>Configure</Button>} />}
           <Typography.Text type="secondary">Provider defaults are saved in <Button disabled={working} type="link" size="small" onClick={onManagePlugins}>Plugins & models</Button>. You can override the model for this test.</Typography.Text>
@@ -174,12 +210,24 @@ export default function AddTestModal({ onClose, onCreated, onManagePlugins }: Pr
             )} />
           <Typography.Text type="secondary">{selected.length} document(s) selected</Typography.Text>
           {cancelled && !working && <Alert closable type="warning" showIcon message="Generation was cancelled" description="You can change the settings and start again." onClose={() => setCancelled(false)} />}
+          {providerFailure && <Alert type="warning" showIcon message={`${getProviderDefinition(providerFailure.provider).label} cannot continue`}
+            description={<Space direction="vertical" style={{ width: '100%' }}>
+              <Typography.Text>{providerFailure.message}</Typography.Text>
+              <Typography.Text type="secondary">{providerFailure.accepted}/{providerFailure.target} accepted questions are preserved. Choose another provider to generate only what is missing.</Typography.Text>
+              <Space wrap>
+                <Select value={fallbackProvider} onChange={next => { setFallbackProvider(next); setFallbackModel(configuredProviders.models[next]); }} style={{ width: 190 }}
+                  options={PROVIDERS.filter(item => item.id !== providerFailure.provider).map(item => ({ label: item.label, value: item.id }))} />
+                <Input value={fallbackModel} onChange={event => setFallbackModel(event.target.value)} addonBefore="Model" placeholder={fallbackDefinition.defaultModel || 'Provider default'} style={{ width: 280 }} />
+                <Button type="primary" onClick={continueWithFallback}>Continue</Button>
+              </Space>
+              {fallbackDefinition.kind === 'api' && !getApiKey(fallbackProvider).trim() && <Space><Typography.Text type="danger">Configure this API key before continuing.</Typography.Text><Button size="small" onClick={onManagePlugins}>Plugins & models</Button></Space>}
+            </Space>} />}
           {working && <div className="generation-progress">
             <div className="generation-progress-heading">
               <div>
                 <Typography.Text strong>{activeTest.total > 1 ? `Test ${activeTest.number} of ${activeTest.total}: ` : ''}{activeTest.name || 'Preparing test'}</Typography.Text><br />
                 <Typography.Text type="secondary">
-                  {progress ? `${progress.phase === 'requesting' ? 'Requesting' : 'Checking'} ${progress.currentType?.replaceAll('-', ' ')} · round ${progress.round}/${progress.maxRounds}` : 'Preparing generation request…'}
+                  {progress ? `${getProviderDefinition(progress.provider).label} · ${progress.phase === 'requesting' ? 'Requesting' : 'Checking'} ${progress.currentType?.replaceAll('-', ' ')} · round ${progress.round}/${progress.maxRounds}` : 'Preparing generation request…'}
                 </Typography.Text>
               </div>
               <Button danger icon={<StopOutlined />} loading={cancelling} onClick={cancelGeneration}>{cancelling ? 'Stopping' : 'Cancel'}</Button>

@@ -11,6 +11,9 @@ const managedMarkerExecutable = join(managedMarkerDirectory, process.platform ==
 const integrationJobs = {
   marker: { state: 'idle', message: '' },
   codex: { state: 'idle', message: '' },
+  'claude-agent': { state: 'idle', message: '' },
+  'antigravity-agent': { state: 'idle', message: '' },
+  embeddings: { state: 'idle', message: '' },
 };
 let systemMarkerDetected;
 
@@ -79,16 +82,36 @@ const hasSystemMarker = async () => {
 };
 
 const integrationStatus = async () => {
-  const [codexInstalled, codexConnected, managedMarker, systemMarker] = await Promise.all([
+  const [codexInstalled, codexConnected, claudeInstalled, claudeConnected, antigravityInstalled, ollamaInstalled, ollamaModels, managedMarker, systemMarker] = await Promise.all([
     commandWorks('codex', ['--version']),
     commandWorks('codex', ['login', 'status']),
+    commandWorks('claude', ['--version']),
+    commandWorks('claude', ['auth', 'status']),
+    commandWorks('agy', ['--version']),
+    commandWorks('ollama', ['--version']),
+    runCommand('ollama', ['list'], { timeout: 8_000 }).catch(() => ''),
     managedMarkerExists(),
     hasSystemMarker(),
   ]);
   return {
     marker: { installed: managedMarker || systemMarker, managed: managedMarker, job: integrationJobs.marker },
     codex: { installed: codexInstalled, connected: codexConnected, job: integrationJobs.codex },
+    'claude-agent': { installed: claudeInstalled, connected: claudeConnected, job: integrationJobs['claude-agent'] },
+    'antigravity-agent': {
+      installed: antigravityInstalled,
+      connected: integrationJobs['antigravity-agent'].state === 'complete',
+      job: integrationJobs['antigravity-agent'],
+    },
     gemini: { available: true },
+    anthropic: { available: true },
+    openai: { available: true },
+    openrouter: { available: true },
+    deepseek: { available: true },
+    embeddings: {
+      installed: /(?:^|\s)all-minilm(?::\S+)?(?:\s|$)/mi.test(ollamaModels),
+      runtimeInstalled: ollamaInstalled,
+      job: integrationJobs.embeddings,
+    },
   };
 };
 
@@ -126,6 +149,100 @@ const connectCodex = () => {
     integrationJobs.codex = { state: 'error', message: error instanceof Error ? error.message : 'Codex login failed' };
   });
 };
+
+const connectAgent = (provider, command, args, startingMessage) => {
+  if (integrationJobs[provider].state === 'working') return;
+  integrationJobs[provider] = { state: 'working', message: startingMessage };
+  void runCommand(command, args, {
+    timeout: 15 * 60_000,
+    onOutput: output => { integrationJobs[provider].message = output || integrationJobs[provider].message; },
+  }).then(output => {
+    integrationJobs[provider] = { state: 'complete', message: output || `${provider} is connected.` };
+  }).catch(error => {
+    integrationJobs[provider] = { state: 'error', message: error instanceof Error ? error.message : `${provider} login failed` };
+  });
+};
+
+const connectClaude = () => connectAgent('claude-agent', 'claude', ['auth', 'login'], 'Starting Claude sign-in…');
+const connectAntigravity = () => connectAgent(
+  'antigravity-agent', 'agy', ['-p', '/model', '--output-format', 'json'], 'Starting Antigravity sign-in…',
+);
+
+const downloadAndRunScript = async (url, args, onOutput) => {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Installer download failed (${response.status})`);
+  const directory = await mkdtemp(join(tmpdir(), 'quizzer-installer-'));
+  const path = join(directory, 'install.sh');
+  try {
+    await writeFile(path, await response.text(), { mode: 0o700 });
+    return await runCommand('bash', [path, ...args], { timeout: 15 * 60_000, onOutput });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+};
+
+const installAgent = (provider, url) => {
+  if (integrationJobs[provider].state === 'working') return;
+  integrationJobs[provider] = { state: 'working', message: `Downloading the official ${provider === 'claude-agent' ? 'Claude' : 'Antigravity'} installer…` };
+  void downloadAndRunScript(url, [], output => { integrationJobs[provider].message = output || integrationJobs[provider].message; })
+    .then(output => { integrationJobs[provider] = { state: 'complete', message: output || 'Agent installed. Connect your account next.' }; })
+    .catch(error => { integrationJobs[provider] = { state: 'error', message: error instanceof Error ? error.message : 'Agent installation failed' }; });
+};
+
+const installEmbeddings = () => {
+  if (integrationJobs.embeddings.state === 'working') return;
+  integrationJobs.embeddings = { state: 'working', message: 'Preparing the local embedding runtime…' };
+  void (async () => {
+    const update = output => { integrationJobs.embeddings.message = output || integrationJobs.embeddings.message; };
+    if (!await commandWorks('ollama', ['--version'])) {
+      if (process.platform === 'darwin') await runCommand('brew', ['install', 'ollama'], { timeout: 15 * 60_000, onOutput: update });
+      else if (process.platform === 'linux') await downloadAndRunScript('https://ollama.com/install.sh', [], update);
+      else throw new Error('Install Ollama from ollama.com, then retry this button.');
+    }
+    if (!await commandWorks('ollama', ['list'], 5_000)) {
+      const executable = process.platform === 'darwin' ? '/opt/homebrew/bin/ollama' : 'ollama';
+      const server = spawn(executable, ['serve'], { detached: true, stdio: 'ignore', env: process.env });
+      server.unref();
+      await new Promise(resolve => setTimeout(resolve, 2_000));
+    }
+    integrationJobs.embeddings.message = 'Downloading all-minilm…';
+    await runCommand('ollama', ['pull', 'all-minilm'], { timeout: 30 * 60_000, onOutput: update });
+    integrationJobs.embeddings = { state: 'complete', message: 'all-minilm is installed and semantic duplicate filtering is ready.' };
+  })().catch(error => {
+    integrationJobs.embeddings = { state: 'error', message: error instanceof Error ? error.message : 'Embedding installation failed' };
+  });
+};
+
+const runCapturedCommand = (command, args, prompt, signal, timeout = 600_000) => new Promise((resolve, reject) => {
+  if (signal?.aborted) return reject(cancellationError());
+  const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'], env: process.env });
+  let stdout = '';
+  let stderr = '';
+  let failure;
+  const cleanup = () => {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
+  };
+  const abort = () => {
+    failure = cancellationError();
+    child.kill('SIGTERM');
+  };
+  const timer = setTimeout(() => {
+    failure = new Error(`${command} timed out after ${Math.round(timeout / 60_000)} minutes`);
+    child.kill('SIGTERM');
+  }, timeout);
+  signal?.addEventListener('abort', abort, { once: true });
+  child.stdout.on('data', chunk => { stdout += chunk.toString(); });
+  child.stderr.on('data', chunk => { stderr += chunk.toString(); });
+  child.on('error', error => { cleanup(); reject(error); });
+  child.on('close', code => {
+    cleanup();
+    if (failure) reject(failure);
+    else if (code === 0) resolve(stdout.trim());
+    else reject(new Error(stripTerminalCodes(stderr || stdout) || `${command} exited with code ${code}`));
+  });
+  child.stdin.end(prompt);
+});
 
 const runCodex = async ({ prompt, schema, model, images = [] }, signal) => {
   if (signal?.aborted) throw cancellationError();
@@ -178,8 +295,29 @@ const runCodex = async ({ prompt, schema, model, images = [] }, signal) => {
   }
 };
 
+const runClaudeAgent = async ({ prompt, schema, model }, signal) => {
+  const args = ['-p', '--output-format', 'json', '--json-schema', JSON.stringify(schema), '--permission-mode', 'plan', '--max-turns', '1', '--no-session-persistence'];
+  if (model) args.push('--model', model);
+  const output = await runCapturedCommand('claude', args, prompt, signal);
+  const envelope = JSON.parse(output);
+  const structured = envelope.structured_output ?? envelope.result;
+  if (!structured) throw new Error(envelope.error || 'Claude Agent returned no structured output');
+  return typeof structured === 'string' ? structured : JSON.stringify(structured);
+};
+
+const runAntigravityAgent = async ({ prompt, schema, model }, signal) => {
+  const args = ['-p', prompt, '--output-format', 'json', '--json-schema', JSON.stringify(schema), '--sandbox', '--print-timeout', '10m'];
+  if (model) args.push('--model', model);
+  const output = await runCapturedCommand('agy', args, '', signal);
+  const envelope = JSON.parse(output);
+  if (envelope.status !== 'SUCCESS') throw new Error(envelope.error || 'Antigravity Agent failed');
+  const structured = envelope.structured_output ?? envelope.response;
+  if (!structured) throw new Error('Antigravity Agent returned no structured output');
+  return typeof structured === 'string' ? structured : JSON.stringify(structured);
+};
+
 const runGemini = async ({ prompt, schema, model, images = [], apiKey }, signal) => {
-  if (typeof apiKey !== 'string' || !apiKey.trim()) throw new Error('Enter a Gemini API key in Quizzer');
+  requireApiKey(apiKey, 'Gemini');
   const modelName = model || 'gemini-2.5-flash';
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const response = await fetch(endpoint, {
@@ -195,11 +333,134 @@ const runGemini = async ({ prompt, schema, model, images = [], apiKey }, signal)
       generationConfig: { responseMimeType: 'application/json', responseJsonSchema: schema },
     }),
   });
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload?.error?.message || `Gemini failed (${response.status})`);
+  const payload = await parseApiResponse(response, 'Gemini');
   const output = payload.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('') || '';
   if (!output) throw new Error('Gemini returned an empty response');
   return output;
+};
+
+class ProviderError extends Error {
+  constructor(message, status, code) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
+
+const providerErrorCode = status => status === 401 || status === 403
+  ? 'provider_auth'
+  : status === 402 || status === 429
+    ? 'provider_limit'
+    : status >= 500
+      ? 'provider_unavailable'
+      : 'provider_error';
+
+const normalizeProviderError = error => {
+  if (error instanceof ProviderError || error?.name === 'AbortError') return error;
+  const message = error instanceof Error ? error.message : 'Generation failed';
+  if (/usage limit|rate limit|quota|too many requests|insufficient (?:balance|credits)|credit balance|capacity/i.test(message)) {
+    return new ProviderError(message, 429, 'provider_limit');
+  }
+  if (/not logged in|unauthorized|authentication|api key|sign[ -]?in|login required/i.test(message)) {
+    return new ProviderError(message, 401, 'provider_auth');
+  }
+  return error;
+};
+
+const requireApiKey = (apiKey, label) => {
+  if (typeof apiKey !== 'string' || !apiKey.trim()) throw new ProviderError(`Enter an ${label} API key in Quizzer`, 401, 'provider_auth');
+};
+
+const parseApiResponse = async (response, provider) => {
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = payload?.error?.message || payload?.message || `${provider} failed (${response.status})`;
+    throw new ProviderError(message, response.status, providerErrorCode(response.status));
+  }
+  return payload;
+};
+
+const imageContent = images => images.slice(0, 30).map(image => ({ type: 'image_url', image_url: { url: image } }));
+
+const runOpenAICompatible = async ({ prompt, schema, model, images = [], apiKey }, signal, config) => {
+  requireApiKey(apiKey, config.label);
+  const content = config.supportsImages && images.length
+    ? [{ type: 'text', text: prompt }, ...imageContent(images)]
+    : `${prompt}\n\nReturn JSON matching this schema exactly:\n${JSON.stringify(schema)}`;
+  const response = await fetch(config.endpoint, {
+    method: 'POST', signal,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: model || config.defaultModel,
+      messages: [{ role: 'user', content }],
+      response_format: config.jsonSchema
+        ? { type: 'json_schema', json_schema: { name: 'quiz_questions', strict: true, schema } }
+        : { type: 'json_object' },
+      ...(config.providerRouting ? { provider: { require_parameters: true } } : {}),
+    }),
+  });
+  const payload = await parseApiResponse(response, config.label);
+  const output = payload.choices?.[0]?.message?.content;
+  if (!output) throw new Error(`${config.label} returned an empty response`);
+  return output;
+};
+
+const runOpenAI = async ({ prompt, schema, model, images = [], apiKey }, signal) => {
+  requireApiKey(apiKey, 'OpenAI');
+  const content = [{ type: 'input_text', text: prompt }, ...images.slice(0, 30).map(image => ({ type: 'input_image', image_url: image }))];
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST', signal,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: model || 'gpt-5-mini',
+      input: [{ role: 'user', content }],
+      text: { format: { type: 'json_schema', name: 'quiz_questions', strict: true, schema } },
+    }),
+  });
+  const payload = await parseApiResponse(response, 'OpenAI');
+  const output = payload.output?.flatMap(item => item.content ?? []).find(item => item.type === 'output_text')?.text;
+  if (!output) throw new Error('OpenAI returned an empty response');
+  return output;
+};
+
+const runAnthropic = async ({ prompt, schema, model, images = [], apiKey }, signal) => {
+  requireApiKey(apiKey, 'Anthropic');
+  const content = [
+    { type: 'text', text: prompt },
+    ...images.slice(0, 30).map(image => {
+      const match = /^data:(image\/(?:png|jpeg|webp|gif));base64,(.+)$/.exec(image);
+      if (!match) throw new Error('Invalid image input');
+      return { type: 'image', source: { type: 'base64', media_type: match[1], data: match[2] } };
+    }),
+  ];
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST', signal,
+    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({
+      model: model || 'claude-sonnet-4-5-20250929', max_tokens: 8192,
+      messages: [{ role: 'user', content }],
+      output_config: { format: { type: 'json_schema', schema } },
+    }),
+  });
+  const payload = await parseApiResponse(response, 'Anthropic');
+  const output = payload.content?.find(block => block.type === 'text')?.text;
+  if (!output) throw new Error('Anthropic returned an empty response');
+  return output;
+};
+
+const providerRunners = {
+  codex: runCodex,
+  'claude-agent': runClaudeAgent,
+  'antigravity-agent': runAntigravityAgent,
+  gemini: runGemini,
+  anthropic: runAnthropic,
+  openai: runOpenAI,
+  openrouter: (body, signal) => runOpenAICompatible(body, signal, {
+    label: 'OpenRouter', endpoint: 'https://openrouter.ai/api/v1/chat/completions', defaultModel: 'openai/gpt-4o-mini', jsonSchema: true, supportsImages: true, providerRouting: true,
+  }),
+  deepseek: (body, signal) => runOpenAICompatible(body, signal, {
+    label: 'DeepSeek', endpoint: 'https://api.deepseek.com/chat/completions', defaultModel: 'deepseek-chat', jsonSchema: false, supportsImages: false,
+  }),
 };
 
 const walkFiles = async directory => {
@@ -249,7 +510,7 @@ createServer(async (request, response) => {
     return response.end();
   }
   if (request.method === 'GET' && request.url === '/api/health') {
-    return send(response, 200, { ok: true, providers: { codex: true, gemini: true } });
+    return send(response, 200, { ok: true, providers: Object.fromEntries(Object.keys(providerRunners).map(provider => [provider, true])) });
   }
   if (request.method === 'GET' && request.url === '/api/integrations') {
     return send(response, 200, await integrationStatus());
@@ -262,6 +523,28 @@ createServer(async (request, response) => {
   if (request.method === 'POST' && request.url === '/api/integrations/codex/connect') {
     if (!request.headers['content-type']?.startsWith('application/json')) return send(response, 415, { error: 'JSON request required' });
     connectCodex();
+    return send(response, 202, { ok: true });
+  }
+  if (request.method === 'POST' && request.url === '/api/integrations/claude-agent/connect') {
+    if (!request.headers['content-type']?.startsWith('application/json')) return send(response, 415, { error: 'JSON request required' });
+    connectClaude();
+    return send(response, 202, { ok: true });
+  }
+  if (request.method === 'POST' && request.url === '/api/integrations/antigravity-agent/connect') {
+    if (!request.headers['content-type']?.startsWith('application/json')) return send(response, 415, { error: 'JSON request required' });
+    connectAntigravity();
+    return send(response, 202, { ok: true });
+  }
+  if (request.method === 'POST' && request.url === '/api/integrations/claude-agent/install') {
+    installAgent('claude-agent', 'https://claude.ai/install.sh');
+    return send(response, 202, { ok: true });
+  }
+  if (request.method === 'POST' && request.url === '/api/integrations/antigravity-agent/install') {
+    installAgent('antigravity-agent', 'https://antigravity.google/cli/install.sh');
+    return send(response, 202, { ok: true });
+  }
+  if (request.method === 'POST' && request.url === '/api/integrations/embeddings/install') {
+    installEmbeddings();
     return send(response, 202, { ok: true });
   }
   if (request.method === 'POST' && request.url === '/api/extract') {
@@ -300,11 +583,16 @@ createServer(async (request, response) => {
   try {
     const body = await readJson(request);
     if (!body || typeof body.prompt !== 'string' || !body.schema) throw new Error('prompt and schema are required');
-    if (body.provider !== 'codex' && body.provider !== 'gemini') throw new Error('Unsupported provider');
-    const output = body.provider === 'codex' ? await runCodex(body, generationController.signal) : await runGemini(body, generationController.signal);
+    const runner = providerRunners[body.provider];
+    if (!runner) throw new Error('Unsupported provider');
+    const output = await runner(body, generationController.signal);
     if (!response.destroyed) send(response, 200, { output });
   } catch (error) {
-    if (!response.destroyed) send(response, error?.name === 'AbortError' ? 499 : 500, { error: error instanceof Error ? error.message : 'Generation failed' });
+    const normalized = normalizeProviderError(error);
+    if (!response.destroyed) send(response, normalized?.name === 'AbortError' ? 499 : normalized?.status || 500, {
+      error: normalized instanceof Error ? normalized.message : 'Generation failed',
+      code: normalized?.code,
+    });
   }
 }).listen(port, '127.0.0.1', () => {
   process.stdout.write(`Quizzer service listening on http://127.0.0.1:${port}\n`);

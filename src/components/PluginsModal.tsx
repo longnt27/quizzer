@@ -1,14 +1,21 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Button, Divider, Input, Modal, Radio, Space, Spin, Tag, Typography } from 'antd';
+import { Alert, Button, Divider, Input, Modal, Select, Space, Spin, Tag, Typography } from 'antd';
 import { ApiOutlined, CloudDownloadOutlined, LoginOutlined, ReloadOutlined } from '@ant-design/icons';
-import { getGeminiApiKey, getProviderSettings, setGeminiApiKey, setProviderSettings } from '../utils/providerSettings';
+import type { GenerationProvider } from '../types';
+import {
+  AGENT_PROVIDERS, API_PROVIDERS, PROVIDERS, getApiKey, getProviderSettings,
+  migrateLegacyGeminiKey, setApiKey, setProviderSettings,
+} from '../utils/providerSettings';
 import { getMessageApi } from '../utils/messageProvider';
 
 type JobState = 'idle' | 'working' | 'complete' | 'error';
+type AgentStatus = { installed: boolean; connected: boolean; job: { state: JobState; message: string } };
 interface IntegrationStatus {
   marker: { installed: boolean; managed: boolean; job: { state: JobState; message: string } };
-  codex: { installed: boolean; connected: boolean; job: { state: JobState; message: string } };
-  gemini: { available: boolean };
+  codex: AgentStatus;
+  'claude-agent': AgentStatus;
+  'antigravity-agent': AgentStatus;
+  embeddings: { installed: boolean; runtimeInstalled: boolean; job: { state: JobState; message: string } };
 }
 
 interface Props { onClose: () => void; }
@@ -20,11 +27,11 @@ const statusTag = (ready: boolean, working: boolean, readyText: string) => (
 );
 
 export default function PluginsModal({ onClose }: Props) {
+  migrateLegacyGeminiKey();
   const initial = getProviderSettings();
   const [defaultProvider, setDefaultProvider] = useState(initial.defaultProvider);
-  const [codexModel, setCodexModel] = useState(initial.codexModel);
-  const [geminiModel, setGeminiModel] = useState(initial.geminiModel);
-  const [geminiKey, setGeminiKeyState] = useState(getGeminiApiKey);
+  const [models, setModels] = useState(initial.models);
+  const [apiKeys, setApiKeys] = useState<Record<string, string>>(() => Object.fromEntries(API_PROVIDERS.map(provider => [provider.id, getApiKey(provider.id)])));
   const [status, setStatus] = useState<IntegrationStatus | null>(null);
   const [statusError, setStatusError] = useState('');
   const message = getMessageApi();
@@ -43,7 +50,9 @@ export default function PluginsModal({ onClose }: Props) {
 
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => {
-    if (!status || (status.marker.job.state !== 'working' && status.codex.job.state !== 'working')) return;
+    if (!status) return;
+    const jobs = [status.marker.job, status.embeddings?.job, ...AGENT_PROVIDERS.map(provider => status[provider.id]?.job)].filter(Boolean);
+    if (!jobs.some(job => job.state === 'working')) return;
     const timer = window.setInterval(() => void refresh(), 1500);
     return () => window.clearInterval(timer);
   }, [refresh, status]);
@@ -57,31 +66,24 @@ export default function PluginsModal({ onClose }: Props) {
     await refresh();
   };
 
-  const installMarker = async () => {
-    try { await start('/api/integrations/marker/install'); }
-    catch (error) { message.error((error as Error).message); }
-  };
-
-  const connectCodex = async () => {
-    try { await start('/api/integrations/codex/connect'); }
+  const runAction = async (path: string) => {
+    try { await start(path); }
     catch (error) { message.error((error as Error).message); }
   };
 
   const save = () => {
-    setProviderSettings({ defaultProvider, codexModel: codexModel.trim(), geminiModel: geminiModel.trim() || 'gemini-2.5-flash' });
-    setGeminiApiKey(geminiKey.trim());
+    setProviderSettings({ defaultProvider, models });
+    for (const provider of API_PROVIDERS) setApiKey(provider.id, apiKeys[provider.id]?.trim() ?? '');
     message.success('Plugin settings saved');
     onClose();
   };
 
-  const codexWorking = status?.codex.job.state === 'working';
   const markerWorking = status?.marker.job.state === 'working';
-  const loginUrl = status?.codex.job.message.match(/https:\/\/[^\s]+/)?.[0];
 
   return (
-    <Modal open title={<Space><ApiOutlined /> Plugins & models</Space>} width={760} onCancel={onClose} onOk={save} okText="Save settings">
+    <Modal open title={<Space><ApiOutlined /> Plugins & models</Space>} width={800} onCancel={onClose} onOk={save} okText="Save settings">
       <Typography.Paragraph type="secondary">
-        Connect generation providers and manage local document tools here. Choose the provider again when creating each test.
+        Connect signed-in CLI agents or enter API keys without editing terminal configuration. API keys live only in this browser tab.
       </Typography.Paragraph>
       {statusError && <Alert type="error" showIcon message={statusError} action={<Button size="small" icon={<ReloadOutlined />} onClick={() => void refresh()}>Retry</Button>} />}
       {!status && !statusError ? <div className="plugin-loading"><Spin /></div> : <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -90,7 +92,7 @@ export default function PluginsModal({ onClose }: Props) {
             <div><Typography.Title level={5}>Marker PDF</Typography.Title><Typography.Text type="secondary">Extracts PDF text, layout, and images before quiz generation.</Typography.Text></div>
             {statusTag(Boolean(status?.marker.installed), Boolean(markerWorking), status?.marker.managed ? 'Installed by Quizzer' : 'Installed')}
           </div>
-          <Button icon={<CloudDownloadOutlined />} loading={markerWorking} disabled={status?.marker.installed} onClick={() => void installMarker()}>
+          <Button icon={<CloudDownloadOutlined />} loading={markerWorking} disabled={status?.marker.installed} onClick={() => void runAction('/api/integrations/marker/install')}>
             {status?.marker.installed ? 'Marker ready' : 'Install Marker'}
           </Button>
           {status?.marker.job.message && status.marker.job.state !== 'idle' && (
@@ -102,35 +104,57 @@ export default function PluginsModal({ onClose }: Props) {
 
         <section className="plugin-card">
           <div className="plugin-card-heading">
-            <div><Typography.Title level={5}>Codex Agent</Typography.Title><Typography.Text type="secondary">Uses the Codex CLI and your ChatGPT sign-in. No API key is required.</Typography.Text></div>
-            {statusTag(Boolean(status?.codex.connected), Boolean(codexWorking), 'Connected')}
+            <div><Typography.Title level={5}>Semantic duplicate filter</Typography.Title><Typography.Text type="secondary">Uses the lightweight all-minilm model locally. Exact and token-based filtering remain active without it.</Typography.Text></div>
+            {statusTag(Boolean(status?.embeddings.installed), status?.embeddings.job.state === 'working', 'Installed')}
           </div>
-          <Space direction="vertical" style={{ width: '100%' }}>
-            <Input value={codexModel} onChange={event => setCodexModel(event.target.value)} addonBefore="Default model" placeholder="Use the Codex default" />
-            <Button icon={<LoginOutlined />} loading={codexWorking} disabled={!status?.codex.installed || status?.codex.connected} onClick={() => void connectCodex()}>
-              {!status?.codex.installed ? 'Codex CLI not found' : status.codex.connected ? 'Codex connected' : 'Connect Codex'}
-            </Button>
-            {loginUrl && codexWorking && <Typography.Link href={loginUrl} target="_blank" rel="noreferrer">Open the Codex sign-in page</Typography.Link>}
-            {status?.codex.job.message && status.codex.job.state !== 'idle' && <pre className="plugin-output">{status.codex.job.message}</pre>}
-          </Space>
+          <Button icon={<CloudDownloadOutlined />} loading={status?.embeddings.job.state === 'working'} disabled={status?.embeddings.installed}
+            onClick={() => void runAction('/api/integrations/embeddings/install')}>
+            {status?.embeddings.installed ? 'all-minilm ready' : status?.embeddings.runtimeInstalled ? 'Install all-minilm' : 'Install Ollama + all-minilm'}
+          </Button>
+          {status?.embeddings.job.message && status.embeddings.job.state !== 'idle' && <pre className="plugin-output">{status.embeddings.job.message}</pre>}
         </section>
 
-        <section className="plugin-card">
+        <Divider orientation="left" plain>Signed-in agents</Divider>
+        {AGENT_PROVIDERS.map(provider => {
+          const agent = status?.[provider.id];
+          const working = agent?.job.state === 'working';
+          const loginUrl = agent?.job.message.match(/https:\/\/[^\s]+/)?.[0];
+          return <section className="plugin-card" key={provider.id}>
+            <div className="plugin-card-heading">
+              <div><Typography.Title level={5}>{provider.label.replace(' – ', ' ')}</Typography.Title><Typography.Text type="secondary">{provider.description} No API key is required.</Typography.Text></div>
+              {statusTag(Boolean(agent?.connected), Boolean(working), 'Connected')}
+            </div>
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Input value={models[provider.id]} onChange={event => setModels(current => ({ ...current, [provider.id]: event.target.value }))} addonBefore="Default model" placeholder="Use the agent default" />
+              <Space wrap>
+                {provider.id !== 'codex' && !agent?.installed && <Button icon={<CloudDownloadOutlined />} loading={working} onClick={() => void runAction(`/api/integrations/${provider.id}/install`)}>Install {provider.label.split(' ')[0]}</Button>}
+                <Button icon={<LoginOutlined />} loading={working} disabled={!agent?.installed || agent?.connected} onClick={() => void runAction(`/api/integrations/${provider.id}/connect`)}>
+                  {!agent?.installed ? `${provider.label.split(' ')[0]} CLI not found` : agent.connected ? 'Connected' : `Connect ${provider.label.split(' ')[0]}`}
+                </Button>
+              </Space>
+              {loginUrl && working && <Typography.Link href={loginUrl} target="_blank" rel="noreferrer">Open the sign-in page</Typography.Link>}
+              {agent?.job.message && agent.job.state !== 'idle' && <pre className="plugin-output">{agent.job.message}</pre>}
+            </Space>
+          </section>;
+        })}
+
+        <Divider orientation="left" plain>API providers</Divider>
+        {API_PROVIDERS.map(provider => <section className="plugin-card" key={provider.id}>
           <div className="plugin-card-heading">
-            <div><Typography.Title level={5}>Gemini API</Typography.Title><Typography.Text type="secondary">Uses your Gemini API key, kept only in this browser tab.</Typography.Text></div>
-            {statusTag(Boolean(geminiKey.trim()), false, 'Connected')}
+            <div><Typography.Title level={5}>{provider.label.replace(' – ', ' ')}</Typography.Title><Typography.Text type="secondary">{provider.description}</Typography.Text></div>
+            {statusTag(Boolean(apiKeys[provider.id]?.trim()), false, 'Connected')}
           </div>
           <Space direction="vertical" style={{ width: '100%' }}>
-            <Input.Password value={geminiKey} onChange={event => setGeminiKeyState(event.target.value)} placeholder="Gemini API key" autoComplete="off" />
-            <Input value={geminiModel} onChange={event => setGeminiModel(event.target.value)} addonBefore="Default model" placeholder="gemini-2.5-flash" />
+            <Input.Password value={apiKeys[provider.id]} onChange={event => setApiKeys(current => ({ ...current, [provider.id]: event.target.value }))} placeholder={provider.keyLabel} autoComplete="off" />
+            <Input value={models[provider.id]} onChange={event => setModels(current => ({ ...current, [provider.id]: event.target.value }))} addonBefore="Default model" placeholder={provider.defaultModel} />
           </Space>
-        </section>
+        </section>)}
 
         <Divider style={{ margin: '4px 0' }} />
         <div>
           <Typography.Text strong>Default generation provider</Typography.Text>
-          <Radio.Group value={defaultProvider} onChange={event => setDefaultProvider(event.target.value)} style={{ display: 'flex', marginTop: 8 }}
-            options={[{ label: 'Codex Agent', value: 'codex' }, { label: 'Gemini API', value: 'gemini' }]} />
+          <Select value={defaultProvider} onChange={(value: GenerationProvider) => setDefaultProvider(value)} style={{ display: 'block', width: '100%', marginTop: 8 }}
+            options={PROVIDERS.map(provider => ({ label: provider.label, value: provider.id }))} />
         </div>
       </Space>}
     </Modal>

@@ -1,5 +1,5 @@
-import type { GenerationOptions, QuestionCounts, QuestionType, QuizQuestion } from '../types';
-import { getGeminiApiKey } from './providerSettings';
+import type { GenerationOptions, GenerationProvider, QuestionCounts, QuestionType, QuizQuestion } from '../types';
+import { getApiKey } from './providerSettings';
 
 export interface GenerationProgress {
   accepted: number;
@@ -11,6 +11,23 @@ export interface GenerationProgress {
   typeAccepted: number;
   typeTarget: number;
   phase: 'requesting' | 'validating';
+  provider: GenerationProvider;
+}
+
+export interface ProviderFailure {
+  provider: GenerationProvider;
+  code: 'provider_limit' | 'provider_auth' | 'provider_unavailable';
+  message: string;
+  accepted: number;
+  target: number;
+}
+
+class ProviderRequestError extends Error {
+  readonly code?: string;
+  constructor(message: string, code?: string) {
+    super(message);
+    this.code = code;
+  }
 }
 
 const multipleChoiceSchema = {
@@ -172,15 +189,15 @@ const requestCandidates = async (prompt: string, schema: object, options: Genera
     body: JSON.stringify({
       provider: options.provider,
       model: options.model,
-      apiKey: options.provider === 'gemini' ? getGeminiApiKey() : undefined,
+      apiKey: getApiKey(options.provider) || undefined,
       prompt,
       schema,
       images,
     }),
     signal,
   });
-  const payload = await response.json().catch(() => ({})) as { output?: string; error?: string };
-  if (!response.ok) throw new Error(payload.error || `Generation failed (${response.status})`);
+  const payload = await response.json().catch(() => ({})) as { output?: string; error?: string; code?: string };
+  if (!response.ok) throw new ProviderRequestError(payload.error || `Generation failed (${response.status})`, payload.code);
   const parsed = extractJson<{ questions?: unknown[] }>(payload.output ?? '');
   if (!parsed?.questions || !Array.isArray(parsed.questions)) throw new Error('Provider returned invalid structured output');
   return parsed.questions;
@@ -229,11 +246,13 @@ export async function generateQuiz(
   onProgress?: (progress: GenerationProgress) => void,
   images: string[] = [],
   focus?: string,
+  onProviderFailure?: (failure: ProviderFailure) => Promise<GenerationOptions | null>,
 ): Promise<QuizQuestion[]> {
   const counts = getRequestedCounts(options);
   const target = counts.multipleChoice + counts.fillBlank + counts.reasoning;
   if (target < 1 || target > 200) throw new Error('Choose between 1 and 200 questions in total.');
   const accepted: QuizQuestion[] = [];
+  let activeOptions = options;
   let rejected = 0;
   const maxRounds = 5;
 
@@ -244,12 +263,33 @@ export async function generateQuiz(
   ];
   for (const [type, typeTarget] of targets) {
     let typeAccepted = 0;
-    for (let round = 1; round <= maxRounds && typeAccepted < typeTarget; round++) {
+    let round = 1;
+    while (round <= maxRounds && typeAccepted < typeTarget) {
       const missing = typeTarget - typeAccepted;
       const requested = Math.min(10, missing + Math.min(2, Math.ceil(missing / 3)));
-      onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'requesting' });
-      const candidates = await requestCandidates(buildPrompt(content, type, requested, accepted, focus), schemas[type], options, signal, images);
-      onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'validating' });
+      onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'requesting', provider: activeOptions.provider });
+      let candidates: unknown[];
+      try {
+        candidates = await requestCandidates(buildPrompt(content, type, requested, accepted, focus), schemas[type], activeOptions, signal, images);
+      } catch (error) {
+        const code = error instanceof ProviderRequestError ? error.code : undefined;
+        if (onProviderFailure && (code === 'provider_limit' || code === 'provider_auth' || code === 'provider_unavailable')) {
+          const replacement = await onProviderFailure({
+            provider: activeOptions.provider,
+            code,
+            message: (error as Error).message,
+            accepted: accepted.length,
+            target,
+          });
+          if (replacement) {
+            activeOptions = replacement;
+            continue;
+          }
+          if (signal?.aborted) throw new DOMException('Generation cancelled', 'AbortError');
+        }
+        throw error;
+      }
+      onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'validating', provider: activeOptions.provider });
       const validCandidates = candidates.filter(candidate => validateQuestion(candidate, type)) as QuizQuestion[];
       rejected += candidates.length - validCandidates.length;
       const vectors = await tryEmbeddings([...accepted, ...validCandidates].map(question => question.statement), signal);
@@ -267,7 +307,8 @@ export async function generateQuiz(
         if (candidateVector) acceptedVectors.push(candidateVector);
         if (typeAccepted === typeTarget) break;
       }
-      onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'validating' });
+      onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'validating', provider: activeOptions.provider });
+      round++;
     }
   }
 
