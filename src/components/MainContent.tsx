@@ -95,7 +95,7 @@ const MainContent: React.FC<Props> = ({ selectedTestId, setSelectedTestId, sessi
     }
 
     if (session?.mode === 'taking') {
-        return <TestTaking test={test} onFinish={() => setSession(null)} onPause={savedDraft => { setDraft(savedDraft); setSession(null); }} timeLimit={session.timeLimit} practice={session.options?.instantFeedback}
+        return <TestTaking test={test} onFinish={() => { setDraft(undefined); setSession(null); }} onPause={savedDraft => { setDraft(savedDraft); setSession(null); }} timeLimit={session.timeLimit} practice={session.options?.instantFeedback}
             startedAt={session.startedAt} initialDraft={draft} />;
     }
 
