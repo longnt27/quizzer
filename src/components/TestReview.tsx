@@ -336,8 +336,9 @@ const TestReview: React.FC<Props> = ({ test, onBack }) => {
                 </Space>}
                 {questionType === 'reasoning' && 'referenceAnswer' in q && <Space direction="vertical" size="middle" style={{ width: '100%', marginTop: 16 }}>
                     <Alert type={latest.selfAssessments?.[currentIndex] === true ? 'success' : 'warning'} showIcon
-                      message={`Self-assessment: ${latest.selfAssessments?.[currentIndex] === true ? 'Correct' : latest.selfAssessments?.[currentIndex] === false ? 'Needs work' : 'Not assessed'}`}
+                      message={`${latest.reasoningJudgments?.[currentIndex] ? 'AI judgment' : 'Self-assessment'}: ${latest.selfAssessments?.[currentIndex] === true ? 'Correct' : latest.selfAssessments?.[currentIndex] === false ? 'Needs work' : 'Not assessed'}`}
                       description={userAnswer[0] || '(No answer)'} />
+                    {latest.reasoningJudgments?.[currentIndex]?.feedback && <Alert type="info" showIcon message="Judge feedback" description={latest.reasoningJudgments[currentIndex].feedback} />}
                     <Alert type="info" showIcon message="Reference answer" description={q.referenceAnswer} />
                     <Typography.Paragraph type="secondary">Essential reasoning: {q.explanation}</Typography.Paragraph>
                 </Space>}

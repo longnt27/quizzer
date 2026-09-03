@@ -173,7 +173,7 @@ After every validated parallel round, Quizzer checkpoints accepted questions, re
 
 If a provider runs out of quota, loses authentication, or becomes unavailable, generation pauses and offers another provider. Already accepted questions remain in memory, the replacement provider requests only the missing slots, and duplicate detection compares its output against the full accepted set. Switching providers does not consume a validation retry round.
 
-Fill-in-the-blank answers ignore capitalization, punctuation, and repeated spaces, and match any acceptable wording supplied with the generated question. Reasoning answers are never graded by another model: the learner reveals the reference answer, compares the essential points, and records a self-assessment.
+Fill-in-the-blank answers ignore capitalization, punctuation, and repeated spaces, and match any acceptable wording supplied with the generated question. In test mode, reasoning references stay hidden until review and answers are graded by the configured LLM in sequential batches of at most 10. In practice mode, the learner still reveals the reference answer, compares the essential points, and records a self-assessment.
 
 Before starting a saved test, choose **Test mode** for the traditional submit-then-review flow or **Practice mode** for immediate feedback. Practice mode locks each submitted response, shows correctness and every multiple-choice explanation or accepted fill-in answer, and requires the learner to compare reasoning responses with the reference answer before moving forward. Select **Check answer** or press Enter; in a reasoning response, use Shift+Enter for a new line.
 

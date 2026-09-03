@@ -12,9 +12,14 @@ import {
     Row,
     Col,
     Popconfirm,
+    Modal,
+    Progress,
 } from 'antd';
 import type { QuizAnswer } from '../types';
 import { getQuestionAnswerTexts, getQuestionType, isQuestionCorrect } from '../utils/questions';
+import { judgeReasoningAnswers } from '../utils/judgeReasoning';
+import { getProviderSettings } from '../utils/providerSettings';
+import { getMessageApi } from '../utils/messageProvider';
 
 const { Title, Paragraph } = Typography;
 
@@ -80,6 +85,9 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit, practice = fal
         : Math.max(0, Math.floor((Date.now() - startRef.current) / 1000)));
     const finishedRef = useRef(false);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const judgeControllerRef = useRef<AbortController | null>(null);
+    const [judgeProgress, setJudgeProgress] = useState<{ completed: number; total: number; batch: number; batches: number } | null>(null);
+    const message = getMessageApi();
 
     const [isJumping, setIsJumping] = useState(false);
     const [jumpBuffer, setJumpBuffer] = useState('');
@@ -133,18 +141,45 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit, practice = fal
         setIsPopconfirmVisible(false);
         finishedRef.current = true;
         const duration = Math.floor((Date.now() - startRef.current) / 1000);
+        let assessedAnswers = { ...selfAssessmentsRef.current };
+        let reasoningJudgments;
+        if (!practice) {
+            const submissions = test.questions.flatMap((question, index) => getQuestionType(question) === 'reasoning' && 'referenceAnswer' in question
+                ? [{ index, question, answer: answersRef.current[index]?.[0] ?? '' }]
+                : []);
+            if (submissions.length) {
+                const settings = getProviderSettings();
+                const provider = test.generationOptions?.provider ?? settings.defaultProvider;
+                const model = test.generationOptions?.model ?? settings.models[provider];
+                judgeControllerRef.current = new AbortController();
+                try {
+                    reasoningJudgments = await judgeReasoningAnswers(submissions, provider, model, setJudgeProgress, judgeControllerRef.current.signal);
+                    assessedAnswers = { ...assessedAnswers, ...Object.fromEntries(Object.entries(reasoningJudgments).map(([index, judgment]) => [index, judgment.correct])) };
+                } catch (error) {
+                    finishedRef.current = false;
+                    setJudgeProgress(null);
+                    if ((error as Error).name !== 'AbortError') message.error((error as Error).message);
+                    return;
+                } finally {
+                    judgeControllerRef.current = null;
+                }
+            }
+        }
         let score = 0;
         test.questions.forEach((question, idx) => {
-            if (isQuestionCorrect(question, answersRef.current[idx], selfAssessmentsRef.current[idx])) score++;
+            if (isQuestionCorrect(question, answersRef.current[idx], assessedAnswers[idx])) score++;
         });
-        const attempt = { id: String(Date.now()), time: Date.now(), duration, selectedAnswers: answersRef.current, selfAssessments: selfAssessmentsRef.current, score };
+        const attempt = { id: String(Date.now()), time: Date.now(), duration, selectedAnswers: answersRef.current, selfAssessments: assessedAnswers, reasoningJudgments, score };
         test.attempts.push(attempt);
         await db.transaction('rw', db.tests, db.testDrafts, async () => {
             await db.tests.put(test);
             await db.testDrafts.delete(test.id);
         });
         onFinish();
-    }, [onFinish, test]);
+        setJudgeProgress(null);
+    }, [message, onFinish, practice, test]);
+
+    useEffect(() => () => judgeControllerRef.current?.abort(), []);
 
     // ... (All other hooks and functions up to the key listeners remain the same)
     useEffect(() => {
@@ -447,11 +482,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit, practice = fal
                             });
                           }}
                           placeholder={practice ? 'Explain your reasoning. Press Shift+Enter for a new line.' : 'Explain your reasoning in your own words'} />
-                        {!practice && !revealedReasoning[currentIndex] ? (
-                          <Button disabled={!answers[currentIndex]?.[0]?.trim()} onClick={() => setRevealedReasoning(previous => ({ ...previous, [currentIndex]: true }))}>
-                            Compare with reference answer
-                          </Button>
-                        ) : revealedReasoning[currentIndex] ? <>
+                        {practice && revealedReasoning[currentIndex] ? <>
                           <Alert type="info" showIcon message="Reference answer" description={<div>{q.referenceAnswer}<br /><Typography.Text type="secondary">{q.explanation}</Typography.Text></div>} />
                           <Typography.Text strong>Does your answer cover the essential reasoning?</Typography.Text>
                           <Space wrap>
@@ -497,7 +528,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit, practice = fal
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, 40px)', gap: 6 }}>
                     {test.questions.map((question, idx) => {
                         const answered = getQuestionType(question) === 'reasoning'
-                          ? Boolean(answers[idx]?.[0]?.trim()) && selfAssessments[idx] !== undefined
+                          ? Boolean(answers[idx]?.[0]?.trim()) && (!practice || selfAssessments[idx] !== undefined)
                           : Boolean(answers[idx]?.[0]?.trim());
                         const marked = reviewMarks[idx];
                         const isCurrent = idx === currentIndex;
@@ -513,6 +544,15 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, timeLimit, practice = fal
                 </div>
             </Col>
             {isSearching && ( <SearchBar query={searchQuery} setQuery={setSearchQuery} onPrev={handlePrevResult} onNext={handleNextResult} onClose={() => { setIsSearching(false); setSearchQuery(''); }} current={currentResultIndex} total={searchResults.length} inputRef={searchInputRef} /> )}
+            <Modal open={Boolean(judgeProgress)} closable={false} maskClosable={false} title="Grading reasoning answers" footer={
+              <Button danger onClick={() => judgeControllerRef.current?.abort()}>Cancel grading</Button>
+            }>
+              <Progress percent={judgeProgress ? Math.round(judgeProgress.completed / Math.max(judgeProgress.total, 1) * 100) : 0} status="active" />
+              <Typography.Text type="secondary">
+                {judgeProgress?.batches ? `Batch ${Math.max(1, judgeProgress.batch)} of ${judgeProgress.batches} · ` : ''}
+                {judgeProgress?.completed ?? 0} of {judgeProgress?.total ?? 0} reasoning answers graded
+              </Typography.Text>
+            </Modal>
         </Row>
     );
 };

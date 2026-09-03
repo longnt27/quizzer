@@ -53,7 +53,9 @@ const TestStart: React.FC<Props> = ({ test, onStart }) => {
             <Paragraph type="secondary" style={{ maxWidth: 520, marginBottom: 20 }}>
                 {mode === 'practice'
                     ? 'Check each answer immediately, study its explanation, then continue.'
-                    : 'Complete the questions first, then review your results after submitting the test.'}
+                    : counts.reasoning
+                        ? 'Complete the questions without seeing answers. After submission, reasoning responses are graded by the configured AI provider before review.'
+                        : 'Complete the questions first, then review your results after submitting the test.'}
             </Paragraph>
 
             <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
