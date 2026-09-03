@@ -72,6 +72,11 @@ button, input, textarea, select { font: inherit; }
 .with-mobile-header { padding-top: 56px; }
 
 .document-view { padding: 32px; max-width: 1100px; margin: 0 auto; }
+.document-original-frame { width: 100%; height: min(72vh, 900px); min-height: 520px; border: 0; border-radius: 6px; background: #fff; }
+.document-original-image { display: block; max-width: 100%; max-height: 72vh; margin: 0 auto; object-fit: contain; }
+.document-chat-history { min-height: 150px; max-height: 45vh; padding: 14px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-soft); }
+.document-chat-turn + .document-chat-turn { padding-top: 14px; border-top: 1px solid var(--border); }
+.document-chat-loading { min-height: 100px; display: flex; align-items: center; justify-content: center; gap: 10px; }
 .test-start { min-height: 100%; }
 
 .quiz-layout { width: 100%; height: 100dvh; background: var(--page); flex-wrap: nowrap; }
@@ -118,6 +123,7 @@ mark { color: #111827; }
   .app-main { width: 100%; }
   .document-view { padding: 16px; }
   .document-view h2 { font-size: 24px; }
+  .document-original-frame { min-height: 65vh; }
 
   .test-start { padding: 32px 16px !important; border-radius: 0 !important; box-shadow: none !important; }
   .test-start > div { flex-wrap: wrap; justify-content: center; gap: 12px; }

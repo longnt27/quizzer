@@ -48,6 +48,7 @@ Quizzer is a local-first study application that turns a reusable document librar
 - Optional Marker PDF conversion with tables, equations, and extracted figures
 - Fresh AI-generated practice for concepts missed on the latest attempt
 - Server-side SQLite storage with an offline IndexedDB cache
+- Original-file previews and provider-backed document Q&A
 
 ## How it works
 
