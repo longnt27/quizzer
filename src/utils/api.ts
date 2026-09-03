@@ -22,7 +22,7 @@ export interface ProviderFailure {
   target: number;
 }
 
-class ProviderRequestError extends Error {
+export class ProviderRequestError extends Error {
   readonly code?: string;
   constructor(message: string, code?: string) {
     super(message);
@@ -183,24 +183,39 @@ export function validateQuestion(value: unknown, expectedType?: QuestionType): v
 }
 
 const requestCandidates = async (prompt: string, schema: object, options: GenerationOptions, signal?: AbortSignal, images: string[] = []) => {
-  const response = await fetch('/api/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      provider: options.provider,
-      model: options.model,
-      apiKey: getApiKey(options.provider) || undefined,
-      prompt,
-      schema,
-      images,
-    }),
-    signal,
-  });
+  let response: Response;
+  try {
+    response = await fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        provider: options.provider,
+        model: options.model,
+        apiKey: getApiKey(options.provider) || undefined,
+        prompt,
+        schema,
+        images,
+      }),
+      signal,
+    });
+  } catch (error) {
+    if ((error as Error).name === 'AbortError') throw error;
+    throw new ProviderRequestError('Connection lost while contacting the local generation service', 'connection_lost');
+  }
   const payload = await response.json().catch(() => ({})) as { output?: string; error?: string; code?: string };
   if (!response.ok) throw new ProviderRequestError(payload.error || `Generation failed (${response.status})`, payload.code);
   const parsed = extractJson<{ questions?: unknown[] }>(payload.output ?? '');
   return parsed?.questions && Array.isArray(parsed.questions) ? parsed.questions : [];
 };
+
+export const getGenerationErrorCode = (error: unknown) => error instanceof ProviderRequestError ? error.code : undefined;
+
+export interface GenerationCheckpoint {
+  questions: QuizQuestion[];
+  rejected: number;
+  rounds: Partial<Record<QuestionType, number>>;
+  options: GenerationOptions;
+}
 
 const typeInstructions: Record<QuestionType, string> = {
   'multiple-choice': `Create multiple-choice questions. Each needs 3-6 choices, at least one correct choice,
@@ -246,13 +261,16 @@ export async function generateQuiz(
   images: string[] = [],
   focus?: string,
   onProviderFailure?: (failure: ProviderFailure) => Promise<GenerationOptions | null>,
+  initialCheckpoint?: GenerationCheckpoint,
+  onCheckpoint?: (checkpoint: GenerationCheckpoint) => void | Promise<void>,
 ): Promise<QuizQuestion[]> {
   const counts = getRequestedCounts(options);
   const target = counts.multipleChoice + counts.fillBlank + counts.reasoning;
   if (target < 1 || target > 200) throw new Error('Choose between 1 and 200 questions in total.');
-  const accepted: QuizQuestion[] = [];
-  let activeOptions = options;
-  let rejected = 0;
+  const accepted: QuizQuestion[] = [...(initialCheckpoint?.questions ?? [])];
+  let activeOptions = initialCheckpoint?.options ?? options;
+  let rejected = initialCheckpoint?.rejected ?? 0;
+  const rounds: Partial<Record<QuestionType, number>> = { ...(initialCheckpoint?.rounds ?? {}) };
   const maxRounds = 5;
 
   const targets: [QuestionType, number][] = [
@@ -261,8 +279,8 @@ export async function generateQuiz(
     ['reasoning', counts.reasoning],
   ];
   for (const [type, typeTarget] of targets) {
-    let typeAccepted = 0;
-    let round = 1;
+    let typeAccepted = accepted.filter(question => (question.type ?? 'multiple-choice') === type).length;
+    let round = (rounds[type] ?? 0) + 1;
     while (round <= maxRounds && typeAccepted < typeTarget) {
       const missing = typeTarget - typeAccepted;
       const requested = Math.min(10, missing + Math.min(2, Math.ceil(missing / 3)));
@@ -308,6 +326,8 @@ export async function generateQuiz(
         if (typeAccepted === typeTarget) break;
       }
       onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'validating', provider: activeOptions.provider });
+      rounds[type] = round;
+      await onCheckpoint?.({ questions: [...accepted], rejected, rounds: { ...rounds }, options: activeOptions });
       round++;
     }
   }
