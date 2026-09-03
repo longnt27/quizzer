@@ -4,7 +4,7 @@ import { ApiOutlined, CloudDownloadOutlined, LoginOutlined, ReloadOutlined } fro
 import type { GenerationProvider } from '../types';
 import {
   AGENT_PROVIDERS, API_PROVIDERS, PROVIDERS, getApiKey, getProviderSettings,
-  migrateLegacyGeminiKey, setApiKey, setProviderSettings,
+  migrateLegacyGeminiKey, setApiKey, setProviderSettings, type AgentProvider,
 } from '../utils/providerSettings';
 import { getMessageApi } from '../utils/messageProvider';
 
@@ -72,14 +72,23 @@ export default function PluginsModal({ onClose }: Props) {
   };
 
   const save = () => {
-    setProviderSettings({ defaultProvider, models });
     for (const provider of API_PROVIDERS) setApiKey(provider.id, apiKeys[provider.id]?.trim() ?? '');
+    const available = PROVIDERS.filter(provider => provider.kind === 'api'
+      ? Boolean(apiKeys[provider.id]?.trim())
+      : Boolean(status?.[provider.id as AgentProvider]?.connected));
+    setProviderSettings({ defaultProvider: available.some(provider => provider.id === defaultProvider) ? defaultProvider : available[0]?.id ?? defaultProvider, models });
     message.success('Plugin settings saved');
     onClose();
   };
 
   const markerWorking = status?.marker.job.state === 'working';
   const embeddingsWorking = status?.embeddings?.job.state === 'working';
+  const configuredProviderOptions = PROVIDERS.filter(provider => provider.kind === 'api'
+    ? Boolean(apiKeys[provider.id]?.trim())
+    : Boolean(status?.[provider.id as AgentProvider]?.connected));
+  const visibleDefaultProvider = configuredProviderOptions.some(provider => provider.id === defaultProvider)
+    ? defaultProvider
+    : configuredProviderOptions[0]?.id;
 
   return (
     <Modal open title={<Space><ApiOutlined /> Plugins & models</Space>} width={800} onCancel={onClose} onOk={save} okText="Save settings">
@@ -93,9 +102,8 @@ export default function PluginsModal({ onClose }: Props) {
             <div><Typography.Title level={5}>Marker PDF</Typography.Title><Typography.Text type="secondary">Extracts PDF text, layout, and images before quiz generation.</Typography.Text></div>
             {statusTag(Boolean(status?.marker.installed), Boolean(markerWorking), status?.marker.managed ? 'Installed by Quizzer' : 'Installed')}
           </div>
-          <Button icon={<CloudDownloadOutlined />} loading={markerWorking} disabled={status?.marker.installed} onClick={() => void runAction('/api/integrations/marker/install')}>
-            {status?.marker.installed ? 'Marker ready' : 'Install Marker'}
-          </Button>
+          {!status?.marker.installed && !markerWorking && <Button icon={<CloudDownloadOutlined />} onClick={() => void runAction('/api/integrations/marker/install')}>Install Marker</Button>}
+          {markerWorking && <Space><Spin size="small" /> Installing Marker…</Space>}
           {status?.marker.job.message && status.marker.job.state !== 'idle' && (
             <Alert showIcon type={status.marker.job.state === 'error' ? 'error' : status.marker.job.state === 'complete' ? 'success' : 'info'}
               message={status.marker.job.state === 'working' ? 'Installing Marker' : status.marker.job.state === 'complete' ? 'Marker ready' : 'Installation failed'}
@@ -108,10 +116,11 @@ export default function PluginsModal({ onClose }: Props) {
             <div><Typography.Title level={5}>Semantic duplicate filter</Typography.Title><Typography.Text type="secondary">Uses the lightweight all-minilm model locally. Exact and token-based filtering remain active without it.</Typography.Text></div>
             {statusTag(Boolean(status?.embeddings?.installed), Boolean(embeddingsWorking), 'Installed')}
           </div>
-          <Button icon={<CloudDownloadOutlined />} loading={embeddingsWorking} disabled={status?.embeddings?.installed || embeddingsWorking}
+          {!status?.embeddings?.installed && !embeddingsWorking && <Button icon={<CloudDownloadOutlined />}
             onClick={() => void runAction('/api/integrations/embeddings/install')}>
-            {status?.embeddings?.installed ? 'all-minilm ready' : status?.embeddings?.runtimeInstalled ? 'Install all-minilm' : 'Install Ollama + all-minilm'}
-          </Button>
+            {status?.embeddings?.runtimeInstalled ? 'Install all-minilm' : 'Install Ollama + all-minilm'}
+          </Button>}
+          {embeddingsWorking && <Space><Spin size="small" /> Installing semantic filter…</Space>}
           {status?.embeddings?.job.message && status.embeddings.job.state !== 'idle' && <pre className="plugin-output">{status.embeddings.job.message}</pre>}
         </section>
 
@@ -128,10 +137,9 @@ export default function PluginsModal({ onClose }: Props) {
             <Space direction="vertical" style={{ width: '100%' }}>
               <Input value={models[provider.id]} onChange={event => setModels(current => ({ ...current, [provider.id]: event.target.value }))} addonBefore="Default model" placeholder="Use the agent default" />
               <Space wrap>
-                {provider.id !== 'codex' && !agent?.installed && <Button icon={<CloudDownloadOutlined />} loading={working} onClick={() => void runAction(`/api/integrations/${provider.id}/install`)}>Install {provider.label.split(' ')[0]}</Button>}
-                <Button icon={<LoginOutlined />} loading={working} disabled={!agent?.installed || agent?.connected} onClick={() => void runAction(`/api/integrations/${provider.id}/connect`)}>
-                  {!agent?.installed ? `${provider.label.split(' ')[0]} CLI not found` : agent.connected ? 'Connected' : `Connect ${provider.label.split(' ')[0]}`}
-                </Button>
+                {provider.id !== 'codex' && !agent?.installed && !working && <Button icon={<CloudDownloadOutlined />} onClick={() => void runAction(`/api/integrations/${provider.id}/install`)}>Install {provider.label.split(' ')[0]}</Button>}
+                {agent?.installed && !agent.connected && !working && <Button icon={<LoginOutlined />} onClick={() => void runAction(`/api/integrations/${provider.id}/connect`)}>Connect {provider.label.split(' ')[0]}</Button>}
+                {working && <Space><Spin size="small" /> Working…</Space>}
               </Space>
               {loginUrl && working && <Typography.Link href={loginUrl} target="_blank" rel="noreferrer">Open the sign-in page</Typography.Link>}
               {agent?.job.message && agent.job.state !== 'idle' && <pre className="plugin-output">{agent.job.message}</pre>}
@@ -152,11 +160,12 @@ export default function PluginsModal({ onClose }: Props) {
         </section>)}
 
         <Divider style={{ margin: '4px 0' }} />
-        <div>
+        {!!configuredProviderOptions.length && <div>
           <Typography.Text strong>Default generation provider</Typography.Text>
-          <Select value={defaultProvider} onChange={(value: GenerationProvider) => setDefaultProvider(value)} style={{ display: 'block', width: '100%', marginTop: 8 }}
-            options={PROVIDERS.map(provider => ({ label: provider.label, value: provider.id }))} />
-        </div>
+          <Select value={visibleDefaultProvider} onChange={(value: GenerationProvider) => setDefaultProvider(value)} style={{ display: 'block', width: '100%', marginTop: 8 }}
+            options={configuredProviderOptions.map(provider => ({ label: provider.label, value: provider.id }))} />
+        </div>}
+        {!configuredProviderOptions.length && <Typography.Text type="secondary">Connect a provider above to make it available for generation.</Typography.Text>}
       </Space>}
     </Modal>
   );

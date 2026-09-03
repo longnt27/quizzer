@@ -1,24 +1,26 @@
-import { useState } from 'react';
-import { Alert, Button, Checkbox, Empty, Input, InputNumber, List, Modal, Radio, Select, Space, Tag, Typography } from 'antd';
+import { useEffect, useMemo, useState } from 'react';
+import { Alert, Button, Checkbox, Empty, Input, InputNumber, List, Modal, Radio, Select, Space, Spin, Tag, Typography } from 'antd';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db, type StoredGenerationJob } from '../db/db';
 import type { GenerationOptions } from '../types';
 import { getMessageApi } from '../utils/messageProvider';
 import { pumpGenerationQueue } from '../utils/generationQueue';
-import { PROVIDERS, getApiKey, getProviderDefinition, getProviderSettings } from '../utils/providerSettings';
+import { getProviderDefinition, getProviderSettings } from '../utils/providerSettings';
+import { useConfiguredProviders } from '../utils/useConfiguredProviders';
 
 interface Props { onClose: () => void; onManagePlugins: () => void; }
 type CreationMode = 'combined' | 'separate';
 
 export default function AddTestModal({ onClose, onManagePlugins }: Props) {
-  const configuredProviders = getProviderSettings();
+  const settings = useMemo(getProviderSettings, []);
+  const configured = useConfiguredProviders();
   const documents = useLiveQuery(() => db.documents.orderBy('createdAt').reverse().toArray(), []) ?? [];
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [mode, setMode] = useState<CreationMode>('combined');
   const [name, setName] = useState('Combined quiz');
-  const [provider, setProvider] = useState<GenerationOptions['provider']>(configuredProviders.defaultProvider);
-  const [model, setModel] = useState(configuredProviders.models[configuredProviders.defaultProvider]);
+  const [provider, setProvider] = useState<GenerationOptions['provider']>(settings.defaultProvider);
+  const [model, setModel] = useState(settings.models[settings.defaultProvider]);
   const [multipleChoiceCount, setMultipleChoiceCount] = useState(15);
   const [fillBlankCount, setFillBlankCount] = useState(3);
   const [reasoningCount, setReasoningCount] = useState(2);
@@ -35,12 +37,19 @@ export default function AddTestModal({ onClose, onManagePlugins }: Props) {
       || document.tags.some(tag => tag.toLowerCase().includes(needle)));
   })();
 
+  useEffect(() => {
+    if (!configured.providers.length || configured.providers.some(item => item.id === provider)) return;
+    const next = configured.providers[0].id;
+    setProvider(next);
+    setModel(settings.models[next]);
+  }, [configured.providers, provider, settings.models]);
+
   const toggle = (id: string) => setSelectedIds(ids => ids.includes(id) ? ids.filter(item => item !== id) : [...ids, id]);
 
   const create = async () => {
     if (!selected.length) return;
     if (questionCount < 1 || questionCount > 200) return message.error('Choose between 1 and 200 questions in total');
-    if (selectedProvider.kind === 'api' && !getApiKey(provider).trim()) return message.error(`Enter your ${selectedProvider.keyLabel ?? 'API key'}`);
+    if (!configured.providers.some(item => item.id === provider)) return message.error('Connect an AI provider in Plugins & models first');
     setSaving(true);
     try {
       const options: GenerationOptions = {
@@ -68,46 +77,51 @@ export default function AddTestModal({ onClose, onManagePlugins }: Props) {
   };
 
   return (
-    <Modal open width={760} title="Create tests from documents" onCancel={onClose} onOk={() => void create()}
-      okText={mode === 'combined' ? 'Queue combined test' : `Queue ${selected.length} separate test(s)`}
-      confirmLoading={saving} okButtonProps={{ disabled: !selected.length || saving || questionCount < 1 || questionCount > 200 }}>
+    <Modal open width={760} title="Create tests from documents" onCancel={onClose} footer={(_, { CancelBtn }) => <>
+      {!saving && <CancelBtn />}
+      {saving ? <Space><Spin size="small" /> Queueing tests…</Space>
+        : selected.length > 0 && questionCount >= 1 && questionCount <= 200 && configured.providers.length > 0
+          ? <Button type="primary" onClick={() => void create()}>{mode === 'combined' ? 'Queue combined test' : `Queue ${selected.length} separate test(s)`}</Button>
+          : null}
+    </>}>
       {!documents.length ? <Empty description="Add documents to your library before creating a test" /> : (
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <Alert type="info" showIcon message="Generation runs in the background"
             description="Completed tests appear immediately. Each configured instance works on a different test, while batches within a test run sequentially to reduce duplicates." />
-          <Radio.Group value={mode} disabled={saving} onChange={event => setMode(event.target.value)} optionType="button" buttonStyle="solid"
+          <Radio.Group value={mode} onChange={event => setMode(event.target.value)} optionType="button" buttonStyle="solid"
             options={[{ label: 'One combined test', value: 'combined' }, { label: 'Separate test per document', value: 'separate' }]} />
-          {mode === 'combined' && <Input disabled={saving} value={name} onChange={event => setName(event.target.value)} addonBefore="Test name" />}
-          <Space wrap>
+          {mode === 'combined' && <Input value={name} onChange={event => setName(event.target.value)} addonBefore="Test name" />}
+          {configured.loading && !configured.providers.length && <Space><Spin size="small" /><Typography.Text type="secondary">Checking connected providers…</Typography.Text></Space>}
+          {!configured.loading && !configured.providers.length && <Alert type="warning" showIcon message="No AI provider is configured"
+            description="Connect a CLI agent or add an API key before creating a test."
+            action={<Button size="small" onClick={onManagePlugins}>Open plugins</Button>} />}
+          {!!configured.providers.length && <Space wrap>
             <Typography.Text>Provider</Typography.Text>
-            <Select value={provider} disabled={saving} onChange={next => { setProvider(next); setModel(configuredProviders.models[next]); }} style={{ width: 190 }}
-              options={PROVIDERS.map(item => ({ label: item.label, value: item.id }))} />
-            <Input disabled={saving} value={model} onChange={event => setModel(event.target.value)} addonBefore="Model" placeholder={selectedProvider.defaultModel || 'Provider default'} style={{ width: 280 }} />
-          </Space>
+            <Select value={provider} onChange={next => { setProvider(next); setModel(settings.models[next]); }} style={{ width: 190 }}
+              options={configured.providers.map(item => ({ label: item.label, value: item.id }))} />
+            <Input value={model} onChange={event => setModel(event.target.value)} addonBefore="Model" placeholder={selectedProvider.defaultModel || 'Provider default'} style={{ width: 280 }} />
+          </Space>}
           <div className="question-count-grid">
-            <label><Typography.Text strong>Multiple choice</Typography.Text><InputNumber disabled={saving} min={0} max={200} value={multipleChoiceCount} onChange={value => setMultipleChoiceCount(value ?? 0)} /></label>
-            <label><Typography.Text strong>Fill in the blank</Typography.Text><InputNumber disabled={saving} min={0} max={200} value={fillBlankCount} onChange={value => setFillBlankCount(value ?? 0)} /></label>
-            <label><Typography.Text strong>Reasoning</Typography.Text><InputNumber disabled={saving} min={0} max={200} value={reasoningCount} onChange={value => setReasoningCount(value ?? 0)} /></label>
+            <label><Typography.Text strong>Multiple choice</Typography.Text><InputNumber min={0} max={200} value={multipleChoiceCount} onChange={value => setMultipleChoiceCount(value ?? 0)} /></label>
+            <label><Typography.Text strong>Fill in the blank</Typography.Text><InputNumber min={0} max={200} value={fillBlankCount} onChange={value => setFillBlankCount(value ?? 0)} /></label>
+            <label><Typography.Text strong>Reasoning</Typography.Text><InputNumber min={0} max={200} value={reasoningCount} onChange={value => setReasoningCount(value ?? 0)} /></label>
             <div className="question-count-total"><Typography.Text type="secondary">Total</Typography.Text><Typography.Text strong>{questionCount}</Typography.Text></div>
           </div>
-          <div>
+          {multipleChoiceCount > 0 && <div>
             <Typography.Text strong>Multiple-choice answer style</Typography.Text><br />
-            <Radio.Group value={multipleChoiceMode} disabled={saving || multipleChoiceCount === 0} onChange={event => setMultipleChoiceMode(event.target.value)}
+            <Radio.Group value={multipleChoiceMode} onChange={event => setMultipleChoiceMode(event.target.value)}
               className="answer-mode-selector" optionType="button" buttonStyle="solid" style={{ marginTop: 8 }} options={[
                 { label: 'Exactly one correct answer', value: 'single' },
                 { label: 'Multiple correct answers', value: 'multiple' },
               ]} />
-          </div>
+          </div>}
           {questionCount < 1 && <Alert type="error" showIcon message="Choose at least one question." />}
           {questionCount > 200 && <Alert type="error" showIcon message="A test can contain at most 200 questions." />}
-          {selectedProvider.kind === 'api' && !getApiKey(provider).trim() && <Alert type="warning" showIcon message={`${selectedProvider.label} is not connected`}
-            description="Add your API key in Plugins & models before creating this test."
-            action={<Button disabled={saving} size="small" onClick={onManagePlugins}>Configure</Button>} />}
-          <Typography.Text type="secondary">Provider defaults are saved in <Button disabled={saving} type="link" size="small" onClick={onManagePlugins}>Plugins & models</Button>. You can override the model for this job.</Typography.Text>
+          {!saving && <Typography.Text type="secondary">Provider defaults are saved in <Button type="link" size="small" onClick={onManagePlugins}>Plugins & models</Button>. You can override the model for this job.</Typography.Text>}
           <Input.Search value={query} onChange={event => setQuery(event.target.value)} placeholder="Filter documents by name or tag" />
           <List bordered size="small" style={{ maxHeight: 290, overflowY: 'auto' }} dataSource={visible}
-            renderItem={document => <List.Item onClick={() => !saving && toggle(document.id)} style={{ cursor: saving ? 'default' : 'pointer' }}>
-              <Checkbox checked={selectedIds.includes(document.id)} disabled={saving} style={{ marginRight: 12 }} />
+            renderItem={document => <List.Item onClick={() => toggle(document.id)} style={{ cursor: 'pointer' }}>
+              <Checkbox checked={selectedIds.includes(document.id)} style={{ marginRight: 12 }} />
               <List.Item.Meta title={document.name} description={document.tags.map(tag => <Tag key={tag}>{tag}</Tag>)} />
             </List.Item>} />
           <Typography.Text type="secondary">{selected.length} document(s) selected</Typography.Text>

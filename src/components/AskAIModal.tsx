@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Alert, Button, Input, Modal, Select, Space, Spin, Typography } from 'antd';
 import { SendOutlined } from '@ant-design/icons';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
 import type { AIConversationTurn, GenerationProvider } from '../types';
-import { getProviderSettings, PROVIDERS } from '../utils/providerSettings';
+import { getProviderSettings } from '../utils/providerSettings';
+import { useConfiguredProviders } from '../utils/useConfiguredProviders';
 
 interface Props {
   title: string;
@@ -14,7 +15,8 @@ interface Props {
 }
 
 export default function AskAIModal({ title, emptyMessage, loadingMessage, onClose, ask }: Props) {
-  const settings = getProviderSettings();
+  const settings = useMemo(getProviderSettings, []);
+  const configured = useConfiguredProviders();
   const [provider, setProvider] = useState<GenerationProvider>(settings.defaultProvider);
   const [model, setModel] = useState(settings.models[settings.defaultProvider]);
   const [question, setQuestion] = useState('');
@@ -23,6 +25,13 @@ export default function AskAIModal({ title, emptyMessage, loadingMessage, onClos
   const [error, setError] = useState('');
   const controller = useRef<AbortController | null>(null);
   const questionRef = useRef<TextAreaRef>(null);
+
+  useEffect(() => {
+    if (!configured.providers.length || configured.providers.some(item => item.id === provider)) return;
+    const next = configured.providers[0].id;
+    setProvider(next);
+    setModel(settings.models[next]);
+  }, [configured.providers, provider, settings.models]);
 
   useEffect(() => {
     const focusQuestion = (event: KeyboardEvent) => {
@@ -70,10 +79,11 @@ export default function AskAIModal({ title, emptyMessage, loadingMessage, onClos
   return <Modal open title={title} width={780} onCancel={close} footer={null} destroyOnHidden>
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <Space.Compact block>
-        <Select value={provider} style={{ width: 220 }} options={PROVIDERS.map(item => ({ label: item.label, value: item.id }))}
+        {!!configured.providers.length && <><Select value={provider} style={{ width: 220 }} options={configured.providers.map(item => ({ label: item.label, value: item.id }))}
           onChange={(value: GenerationProvider) => { setProvider(value); setModel(settings.models[value]); }} />
-        <Input value={model} onChange={event => setModel(event.target.value)} onKeyDown={containEditingKeys} placeholder="Use provider default model" />
+        <Input value={model} onChange={event => setModel(event.target.value)} onKeyDown={containEditingKeys} placeholder="Use provider default model" /></>}
       </Space.Compact>
+      {!configured.loading && !configured.providers.length && <Alert type="warning" showIcon message="No AI provider is configured" description="Connect an agent or add an API key in Plugins & models first." />}
       <div className="document-chat-history">
         {!history.length && !loading && <Typography.Text type="secondary">{emptyMessage}</Typography.Text>}
         {history.map((turn, index) => <div className="document-chat-turn" key={`${index}-${turn.question}`}>
@@ -90,7 +100,7 @@ export default function AskAIModal({ title, emptyMessage, loadingMessage, onClos
           containEditingKeys(event);
           if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void submit(); }
         }} />
-      <Button type="primary" icon={<SendOutlined />} loading={loading} disabled={!question.trim()} onClick={() => void submit()}>Ask AI</Button>
+      {question.trim() && configured.providers.length > 0 && <Button type="primary" icon={<SendOutlined />} loading={loading} onClick={() => void submit()}>Ask AI</Button>}
       <Typography.Text type="secondary">Press I to focus · Enter to ask · Shift+Enter for a new line · Escape to unfocus</Typography.Text>
     </Space>
   </Modal>;

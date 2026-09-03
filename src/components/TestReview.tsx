@@ -79,8 +79,8 @@ const SearchBar: FC<SearchBarProps> = ({ query, setQuery, onPrev, onNext, onClos
         <span>
             {query && total > 0 ? `${current + 1} of ${total}` : query ? 'Not found' : ''}
         </span>
-        <Button size="middle" onClick={onPrev} disabled={total === 0}>Previous (N)</Button>
-        <Button size="middle" onClick={onNext} disabled={total === 0}>Next (n)</Button>
+        {total > 0 && <Button size="middle" onClick={onPrev}>Previous (N)</Button>}
+        {total > 0 && <Button size="middle" onClick={onNext}>Next (n)</Button>}
         <Button size="middle" onClick={onClose} type="text" style={{color: '#aaa', marginLeft: 'auto'}}>Close (Esc)</Button>
     </div>
 );
@@ -345,12 +345,8 @@ const TestReview: React.FC<Props> = ({ test, onBack }) => {
 
                 <div style={{ marginTop: 'auto', paddingTop: 32 }}>
                     <Space>
-                        <Button disabled={currentIndex === 0} onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}>
-                            Previous
-                        </Button>
-                        <Button disabled={currentIndex === test.questions.length - 1} onClick={() => setCurrentIndex((i) => Math.min(test.questions.length - 1, i + 1))}>
-                            Next
-                        </Button>
+                        {currentIndex > 0 && <Button onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}>Previous</Button>}
+                        {currentIndex < test.questions.length - 1 && <Button onClick={() => setCurrentIndex((i) => Math.min(test.questions.length - 1, i + 1))}>Next</Button>}
                     </Space>
                 </div>
             </Col>

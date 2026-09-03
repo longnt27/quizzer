@@ -10,8 +10,9 @@ import {
 import {
   getGenerationBatchSize, getGenerationConcurrency, setGenerationBatchSize, setGenerationConcurrency,
 } from '../utils/generationSettings';
-import { getApiKey, getProviderDefinition, getProviderSettings, PROVIDERS } from '../utils/providerSettings';
+import { getProviderDefinition, getProviderSettings } from '../utils/providerSettings';
 import { getMessageApi } from '../utils/messageProvider';
+import { useConfiguredProviders } from '../utils/useConfiguredProviders';
 
 const terminalStatuses = new Set(['completed', 'cancelled']);
 const statusColor: Record<StoredGenerationJob['status'], string> = {
@@ -24,7 +25,8 @@ const targetFor = (job: StoredGenerationJob) => job.options.questionCounts
 
 function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJob; onOpenTest: (id: string) => void; onManagePlugins: () => void }) {
   const settings = getProviderSettings();
-  const firstAlternative = PROVIDERS.find(provider => provider.id !== job.options.provider)?.id ?? job.options.provider;
+  const configured = useConfiguredProviders();
+  const firstAlternative = settings.defaultProvider;
   const [provider, setProvider] = useState<GenerationProvider>(firstAlternative);
   const [model, setModel] = useState(settings.models[firstAlternative]);
   const message = getMessageApi();
@@ -35,17 +37,16 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
 
   useEffect(() => {
     if (job.status !== 'paused') return;
-    const next = PROVIDERS.find(item => item.id !== job.options.provider)?.id ?? job.options.provider;
+    const next = configured.providers.find(item => item.id !== job.options.provider)?.id
+      ?? configured.providers[0]?.id;
+    if (!next) return;
     const latestSettings = getProviderSettings();
     setProvider(next);
     setModel(latestSettings.models[next]);
-  }, [job.options.provider, job.status]);
+  }, [configured.providers, job.options.provider, job.status]);
 
   const resume = async () => {
-    if (providerDefinition.kind === 'api' && !getApiKey(provider)) {
-      message.error(`Configure your ${providerDefinition.keyLabel} first`);
-      return;
-    }
+    if (!configured.providers.some(item => item.id === provider)) return message.error('Connect an AI provider first');
     await resumeGenerationJob(job.id, { ...job.options, provider, model: model.trim() || undefined });
   };
 
@@ -65,13 +66,15 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
       {job.error && <Alert type={job.status === 'error' ? 'error' : 'warning'} showIcon message={job.error} />}
       {job.status === 'paused' && <Space direction="vertical" style={{ width: '100%' }}>
         <Typography.Text type="secondary">Accepted questions are saved. Choose a provider for only the unfinished portion.</Typography.Text>
-        <Space wrap>
+        {!configured.loading && !configured.providers.length && <Alert type="warning" showIcon message="No AI provider is configured"
+          description="Connect an agent or add an API key to continue this job."
+          action={<Button size="small" onClick={onManagePlugins}>Open plugins</Button>} />}
+        {!!configured.providers.length && <Space wrap>
           <Select value={provider} onChange={next => { setProvider(next); setModel(settings.models[next]); }} style={{ width: 190 }}
-            options={PROVIDERS.map(item => ({ label: item.label, value: item.id }))} />
+            options={configured.providers.map(item => ({ label: item.label, value: item.id }))} />
           <Input value={model} onChange={event => setModel(event.target.value)} addonBefore="Model" placeholder={providerDefinition.defaultModel || 'Provider default'} style={{ width: 260 }} />
           <Button type="primary" icon={<PlayCircleOutlined />} onClick={() => void resume()}>Continue</Button>
-          {providerDefinition.kind === 'api' && !getApiKey(provider) && <Button onClick={onManagePlugins}>Configure key</Button>}
-        </Space>
+        </Space>}
       </Space>}
       <Space wrap>
         {(job.status === 'queued' || job.status === 'running' || job.status === 'waiting' || job.status === 'paused') &&

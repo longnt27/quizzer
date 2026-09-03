@@ -108,9 +108,13 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
   const extractingCount = files.filter(file => file.status === 'extracting').length;
 
   return (
-    <Modal open title="Add documents" width={680} onCancel={onClose} onOk={save}
-      confirmLoading={saving} okText={extractingCount ? 'Extracting…' : 'Add to library'}
-      okButtonProps={{ disabled: extractingCount > 0 || !files.some(file => file.status === 'ready') }}>
+    <Modal open title="Add documents" width={680} onCancel={onClose} footer={(_, { CancelBtn }) => <>
+      {!saving && <CancelBtn />}
+      {saving ? <Space><Spin size="small" /> Saving documents…</Space>
+        : extractingCount === 0 && files.some(file => file.status === 'ready')
+          ? <Button type="primary" onClick={() => void save()}>Add to library</Button>
+          : null}
+    </>}>
       <Typography.Paragraph type="secondary">
         Documents are extracted now and saved to your local library. Creating a quiz is a separate step.
       </Typography.Paragraph>

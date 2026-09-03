@@ -68,8 +68,8 @@ const SearchBar: FC<SearchBarProps> = ({ query, setQuery, onPrev, onNext, onClos
     <div className="quiz-search-bar">
         <input ref={inputRef} type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search all questions..." />
         <span>{query && total > 0 ? `${current + 1} of ${total}` : query ? 'Not found' : ''}</span>
-        <Button size="middle" onClick={onPrev} disabled={total === 0}>Previous (N)</Button>
-        <Button size="middle" onClick={onNext} disabled={total === 0}>Next (n)</Button>
+        {total > 0 && <Button size="middle" onClick={onPrev}>Previous (N)</Button>}
+        {total > 0 && <Button size="middle" onClick={onNext}>Next (n)</Button>}
         <Button size="middle" onClick={onClose} type="text" style={{color: '#aaa', marginLeft: 'auto'}}>Close (Esc)</Button>
     </div>
 );
@@ -480,8 +480,8 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                       <Paragraph type="secondary" style={{ fontStyle: 'italic', width: '100%' }}>
                           Choose {totalCorrect} answer{totalCorrect > 1 ? 's' : ''}
                       </Paragraph>
-                    {totalCorrect === 1 ? (
-                        <Radio.Group disabled={practice && submitted} value={(answers[currentIndex] && answers[currentIndex][0]) || null} onChange={(e) => setAnswers((prev) => ({ ...prev, [currentIndex]: [e.target.value] }))}>
+                    {!(practice && submitted) && (totalCorrect === 1 ? (
+                        <Radio.Group value={(answers[currentIndex] && answers[currentIndex][0]) || null} onChange={(e) => setAnswers((prev) => ({ ...prev, [currentIndex]: [e.target.value] }))}>
                             <Space direction="vertical" size="large">
                                 {choices.map((a, idx) => (
                                     <Radio key={idx} value={a.content}>
@@ -492,7 +492,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                             </Space>
                         </Radio.Group>
                     ) : (
-                        <Checkbox.Group disabled={practice && submitted} value={answers[currentIndex] || []} onChange={(vals) => setAnswers((prev) => ({ ...prev, [currentIndex]: vals as string[] }))}>
+                        <Checkbox.Group value={answers[currentIndex] || []} onChange={(vals) => setAnswers((prev) => ({ ...prev, [currentIndex]: vals as string[] }))}>
                             <Space direction="vertical" size="large">
                                 {choices.map((a, idx) => (
                                     <Checkbox key={idx} value={a.content}>
@@ -502,20 +502,20 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                                 ))}
                             </Space>
                         </Checkbox.Group>
-                    )}</>}
+                    ))}</>}
                     {questionType === 'fill-blank' && 'acceptedAnswers' in q && (
                       <div className="written-answer-block">
                         <Typography.Text strong>Your answer</Typography.Text>
-                        <Input size="large" disabled={practice && submitted} value={answers[currentIndex]?.[0] ?? ''}
+                        {practice && submitted ? <Alert message="Your answer" description={answers[currentIndex]?.[0] || '(No answer)'} /> : <Input size="large" value={answers[currentIndex]?.[0] ?? ''}
                           onChange={event => setAnswers(previous => ({ ...previous, [currentIndex]: [event.target.value] }))}
-                          placeholder="Type the missing word or phrase" autoComplete="off" />
+                          placeholder="Type the missing word or phrase" autoComplete="off" />}
                         <Typography.Text type="secondary">Capitalization, punctuation, and extra spaces are ignored. Equivalent accepted wording is checked automatically.</Typography.Text>
                       </div>
                     )}
                     {questionType === 'reasoning' && 'referenceAnswer' in q && (
                       <div className="written-answer-block">
                         <Typography.Text strong>Your reasoning</Typography.Text>
-                        <Input.TextArea rows={7} disabled={practice && submitted} value={answers[currentIndex]?.[0] ?? ''}
+                        {practice && submitted ? <Alert message="Your answer" description={answers[currentIndex]?.[0] || '(No answer)'} /> : <Input.TextArea rows={7} value={answers[currentIndex]?.[0] ?? ''}
                           onChange={event => {
                             setAnswers(previous => ({ ...previous, [currentIndex]: [event.target.value] }));
                             setSelfAssessments(previous => {
@@ -524,7 +524,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                               return next;
                             });
                           }}
-                          placeholder={practice ? 'Explain your reasoning. Press Shift+Enter for a new line.' : 'Explain your reasoning in your own words'} />
+                          placeholder={practice ? 'Explain your reasoning. Press Shift+Enter for a new line.' : 'Explain your reasoning in your own words'} />}
                         {practice && revealedReasoning[currentIndex] ? <>
                           <Alert type="info" showIcon message="Reference answer" description={<div>{q.referenceAnswer}<br /><Typography.Text type="secondary">{q.explanation}</Typography.Text></div>} />
                           <Typography.Text strong>Does your answer cover the essential reasoning?</Typography.Text>
@@ -557,15 +557,14 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                     {practice && submitted && <Button icon={<RobotOutlined />} onClick={() => setAskQuestionIndex(currentIndex)}>
                       Ask AI about this answer
                     </Button>}
-                    {practice && !submitted && <div className="practice-check-row">
-                      <Button type="primary" size="large" disabled={!answered} onClick={submitPracticeAnswer}>Check answer <span className="practice-shortcut">Enter</span></Button>
+                    {practice && !submitted && answered && <div className="practice-check-row">
+                      <Button type="primary" size="large" onClick={submitPracticeAnswer}>Check answer <span className="practice-shortcut">Enter</span></Button>
                     </div>}
                     <Row justify="space-between" style={{ marginTop: 64, width: '100%' }}>
-                        <Button onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))} disabled={currentIndex === 0}>Previous</Button>
-                        {practice && currentIndex === test.questions.length - 1 ? (
-                          <Button type="primary" disabled={!reviewComplete} onClick={() => void handleSubmit()}>Finish practice</Button>
-                        ) : <Button onClick={() => setCurrentIndex((i) => Math.min(test.questions.length - 1, i + 1))}
-                          disabled={currentIndex === test.questions.length - 1 || (practice && !reviewComplete)}>Next</Button>}
+                        <div>{currentIndex > 0 && <Button onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}>Previous</Button>}</div>
+                        {practice && currentIndex === test.questions.length - 1
+                          ? reviewComplete && <Button type="primary" onClick={() => void handleSubmit()}>Finish practice</Button>
+                          : currentIndex < test.questions.length - 1 && (!practice || reviewComplete) && <Button onClick={() => setCurrentIndex((i) => Math.min(test.questions.length - 1, i + 1))}>Next</Button>}
                     </Row>
                 </Row>
             </Col>
