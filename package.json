@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.mjs",
+    "tailscale": "./start-tailscale.command",
     "dev:web": "vite",
     "service": "node server.mjs",
     "build": "tsc -b && vite build",

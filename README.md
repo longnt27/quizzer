@@ -88,6 +88,12 @@ Open the Vite URL printed in the terminal, normally `http://localhost:5173`.
 
 `npm run dev` starts both the browser development server and the loopback generation service. The service listens on `127.0.0.1:8787` by default.
 
+### Tailscale access
+
+On macOS, double-click `start-tailscale.command` in Finder. It detects the active Tailscale address, installs npm dependencies when needed, and prints the private URL to open from another device on the same tailnet. Keep its Terminal window open while using Quizzer and press Control-C to stop it.
+
+The same launcher is available from a terminal as `npm run tailscale`. It binds Vite to the Tailscale interface rather than exposing Quizzer on every LAN interface.
+
 ## Provider setup
 
 Open **Plugins & models** at the bottom of the sidebar. This panel is the central place to:
@@ -161,6 +167,7 @@ Do not upload confidential material unless the selected provider and your accoun
 | Command | Purpose |
 | --- | --- |
 | `npm run dev` | Start the local service and Vite development server |
+| `npm run tailscale` | Start Quizzer on this machine's Tailscale address |
 | `npm run dev:web` | Start only Vite; generation endpoints must be provided separately |
 | `npm run service` | Start only the loopback generation service |
 | `npm run build` | Type-check and create the production browser bundle |
