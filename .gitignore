@@ -9,6 +9,7 @@ lerna-debug.log*
 
 node_modules
 .quizzer-tools
+.quizzer-data
 dist
 dist-ssr
 *.local

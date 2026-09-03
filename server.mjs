@@ -3,9 +3,11 @@ import { spawn } from 'node:child_process';
 import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { storageInfo, syncStorage } from './server/storage.mjs';
 
 const port = Number(process.env.QUIZZER_SERVICE_PORT || 8787);
 const maxBodyBytes = 25 * 1024 * 1024;
+const maxStorageBodyBytes = 250 * 1024 * 1024;
 const managedMarkerDirectory = join(process.cwd(), '.quizzer-tools', 'marker');
 const managedMarkerExecutable = join(managedMarkerDirectory, process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'marker_single.exe' : 'marker_single');
 const integrationJobs = {
@@ -22,11 +24,11 @@ const send = (response, status, body) => {
   response.end(JSON.stringify(body));
 };
 
-const readJson = request => new Promise((resolve, reject) => {
+const readJson = (request, limit = maxBodyBytes) => new Promise((resolve, reject) => {
   let body = '';
   request.on('data', chunk => {
     body += chunk;
-    if (Buffer.byteLength(body) > maxBodyBytes) reject(new Error('Request is too large'));
+    if (Buffer.byteLength(body) > limit) reject(new Error('Request is too large'));
   });
   request.on('end', () => {
     try { resolve(JSON.parse(body)); } catch { reject(new Error('Invalid JSON request')); }
@@ -511,7 +513,11 @@ createServer(async (request, response) => {
     return response.end();
   }
   if (request.method === 'GET' && request.url === '/api/health') {
-    return send(response, 200, { ok: true, providers: Object.fromEntries(Object.keys(providerRunners).map(provider => [provider, true])) });
+    return send(response, 200, { ok: true, storage: storageInfo(), providers: Object.fromEntries(Object.keys(providerRunners).map(provider => [provider, true])) });
+  }
+  if (request.method === 'POST' && request.url === '/api/storage/sync') {
+    try { return send(response, 200, syncStorage(await readJson(request, maxStorageBodyBytes))); }
+    catch (error) { return send(response, 400, { error: error instanceof Error ? error.message : 'Storage sync failed' }); }
   }
   if (request.method === 'GET' && request.url === '/api/integrations') {
     return send(response, 200, await integrationStatus());

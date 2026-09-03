@@ -81,11 +81,29 @@ export interface StoredTestDraft {
   shuffledAnswers: Record<number, QuizAnswer[]>;
 }
 
+export type SyncCollection = 'tests' | 'documents' | 'generationJobs' | 'testDrafts';
+
+export interface StoredSyncChange {
+  key: string;
+  collection: SyncCollection;
+  id: string;
+  deleted: boolean;
+  changedAt: number;
+}
+
+export interface StoredSyncState {
+  id: 'server';
+  cursor: number;
+  bootstrapped: boolean;
+}
+
 class QuizDB extends Dexie {
   tests: Dexie.Table<StoredTest, string>;
   documents: Dexie.Table<StoredDocument, string>;
   generationJobs: Dexie.Table<StoredGenerationJob, string>;
   testDrafts: Dexie.Table<StoredTestDraft, string>;
+  syncChanges: Dexie.Table<StoredSyncChange, string>;
+  syncState: Dexie.Table<StoredSyncState, string>;
 
   constructor() {
     super('QuizDB');
@@ -107,10 +125,20 @@ class QuizDB extends Dexie {
       generationJobs: 'id, status, createdAt, updatedAt, *documentIds',
       testDrafts: 'testId, updatedAt',
     });
+    this.version(5).stores({
+      tests: 'id, name, createdAt, *documentIds',
+      documents: 'id, name, createdAt, *tags',
+      generationJobs: 'id, status, createdAt, updatedAt, *documentIds',
+      testDrafts: 'testId, updatedAt',
+      syncChanges: 'key, collection, id, changedAt',
+      syncState: 'id',
+    });
     this.tests = this.table('tests');
     this.documents = this.table('documents');
     this.generationJobs = this.table('generationJobs');
     this.testDrafts = this.table('testDrafts');
+    this.syncChanges = this.table('syncChanges');
+    this.syncState = this.table('syncState');
   }
 }
 

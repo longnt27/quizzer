@@ -1,10 +1,11 @@
-import { useState } from 'react';
-import { Button, Empty, Input, Layout, List, Popconfirm, Space, Tabs, Tag, Typography } from 'antd';
-import { ApiOutlined, DeleteOutlined, FileTextOutlined, FormOutlined, MoonOutlined, PlusOutlined, SearchOutlined, SyncOutlined, SunOutlined } from '@ant-design/icons';
+import { useState, useSyncExternalStore } from 'react';
+import { Badge, Button, Empty, Input, Layout, List, Popconfirm, Space, Tabs, Tag, Typography } from 'antd';
+import { ApiOutlined, CloudSyncOutlined, DeleteOutlined, FileTextOutlined, FormOutlined, MoonOutlined, PlusOutlined, SearchOutlined, SyncOutlined, SunOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { getMessageApi } from '../utils/messageProvider';
 import { countQuestionTypes } from '../utils/questions';
+import { serverSyncStatus, syncNow } from '../db/serverSync';
 
 export type LibrarySelection = { kind: 'test' | 'document'; id: string } | null;
 
@@ -26,6 +27,7 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
   const [tab, setTab] = useState<'tests' | 'documents'>(selection?.kind === 'document' ? 'documents' : 'tests');
   const [query, setQuery] = useState('');
   const message = getMessageApi();
+  const syncStatus = useSyncExternalStore(serverSyncStatus.subscribe, serverSyncStatus.getSnapshot);
 
   const normalizedQuery = query.trim().toLowerCase();
   const visibleTests = tests.filter(test => test.name.toLowerCase().includes(normalizedQuery));
@@ -88,6 +90,10 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
         )}
       </div>
       <div className="sidebar-footer">
+        <Button type="text" icon={<CloudSyncOutlined spin={syncStatus === 'syncing'} />} onClick={() => void syncNow()}>
+          <Badge status={syncStatus === 'synced' ? 'success' : syncStatus === 'offline' ? 'warning' : 'processing'} />
+          {syncStatus === 'synced' ? 'Saved on server' : syncStatus === 'offline' ? 'Offline — saved locally' : 'Syncing library'}
+        </Button>
         <Button type="text" icon={<SyncOutlined />} onClick={onOpenGeneration}>Generation queue</Button>
         <Button type="text" icon={<ApiOutlined />} onClick={onOpenPlugins}>Plugins & models</Button>
         <Button type="text" icon={dark ? <SunOutlined /> : <MoonOutlined />} onClick={onToggleTheme}>

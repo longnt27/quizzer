@@ -47,7 +47,7 @@ Quizzer is a local-first study application that turns a reusable document librar
 - Optional local semantic duplicate filtering through Ollama
 - Optional Marker PDF conversion with tables, equations, and extracted figures
 - Fresh AI-generated practice for concepts missed on the latest attempt
-- Local quiz, document, and attempt storage through IndexedDB
+- Server-side SQLite storage with an offline IndexedDB cache
 
 ## How it works
 
@@ -55,7 +55,7 @@ Quizzer is a local-first study application that turns a reusable document librar
 PDF / Markdown / text
           │
           ▼
-  Document extraction ──────► IndexedDB document library
+  Document extraction ──────► SQLite document library
   (Marker or fallback)          content + tags + figures
                                       │
                                       ▼
@@ -73,7 +73,7 @@ PDF / Markdown / text
                               saved local quiz
 ```
 
-The React application never starts shell commands directly. It calls a loopback-only Node service, which invokes provider adapters and keeps API credentials outside browser bundles. Generation jobs and their verified checkpoints live in IndexedDB, so the browser can resume unfinished work after reconnecting or reopening Quizzer.
+The React application never starts shell commands directly. It calls a loopback-only Node service, which invokes provider adapters, owns the SQLite library, and keeps API credentials outside browser bundles. Each browser retains an IndexedDB cache so work remains usable during a short outage and synchronizes when the server returns.
 
 ## Requirements
 
@@ -168,7 +168,7 @@ Every candidate is independently validated and deduplicated before the next batc
 
 Open **Generation queue** from the sidebar or the floating activity indicator to inspect every job, cancel work, retry an error, or switch providers. As each separate test completes it appears in the Tests sidebar immediately, where you can take it while later jobs continue.
 
-After every validated parallel round, Quizzer checkpoints accepted questions, retry counters, and provider settings to IndexedDB. A dropped connection moves the job into a waiting state and retries automatically when connectivity returns. Reloading or closing the page stops active computation, but reopening Quizzer requeues interrupted jobs from the latest checkpoint; it never restarts accepted batches from zero.
+After every validated parallel round, Quizzer checkpoints accepted questions, retry counters, and provider settings locally and to the server. A dropped connection moves the job into a waiting state and retries automatically when connectivity returns. Reloading or closing the page stops active computation, but reopening Quizzer requeues interrupted jobs from the latest checkpoint; it never restarts accepted batches from zero.
 
 If a provider runs out of quota, loses authentication, or becomes unavailable, generation pauses and offers another provider. Already accepted questions remain in memory, the replacement provider requests only the missing slots, and duplicate detection compares its output against the full accepted set. Switching providers does not consume a validation retry round.
 
@@ -176,20 +176,30 @@ Fill-in-the-blank answers ignore capitalization, punctuation, and repeated space
 
 Before starting a saved test, choose **Test mode** for the traditional submit-then-review flow or **Practice mode** for immediate feedback. Practice mode locks each submitted response, shows correctness and every multiple-choice explanation or accepted fill-in answer, and requires the learner to compare reasoning responses with the reference answer before moving forward. Select **Check answer** or press Enter; in a reasoning response, use Shift+Enter for a new line.
 
-Quizzer continuously saves the active test or practice session to IndexedDB, including the current question, answers, review marks, revealed feedback, self-assessments, shuffled choice order, mode, and timer start. If the connection drops or the page closes, reopening Quizzer on the same browser origin automatically restores the latest unfinished session. Submitting the attempt removes its saved draft.
+Quizzer continuously saves the active test or practice session locally and to SQLite, including the current question, answers, review marks, revealed feedback, self-assessments, shuffled choice order, mode, and timer start. If the connection drops or the page closes, reopening Quizzer restores the latest unfinished session. Submitting the attempt removes its saved draft on every synchronized device.
+
+## Server database and IndexedDB migration
+
+Quizzer automatically creates `.quizzer-data/quizzer.sqlite` on the machine running `npm run dev` or `npm run tailscale`. Tests, documents, original uploaded files, extracted figures, attempts, generation jobs, and unfinished sessions are synchronized to this database. SQLite write-ahead logging protects concurrent browser writes, while an ordered change log propagates updates and deletions between machines.
+
+To migrate the existing Zen Browser library, start this updated version and open Quizzer once in the same Zen profile and at the exact same URL previously used. IndexedDB is isolated by browser profile and URL origin, so this one visit is required for the page to read the old `QuizDB` database. The sidebar changes from **Syncing library** to **Saved on server** after the upload. You can then open the same Quizzer URL from another machine; it downloads the server library automatically.
+
+The initial import merges records by ID. Existing server records win an initial-import conflict, preventing an old browser cache from replacing a newer shared copy. Later edits are ordered by the server and synchronized every five seconds, when the tab becomes visible, and immediately after reconnecting. While offline, the sidebar shows **Offline — saved locally** and pending mutations remain in IndexedDB.
+
+For backups, stop Quizzer and copy the `.quizzer-data` directory. Set `QUIZZER_DATABASE_PATH` only when a custom database location is needed for a packaged or managed deployment.
 
 Select **Install Ollama + all-minilm** under **Plugins & models** to enable local semantic duplicate filtering. On macOS Quizzer uses Homebrew to install Ollama when needed; on Linux it uses Ollama's official installer. It then starts the local runtime and downloads `all-minilm`. If that plugin is unavailable, generation continues automatically with normalized exact matching and lexical similarity.
 
 ## Data and privacy
 
-- Documents, original uploaded blobs, extracted figures, quizzes, and attempts are stored in the browser's IndexedDB database named `QuizDB`.
-- Background generation jobs, accepted questions, and retry checkpoints are also stored in IndexedDB until dismissed.
-- The latest unfinished test-taking state is stored in IndexedDB until that attempt is submitted or its test is deleted.
+- Documents, original uploaded files, extracted figures, quizzes, attempts, generation checkpoints, and unfinished sessions are stored in server-side SQLite.
+- Each browser keeps a synchronized IndexedDB cache named `QuizDB` for responsive UI and offline recovery.
+- Original `Blob` and `File` values are encoded explicitly during synchronization, so the PDF itself is preserved rather than reduced to empty JSON.
 - Agent requests use the selected locally authenticated CLI.
 - API requests send selected extracted content—and figures for supported multimodal models—to the selected provider.
 - API keys pass through the loopback service only for the active request and remain in browser session storage; they are not written to IndexedDB or local storage.
-- Deleting browser site data deletes the local Quizzer library.
-- Export important quizzes before clearing browser storage.
+- Deleting browser site data clears only that browser's cache; reopening Quizzer repopulates it from the server.
+- Deleting `.quizzer-data` deletes the shared server library. Keep backups of important data.
 
 Do not upload confidential material unless the selected provider and your account's data-handling terms are appropriate for it.
 
@@ -203,6 +213,7 @@ Do not upload confidential material unless the selected provider and your accoun
 | `npm run service` | Start only the loopback generation service |
 | `npm run build` | Type-check and create the production browser bundle |
 | `npm run lint` | Run ESLint |
+| `npm test` | Run server storage tests |
 | `npm run preview` | Preview the browser bundle; start the service separately for generation |
 
 The development service uses its internal loopback port automatically. Packagers may override `QUIZZER_SERVICE_PORT` and the matching Vite proxy when building a custom distribution.
