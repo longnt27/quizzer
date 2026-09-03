@@ -2,6 +2,18 @@ import type { Table } from 'dexie';
 import { db, type StoredSyncChange, type SyncCollection } from './db';
 
 type SyncStatus = 'starting' | 'synced' | 'offline' | 'syncing';
+type SyncPhase = 'idle' | 'preparing' | 'uploading' | 'receiving' | 'applying' | 'complete' | 'error';
+export interface ServerSyncSnapshot {
+  status: SyncStatus;
+  phase: SyncPhase;
+  percent: number;
+  completed: number;
+  total: number;
+  pending: number;
+  detail: string;
+  error?: string;
+  lastSyncedAt?: number;
+}
 type SerializedRecord = Record<string, unknown>;
 type ServerChange = {
   revision: number;
@@ -13,7 +25,10 @@ type ServerChange = {
 
 const collections: SyncCollection[] = ['tests', 'documents', 'generationJobs', 'testDrafts'];
 const listeners = new Set<() => void>();
-let status: SyncStatus = 'starting';
+let snapshot: ServerSyncSnapshot = {
+  status: 'starting', phase: 'idle', percent: 0, completed: 0, total: 0, pending: 0,
+  detail: 'Connecting to the server library…',
+};
 let applyingRemoteChanges = false;
 let syncPromise: Promise<void> | undefined;
 let retryTimer: number | undefined;
@@ -21,9 +36,8 @@ let retryTimer: number | undefined;
 const tableFor = (collection: SyncCollection): Table<Record<string, unknown>, string> =>
   db.table(collection) as Table<Record<string, unknown>, string>;
 
-const setStatus = (next: SyncStatus) => {
-  if (status === next) return;
-  status = next;
+const updateSnapshot = (change: Partial<ServerSyncSnapshot>) => {
+  snapshot = { ...snapshot, ...change };
   listeners.forEach(listener => listener());
 };
 
@@ -32,7 +46,7 @@ export const serverSyncStatus = {
     listeners.add(listener);
     return () => listeners.delete(listener);
   },
-  getSnapshot: () => status,
+  getSnapshot: () => snapshot,
 };
 
 const blobToDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
@@ -105,26 +119,36 @@ const installHooks = () => {
 
 const outgoingChanges = async (bootstrap: boolean) => {
   if (bootstrap) {
+    const records = await Promise.all(collections.map(async collection => ({ collection, records: await tableFor(collection).toArray() })));
+    const total = records.reduce((sum, item) => sum + item.records.length, 0);
+    updateSnapshot({ phase: 'preparing', percent: total ? 0 : 15, completed: 0, total, pending: total, detail: 'Preparing the existing browser library…' });
     const result = [];
-    for (const collection of collections) {
-      for (const record of await tableFor(collection).toArray()) {
+    let completed = 0;
+    for (const { collection, records: tableRecords } of records) {
+      for (const record of tableRecords) {
         result.push({ collection, id: String(record.id ?? record.testId), data: await serialize(record) });
+        completed += 1;
+        updateSnapshot({ completed, percent: total ? Math.round(completed / total * 15) : 15 });
       }
     }
     return result;
   }
 
   const pending = await db.syncChanges.toArray();
-  return Promise.all(pending.map(async change => {
+  updateSnapshot({ phase: 'preparing', percent: pending.length ? 0 : 15, completed: 0, total: pending.length, pending: pending.length, detail: pending.length ? 'Preparing local changes…' : 'Checking for changes from other machines…' });
+  const result = [];
+  for (const [index, change] of pending.entries()) {
     const record = change.deleted ? undefined : await tableFor(change.collection).get(change.id);
-    return {
+    result.push({
       collection: change.collection,
       id: change.id,
       deleted: change.deleted || !record,
       data: record ? await serialize(record) : undefined,
       changedAt: change.changedAt,
-    };
-  }));
+    });
+    updateSnapshot({ completed: index + 1, percent: pending.length ? Math.round((index + 1) / pending.length * 15) : 15 });
+  }
+  return result;
 };
 
 const applyServerChanges = async (changes: ServerChange[], cursor: number, sent: Array<{ collection: SyncCollection; id: string; changedAt?: number }>) => {
@@ -135,6 +159,8 @@ const applyServerChanges = async (changes: ServerChange[], cursor: number, sent:
         const table = tableFor(change.collection);
         if (change.deleted) await table.delete(change.id);
         else if (change.data) await table.put(deserialize(change.data) as Record<string, unknown>);
+        const completed = changes.indexOf(change) + 1;
+        updateSnapshot({ completed, total: changes.length, percent: 75 + Math.round(completed / Math.max(changes.length, 1) * 24) });
       }
       for (const item of sent) {
         const marker = await db.syncChanges.get(`${item.collection}:${item.id}`);
@@ -147,38 +173,63 @@ const applyServerChanges = async (changes: ServerChange[], cursor: number, sent:
   }
 };
 
+const postSync = (body: string) => new Promise<{ cursor: number; changes: ServerChange[] }>((resolve, reject) => {
+  const request = new XMLHttpRequest();
+  request.open('POST', '/api/storage/sync');
+  request.setRequestHeader('Content-Type', 'application/json');
+  request.timeout = 5 * 60_000;
+  request.upload.onprogress = event => {
+    const fraction = event.lengthComputable ? event.loaded / Math.max(event.total, 1) : 0;
+    updateSnapshot({
+      phase: 'uploading', percent: 15 + Math.round(fraction * 50), completed: event.loaded, total: event.total || body.length,
+      detail: 'Uploading changes to SQLite…',
+    });
+  };
+  request.onprogress = event => {
+    updateSnapshot({
+      phase: 'receiving', percent: event.lengthComputable ? 65 + Math.round(event.loaded / Math.max(event.total, 1) * 10) : 70,
+      completed: event.loaded, total: event.total, detail: 'Receiving the shared library…',
+    });
+  };
+  request.onerror = () => reject(new Error('Cannot reach the Quizzer server'));
+  request.ontimeout = () => reject(new Error('Server sync timed out'));
+  request.onload = () => {
+    let payload: { cursor?: number; changes?: ServerChange[]; error?: string } = {};
+    try { payload = JSON.parse(request.responseText); }
+    catch { reject(new Error('The server returned an invalid sync response')); return; }
+    if (request.status < 200 || request.status >= 300 || !Array.isArray(payload.changes) || !Number.isSafeInteger(payload.cursor)) {
+      reject(new Error(payload.error || `Server storage failed (${request.status})`));
+      return;
+    }
+    resolve({ cursor: payload.cursor as number, changes: payload.changes });
+  };
+  request.send(body);
+});
+
 const runSync = async () => {
   const state = await db.syncState.get('server');
   const bootstrap = !state?.bootstrapped;
   const outgoing = await outgoingChanges(bootstrap);
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 15_000);
-  let response: Response;
-  try {
-    response = await fetch('/api/storage/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cursor: state?.cursor ?? 0, bootstrap, changes: outgoing }),
-      signal: controller.signal,
-    });
-  } finally {
-    window.clearTimeout(timeout);
-  }
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok || !Array.isArray(payload.changes) || !Number.isSafeInteger(payload.cursor)) {
-    throw new Error(payload.error || `Server storage failed (${response.status})`);
-  }
+  updateSnapshot({ phase: 'uploading', percent: 15, completed: 0, total: 0, detail: 'Uploading changes to SQLite…' });
+  const payload = await postSync(JSON.stringify({ cursor: state?.cursor ?? 0, bootstrap, changes: outgoing }));
+  updateSnapshot({ phase: 'applying', percent: 75, completed: 0, total: payload.changes.length, detail: payload.changes.length ? 'Applying server changes locally…' : 'Library is already up to date.' });
   await applyServerChanges(payload.changes, payload.cursor, outgoing);
 };
 
 export const syncNow = () => {
   if (syncPromise) return syncPromise;
-  setStatus('syncing');
+  updateSnapshot({ status: 'syncing', error: undefined });
   syncPromise = runSync()
-    .then(() => setStatus('synced'))
+    .then(async () => updateSnapshot({
+      status: 'synced', phase: 'complete', percent: 100, completed: 0, total: 0,
+      pending: await db.syncChanges.count(), detail: 'Everything is saved on the server.', lastSyncedAt: Date.now(), error: undefined,
+    }))
     .catch(error => {
       console.warn('Quizzer server sync is unavailable; changes remain in IndexedDB.', error);
-      setStatus('offline');
+      void db.syncChanges.count().then(pending => updateSnapshot({
+        status: 'offline', phase: 'error', pending, detail: 'Changes are safe in this browser and will retry automatically.',
+        error: error instanceof Error ? error.message : 'Server sync failed',
+      }));
     })
     .finally(() => { syncPromise = undefined; });
   return syncPromise;

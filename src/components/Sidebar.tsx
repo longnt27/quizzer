@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from 'react';
-import { Badge, Button, Empty, Input, Layout, List, Popconfirm, Space, Tabs, Tag, Typography } from 'antd';
+import { Alert, Badge, Button, Empty, Input, Layout, List, Modal, Popconfirm, Progress, Space, Tabs, Tag, Typography } from 'antd';
 import { ApiOutlined, CloudSyncOutlined, DeleteOutlined, FileTextOutlined, FormOutlined, MoonOutlined, PlusOutlined, SearchOutlined, SyncOutlined, SunOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
@@ -26,8 +26,9 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
   const documents = useLiveQuery(() => db.documents.orderBy('createdAt').reverse().toArray(), []) ?? [];
   const [tab, setTab] = useState<'tests' | 'documents'>(selection?.kind === 'document' ? 'documents' : 'tests');
   const [query, setQuery] = useState('');
+  const [syncDetailsOpen, setSyncDetailsOpen] = useState(false);
   const message = getMessageApi();
-  const syncStatus = useSyncExternalStore(serverSyncStatus.subscribe, serverSyncStatus.getSnapshot);
+  const sync = useSyncExternalStore(serverSyncStatus.subscribe, serverSyncStatus.getSnapshot);
 
   const normalizedQuery = query.trim().toLowerCase();
   const visibleTests = tests.filter(test => test.name.toLowerCase().includes(normalizedQuery));
@@ -90,9 +91,9 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
         )}
       </div>
       <div className="sidebar-footer">
-        <Button type="text" icon={<CloudSyncOutlined spin={syncStatus === 'syncing'} />} onClick={() => void syncNow()}>
-          <Badge status={syncStatus === 'synced' ? 'success' : syncStatus === 'offline' ? 'warning' : 'processing'} />
-          {syncStatus === 'synced' ? 'Saved on server' : syncStatus === 'offline' ? 'Offline — saved locally' : 'Syncing library'}
+        <Button type="text" icon={<CloudSyncOutlined spin={sync.status === 'syncing'} />} onClick={() => { setSyncDetailsOpen(true); void syncNow(); }}>
+          <Badge status={sync.status === 'synced' ? 'success' : sync.status === 'offline' ? 'warning' : 'processing'} />
+          {sync.status === 'offline' ? 'Offline — saved locally' : sync.lastSyncedAt ? 'Saved on server' : 'Syncing library'}
         </Button>
         <Button type="text" icon={<SyncOutlined />} onClick={onOpenGeneration}>Generation queue</Button>
         <Button type="text" icon={<ApiOutlined />} onClick={onOpenPlugins}>Plugins & models</Button>
@@ -100,6 +101,23 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
           {dark ? 'Light mode' : 'Dark mode'}
         </Button>
       </div>
+      <Modal title="Library sync" open={syncDetailsOpen} onCancel={() => setSyncDetailsOpen(false)} footer={[
+        <Button key="sync" loading={sync.status === 'syncing'} onClick={() => void syncNow()}>Sync now</Button>,
+        <Button key="close" type="primary" onClick={() => setSyncDetailsOpen(false)}>Close</Button>,
+      ]}>
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <Progress percent={sync.percent} status={sync.status === 'offline' ? 'exception' : sync.status === 'synced' ? 'success' : 'active'} />
+          <div>
+            <Typography.Text strong>{sync.detail}</Typography.Text><br />
+            <Typography.Text type="secondary">
+              {sync.total > 0 && `${sync.completed.toLocaleString()} of ${sync.total.toLocaleString()} ${sync.phase === 'uploading' || sync.phase === 'receiving' ? 'bytes' : 'records'} · `}
+              {sync.pending} pending local {sync.pending === 1 ? 'change' : 'changes'}
+              {sync.lastSyncedAt && ` · Last saved ${new Date(sync.lastSyncedAt).toLocaleTimeString()}`}
+            </Typography.Text>
+          </div>
+          {sync.error && <Alert type="warning" showIcon message={sync.error} description="Quizzer will keep retrying. Your unsent changes remain in this browser." />}
+        </Space>
+      </Modal>
     </div>
   );
   return embedded ? content : <Layout.Sider width={290} theme={dark ? 'dark' : 'light'} className="desktop-sidebar">{content}</Layout.Sider>;

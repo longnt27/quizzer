@@ -184,7 +184,7 @@ Quizzer automatically creates `.quizzer-data/quizzer.sqlite` on the machine runn
 
 To migrate the existing Zen Browser library, start this updated version and open Quizzer once in the same Zen profile and at the exact same URL previously used. IndexedDB is isolated by browser profile and URL origin, so this one visit is required for the page to read the old `QuizDB` database. The sidebar changes from **Syncing library** to **Saved on server** after the upload. You can then open the same Quizzer URL from another machine; it downloads the server library automatically.
 
-The initial import merges records by ID. Existing server records win an initial-import conflict, preventing an old browser cache from replacing a newer shared copy. Later edits are ordered by the server and synchronized every five seconds, when the tab becomes visible, and immediately after reconnecting. While offline, the sidebar shows **Offline — saved locally** and pending mutations remain in IndexedDB.
+The initial import merges records by ID. Existing server records win an initial-import conflict, preventing an old browser cache from replacing a newer shared copy. Later edits are ordered by the server and synchronized every five seconds, when the tab becomes visible, and immediately after reconnecting. While offline, the sidebar shows **Offline — saved locally** and pending mutations remain in IndexedDB. Select the sync row to see preparation, byte-transfer, and local-apply progress, the pending-change count, the latest successful sync time, or the connection error.
 
 For backups, stop Quizzer and copy the `.quizzer-data` directory. Set `QUIZZER_DATABASE_PATH` only when a custom database location is needed for a packaged or managed deployment.
 
