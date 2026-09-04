@@ -14,7 +14,7 @@ export default function DocumentAskModal({ document, onClose }: Props) {
       provider,
       model,
       history,
-      (document.images ?? []).map(image => `data:${image.mimeType};base64,${image.data}`),
+      document.images ?? [],
       signal,
     )} />;
 }

@@ -68,6 +68,19 @@ export default function DocumentView({ documentId }: Props) {
         { key: 'extracted', label: 'Extracted content', children: <Card>
           <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace, monospace' }}>{document.content}</Typography.Paragraph>
         </Card> },
+        ...(document.images?.length ? [{ key: 'images', label: `Images (${document.images.length})`, children: <div className="document-image-grid">
+          {document.images.map((image, index) => <Card key={image.id ?? `${image.name}-${index}`} size="small"
+            cover={<img className="document-extracted-image" src={`data:${image.mimeType};base64,${image.data}`} alt={image.caption || image.name} />}>
+            <Typography.Text strong>{image.name}</Typography.Text>
+            <Space wrap style={{ marginTop: 8, marginBottom: 8 }}>
+              {image.page && <Tag>Page {image.page}</Tag>}
+              {image.ocrText && <Tag color="cyan">OCR text</Tag>}
+            </Space>
+            {image.caption && <Typography.Paragraph><Typography.Text type="secondary">Caption: </Typography.Text>{image.caption}</Typography.Paragraph>}
+            {image.ocrText && <Typography.Paragraph className="document-image-ocr"><Typography.Text type="secondary">Text in image: </Typography.Text>{image.ocrText}</Typography.Paragraph>}
+            {!image.caption && !image.ocrText && <Typography.Text type="secondary">No caption or OCR text is available.</Typography.Text>}
+          </Card>)}
+        </div> }] : []),
         { key: 'original', label: 'Original file', children: <Card>
           {!document.originalFile ? <Alert type="info" showIcon message="The original file is unavailable" description="This document may have been added by an older Quizzer version that stored only extracted text." />
             : document.mimeType === 'application/pdf' ? <iframe className="document-original-frame" src={originalUrl} title={`Original ${document.name}`} />

@@ -1,4 +1,5 @@
 import type { AIConversationTurn, GenerationProvider } from '../types';
+import type { StoredDocumentImage } from '../db/db';
 import { extractJson, ProviderRequestError } from './api';
 import { getApiKey } from './providerSettings';
 
@@ -76,10 +77,24 @@ export async function askDocument(
   provider: GenerationProvider,
   model: string,
   history: DocumentConversationTurn[],
-  images: string[],
+  images: StoredDocumentImage[],
   signal?: AbortSignal,
 ) {
   const { source, excerpted } = selectDocumentSource(content, question);
+  const tokens = new Set(question.toLocaleLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? []);
+  const rankedImages = images.map((image, index) => {
+    const metadata = `${image.caption ?? ''} ${image.ocrText ?? ''} ${image.context ?? ''}`.toLocaleLowerCase();
+    const score = [...tokens].reduce((total, token) => total + (metadata.includes(token) ? 1 : 0), 0);
+    return { image, index, score };
+  }).sort((left, right) => right.score - left.score || left.index - right.index);
+  const hasRelevantImage = rankedImages.some(item => item.score > 0);
+  const selectedImages = rankedImages.filter(item => !hasRelevantImage || item.score > 0).slice(0, 6).map(item => item.image);
+  const visualContext = selectedImages.map(image => [
+    `Image: ${image.name}${image.page ? ` (page ${image.page})` : ''}`,
+    image.caption ? `Caption: ${image.caption}` : '',
+    image.ocrText ? `Text read from image: ${image.ocrText}` : '',
+    image.context ? `Nearby text: ${image.context}` : '',
+  ].filter(Boolean).join('\n')).join('\n\n');
   const conversation = history.slice(-6).map(turn => `User: ${turn.question}\nAssistant: ${turn.answer}`).join('\n\n');
   const prompt = `Answer the user's question using the supplied document. Use the document's language unless the user asks otherwise.
 Be accurate, say when the document does not contain the answer, and do not invent citations or facts.
@@ -90,7 +105,8 @@ User question: ${question}
 
 <document>
 ${source}
+${visualContext ? `\n\n<visual-context>\n${visualContext}\n</visual-context>` : ''}
 </document>`;
 
-  return requestAIAnswer(prompt, provider, model, images, signal);
+  return requestAIAnswer(prompt, provider, model, selectedImages.map(image => `data:${image.mimeType};base64,${image.data}`), signal);
 }
