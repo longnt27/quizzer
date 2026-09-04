@@ -46,6 +46,8 @@ export interface QuestionCounts {
   coding: number;
 }
 
+export type CoverageStrategy = 'balanced' | 'proportional' | 'ai-selected' | 'cross-document';
+
 export type GenerationProvider =
   | 'codex'
   | 'claude-agent'
@@ -62,6 +64,7 @@ export interface GenerationOptions {
   questionCount: number;
   questionCounts?: QuestionCounts;
   multipleChoiceMode?: 'single' | 'multiple' | 'mixed';
+  coverageStrategy?: CoverageStrategy;
 }
 
 export interface TestSession {

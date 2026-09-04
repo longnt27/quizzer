@@ -1,5 +1,5 @@
 import Dexie from 'dexie';
-import type { GenerationOptions, QuestionType, QuizAnswer, QuizQuestion } from '../types';
+import type { CoverageStrategy, GenerationOptions, QuestionType, QuizAnswer, QuizQuestion } from '../types';
 import type { ReasoningJudgment } from '../utils/judgeReasoning';
 
 export type GenerationJobStatus = 'queued' | 'running' | 'waiting' | 'paused' | 'error' | 'completed' | 'cancelled';
@@ -17,6 +17,7 @@ export interface StoredGenerationJob {
   questions: QuizQuestion[];
   rejected: number;
   rounds: Partial<Record<QuestionType, number>>;
+  coveragePlan?: StoredCoveragePlan;
   progress?: {
     accepted: number;
     target: number;
@@ -76,6 +77,15 @@ export interface StoredDocumentChunk {
   page?: number;
   start: number;
   end: number;
+}
+
+export interface StoredCoveragePlan {
+  strategy: CoverageStrategy;
+  createdAt: number;
+  slots: Array<{
+    documentIds: string[];
+    chunkIndexes: Record<string, number>;
+  }>;
 }
 
 export interface StoredTestDraft {

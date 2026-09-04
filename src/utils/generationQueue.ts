@@ -1,8 +1,9 @@
 import { db, type StoredGenerationJob } from '../db/db';
-import type { GenerationOptions } from '../types';
+import type { GenerationOptions, QuestionType } from '../types';
 import { v4 as uuidv4 } from 'uuid';
-import { generateQuiz, getGenerationErrorCode } from './api';
+import { generateQuiz, getGenerationErrorCode, getRequestedCounts } from './api';
 import { getGenerationConcurrency } from './generationSettings';
+import { buildCoveragePlan, ensureDocumentChunks, sourceContextForSlots } from './sourcePlanning';
 
 const workerId = uuidv4();
 const active = new Map<string, AbortController>();
@@ -37,14 +38,31 @@ const processJob = async (job: StoredGenerationJob) => {
     const documents = await db.documents.bulkGet(job.documentIds);
     const available = documents.filter(document => document !== undefined);
     if (available.length !== job.documentIds.length) throw new Error('One or more source documents were deleted before generation completed.');
+    const chunkedDocuments = available.map(ensureDocumentChunks);
+    await Promise.all(chunkedDocuments.map((document, index) => available[index].chunks?.length
+      ? Promise.resolve()
+      : db.documents.update(document.id, { chunks: document.chunks }).then(() => undefined)));
+    const counts = getRequestedCounts(job.options);
+    const target = counts.multipleChoice + counts.fillBlank + counts.reasoning + counts.coding;
+    const strategy = job.options.coverageStrategy ?? 'balanced';
+    let coveragePlan = job.coveragePlan;
+    if (!coveragePlan || coveragePlan.strategy !== strategy || coveragePlan.slots.length !== target) {
+      coveragePlan = (await buildCoveragePlan(chunkedDocuments, target, strategy, controller.signal)).plan;
+      await db.generationJobs.update(job.id, { coveragePlan, updatedAt: Date.now() });
+    }
+    const offsets: Record<QuestionType, number> = {
+      'multiple-choice': 0,
+      'fill-blank': counts.multipleChoice,
+      reasoning: counts.multipleChoice + counts.fillBlank,
+      coding: counts.multipleChoice + counts.fillBlank + counts.reasoning,
+    };
     const content = available.map(document => `# Document: ${document.name}\n\n${document.content}`).join('\n\n---\n\n');
-    const images = available.flatMap(document => document.images?.map(image => `data:${image.mimeType};base64,${image.data}`) ?? []);
     const questions = await generateQuiz(
       content,
       job.options,
       controller.signal,
       progress => { void db.generationJobs.update(job.id, { progress, updatedAt: Date.now() }); },
-      images,
+      [],
       undefined,
       undefined,
       { questions: job.questions, rejected: job.rejected, rounds: job.rounds, options: job.options },
@@ -55,6 +73,7 @@ const processJob = async (job: StoredGenerationJob) => {
         options: checkpoint.options,
         updatedAt: Date.now(),
       }).then(() => undefined),
+      request => sourceContextForSlots(chunkedDocuments, coveragePlan!, offsets[request.type] + request.typeAccepted, request.count),
     );
     const latest = await db.generationJobs.get(job.id);
     if (!latest || latest.status === 'cancelled') return;
