@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Typography, Checkbox, InputNumber, Popconfirm, Radio, Space, Tag } from 'antd';
+import { Alert, Button, Typography, Checkbox, InputNumber, Popconfirm, Radio, Space, Tag } from 'antd';
 import { FileTextOutlined, LinkOutlined } from '@ant-design/icons';
 import type { StoredTest, StoredTestDraft } from '../db/db';
 import { useState } from 'react';
@@ -64,25 +64,24 @@ const TestStart: React.FC<Props> = ({ test, draft, onStart, onResume, onOpenDocu
         </Button>}
       </div>
       <aside className="test-source-sidebar">
-        <Card className="test-source-card" size="small" title={<Space><FileTextOutlined />Source documents</Space>}>
-          {documentIds.length ? <div className="test-source-list">
-            {documentIds.map((documentId, index) => {
-              const document = sourceDocuments?.[index];
-              return <div className="test-source-item" key={documentId}>
-                <div>
-                  <Typography.Text strong>{document?.name ?? (sourceDocuments ? 'Deleted document' : 'Loading source…')}</Typography.Text>
-                  <div className="test-source-meta">
-                    {document?.pageCount && <Tag>{document.pageCount} pages</Tag>}
-                    {document?.tags.map(tag => <Tag key={tag}>{tag}</Tag>)}
-                    {!document && sourceDocuments && <Tag color="error">No longer in library</Tag>}
-                  </div>
+        <Typography.Title level={5} className="test-source-title"><FileTextOutlined /> Source documents</Typography.Title>
+        {documentIds.length ? <div className="test-source-list">
+          {documentIds.map((documentId, index) => {
+            const document = sourceDocuments?.[index];
+            return <div className="test-source-item" key={documentId}>
+              <div>
+                <Typography.Text strong>{document?.name ?? (sourceDocuments ? 'Deleted document' : 'Loading source…')}</Typography.Text>
+                <div className="test-source-meta">
+                  {document?.pageCount && <Tag>{document.pageCount} pages</Tag>}
+                  {document?.tags.map(tag => <Tag key={tag}>{tag}</Tag>)}
+                  {!document && sourceDocuments && <Tag color="error">No longer in library</Tag>}
                 </div>
-                {document && <Button type="link" icon={<LinkOutlined />} onClick={() => onOpenDocument(document.id)}>Open document</Button>}
-              </div>;
-            })}
-          </div> : <Alert type="info" showIcon message="Source information is unavailable"
-            description="This test was created before Quizzer recorded document origins, or it was imported without source metadata." />}
-        </Card>
+              </div>
+              {document && <Button type="link" icon={<LinkOutlined />} onClick={() => onOpenDocument(document.id)}>Open document</Button>}
+            </div>;
+          })}
+        </div> : <Alert type="info" showIcon message="Source information is unavailable"
+          description="This test was created before Quizzer recorded document origins, or it was imported without source metadata." />}
       </aside>
     </div>;
 };

@@ -114,11 +114,11 @@ button, input, textarea, select { font: inherit; }
 .ai-chat-composer { position: relative; margin: 0 12px 12px; flex: 0 0 auto; }
 .ai-chat-composer textarea { min-height: 50px !important; padding: 13px 56px 13px 16px !important; border-radius: 14px !important; background: var(--surface-soft) !important; }
 .ai-chat-composer-action { position: absolute; top: 10px; right: 10px; z-index: 1; width: 30px; min-width: 30px; height: 30px; }
-.test-start { width: 100%; min-height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); background: var(--surface); overflow: auto; }
-.test-start-main { min-height: 100%; padding: 64px 32px; display: flex; align-items: center; flex-direction: column; justify-content: center; text-align: center; }
-.test-source-sidebar { min-height: 100%; padding: 32px 20px; border-left: 1px solid var(--border); background: var(--surface-soft); }
-.test-source-card { width: 100%; text-align: left; position: sticky; top: 32px; }
-.test-source-list { display: grid; gap: 4px; }
+.test-start { width: 100%; height: 100%; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); background: var(--surface); overflow: hidden; }
+.test-start-main { min-height: 0; padding: 64px 32px; display: flex; align-items: center; flex-direction: column; justify-content: center; text-align: center; overflow-y: auto; }
+.test-source-sidebar { height: 100%; min-height: 0; padding: 20px 0 32px 20px; border-left: 1px solid var(--border); background: var(--surface-soft); display: flex; flex-direction: column; overflow: hidden; text-align: left; }
+.test-source-title { margin: 0 4px 16px !important; flex: 0 0 auto; }
+.test-source-list { min-height: 0; display: grid; align-content: start; gap: 4px; overflow-y: auto; }
 .test-source-item { display: grid; min-width: 0; gap: 7px; padding: 10px 4px; }
 .test-source-item + .test-source-item { border-top: 1px solid var(--border); }
 .test-source-item > div:first-child { min-width: 0; }
@@ -180,10 +180,10 @@ mark { color: #111827; }
   .ai-chat-panel { max-height: none; }
   .ai-chat-bubble { max-width: 85%; }
 
-  .test-start { grid-template-columns: 1fr; }
+  .test-start { height: auto; min-height: 100%; grid-template-columns: 1fr; overflow: visible; }
   .test-start-main { min-height: auto; padding: 42px 16px; }
-  .test-source-sidebar { min-height: auto; padding: 20px 16px 36px; border-top: 1px solid var(--border); border-left: 0; }
-  .test-source-card { position: static; }
+  .test-source-sidebar { height: auto; min-height: auto; padding: 20px 16px 36px; border-top: 1px solid var(--border); border-left: 0; overflow: visible; }
+  .test-source-list { overflow: visible; }
 
   .quiz-layout { height: auto !important; min-height: 100dvh; flex-direction: column; overflow: visible; }
   .quiz-main, .quiz-index { flex: none !important; width: 100%; max-width: none; }
