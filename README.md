@@ -177,7 +177,7 @@ Open **Generation queue** to choose between 1 and 10 concurrent test instances; 
 
 The same panel controls batch size from 5 to 25 questions, defaulting to 20. Larger batches reduce request overhead, while smaller batches create more frequent recovery checkpoints and reduce the amount of work lost when a provider returns malformed output. Refill requests always ask for the exact remaining count when it is smaller than the configured batch size.
 
-Every candidate is independently validated and deduplicated before the next batch begins. Rejected candidates leave only their missing slots for the next bounded refill round. If a target cannot be reached after five rounds, Quizzer saves the valid partial quiz instead of retrying forever.
+Every candidate is independently validated and deduplicated before the next batch begins. The quality gate also rejects lesson-bound trivia—such as slide structure, classroom instructions, demo setup, and components installed only for an exercise—so generated questions favor durable conceptual, diagnostic, and applied knowledge. Rejected candidates leave only their missing slots for the next bounded refill round. If a target cannot be reached after five rounds, Quizzer saves the valid partial quiz instead of retrying forever.
 
 Open **Generation queue** from the sidebar or the floating activity indicator to inspect every job, cancel work, retry an error, or switch providers. As each separate test completes it appears in the Tests sidebar immediately, where you can take it while later jobs continue.
 

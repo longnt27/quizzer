@@ -176,10 +176,21 @@ const tryEmbeddings = async (texts: string[], signal?: AbortSignal): Promise<num
   }
 };
 
+const lessonBoundedPatterns = [
+  /\b(?:according to|in|from)\s+(?:this|the)\s+(?:lesson|lecture|slide|course|module|tutorial|workshop|exercise|lab|demo|example)\b/iu,
+  /\b(?:as|like)\s+(?:shown|demonstrated|mentioned|installed|configured)\s+(?:in|for)\s+(?:this|the|an?)\s+(?:lesson|lecture|slide|course|module|tutorial|workshop|exercise|lab|demo|example)\b/iu,
+  /\b(?:trong|theo)\s+(?:bài\s+(?:học|giảng|thực\s*hành|tập)|phần\s+(?:thực\s*hành|ví\s*dụ|bài\s*tập)|slide|tài\s*liệu|khóa\s*học|lớp\s*học)\b/iu,
+  /\b(?:được\s+)?(?:cài\s+đặt|cấu\s+hình|chuẩn\s+bị)\s+sẵn.{0,50}(?:làm\s+ví\s+dụ|minh\s+họa|thực\s+hành)\b/iu,
+  /\b(?:pre[- ]?installed|preconfigured|provided).{0,50}(?:for|as)\s+(?:an?\s+)?(?:example|demo|exercise|workshop)\b/iu,
+];
+
+export const isLessonBoundedQuestion = (statement: string) => lessonBoundedPatterns.some(pattern => pattern.test(statement));
+
 export function validateQuestion(value: unknown, expectedType?: QuestionType, multipleChoiceMode: GenerationOptions['multipleChoiceMode'] = 'mixed'): value is QuizQuestion {
   if (!value || typeof value !== 'object') return false;
   const question = value as Record<string, unknown>;
   if (typeof question.statement !== 'string' || question.statement.trim().length < 8) return false;
+  if (isLessonBoundedQuestion(question.statement)) return false;
   const type = question.type === undefined ? 'multiple-choice' : question.type;
   if (type !== 'multiple-choice' && type !== 'fill-blank' && type !== 'reasoning' && type !== 'coding') return false;
   if (expectedType && type !== expectedType) return false;
@@ -258,7 +269,8 @@ const typeInstructions: Record<QuestionType, string> = {
 at least one incorrect choice, and a useful explanation for every choice. Set type to "multiple-choice".`,
   'fill-blank': `Create fill-in-the-blank questions. Put exactly one five-underscore blank (_____) in each statement.
 Set type to "fill-blank". Provide 2-6 acceptedAnswers when legitimate wording, spelling, abbreviation, or equivalent
-forms exist; do not invent alternatives that change the meaning. Provide one explanation for the answer.`,
+forms exist; do not invent alternatives that change the meaning. Provide one explanation for the answer. Test a meaningful
+concept, command, behavior, or constraint—not an arbitrary name, count, version, or item used only in the lesson's example.`,
   reasoning: `Create reasoning questions that require explanation, comparison, inference, or application rather than recall.
 Set type to "reasoning". Provide a clear referenceAnswer the learner can compare against and an explanation describing
 the essential points a good response should contain. Do not turn these into multiple-choice questions.`,
@@ -286,6 +298,10 @@ Use the language of the source. ${typeInstructions[type]}
 ${type === 'multiple-choice' && multipleChoiceMode === 'single' ? 'Every question must have exactly one correct choice.' : ''}
 ${type === 'multiple-choice' && multipleChoiceMode === 'multiple' ? 'Every question must have at least two correct choices and at least one incorrect choice.' : ''}
 Questions must be self-contained and must not mention pages, slides, sections, or the source document.
+Prioritize durable knowledge that helps someone understand, apply, diagnose, compare, or implement the subject outside this lesson.
+Never test course logistics, lesson structure, classroom instructions, demo setup, preinstalled example components, filenames,
+or incidental details that matter only because the author happened to use them. Before returning a question, ask whether knowing
+its answer would still be useful in a different real-world project or situation; discard it if not.
 ${focus ? `\nAdditional goal: ${focus}\n` : ''}
 
 Do not repeat the knowledge tested by these already accepted questions:
