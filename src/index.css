@@ -103,13 +103,18 @@ button, input, textarea, select { font: inherit; }
 .ai-chat-composer { padding: 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-soft); }
 .ai-chat-composer textarea { background: transparent !important; }
 .ai-chat-composer-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
-.test-start { min-height: 100%; }
-.test-source-card { width: min(100%, 620px); margin-bottom: 24px; text-align: left; }
+.test-start { width: 100%; min-height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); background: var(--surface); overflow: auto; }
+.test-start-main { min-height: 100%; padding: 64px 32px; display: flex; align-items: center; flex-direction: column; justify-content: center; text-align: center; }
+.test-source-sidebar { min-height: 100%; padding: 32px 20px; border-left: 1px solid var(--border); background: var(--surface-soft); }
+.test-source-card { width: 100%; text-align: left; position: sticky; top: 32px; }
 .test-source-list { display: grid; gap: 4px; }
-.test-source-item { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 14px; padding: 9px 4px; }
+.test-source-item { display: grid; min-width: 0; gap: 7px; padding: 10px 4px; }
 .test-source-item + .test-source-item { border-top: 1px solid var(--border); }
 .test-source-item > div:first-child { min-width: 0; }
+.test-source-item .ant-btn { width: fit-content; height: auto; padding: 0; }
 .test-source-meta { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; }
+.test-timer-control { display: flex; align-items: center; margin-bottom: 20px; }
+.test-start-button { width: 150px; height: 48px; padding-inline: 36px; border-radius: 24px; font-size: 16px; }
 
 .quiz-layout { width: 100%; height: 100dvh; background: var(--page); flex-wrap: nowrap; }
 .quiz-main { min-width: 0; background: var(--surface); }
@@ -166,10 +171,10 @@ mark { color: #111827; }
   .ai-chat-composer-footer > .ant-typography { display: none; }
   .ai-chat-composer-footer { justify-content: flex-end; }
 
-  .test-start { padding: 32px 16px !important; border-radius: 0 !important; box-shadow: none !important; }
-  .test-start > div { flex-wrap: wrap; justify-content: center; gap: 12px; }
-  .test-source-item { align-items: flex-start; flex-direction: column; }
-  .test-source-item .ant-btn { padding-inline: 0; }
+  .test-start { grid-template-columns: 1fr; }
+  .test-start-main { min-height: auto; padding: 42px 16px; }
+  .test-source-sidebar { min-height: auto; padding: 20px 16px 36px; border-top: 1px solid var(--border); border-left: 0; }
+  .test-source-card { position: static; }
 
   .quiz-layout { height: auto !important; min-height: 100dvh; flex-direction: column; overflow: visible; }
   .quiz-main, .quiz-index { flex: none !important; width: 100%; max-width: none; }
