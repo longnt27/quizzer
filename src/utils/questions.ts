@@ -9,6 +9,38 @@ export const normalizeWrittenAnswer = (value: string) => value
   .replace(/\s+/g, ' ')
   .trim();
 
+const answerParts = (value: string) => value
+  .normalize('NFKC')
+  .toLocaleLowerCase()
+  .split(/\s*(?:\+|&|\/|,|;|\band\b|\bor\b|\bvà\b|\bva\b)\s*/u)
+  .map(part => part.trim())
+  .filter(Boolean);
+
+const partTokens = (value: string) => value.match(/[\p{L}\p{N}]+/gu) ?? [];
+
+const isConceptPartEquivalent = (response: string, accepted: string) => {
+  const responseTokens = partTokens(response);
+  const acceptedTokens = partTokens(accepted);
+  if (!responseTokens.length || !acceptedTokens.length) return false;
+  const shorter = responseTokens.length <= acceptedTokens.length ? responseTokens : acceptedTokens;
+  const longer = responseTokens.length <= acceptedTokens.length ? acceptedTokens : responseTokens;
+  return shorter.every((token, index) => token === longer[longer.length - shorter.length + index]);
+};
+
+export const isEquivalentWrittenAnswer = (response: string, accepted: string) => {
+  if (normalizeWrittenAnswer(response) === normalizeWrittenAnswer(accepted)) return true;
+  const responseParts = answerParts(response);
+  const acceptedParts = answerParts(accepted);
+  if (responseParts.length < 2 || responseParts.length !== acceptedParts.length) return false;
+  const remaining = [...acceptedParts];
+  return responseParts.every(part => {
+    const match = remaining.findIndex(candidate => isConceptPartEquivalent(part, candidate));
+    if (match < 0) return false;
+    remaining.splice(match, 1);
+    return true;
+  });
+};
+
 export const isQuestionCorrect = (question: QuizQuestion, answers: string[] = [], selfAssessment?: boolean) => {
   const type = getQuestionType(question);
   if (type === 'multiple-choice' && 'answer' in question) {
@@ -17,7 +49,7 @@ export const isQuestionCorrect = (question: QuizQuestion, answers: string[] = []
   }
   if (type === 'fill-blank' && 'acceptedAnswers' in question) {
     const response = normalizeWrittenAnswer(answers[0] ?? '');
-    return Boolean(response) && question.acceptedAnswers.some(answer => normalizeWrittenAnswer(answer) === response);
+    return Boolean(response) && question.acceptedAnswers.some(answer => isEquivalentWrittenAnswer(answers[0] ?? '', answer));
   }
   return selfAssessment === true;
 };

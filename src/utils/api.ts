@@ -74,7 +74,7 @@ const fillBlankSchema = {
         properties: {
           type: { type: 'string', enum: ['fill-blank'] },
           statement: { type: 'string' },
-          acceptedAnswers: { type: 'array', minItems: 2, maxItems: 8, items: { type: 'string' } },
+          acceptedAnswers: { type: 'array', minItems: 3, maxItems: 16, items: { type: 'string' } },
           explanation: { type: 'string' },
         },
       },
@@ -196,7 +196,7 @@ export function validateQuestion(value: unknown, expectedType?: QuestionType, mu
   if (type !== 'multiple-choice' && type !== 'fill-blank' && type !== 'reasoning' && type !== 'coding') return false;
   if (expectedType && type !== expectedType) return false;
   if (type === 'fill-blank') {
-    if (!question.statement.includes('_____') || !Array.isArray(question.acceptedAnswers) || question.acceptedAnswers.length < 2 || question.acceptedAnswers.length > 8) return false;
+    if (!question.statement.includes('_____') || !Array.isArray(question.acceptedAnswers) || question.acceptedAnswers.length < 3 || question.acceptedAnswers.length > 16) return false;
     if (!question.acceptedAnswers.every(answer => typeof answer === 'string' && answer.trim())) return false;
     if (new Set(question.acceptedAnswers.map(answer => normalize(String(answer)))).size !== question.acceptedAnswers.length) return false;
     return typeof question.explanation === 'string' && Boolean(question.explanation.trim());
@@ -269,8 +269,12 @@ const typeInstructions: Record<QuestionType, string> = {
   'multiple-choice': `Create multiple-choice questions. Each needs 3-6 choices, at least one correct choice,
 at least one incorrect choice, and a useful explanation for every choice. Set type to "multiple-choice".`,
   'fill-blank': `Create fill-in-the-blank questions. Put exactly one five-underscore blank (_____) in each statement.
-Set type to "fill-blank". Provide 2-6 acceptedAnswers when legitimate wording, spelling, abbreviation, or equivalent
-forms exist; do not invent alternatives that change the meaning. Provide one explanation for the answer. Test a meaningful
+Set type to "fill-blank". Before returning each question, actively brainstorm the ways a knowledgeable learner could express
+the same answer. Provide 3-16 genuinely useful acceptedAnswers covering, when applicable: canonical terminology; common
+abbreviations; omitted repeated qualifiers; symbol forms such as +, &, /, and underscores; conjunctions in the source language;
+and concise wording that preserves every required concept. Do not fill the list with superficial conjunction swaps while missing
+real shorthand, and do not invent alternatives that change the meaning. Prefer a less ambiguous statement when correct variants
+cannot be enumerated reliably. Provide one explanation for the answer. Test a meaningful
 concept, command, behavior, or constraint—not an arbitrary name, count, version, or item used only in the lesson's example.`,
   reasoning: `Create reasoning questions that require explanation, comparison, inference, or application rather than recall.
 Set type to "reasoning". Provide a clear referenceAnswer the learner can compare against and an explanation describing
