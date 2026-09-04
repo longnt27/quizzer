@@ -150,8 +150,13 @@ export default function AskAIModal({ title, emptyMessage, loadingMessage, onClos
           }} />
         {loading ? <Tooltip title="Cancel response"><Button className="ai-chat-composer-action" danger shape="circle" icon={<StopOutlined />}
           aria-label="Cancel response" onClick={() => controller.current?.abort()} /></Tooltip>
-          : question.trim() && configured.providers.length > 0 ? <Tooltip title="Send message"><Button className="ai-chat-composer-action" type="primary" shape="circle"
-            icon={<SendOutlined />} aria-label="Send message" onClick={() => void submit()} /></Tooltip> : null}
+          : <Tooltip title={question.trim() ? configured.providers.length ? 'Send message' : 'Connect an AI provider to send' : 'Type a message'}>
+            <Button className="ai-chat-composer-action" type={question.trim() && configured.providers.length ? 'primary' : 'default'} shape="circle"
+              icon={<SendOutlined />} aria-label="Send message" onClick={() => {
+                if (question.trim() && configured.providers.length) void submit();
+                else questionRef.current?.focus({ cursor: 'end' });
+              }} />
+          </Tooltip>}
       </div>
     </div>
   </Modal>;
