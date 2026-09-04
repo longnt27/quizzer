@@ -46,6 +46,7 @@ Quizzer is a local-first study application that turns a reusable document librar
 - Exact and lexical near-duplicate filtering
 - Optional local semantic duplicate filtering through Ollama
 - Optional Marker PDF conversion with tables, equations, and extracted figures
+- Optional local RapidOCR analysis for text inside extracted figures
 - Fresh AI-generated practice for concepts missed on the latest attempt
 - Server-side SQLite storage with an offline IndexedDB cache
 - Original-file previews and provider-backed document Q&A
@@ -82,7 +83,7 @@ The React application never starts shell commands directly. It calls a loopback-
 - npm
 - At least one configured generation provider (a signed-in agent or an API key)
 
-Marker and the local semantic duplicate filter are optional and installable from Quizzer. Neither is required for the basic document and quiz flow.
+Marker, image OCR, and the local semantic duplicate filter are optional and installable from Quizzer. None is required for the basic document and quiz flow.
 
 ## Quick start
 
@@ -140,9 +141,13 @@ Quizzer offers two upload modes:
 - **Automatic:** attempts Marker and falls back to browser-based PDF text extraction.
 - **Basic:** uses PDF.js text extraction only.
 
-Select **Install Marker** in **Plugins & models** for better preservation of document structure. Quizzer creates a private Python environment under `.quizzer-tools/marker`, downloads Marker there, and uses it automatically. Installation can take several minutes and requires an internet connection and substantial disk space.
+Select **Install Marker** in **Plugins & models** for better preservation of document structure. Quizzer creates a private Python environment under `.quizzer-tools/marker` and downloads Marker there. Installation can take several minutes and requires an internet connection and substantial disk space.
 
-When Marker succeeds, Quizzer stores its Markdown plus up to 30 extracted images and supplies those images to the selected multimodal provider. Marker is a substantial optional dependency and its code/model licenses should be reviewed for your distribution and commercial-use requirements.
+Marker itself does not impose Quizzer's former 30-image limit. Quizzer now stores every image Marker returns, together with its page, caption, nearby source text, and Markdown position when available. For each AI request, it ranks those stored images against the selected source chunks and sends at most six relevant images to keep requests bounded.
+
+Select **Install Image OCR** separately to create a private RapidOCR environment under `.quizzer-tools/ocr`. OCR is opt-in: when installed and enabled, new Marker extractions read text from figures, diagrams, and screenshots. Text-only providers receive the resulting descriptions, while supported multimodal providers receive both those descriptions and the selected image data. The document view exposes extracted images and their OCR text for review.
+
+Installed tools and configured providers have independent **Enabled** toggles. Turning one off keeps its installation or credentials intact but removes providers from pickers and prevents Marker, OCR, or semantic embeddings from being used until re-enabled.
 
 Scanned or visually complex documents can still require manual review. Always inspect extracted content before generating a high-stakes quiz.
 
@@ -256,6 +261,10 @@ Open **Plugins & models** and install the semantic duplicate filter. If installa
 ### Marker is not used
 
 Open **Plugins & models** and select **Install Marker**. The popup shows live installation progress and any error. Until Marker is ready, Automatic mode silently uses basic extraction.
+
+### Images have no searchable text
+
+Open **Plugins & models**, install **Image OCR**, and leave its **Enabled** toggle on before uploading the document. OCR is applied during new Marker extractions; existing documents keep their previously extracted image metadata.
 
 ### A quiz contains fewer questions than requested
 
