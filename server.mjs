@@ -21,6 +21,7 @@ const integrationJobs = {
   embeddings: { state: 'idle', message: '' },
 };
 let systemMarkerDetected;
+let managedMarkerDetected;
 
 const send = (response, status, body) => {
   response.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': 'http://localhost:5173' });
@@ -89,7 +90,13 @@ const managedMarkerExists = async () => {
   catch { return false; }
 };
 
-const markerCommand = async () => await managedMarkerExists() ? managedMarkerExecutable : 'marker_single';
+const managedMarkerWorks = async () => {
+  if (managedMarkerDetected === undefined) managedMarkerDetected = await managedMarkerExists()
+    && await commandWorks(managedMarkerExecutable, ['--help'], 30_000);
+  return managedMarkerDetected;
+};
+
+const markerCommand = async () => await managedMarkerWorks() ? managedMarkerExecutable : 'marker_single';
 
 const ollamaCommand = async () => {
   if (process.platform === 'win32') {
@@ -104,6 +111,16 @@ const hasSystemMarker = async () => {
   return systemMarkerDetected;
 };
 
+const compatiblePython = async () => {
+  const candidates = process.platform === 'win32'
+    ? [{ command: 'py', prefix: ['-3'] }, { command: 'python', prefix: [] }]
+    : ['python3.13', 'python3.12', 'python3.11', 'python3.10', 'python3'].map(command => ({ command, prefix: [] }));
+  for (const candidate of candidates) {
+    if (await commandWorks(candidate.command, [...candidate.prefix, '-c', 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)'])) return candidate;
+  }
+  throw new Error('Marker requires Python 3.10 or newer. Install a current Python version, then retry.');
+};
+
 const integrationStatus = async () => {
   const ollamaExecutable = await ollamaCommand();
   const [codexInstalled, codexConnected, claudeInstalled, claudeConnected, antigravityInstalled, ollamaInstalled, ollamaModels, managedMarker, systemMarker] = await Promise.all([
@@ -114,7 +131,7 @@ const integrationStatus = async () => {
     commandWorks('agy', ['--version']),
     commandWorks(ollamaExecutable, ['--version']),
     runCommand(ollamaExecutable, ['list'], { timeout: 8_000 }).catch(() => ''),
-    managedMarkerExists(),
+    managedMarkerWorks(),
     hasSystemMarker(),
   ]);
   return {
@@ -144,7 +161,10 @@ const installMarker = () => {
   integrationJobs.marker = { state: 'working', message: 'Creating Quizzer’s private Python environment…' };
   void (async () => {
     try {
-      await runCommand('python3', ['-m', 'venv', managedMarkerDirectory], {
+      const python = await compatiblePython();
+      await rm(managedMarkerDirectory, { recursive: true, force: true });
+      managedMarkerDetected = undefined;
+      await runCommand(python.command, [...python.prefix, '-m', 'venv', managedMarkerDirectory], {
         timeout: 120_000,
         onOutput: output => { if (output) integrationJobs.marker.message = output; },
       });
@@ -154,6 +174,8 @@ const installMarker = () => {
         timeout: 30 * 60_000,
         onOutput: output => { integrationJobs.marker.message = output || integrationJobs.marker.message; },
       });
+      managedMarkerDetected = await commandWorks(managedMarkerExecutable, ['--help'], 60_000);
+      if (!managedMarkerDetected) throw new Error('Marker installed but failed its startup check.');
       integrationJobs.marker = { state: 'complete', message: 'Marker is installed and ready.' };
     } catch (error) {
       integrationJobs.marker = { state: 'error', message: error instanceof Error ? error.message : 'Marker installation failed' };
