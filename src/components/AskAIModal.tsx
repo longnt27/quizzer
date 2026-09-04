@@ -14,39 +14,49 @@ interface Props {
   loadingMessage: string;
   onClose: () => void;
   scope?: { id: string; label: string }[];
+  initialHistory?: AIConversationTurn[];
+  onHistoryChange?: (history: AIConversationTurn[]) => void;
   ask: (question: string, provider: GenerationProvider, model: string, history: AIConversationTurn[], signal: AbortSignal) => Promise<AIAnswer>;
 }
 
 function CitationPopover({ index, source }: { index: number; source?: AISourceReference }) {
   const [open, setOpen] = useState(false);
   const closeTimer = useRef<number | undefined>(undefined);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
   const show = () => {
     window.clearTimeout(closeTimer.current);
     setOpen(true);
   };
   const scheduleClose = () => {
     window.clearTimeout(closeTimer.current);
-    closeTimer.current = window.setTimeout(() => setOpen(false), 180);
+    closeTimer.current = window.setTimeout(() => {
+      const triggerHovered = triggerRef.current?.matches(':hover');
+      const previewHovered = previewRef.current?.matches(':hover');
+      const triggerFocused = document.activeElement === triggerRef.current;
+      if (triggerHovered || previewHovered || triggerFocused) scheduleClose();
+      else setOpen(false);
+    }, 250);
   };
   useEffect(() => () => window.clearTimeout(closeTimer.current), []);
 
-  return <Popover open={open} trigger={[]} placement="top" content={source ? <div className="ai-citation-preview"
+  return <Popover open={open} trigger={[]} placement="top" content={source ? <div ref={previewRef} className="ai-citation-preview"
     onMouseEnter={show} onMouseLeave={scheduleClose}>
     <strong>{source.name}{source.page ? ` · page ${source.page}` : ''}</strong>
     {source.excerpt && <span>{source.excerpt}</span>}
   </div> : 'Source reference unavailable'}>
-    <button type="button" className="ai-inline-citation" aria-label={`Preview source ${index}`}
+    <button ref={triggerRef} type="button" className="ai-inline-citation" aria-label={`Preview source ${index}`}
       onMouseEnter={show} onMouseLeave={scheduleClose} onFocus={show} onBlur={scheduleClose}>[{index}]</button>
   </Popover>;
 }
 
-export default function AskAIModal({ title, emptyMessage, loadingMessage, onClose, scope = [], ask }: Props) {
+export default function AskAIModal({ title, emptyMessage, loadingMessage, onClose, scope = [], initialHistory = [], onHistoryChange, ask }: Props) {
   const settings = useMemo(getProviderSettings, []);
   const configured = useConfiguredProviders();
   const [provider, setProvider] = useState<GenerationProvider>(settings.defaultProvider);
   const [model, setModel] = useState(settings.models[settings.defaultProvider]);
   const [question, setQuestion] = useState('');
-  const [history, setHistory] = useState<AIConversationTurn[]>([]);
+  const [history, setHistory] = useState<AIConversationTurn[]>(initialHistory);
   const [pendingQuestion, setPendingQuestion] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -98,7 +108,9 @@ export default function AskAIModal({ title, emptyMessage, loadingMessage, onClos
     controller.current = new AbortController();
     try {
       const result = await ask(prompt, provider, model, history, controller.current.signal);
-      setHistory(current => [...current, { question: prompt, answer: result.answer, sources: result.sources }]);
+      const nextHistory = [...history, { question: prompt, answer: result.answer, sources: result.sources }];
+      setHistory(nextHistory);
+      onHistoryChange?.(nextHistory);
     } catch (requestError) {
       setQuestion(prompt);
       if ((requestError as Error).name !== 'AbortError') setError((requestError as Error).message);
@@ -111,7 +123,19 @@ export default function AskAIModal({ title, emptyMessage, loadingMessage, onClos
 
   const close = () => { controller.current?.abort(); onClose(); };
 
-  return <Modal className="ask-ai-modal" open title={title} width={860} onCancel={close} footer={null} destroyOnHidden
+  useEffect(() => {
+    const closeFromKeyboard = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      const target = event.target as HTMLElement | null;
+      if (target?.matches('input, textarea, [contenteditable="true"]')) return;
+      event.preventDefault();
+      close();
+    };
+    window.addEventListener('keydown', closeFromKeyboard);
+    return () => window.removeEventListener('keydown', closeFromKeyboard);
+  });
+
+  return <Modal className="ask-ai-modal" open title={title} width={860} onCancel={close} footer={null} destroyOnHidden keyboard={false}
     afterOpenChange={open => { if (open) questionRef.current?.focus({ cursor: 'end' }); }}>
     <div className="ai-chat-shell">
       <div className="ai-chat-toolbar">

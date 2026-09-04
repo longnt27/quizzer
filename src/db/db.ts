@@ -1,5 +1,5 @@
 import Dexie from 'dexie';
-import type { CoverageStrategy, GenerationOptions, QuestionType, QuizAnswer, QuizQuestion } from '../types';
+import type { AIConversationTurn, CoverageStrategy, GenerationOptions, QuestionType, QuizAnswer, QuizQuestion } from '../types';
 import type { ReasoningJudgment } from '../utils/judgeReasoning';
 
 export type GenerationJobStatus = 'queued' | 'running' | 'waiting' | 'paused' | 'error' | 'completed' | 'cancelled';
@@ -115,6 +115,7 @@ export interface StoredTestDraft {
   submittedQuestions: Record<number, boolean>;
   reviewMarks: Record<number, boolean>;
   shuffledAnswers: Record<number, QuizAnswer[]>;
+  aiConversations?: Record<number, AIConversationTurn[]>;
 }
 
 export type SyncCollection = 'tests' | 'documents' | 'generationJobs' | 'testDrafts';

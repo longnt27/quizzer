@@ -18,7 +18,7 @@ import {
 import { PauseOutlined, RobotOutlined } from '@ant-design/icons';
 import type { InputRef } from 'antd';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
-import type { QuizAnswer } from '../types';
+import type { AIConversationTurn, QuizAnswer } from '../types';
 import { getQuestionAnswerTexts, getQuestionType, isQuestionCorrect } from '../utils/questions';
 import { judgeReasoningAnswers } from '../utils/judgeReasoning';
 import { getProviderSettings } from '../utils/providerSettings';
@@ -98,6 +98,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
     const [submittedQuestions, setSubmittedQuestions] = useState<Record<number, boolean>>(initialDraft?.submittedQuestions ?? {});
     const [reviewMarks, setReviewMarks] = useState<Record<number, boolean>>(initialDraft?.reviewMarks ?? {});
     const [shuffledAnswers, setShuffledAnswers] = useState<Record<number, QuizAnswer[]>>(initialDraft?.shuffledAnswers ?? {});
+    const [aiConversations, setAiConversations] = useState<Record<number, AIConversationTurn[]>>(initialDraft?.aiConversations ?? {});
     const startRef = useRef(initialDraft?.startedAt ?? startedAt ?? Date.now());
     const [remaining, setRemaining] = useState<number>(() => timeLimit
         ? Math.max(0, Math.floor((startRef.current + timeLimit * 1000 - Date.now()) / 1000))
@@ -159,8 +160,9 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
             submittedQuestions,
             reviewMarks,
             shuffledAnswers,
+            aiConversations,
         });
-    }, [answers, currentIndex, practice, questionOrder, revealedReasoning, reviewMarks, selfAssessments, shuffledAnswers, submittedQuestions, test.id, timeLimit]);
+    }, [aiConversations, answers, currentIndex, practice, questionOrder, revealedReasoning, reviewMarks, selfAssessments, shuffledAnswers, submittedQuestions, test.id, timeLimit]);
 
     const handleSubmit = useCallback(async () => {
         if (finishedRef.current) return;
@@ -225,6 +227,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
             submittedQuestions,
             reviewMarks,
             shuffledAnswers,
+            aiConversations,
         };
         finishedRef.current = true;
         try {
@@ -648,6 +651,8 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
               userAnswers={answers[askQuestionIndex] ?? []}
               selfAssessment={selfAssessments[askQuestionIndex]}
               documentIds={test.documentIds ?? []}
+              history={aiConversations[askQuestionIndex] ?? []}
+              onHistoryChange={history => setAiConversations(current => ({ ...current, [askQuestionIndex]: history }))}
               onClose={() => setAskQuestionIndex(null)} />}
         </Row>
     );
