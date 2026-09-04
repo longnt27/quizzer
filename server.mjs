@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { storageInfo, syncStorage } from './server/storage.mjs';
 
 const port = Number(process.env.QUIZZER_SERVICE_PORT || 8787);
@@ -10,6 +10,9 @@ const maxBodyBytes = 25 * 1024 * 1024;
 const maxStorageBodyBytes = 250 * 1024 * 1024;
 const managedMarkerDirectory = join(process.cwd(), '.quizzer-tools', 'marker');
 const managedMarkerExecutable = join(managedMarkerDirectory, process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'marker_single.exe' : 'marker_single');
+const managedOcrDirectory = join(process.cwd(), '.quizzer-tools', 'ocr');
+const managedOcrPython = join(managedOcrDirectory, process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'python.exe' : 'python');
+const ocrScript = join(process.cwd(), 'scripts', 'ocr_image.py');
 const windowsOllamaExecutable = process.env.LOCALAPPDATA
   ? join(process.env.LOCALAPPDATA, 'Programs', 'Ollama', 'ollama.exe')
   : 'ollama.exe';
@@ -19,9 +22,11 @@ const integrationJobs = {
   'claude-agent': { state: 'idle', message: '' },
   'antigravity-agent': { state: 'idle', message: '' },
   embeddings: { state: 'idle', message: '' },
+  ocr: { state: 'idle', message: '' },
 };
 let systemMarkerDetected;
 let managedMarkerDetected;
+let managedOcrDetected;
 
 const send = (response, status, body) => {
   response.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': 'http://localhost:5173' });
@@ -118,12 +123,19 @@ const compatiblePython = async () => {
   for (const candidate of candidates) {
     if (await commandWorks(candidate.command, [...candidate.prefix, '-c', 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)'])) return candidate;
   }
-  throw new Error('Marker requires Python 3.10 or newer. Install a current Python version, then retry.');
+  throw new Error('Managed PDF and OCR plugins require Python 3.10 or newer. Install a current Python version, then retry.');
+};
+
+const managedOcrWorks = async () => {
+  if (managedOcrDetected === undefined) managedOcrDetected = await commandWorks(
+    managedOcrPython, ['-c', 'import rapidocr, onnxruntime'], 30_000,
+  );
+  return managedOcrDetected;
 };
 
 const integrationStatus = async () => {
   const ollamaExecutable = await ollamaCommand();
-  const [codexInstalled, codexConnected, claudeInstalled, claudeConnected, antigravityInstalled, ollamaInstalled, ollamaModels, managedMarker, systemMarker] = await Promise.all([
+  const [codexInstalled, codexConnected, claudeInstalled, claudeConnected, antigravityInstalled, ollamaInstalled, ollamaModels, managedMarker, systemMarker, managedOcr] = await Promise.all([
     commandWorks('codex', ['--version']),
     commandWorks('codex', ['login', 'status']),
     commandWorks('claude', ['--version']),
@@ -133,6 +145,7 @@ const integrationStatus = async () => {
     runCommand(ollamaExecutable, ['list'], { timeout: 8_000 }).catch(() => ''),
     managedMarkerWorks(),
     hasSystemMarker(),
+    managedOcrWorks(),
   ]);
   return {
     marker: { installed: managedMarker || systemMarker, managed: managedMarker, job: integrationJobs.marker },
@@ -153,6 +166,7 @@ const integrationStatus = async () => {
       runtimeInstalled: ollamaInstalled,
       job: integrationJobs.embeddings,
     },
+    ocr: { installed: managedOcr, managed: managedOcr, job: integrationJobs.ocr },
   };
 };
 
@@ -181,6 +195,41 @@ const installMarker = () => {
       integrationJobs.marker = { state: 'error', message: error instanceof Error ? error.message : 'Marker installation failed' };
     }
   })();
+};
+
+const installOcr = () => {
+  if (integrationJobs.ocr.state === 'working') return;
+  integrationJobs.ocr = { state: 'working', message: 'Creating Quizzer’s private OCR environment…' };
+  void (async () => {
+    const python = await compatiblePython();
+    await rm(managedOcrDirectory, { recursive: true, force: true });
+    managedOcrDetected = undefined;
+    await runCommand(python.command, [...python.prefix, '-m', 'venv', managedOcrDirectory], {
+      timeout: 120_000,
+      onOutput: output => { if (output) integrationJobs.ocr.message = output; },
+    });
+    const pip = join(managedOcrDirectory, process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'pip.exe' : 'pip');
+    integrationJobs.ocr.message = 'Downloading RapidOCR and its lightweight CPU runtime…';
+    await runCommand(pip, ['install', '--upgrade', 'rapidocr', 'onnxruntime'], {
+      timeout: 30 * 60_000,
+      onOutput: output => { integrationJobs.ocr.message = output || integrationJobs.ocr.message; },
+    });
+    managedOcrDetected = await commandWorks(managedOcrPython, ['-c', 'import rapidocr, onnxruntime'], 60_000);
+    if (!managedOcrDetected) throw new Error('OCR installed but failed its startup check.');
+    integrationJobs.ocr = { state: 'complete', message: 'RapidOCR is installed and ready for extracted images.' };
+  })().catch(error => {
+    integrationJobs.ocr = { state: 'error', message: error instanceof Error ? error.message : 'OCR installation failed' };
+  });
+};
+
+const runManagedOcr = async path => {
+  if (!await managedOcrWorks()) return '';
+  const output = await runCommand(managedOcrPython, [ocrScript, path], { timeout: 90_000 });
+  const marker = '__QUIZZER_OCR__';
+  const markerIndex = output.lastIndexOf(marker);
+  if (markerIndex < 0) throw new Error('OCR returned an unreadable result.');
+  const texts = JSON.parse(output.slice(markerIndex + marker.length).trim());
+  return Array.isArray(texts) ? texts.filter(value => typeof value === 'string').join(' ') : '';
 };
 
 const connectCodex = () => {
@@ -544,6 +593,48 @@ const walkFiles = async directory => {
   return result;
 };
 
+const cleanMarkdownContext = value => value
+  .replace(/!\[[^\]]*\]\([^)]+\)/g, ' ')
+  .replace(/<img\b[^>]*>/gi, ' ')
+  .replace(/[`#>*_|~-]+/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const imageReferences = markdown => {
+  const references = [];
+  const markdownPattern = /!\[([^\]]*)\]\(([^)]+)\)/g;
+  const htmlPattern = /<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*?(?:\balt=["']([^"']*)["'])?[^>]*>/gi;
+  for (const match of markdown.matchAll(markdownPattern)) {
+    references.push({ index: match.index ?? 0, path: match[2], caption: match[1] });
+  }
+  for (const match of markdown.matchAll(htmlPattern)) {
+    references.push({ index: match.index ?? 0, path: match[1], caption: match[2] || '' });
+  }
+  return references;
+};
+
+const pageNear = (markdown, index, filename) => {
+  const preceding = markdown.slice(0, index);
+  const markers = [...preceding.matchAll(/---\s*Page\s+(\d+)\s*---/gi)];
+  const fromMarkdown = Number(markers.at(-1)?.[1]);
+  if (fromMarkdown) return fromMarkdown;
+  const fromName = /(?:^|[_-])page[_-]?(\d+)(?:[_-]|\.)/i.exec(filename)
+    ?? /(?:^|[_-])p[_-]?(\d+)(?:[_-]|\.)/i.exec(filename);
+  return fromName ? Number(fromName[1]) : undefined;
+};
+
+const mapWithConcurrency = async (items, concurrency, mapper) => {
+  const result = new Array(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      result[index] = await mapper(items[index], index);
+    }
+  }));
+  return result;
+};
+
 const runMarker = async ({ name, data }) => {
   if (typeof data !== 'string' || !data) throw new Error('PDF data is required');
   const work = await mkdtemp(join(tmpdir(), 'quizzer-marker-'));
@@ -563,13 +654,34 @@ const runMarker = async ({ name, data }) => {
     const files = await walkFiles(output);
     const markdownPath = files.find(path => path.endsWith('.md'));
     if (!markdownPath) throw new Error('Marker produced no Markdown output');
+    const markdown = await readFile(markdownPath, 'utf8');
+    const references = imageReferences(markdown);
     const imagePaths = files.filter(path => /\.(png|jpe?g|webp)$/i.test(path));
-    const images = await Promise.all(imagePaths.slice(0, 30).map(async path => ({
-      name: path.split('/').pop(),
-      mimeType: path.endsWith('.png') ? 'image/png' : path.endsWith('.webp') ? 'image/webp' : 'image/jpeg',
-      data: (await readFile(path)).toString('base64'),
-    })));
-    return { content: await readFile(markdownPath, 'utf8'), images };
+    const canOcr = await managedOcrWorks();
+    const images = await mapWithConcurrency(imagePaths, 2, async (path, index) => {
+      const name = basename(path);
+      const reference = references.find(item => {
+        try { return basename(decodeURIComponent(item.path.split(/[?#]/)[0])) === name; }
+        catch { return basename(item.path.split(/[?#]/)[0]) === name; }
+      });
+      const sourceStart = reference?.index;
+      const context = sourceStart === undefined ? '' : cleanMarkdownContext(markdown.slice(Math.max(0, sourceStart - 500), sourceStart + 700));
+      const caption = cleanMarkdownContext(reference?.caption || '');
+      const ocrText = canOcr ? await runManagedOcr(path).catch(() => '') : '';
+      const lower = name.toLowerCase();
+      return {
+        id: `image-${index}`,
+        name,
+        mimeType: lower.endsWith('.png') ? 'image/png' : lower.endsWith('.webp') ? 'image/webp' : 'image/jpeg',
+        data: (await readFile(path)).toString('base64'),
+        page: pageNear(markdown, sourceStart ?? 0, name),
+        sourceStart,
+        caption: caption || undefined,
+        context: context || undefined,
+        ocrText: cleanMarkdownContext(ocrText) || undefined,
+      };
+    });
+    return { content: markdown, images };
   } finally {
     await rm(work, { recursive: true, force: true });
   }
@@ -593,6 +705,11 @@ createServer(async (request, response) => {
   if (request.method === 'POST' && request.url === '/api/integrations/marker/install') {
     if (!request.headers['content-type']?.startsWith('application/json')) return send(response, 415, { error: 'JSON request required' });
     installMarker();
+    return send(response, 202, { ok: true });
+  }
+  if (request.method === 'POST' && request.url === '/api/integrations/ocr/install') {
+    if (!request.headers['content-type']?.startsWith('application/json')) return send(response, 415, { error: 'JSON request required' });
+    installOcr();
     return send(response, 202, { ok: true });
   }
   if (request.method === 'POST' && request.url === '/api/integrations/codex/connect') {

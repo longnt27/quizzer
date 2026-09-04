@@ -12,6 +12,7 @@ type JobState = 'idle' | 'working' | 'complete' | 'error';
 type AgentStatus = { installed: boolean; connected: boolean; job: { state: JobState; message: string } };
 interface IntegrationStatus {
   marker: { installed: boolean; managed: boolean; job: { state: JobState; message: string } };
+  ocr: { installed: boolean; managed: boolean; job: { state: JobState; message: string } };
   codex: AgentStatus;
   'claude-agent': AgentStatus;
   'antigravity-agent': AgentStatus;
@@ -51,7 +52,7 @@ export default function PluginsModal({ onClose }: Props) {
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => {
     if (!status) return;
-    const jobs = [status.marker.job, status.embeddings?.job, ...AGENT_PROVIDERS.map(provider => status[provider.id]?.job)].filter(Boolean);
+    const jobs = [status.marker.job, status.ocr?.job, status.embeddings?.job, ...AGENT_PROVIDERS.map(provider => status[provider.id]?.job)].filter(Boolean);
     if (!jobs.some(job => job.state === 'working')) return;
     const timer = window.setInterval(() => void refresh(), 1500);
     return () => window.clearInterval(timer);
@@ -82,6 +83,7 @@ export default function PluginsModal({ onClose }: Props) {
   };
 
   const markerWorking = status?.marker.job.state === 'working';
+  const ocrWorking = status?.ocr?.job.state === 'working';
   const embeddingsWorking = status?.embeddings?.job.state === 'working';
   const configuredProviderOptions = PROVIDERS.filter(provider => provider.kind === 'api'
     ? Boolean(apiKeys[provider.id]?.trim())
@@ -108,6 +110,20 @@ export default function PluginsModal({ onClose }: Props) {
             <Alert showIcon type={status.marker.job.state === 'error' ? 'error' : status.marker.job.state === 'complete' ? 'success' : 'info'}
               message={status.marker.job.state === 'working' ? 'Installing Marker' : status.marker.job.state === 'complete' ? 'Marker ready' : 'Installation failed'}
               description={<pre className="plugin-output">{status.marker.job.message}</pre>} />
+          )}
+        </section>
+
+        <section className="plugin-card">
+          <div className="plugin-card-heading">
+            <div><Typography.Title level={5}>Image OCR</Typography.Title><Typography.Text type="secondary">Optionally uses RapidOCR locally to read labels, diagrams, and screenshots extracted by Marker. Quizzer does not install or run OCR unless you choose it.</Typography.Text></div>
+            {statusTag(Boolean(status?.ocr?.installed), Boolean(ocrWorking), 'Installed by Quizzer')}
+          </div>
+          {!status?.ocr?.installed && !ocrWorking && <Button icon={<CloudDownloadOutlined />} onClick={() => void runAction('/api/integrations/ocr/install')}>Install Image OCR</Button>}
+          {ocrWorking && <Space><Spin size="small" /> Installing Image OCR…</Space>}
+          {status?.ocr?.job.message && status.ocr.job.state !== 'idle' && (
+            <Alert showIcon type={status.ocr.job.state === 'error' ? 'error' : status.ocr.job.state === 'complete' ? 'success' : 'info'}
+              message={status.ocr.job.state === 'working' ? 'Installing Image OCR' : status.ocr.job.state === 'complete' ? 'Image OCR ready' : 'Installation failed'}
+              description={<pre className="plugin-output">{status.ocr.job.message}</pre>} />
           )}
         </section>
 
