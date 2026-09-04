@@ -144,7 +144,7 @@ export default function AskAIModal({ title, emptyMessage, loadingMessage, onClos
       {error && <Alert type="error" showIcon message={error} />}
       <div className="ai-chat-composer">
         <Input.TextArea ref={questionRef} value={question} onChange={event => setQuestion(event.target.value)} autoFocus={false}
-          autoSize={{ minRows: 2, maxRows: 7 }} placeholder="Ask about the attached material…" onKeyDown={event => {
+          autoSize={{ minRows: 1, maxRows: 7 }} placeholder="Ask about the attached material…" onKeyDown={event => {
             containEditingKeys(event);
             if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void submit(); }
           }} />

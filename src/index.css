@@ -110,8 +110,8 @@ button, input, textarea, select { font: inherit; }
 @keyframes ai-avatar-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgb(22 119 255 / 0%); } 50% { box-shadow: 0 0 0 6px rgb(22 119 255 / 14%); } }
 @keyframes ai-thinking-dot { 0%, 60%, 100% { opacity: .28; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
 .ai-chat-composer { position: relative; padding: 6px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-soft); }
-.ai-chat-composer textarea { padding-right: 48px !important; padding-bottom: 34px !important; background: transparent !important; }
-.ai-chat-composer-action { position: absolute; right: 12px; bottom: 12px; z-index: 1; }
+.ai-chat-composer textarea { min-height: 32px !important; padding: 5px 48px 5px 7px !important; background: transparent !important; }
+.ai-chat-composer-action { position: absolute; top: 7px; right: 8px; z-index: 1; width: 30px; min-width: 30px; height: 30px; }
 .test-start { width: 100%; min-height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); background: var(--surface); overflow: auto; }
 .test-start-main { min-height: 100%; padding: 64px 32px; display: flex; align-items: center; flex-direction: column; justify-content: center; text-align: center; }
 .test-source-sidebar { min-height: 100%; padding: 32px 20px; border-left: 1px solid var(--border); background: var(--surface-soft); }
