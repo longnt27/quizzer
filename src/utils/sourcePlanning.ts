@@ -1,8 +1,31 @@
-import type { StoredCoveragePlan, StoredDocument } from '../db/db';
+import type { StoredCoveragePlan, StoredDocument, StoredDocumentChunk, StoredDocumentImage } from '../db/db';
 import type { CoverageStrategy } from '../types';
 import { chunkDocumentContent, chunkText } from './documentChunks';
 
 const SOURCE_CHARACTER_BUDGET = 54_000;
+const MAX_SOURCE_IMAGES = 6;
+
+const searchTokens = (value: string) => new Set(value.toLocaleLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? []);
+
+const imageDescription = (image: StoredDocumentImage, document: StoredDocument) => {
+  const details = [
+    image.page ? `Page: ${image.page}` : '',
+    image.caption ? `Caption: ${image.caption.slice(0, 500)}` : '',
+    image.ocrText ? `Text read from image: ${image.ocrText.slice(0, 1_200)}` : '',
+    image.context ? `Nearby document text: ${image.context.slice(0, 700)}` : '',
+  ].filter(Boolean);
+  return `## Associated visual: ${document.name} / ${image.name}\n${details.join('\n') || 'No text description is available; inspect the attached image when supported.'}`;
+};
+
+const imageRelevance = (image: StoredDocumentImage, chunk: StoredDocumentChunk | undefined, chunkContent: string) => {
+  let score = 0;
+  if (chunk && image.sourceStart !== undefined && image.sourceStart >= chunk.start && image.sourceStart < chunk.end) score += 100;
+  if (chunk?.page && image.page === chunk.page) score += 70;
+  const chunkTokens = searchTokens(chunkContent);
+  const metadataTokens = searchTokens(`${image.caption ?? ''} ${image.ocrText ?? ''} ${image.context ?? ''}`);
+  for (const token of metadataTokens) if (chunkTokens.has(token)) score += 2;
+  return score;
+};
 
 export const ensureDocumentChunks = (document: StoredDocument): StoredDocument => {
   if (document.chunks?.length) return document;
@@ -137,15 +160,36 @@ export const sourceContextForSlots = (
   }
   const sourceEntries = [...references.values()];
   const perEntryBudget = Math.max(800, Math.floor(SOURCE_CHARACTER_BUDGET / Math.max(1, sourceEntries.length)));
-  const content = sourceEntries.map(({ document, chunkIndex }, index) => {
+  const textContent = sourceEntries.map(({ document, chunkIndex }, index) => {
     const chunk = document.chunks?.[chunkIndex] ?? document.chunks?.[0];
     const text = chunk ? chunkText(document.content, chunk) : document.content;
     const page = chunk?.page ? ` · page ${chunk.page}` : '';
     return `## Source ${index + 1}: ${document.name}${page}\n${text.slice(0, perEntryBudget)}`;
   }).join('\n\n');
-  const selectedIds = [...new Set(requestedSlots.flatMap(slot => slot.documentIds))];
-  const images = selectedIds.flatMap(id => (documentMap.get(id)?.images ?? []).slice(0, 1))
-    .slice(0, 6).map(image => `data:${image.mimeType};base64,${image.data}`);
+  const candidates = sourceEntries.flatMap(({ document, chunkIndex }) => {
+    const chunk = document.chunks?.[chunkIndex] ?? document.chunks?.[0];
+    const chunkContent = chunk ? chunkText(document.content, chunk) : document.content;
+    return (document.images ?? []).map((image, imageIndex) => ({
+      document,
+      image,
+      imageIndex,
+      score: imageRelevance(image, chunk, chunkContent),
+    }));
+  });
+  const relevant = candidates.filter(candidate => candidate.score > 0);
+  const fallback = candidates.filter(candidate => candidate.score === 0 && candidate.imageIndex === 0);
+  const seen = new Set<string>();
+  const selectedImages = [...relevant.sort((left, right) => right.score - left.score), ...fallback]
+    .filter(({ document, image }) => {
+      const key = `${document.id}:${image.id ?? image.name}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, MAX_SOURCE_IMAGES);
+  const visualContent = selectedImages.map(({ image, document }) => imageDescription(image, document)).join('\n\n');
+  const content = visualContent ? `${textContent}\n\n# Visual context\n${visualContent}` : textContent;
+  const images = selectedImages.map(({ image }) => `data:${image.mimeType};base64,${image.data}`);
   return {
     content,
     images,
