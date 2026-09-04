@@ -1,6 +1,9 @@
-import { Alert, Button, Typography, Checkbox, InputNumber, Popconfirm, Radio, Space, Tag } from 'antd';
+import { Alert, Button, Card, Typography, Checkbox, InputNumber, Popconfirm, Radio, Space, Tag } from 'antd';
+import { FileTextOutlined, LinkOutlined } from '@ant-design/icons';
 import type { StoredTest, StoredTestDraft } from '../db/db';
 import { useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../db/db';
 import { countQuestionTypes } from '../utils/questions';
 
 const { Title, Paragraph } = Typography;
@@ -10,13 +13,16 @@ interface Props {
     draft?: StoredTestDraft;
     onStart: (options: { timeLimit?: number; practice: boolean }) => void;
     onResume: () => void;
+    onOpenDocument: (id: string) => void;
 }
 
-const TestStart: React.FC<Props> = ({ test, draft, onStart, onResume }) => {
+const TestStart: React.FC<Props> = ({ test, draft, onStart, onResume, onOpenDocument }) => {
     const [timed, setTimed] = useState(false);
     const [durationMinutes, setDurationMinutes] = useState(15); // default to 15 mins
     const [mode, setMode] = useState<'test' | 'practice'>('test');
     const counts = countQuestionTypes(test.questions);
+    const documentIds = test.documentIds ?? [];
+    const sourceDocuments = useLiveQuery(() => db.documents.bulkGet(documentIds), [test.id, documentIds.join('|')]);
 
     return (
         <div className="test-start"
@@ -31,8 +37,9 @@ const TestStart: React.FC<Props> = ({ test, draft, onStart, onResume }) => {
                 textAlign: 'center',
                 display: 'flex',
                 flexDirection: 'column',
-                justifyContent: 'center',
+                justifyContent: 'flex-start',
                 alignItems: 'center',
+                overflowY: 'auto',
             }}
         >
             <Title level={2} style={{ marginBottom: 8 }}>
@@ -50,6 +57,26 @@ const TestStart: React.FC<Props> = ({ test, draft, onStart, onResume }) => {
                 {counts.reasoning > 0 && <Tag color="gold">{counts.reasoning} reasoning</Tag>}
                 {counts.coding > 0 && <Tag color="cyan">{counts.coding} coding</Tag>}
             </Space>
+
+            <Card className="test-source-card" size="small" title={<Space><FileTextOutlined />Source documents</Space>}>
+              {documentIds.length ? <div className="test-source-list">
+                {documentIds.map((documentId, index) => {
+                  const document = sourceDocuments?.[index];
+                  return <div className="test-source-item" key={documentId}>
+                    <div>
+                      <Typography.Text strong>{document?.name ?? (sourceDocuments ? 'Deleted document' : 'Loading source…')}</Typography.Text>
+                      <div className="test-source-meta">
+                        {document?.pageCount && <Tag>{document.pageCount} pages</Tag>}
+                        {document?.tags.map(tag => <Tag key={tag}>{tag}</Tag>)}
+                        {!document && sourceDocuments && <Tag color="error">No longer in library</Tag>}
+                      </div>
+                    </div>
+                    {document && <Button type="link" icon={<LinkOutlined />} onClick={() => onOpenDocument(document.id)}>Open document</Button>}
+                  </div>;
+                })}
+              </div> : <Alert type="info" showIcon message="Source information is unavailable"
+                description="This test was created before Quizzer recorded document origins, or it was imported without source metadata." />}
+            </Card>
 
             <Radio.Group value={mode} onChange={event => setMode(event.target.value)} optionType="button" buttonStyle="solid" style={{ marginBottom: 20 }}
                 options={[

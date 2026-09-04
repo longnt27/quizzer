@@ -86,6 +86,7 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
             session={session}
             setSession={setSession}
             onAddTest={() => setShowAddModal(true)}
+            onOpenDocument={id => select({ kind: 'document', id })}
           />
         )}
       </main>

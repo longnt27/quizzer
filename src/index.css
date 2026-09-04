@@ -104,6 +104,12 @@ button, input, textarea, select { font: inherit; }
 .ai-chat-composer textarea { background: transparent !important; }
 .ai-chat-composer-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
 .test-start { min-height: 100%; }
+.test-source-card { width: min(100%, 620px); margin-bottom: 24px; text-align: left; }
+.test-source-list { display: grid; gap: 4px; }
+.test-source-item { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 14px; padding: 9px 4px; }
+.test-source-item + .test-source-item { border-top: 1px solid var(--border); }
+.test-source-item > div:first-child { min-width: 0; }
+.test-source-meta { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; }
 
 .quiz-layout { width: 100%; height: 100dvh; background: var(--page); flex-wrap: nowrap; }
 .quiz-main { min-width: 0; background: var(--surface); }
@@ -162,6 +168,8 @@ mark { color: #111827; }
 
   .test-start { padding: 32px 16px !important; border-radius: 0 !important; box-shadow: none !important; }
   .test-start > div { flex-wrap: wrap; justify-content: center; gap: 12px; }
+  .test-source-item { align-items: flex-start; flex-direction: column; }
+  .test-source-item .ant-btn { padding-inline: 0; }
 
   .quiz-layout { height: auto !important; min-height: 100dvh; flex-direction: column; overflow: visible; }
   .quiz-main, .quiz-index { flex: none !important; width: 100%; max-width: none; }
