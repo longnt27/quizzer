@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { Alert, Button, Input, Modal, Select, Space, Tag, Tooltip, Typography } from 'antd';
+import { Alert, Button, Input, Modal, Popover, Select, Space, Tag, Tooltip, Typography } from 'antd';
 import { FileTextOutlined, RobotOutlined, SendOutlined, StopOutlined, UserOutlined } from '@ant-design/icons';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
 import ReactMarkdown from 'react-markdown';
@@ -120,12 +120,12 @@ export default function AskAIModal({ title, emptyMessage, loadingMessage, onClos
                   const citation = /^quizzer-source:(\d+)$/.exec(href ?? '');
                   if (!citation) return <a href={href} target="_blank" rel="noreferrer">{children}</a>;
                   const source = turn.sources?.find(item => item.index === Number(citation[1]));
-                  return <Tooltip title={source ? <div className="ai-citation-preview">
+                  return <Popover mouseEnterDelay={0} placement="top" content={source ? <div className="ai-citation-preview">
                     <strong>{source.name}{source.page ? ` · page ${source.page}` : ''}</strong>
                     {source.excerpt && <span>{source.excerpt}</span>}
                   </div> : 'Source reference unavailable'}>
-                    <button type="button" className="ai-inline-citation">[{citation[1]}]</button>
-                  </Tooltip>;
+                    <button type="button" className="ai-inline-citation" aria-label={`Preview source ${citation[1]}`}>[{citation[1]}]</button>
+                  </Popover>;
                 },
               }}>{turn.answer.replace(/\[(?:Source\s*)?(\d+)\](?!\()/gi, '[$1](quizzer-source:$1)')}</ReactMarkdown>
             </div>
