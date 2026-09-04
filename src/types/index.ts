@@ -37,6 +37,21 @@ export type QuestionType = 'multiple-choice' | 'fill-blank' | 'reasoning' | 'cod
 export interface AIConversationTurn {
   question: string;
   answer: string;
+  sources?: AISourceReference[];
+}
+
+export interface AISourceReference {
+  id: string;
+  documentId: string;
+  name: string;
+  page?: number;
+  excerpt?: string;
+  index?: number;
+}
+
+export interface AIAnswer {
+  answer: string;
+  sources?: AISourceReference[];
 }
 
 export interface QuestionCounts {

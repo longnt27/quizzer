@@ -356,7 +356,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (isPopconfirmVisible || isSearching) return;
+            if (isPopconfirmVisible || isSearching || askQuestionIndex !== null) return;
 
             const target = e.target as HTMLElement;
             if (practice && !submitted && answered && e.key === 'Enter' && !e.shiftKey) {
@@ -371,6 +371,11 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                     e.preventDefault();
                     target.blur();
                 }
+                return;
+            }
+            if (practice && submitted && e.key === '?') {
+                e.preventDefault();
+                setAskQuestionIndex(questionIndex);
                 return;
             }
             if (!submitted && !e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLocaleLowerCase() === 'i') {
@@ -414,7 +419,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [answered, isEvaluatedWritten, isSearching, isJumping, choices, currentIndex, questionIndex, questionType, totalCorrect, isPopconfirmVisible, practice, reviewComplete, submitted, submitPracticeAnswer, test.questions.length, toggleChoice]);
+    }, [answered, askQuestionIndex, isEvaluatedWritten, isSearching, isJumping, choices, currentIndex, questionIndex, questionType, totalCorrect, isPopconfirmVisible, practice, reviewComplete, submitted, submitPracticeAnswer, test.questions.length, toggleChoice]);
 
     // CHANGED: Keyboard handler for popconfirm is now more direct
     useEffect(() => {
@@ -592,8 +597,8 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                         <Typography.Paragraph type="secondary">{q.explanation}</Typography.Paragraph>
                       </div>
                     )}
-                    {practice && submitted && <Button icon={<RobotOutlined />} onClick={() => setAskQuestionIndex(questionIndex)}>
-                      Ask AI about this answer
+                    {practice && submitted && <Button className="practice-ask-ai" icon={<RobotOutlined />} onClick={() => setAskQuestionIndex(questionIndex)}>
+                      Ask AI about this answer <span className="practice-shortcut">?</span>
                     </Button>}
                     {practice && !submitted && answered && <div className="practice-check-row">
                       <Button type="primary" size="large" onClick={submitPracticeAnswer}>Check answer <span className="practice-shortcut">Enter</span></Button>
@@ -642,6 +647,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
               questionNumber={questionOrder.indexOf(askQuestionIndex) + 1}
               userAnswers={answers[askQuestionIndex] ?? []}
               selfAssessment={selfAssessments[askQuestionIndex]}
+              documentIds={test.documentIds ?? []}
               onClose={() => setAskQuestionIndex(null)} />}
         </Row>
     );
