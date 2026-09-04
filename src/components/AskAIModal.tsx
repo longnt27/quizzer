@@ -118,7 +118,7 @@ export default function AskAIModal({ title, emptyMessage, loadingMessage, onClos
             <div className="ai-chat-answer">
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
                 a: ({ href, children }) => {
-                  const citation = /^quizzer-source:(\d+)$/.exec(href ?? '');
+                  const citation = /^#quizzer-source-(\d+)$/.exec(href ?? '');
                   if (!citation) return <a href={href} target="_blank" rel="noreferrer">{children}</a>;
                   const source = turn.sources?.find(item => item.index === Number(citation[1]));
                   return <Popover mouseEnterDelay={0} placement="top" content={source ? <div className="ai-citation-preview">
@@ -128,7 +128,7 @@ export default function AskAIModal({ title, emptyMessage, loadingMessage, onClos
                     <button type="button" className="ai-inline-citation" aria-label={`Preview source ${citation[1]}`}>[{citation[1]}]</button>
                   </Popover>;
                 },
-              }}>{turn.answer.replace(/\[(?:Source\s*)?(\d+)\](?!\()/gi, '[$1](quizzer-source:$1)')}</ReactMarkdown>
+              }}>{turn.answer.replace(/\[(?:Source\s*)?(\d+)\](?!\()/gi, ' [$1](#quizzer-source-$1) ')}</ReactMarkdown>
             </div>
           </div>
         </div>)}

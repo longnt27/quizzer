@@ -40,7 +40,7 @@ export const retrieveDocumentContext = (documents: StoredDocument[], query: stri
     documentId: document.id,
     name: document.name,
     page: chunk.page,
-    excerpt: text.replace(/\s+/g, ' ').trim().slice(0, 180),
+    excerpt: text.replace(/\s+/g, ' ').trim().slice(0, 1_200),
     index: index + 1,
   }));
   const content = selected.map(({ document, chunk, text }, index) =>
