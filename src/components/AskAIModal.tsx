@@ -148,11 +148,10 @@ export default function AskAIModal({ title, emptyMessage, loadingMessage, onClos
             containEditingKeys(event);
             if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void submit(); }
           }} />
-        <div className="ai-chat-composer-footer">
-          <Typography.Text type="secondary">I focus · Enter send · Shift+Enter new line · Esc unfocus</Typography.Text>
-          {loading ? <Button danger icon={<StopOutlined />} onClick={() => controller.current?.abort()}>Stop</Button>
-            : question.trim() && configured.providers.length > 0 ? <Button type="primary" icon={<SendOutlined />} onClick={() => void submit()}>Send</Button> : null}
-        </div>
+        {loading ? <Tooltip title="Cancel response"><Button className="ai-chat-composer-action" danger shape="circle" icon={<StopOutlined />}
+          aria-label="Cancel response" onClick={() => controller.current?.abort()} /></Tooltip>
+          : question.trim() && configured.providers.length > 0 ? <Tooltip title="Send message"><Button className="ai-chat-composer-action" type="primary" shape="circle"
+            icon={<SendOutlined />} aria-label="Send message" onClick={() => void submit()} /></Tooltip> : null}
       </div>
     </div>
   </Modal>;
