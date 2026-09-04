@@ -106,7 +106,8 @@ export default function AskAIModal({ title, emptyMessage, loadingMessage, onClos
         </Space.Compact>}
       </div>
       {!configured.loading && !configured.providers.length && <Alert type="warning" showIcon message="No AI provider is configured" description="Connect an agent or add an API key in Plugins & models first." />}
-      <div className="ai-chat-history" ref={historyRef}>
+      <div className="ai-chat-panel">
+        <div className="ai-chat-history" ref={historyRef}>
         {!history.length && !loading && <div className="ai-chat-empty"><RobotOutlined /><Typography.Text type="secondary">{emptyMessage}</Typography.Text></div>}
         {history.map((turn, index) => <div className="ai-chat-exchange" key={`${index}-${turn.question}`}>
           <div className="ai-chat-message ai-chat-message-user">
@@ -140,21 +141,22 @@ export default function AskAIModal({ title, emptyMessage, loadingMessage, onClos
             <div className="ai-chat-thinking"><span className="ai-thinking-dots"><i /><i /><i /></span><Typography.Text type="secondary">{loadingMessage}</Typography.Text></div>
           </div>
         </div>}
-      </div>
-      {error && <Alert type="error" showIcon message={error} />}
-      <div className="ai-chat-composer">
-        <Input.TextArea ref={questionRef} value={question} onChange={event => setQuestion(event.target.value)} autoFocus={false}
-          autoSize={{ minRows: 1, maxRows: 7 }} placeholder="Ask about the attached material…" onKeyDown={event => {
-            containEditingKeys(event);
-            if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void submit(); }
-          }} />
-        {loading ? <Tooltip title="Cancel response"><Button className="ai-chat-composer-action" danger shape="circle" icon={<StopOutlined />}
-          aria-label="Cancel response" onClick={() => controller.current?.abort()} /></Tooltip>
-          : <Tooltip title={question.trim() ? configured.providers.length ? 'Send message' : 'Connect an AI provider to send' : 'Type a message'}>
-            <Button className="ai-chat-composer-action" type={question.trim() && configured.providers.length ? 'primary' : 'default'} shape="circle"
-              icon={<ArrowUpOutlined />} aria-label="Send message" disabled={!question.trim() || !configured.providers.length}
-              onClick={() => void submit()} />
-          </Tooltip>}
+        </div>
+        {error && <Alert className="ai-chat-error" type="error" showIcon message={error} />}
+        <div className="ai-chat-composer">
+          <Input.TextArea ref={questionRef} value={question} onChange={event => setQuestion(event.target.value)} autoFocus={false}
+            autoSize={{ minRows: 1, maxRows: 7 }} placeholder="Ask about the attached material…" onKeyDown={event => {
+              containEditingKeys(event);
+              if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void submit(); }
+            }} />
+          {loading ? <Tooltip title="Cancel response"><Button className="ai-chat-composer-action" danger shape="circle" icon={<StopOutlined />}
+            aria-label="Cancel response" onClick={() => controller.current?.abort()} /></Tooltip>
+            : <Tooltip title={question.trim() ? configured.providers.length ? 'Send message' : 'Connect an AI provider to send' : 'Type a message'}>
+              <Button className="ai-chat-composer-action" type={question.trim() && configured.providers.length ? 'primary' : 'default'} shape="circle"
+                icon={<ArrowUpOutlined />} aria-label="Send message" disabled={!question.trim() || !configured.providers.length}
+                onClick={() => void submit()} />
+            </Tooltip>}
+        </div>
       </div>
     </div>
   </Modal>;

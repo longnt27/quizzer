@@ -82,7 +82,8 @@ button, input, textarea, select { font: inherit; }
 .ai-chat-scope { display: flex; align-items: center; gap: 10px; padding: 11px 13px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); }
 .ai-chat-scope > .anticon { font-size: 20px; color: #1677ff; }
 .ai-chat-scope-tags { display: flex; flex: 1; justify-content: flex-end; flex-wrap: wrap; gap: 4px; }
-.ai-chat-history { flex: 1; min-height: 280px; max-height: 52vh; padding: 18px 12px; overflow-y: auto; border-block: 1px solid var(--border); background: var(--surface); }
+.ai-chat-panel { flex: 1; min-height: 320px; max-height: 58vh; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+.ai-chat-history { flex: 1; min-height: 0; padding: 18px 12px; overflow-y: auto; background: var(--surface); }
 .ai-chat-empty { height: 100%; min-height: 240px; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; text-align: center; }
 .ai-chat-empty > .anticon { font-size: 34px; color: var(--muted); }
 .ai-chat-exchange { display: grid; gap: 18px; margin-bottom: 24px; }
@@ -109,7 +110,8 @@ button, input, textarea, select { font: inherit; }
 .ai-citation-preview span { opacity: .88; }
 @keyframes ai-avatar-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgb(22 119 255 / 0%); } 50% { box-shadow: 0 0 0 6px rgb(22 119 255 / 14%); } }
 @keyframes ai-thinking-dot { 0%, 60%, 100% { opacity: .28; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
-.ai-chat-composer { position: relative; }
+.ai-chat-error { margin: 0 12px 10px; }
+.ai-chat-composer { position: relative; margin: 0 12px 12px; flex: 0 0 auto; }
 .ai-chat-composer textarea { min-height: 50px !important; padding: 13px 56px 13px 16px !important; border-radius: 14px !important; background: var(--surface-soft) !important; }
 .ai-chat-composer-action { position: absolute; top: 10px; right: 10px; z-index: 1; width: 30px; min-width: 30px; height: 30px; }
 .test-start { width: 100%; min-height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); background: var(--surface); overflow: auto; }
@@ -175,7 +177,7 @@ mark { color: #111827; }
   .ai-chat-shell { min-height: calc(100dvh - 100px); }
   .ai-chat-scope { align-items: flex-start; flex-wrap: wrap; }
   .ai-chat-scope-tags { width: 100%; justify-content: flex-start; }
-  .ai-chat-history { max-height: none; }
+  .ai-chat-panel { max-height: none; }
   .ai-chat-bubble { max-width: 85%; }
 
   .test-start { grid-template-columns: 1fr; }
