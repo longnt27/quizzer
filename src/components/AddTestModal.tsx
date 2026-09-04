@@ -3,7 +3,7 @@ import { Alert, Button, Checkbox, Empty, Input, InputNumber, List, Modal, Radio,
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db, type StoredGenerationJob } from '../db/db';
-import type { GenerationOptions } from '../types';
+import type { CoverageStrategy, GenerationOptions } from '../types';
 import { getMessageApi } from '../utils/messageProvider';
 import { pumpGenerationQueue } from '../utils/generationQueue';
 import { getProviderDefinition, getProviderSettings } from '../utils/providerSettings';
@@ -35,6 +35,7 @@ export default function AddTestModal({ onClose, onManagePlugins }: Props) {
   const [reasoningCount, setReasoningCount] = useState(2);
   const [codingCount, setCodingCount] = useState(0);
   const [multipleChoiceMode, setMultipleChoiceMode] = useState<'single' | 'multiple'>('single');
+  const [coverageStrategy, setCoverageStrategy] = useState<CoverageStrategy>('balanced');
   const [query, setQuery] = useState('');
   const [saving, setSaving] = useState(false);
   const message = getMessageApi();
@@ -66,6 +67,7 @@ export default function AddTestModal({ onClose, onManagePlugins }: Props) {
         provider, model: model.trim() || undefined, questionCount,
         questionCounts: { multipleChoice: multipleChoiceCount, fillBlank: fillBlankCount, reasoning: reasoningCount, coding: codingCount },
         multipleChoiceMode,
+        coverageStrategy: mode === 'combined' ? coverageStrategy : 'balanced',
       };
       const requestedSources = mode === 'combined'
         ? [{ name: name.trim() || 'Combined quiz', documentIds: selected.map(document => document.id) }]
@@ -132,6 +134,23 @@ export default function AddTestModal({ onClose, onManagePlugins }: Props) {
                 { label: 'Multiple correct answers', value: 'multiple' },
               ]} />
           </div>}
+          {mode === 'combined' && selected.length > 1 && <div>
+            <Typography.Text strong>Document coverage</Typography.Text><br />
+            <Select value={coverageStrategy} onChange={setCoverageStrategy} style={{ width: '100%', marginTop: 8 }} options={[
+              { value: 'balanced', label: 'Balanced — spread questions evenly across documents' },
+              { value: 'proportional', label: 'Proportional — give larger documents more questions' },
+              { value: 'ai-selected', label: 'AI-selected — prioritize semantically central material' },
+              { value: 'cross-document', label: 'Cross-document — compare material from 2–3 documents' },
+            ]} />
+            <Typography.Paragraph type="secondary" style={{ margin: '8px 0 0' }}>
+              Quizzer sends only the assigned page-aware chunks for each batch, keeping large combined tests within a fixed prompt budget.
+            </Typography.Paragraph>
+          </div>}
+          {mode === 'combined' && selected.length > questionCount && questionCount > 0 && <Alert type="warning" showIcon
+            message={`${questionCount} questions cannot represent all ${selected.length} documents`}
+            description={coverageStrategy === 'ai-selected'
+              ? 'AI-selected coverage will prioritize the most central material. Increase the question count if every document must appear.'
+              : 'Quizzer will sample across the selection. Increase the question count to guarantee at least one question per document.'} />}
           {questionCount < 1 && <Alert type="error" showIcon message="Choose at least one question." />}
           {questionCount > 200 && <Alert type="error" showIcon message="A test can contain at most 200 questions." />}
           {!saving && <Typography.Text type="secondary">Provider defaults are saved in <Button type="link" size="small" onClick={onManagePlugins}>Plugins & models</Button>. You can override the model for this job.</Typography.Text>}

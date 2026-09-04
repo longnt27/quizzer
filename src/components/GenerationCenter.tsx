@@ -58,6 +58,9 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
           {job.status === 'waiting' ? 'Waiting for connection' : job.status === 'completed' && accepted < target ? 'completed partial' : job.status}
         </Tag>
       </div>
+      {job.documentIds.length > 1 && <Typography.Text type="secondary">
+        {job.documentIds.length} documents · {(job.options.coverageStrategy ?? 'balanced').replace('-', ' ')} coverage · bounded source chunks
+      </Typography.Text>}
       <Progress percent={percent} status={job.status === 'error' ? 'exception' : job.status === 'completed' ? 'success' : 'active'}
         format={() => `${accepted}/${target}`} />
       {job.progress && !terminalStatuses.has(job.status) && <Typography.Text type="secondary">
