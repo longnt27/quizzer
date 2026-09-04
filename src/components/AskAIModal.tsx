@@ -25,6 +25,8 @@ function CitationPopover({ index, source }: { index: number; source?: AISourceRe
   const [position, setPosition] = useState<{ left: number; top?: number; bottom?: number; width: number }>();
   const closeTimer = useRef<number | undefined>(undefined);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const pointerInsideCitation = useRef(false);
+  const pointerInsidePreview = useRef(false);
   const show = () => {
     window.clearTimeout(closeTimer.current);
     const bounds = triggerRef.current?.getBoundingClientRect();
@@ -39,15 +41,21 @@ function CitationPopover({ index, source }: { index: number; source?: AISourceRe
   };
   const scheduleClose = () => {
     window.clearTimeout(closeTimer.current);
-    closeTimer.current = window.setTimeout(() => setOpen(false), 400);
+    closeTimer.current = window.setTimeout(() => {
+      if (pointerInsideCitation.current || pointerInsidePreview.current || document.activeElement === triggerRef.current) return;
+      setOpen(false);
+    }, 400);
   };
   useEffect(() => () => window.clearTimeout(closeTimer.current), []);
 
   return <>
     <button ref={triggerRef} type="button" className="ai-inline-citation" aria-label={`Preview source ${index}`}
-      onPointerEnter={show} onPointerLeave={scheduleClose} onFocus={show} onBlur={scheduleClose}>[{index}]</button>
+      onPointerEnter={() => { pointerInsideCitation.current = true; show(); }}
+      onPointerLeave={() => { pointerInsideCitation.current = false; scheduleClose(); }}
+      onFocus={show} onBlur={scheduleClose}>[{index}]</button>
     {open && position && createPortal(<div className="ai-citation-floating" style={position}
-      onPointerEnter={show} onPointerLeave={scheduleClose} role="note">
+      onPointerEnter={() => { pointerInsidePreview.current = true; window.clearTimeout(closeTimer.current); }}
+      onPointerLeave={() => { pointerInsidePreview.current = false; scheduleClose(); }} role="note">
       {source ? <div className="ai-citation-preview">
         <strong>{source.name}{source.page ? ` · page ${source.page}` : ''}</strong>
         {source.excerpt && <span>{source.excerpt}</span>}
