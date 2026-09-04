@@ -8,14 +8,15 @@ import {
     Timeline,
     Empty,
 } from 'antd';
-import { StoredTest } from '../db/db';
+import { StoredTest, type StoredDocument } from '../db/db';
 import { db } from '../db/db';
 import { v4 as uuidv4 } from 'uuid';
-import { generateQuiz } from '../utils/api';
-import { QuizQuestion, TestSession } from '../types';
+import { generateQuiz, getRequestedCounts } from '../utils/api';
+import { QuizQuestion, TestSession, type GenerationOptions, type QuestionType } from '../types';
 import JsonFixerModal from './JsonFixerModal';
 import { getMessageApi } from '../utils/messageProvider';
 import { countQuestionTypes, getQuestionType, isQuestionCorrect } from '../utils/questions';
+import { buildCoveragePlan, ensureDocumentChunks, sourceContextForSlots } from '../utils/sourcePlanning';
 
 const { Title, Paragraph, Text } = Typography;
 const shuffle = <T,>(items: T[]): T[] => {
@@ -61,9 +62,33 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
             if (found.length) return {
                 content: found.map(document => `# Document: ${document!.name}\n\n${document!.content}`).join('\n\n---\n\n'),
                 images: found.flatMap(document => document!.images?.map(image => `data:${image.mimeType};base64,${image.data}`) ?? []),
+                documents: found as StoredDocument[],
             };
         }
-        return { content: test.fileContent ?? '', images: [] as string[] };
+        return { content: test.fileContent ?? '', images: [] as string[], documents: [] as StoredDocument[] };
+    };
+
+    const generateFromSource = async (
+        source: Awaited<ReturnType<typeof getSourceMaterial>>,
+        options: GenerationOptions,
+        focus?: string,
+    ) => {
+        if (!source.documents.length) return generateQuiz(source.content, options, undefined, undefined, source.images, focus);
+        const chunkedDocuments = source.documents.map(ensureDocumentChunks);
+        await Promise.all(chunkedDocuments.map((document, index) => source.documents[index].chunks?.length
+            ? Promise.resolve()
+            : db.documents.update(document.id, { chunks: document.chunks }).then(() => undefined)));
+        const counts = getRequestedCounts(options);
+        const total = counts.multipleChoice + counts.fillBlank + counts.reasoning + counts.coding;
+        const plan = (await buildCoveragePlan(chunkedDocuments, total, options.coverageStrategy ?? 'balanced')).plan;
+        const offsets: Record<QuestionType, number> = {
+            'multiple-choice': 0,
+            'fill-blank': counts.multipleChoice,
+            reasoning: counts.multipleChoice + counts.fillBlank,
+            coding: counts.multipleChoice + counts.fillBlank + counts.reasoning,
+        };
+        return generateQuiz('', options, undefined, undefined, [], focus, undefined, undefined, undefined,
+            request => sourceContextForSlots(chunkedDocuments, plan, offsets[request.type] + request.typeAccepted, request.count));
     };
 
     const handleRetake = () => {
@@ -83,7 +108,7 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
 
             try {
                 const options = test.generationOptions ?? { provider: 'gemini' as const, questionCount: test.questions.length };
-                const parsed = await generateQuiz(source.content, options, undefined, undefined, source.images);
+                const parsed = await generateFromSource(source, options);
 
                 const newId = uuidv4();
                 await db.tests.add({
@@ -129,7 +154,7 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
                 const base = test.generationOptions ?? { provider: 'gemini' as const, questionCount: wrongQs.length };
                 const questionCounts = countQuestionTypes(wrongQs);
                 const options = { ...base, questionCount: wrongQs.length, questionCounts };
-                const questions = await generateQuiz(source.content, options, undefined, undefined, source.images,
+                const questions = await generateFromSource(source, options,
                     `Focus on the concepts tested by these missed questions, but create fresh questions rather than paraphrases:\n${weakConcepts}`);
                 const newId = uuidv4();
                 await db.tests.add({
