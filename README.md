@@ -156,12 +156,22 @@ Scanned or visually complex documents can still require manual review. Always in
 6. Choose one combined quiz or one separate quiz per document.
 7. Choose how many multiple-choice, fill-in-the-blank, reasoning, and coding questions to create.
 8. For multiple-choice questions, require either exactly one or multiple correct answers.
-9. Select a provider and optional provider-specific model.
-10. Queue generation and continue using Quizzer.
+9. For a combined test, choose balanced, proportional, AI-selected, or cross-document coverage.
+10. Select a provider and optional provider-specific model.
+11. Queue generation and continue using Quizzer.
 
 If a requested test name already exists, Quizzer keeps both tests by adding a numeric postfix such as `(2)` or `(3)`.
 
 The creation dialog closes immediately after saving the job. Each instance is assigned to a different test and makes one provider request at a time. Within that test, each question type is generated sequentially using the configured batch size. The default is 20, so 45 missing questions become requests of 20, 20, and 5; each later prompt can exclude everything accepted from earlier batches. Other instances work on other tests rather than generating overlapping candidates for the same test.
+
+Quizzer never concatenates every selected document into a generation prompt. Uploads are split into lightweight page-aware chunk boundaries, and older documents are chunked lazily the first time they are used. A persisted coverage plan assigns document chunks to every requested question. Each provider request receives at most approximately 54,000 source characters, the relevant assignment list, and up to six source images. Retry and refill rounds reuse the same unfilled coverage slots.
+
+- **Balanced** guarantees one slot per document when the question count permits, then distributes additional slots evenly.
+- **Proportional** first covers every document when possible, then gives documents with more chunks additional slots.
+- **AI-selected** uses the local embedding plugin to prioritize material closest to the collection's semantic center, with a size-based fallback when embeddings are unavailable.
+- **Cross-document** assigns material from two or three documents to each slot for comparison and synthesis questions.
+
+If the requested question count is smaller than the number of documents, the creation dialog warns that complete coverage is impossible instead of silently implying otherwise.
 
 Open **Generation queue** to choose between 1 and 10 concurrent test instances; the default is 5. Lower values reduce simultaneous provider usage and memory pressure. Higher values complete multi-document queues faster. Reducing the value does not abort requests already running—the new limit takes effect as they finish.
 
@@ -191,7 +201,7 @@ The initial import merges records by ID in bounded batches and runs behind the u
 
 For backups, stop Quizzer and copy the `.quizzer-data` directory. Set `QUIZZER_DATABASE_PATH` only when a custom database location is needed for a packaged or managed deployment.
 
-Select **Install Ollama + all-minilm** under **Plugins & models** to enable local semantic duplicate filtering. On macOS Quizzer uses Homebrew to install Ollama when needed; on Linux it uses Ollama's official installer. It then starts the local runtime and downloads `all-minilm`. If that plugin is unavailable, generation continues automatically with normalized exact matching and lexical similarity.
+Select **Install Ollama + all-minilm** under **Plugins & models** to enable local semantic duplicate filtering and AI-selected source coverage. On macOS Quizzer uses Homebrew to install Ollama when needed; on Linux it uses Ollama's official installer. It then starts the local runtime and downloads `all-minilm`. If that plugin is unavailable, generation continues automatically with normalized exact matching, lexical similarity, and size-based source prioritization.
 
 ## Data and privacy
 
