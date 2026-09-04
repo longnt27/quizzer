@@ -67,6 +67,15 @@ export interface StoredDocument {
   pageCount?: number;
   originalFile?: Blob;
   images?: { name: string; mimeType: string; data: string }[];
+  chunks?: StoredDocumentChunk[];
+}
+
+export interface StoredDocumentChunk {
+  id: string;
+  index: number;
+  page?: number;
+  start: number;
+  end: number;
 }
 
 export interface StoredTestDraft {
