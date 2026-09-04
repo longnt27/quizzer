@@ -16,6 +16,8 @@ import {
     Progress,
 } from 'antd';
 import { PauseOutlined, RobotOutlined } from '@ant-design/icons';
+import type { InputRef } from 'antd';
+import type { TextAreaRef } from 'antd/es/input/TextArea';
 import type { QuizAnswer } from '../types';
 import { getQuestionAnswerTexts, getQuestionType, isQuestionCorrect } from '../utils/questions';
 import { judgeReasoningAnswers } from '../utils/judgeReasoning';
@@ -118,6 +120,8 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
     const [searchResults, setSearchResults] = useState<{ questionIndex: number; location: 'statement' | 'answer'; answerContent?: string; match: { start: number; end: number } }[]>([]);
     const [currentResultIndex, setCurrentResultIndex] = useState(-1);
     const searchInputRef = useRef<HTMLInputElement>(null);
+    const fillBlankInputRef = useRef<InputRef>(null);
+    const writtenAnswerRef = useRef<TextAreaRef>(null);
 
     // CHANGED: Simplified state for Popconfirm control
     const [isPopconfirmVisible, setIsPopconfirmVisible] = useState(false);
@@ -362,7 +366,21 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
             }
             const isTextEntry = target.tagName === 'TEXTAREA' || target.isContentEditable
                 || (target instanceof HTMLInputElement && !['radio', 'checkbox', 'button', 'submit', 'reset'].includes(target.type));
-            if (isTextEntry) return;
+            if (isTextEntry) {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    target.blur();
+                }
+                return;
+            }
+            if (!submitted && !e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLocaleLowerCase() === 'i') {
+                const answerField = questionType === 'fill-blank' ? fillBlankInputRef.current : isEvaluatedWritten ? writtenAnswerRef.current : null;
+                if (answerField) {
+                    e.preventDefault();
+                    answerField.focus({ cursor: 'end' });
+                    return;
+                }
+            }
 
             if (!isJumping && (e.key === 'ArrowUp' || e.key === ' ')) {
                 e.preventDefault();
@@ -396,7 +414,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [answered, isSearching, isJumping, choices, currentIndex, questionIndex, totalCorrect, isPopconfirmVisible, practice, reviewComplete, submitted, submitPracticeAnswer, test.questions.length, toggleChoice]);
+    }, [answered, isEvaluatedWritten, isSearching, isJumping, choices, currentIndex, questionIndex, questionType, totalCorrect, isPopconfirmVisible, practice, reviewComplete, submitted, submitPracticeAnswer, test.questions.length, toggleChoice]);
 
     // CHANGED: Keyboard handler for popconfirm is now more direct
     useEffect(() => {
@@ -526,7 +544,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                     {questionType === 'fill-blank' && 'acceptedAnswers' in q && (
                       <div className="written-answer-block">
                         <Typography.Text strong>Your answer</Typography.Text>
-                        {practice && submitted ? <Alert message="Your answer" description={answers[questionIndex]?.[0] || '(No answer)'} /> : <Input size="large" value={answers[questionIndex]?.[0] ?? ''}
+                        {practice && submitted ? <Alert message="Your answer" description={answers[questionIndex]?.[0] || '(No answer)'} /> : <Input ref={fillBlankInputRef} size="large" value={answers[questionIndex]?.[0] ?? ''}
                           onChange={event => setAnswers(previous => ({ ...previous, [questionIndex]: [event.target.value] }))}
                           placeholder="Type the missing word or phrase" autoComplete="off" />}
                         <Typography.Text type="secondary">Capitalization, punctuation, and extra spaces are ignored. Equivalent accepted wording is checked automatically.</Typography.Text>
@@ -535,7 +553,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                     {isEvaluatedWritten && 'referenceAnswer' in q && (
                       <div className="written-answer-block">
                         <Typography.Text strong>{questionType === 'coding' ? 'Your solution' : 'Your reasoning'}</Typography.Text>
-                        {practice && submitted ? <Alert message="Your answer" description={answers[questionIndex]?.[0] || '(No answer)'} /> : <Input.TextArea rows={7} value={answers[questionIndex]?.[0] ?? ''}
+                        {practice && submitted ? <Alert message="Your answer" description={answers[questionIndex]?.[0] || '(No answer)'} /> : <Input.TextArea ref={writtenAnswerRef} rows={7} value={answers[questionIndex]?.[0] ?? ''}
                           onChange={event => {
                             setAnswers(previous => ({ ...previous, [questionIndex]: [event.target.value] }));
                             setSelfAssessments(previous => {
