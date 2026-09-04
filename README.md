@@ -27,7 +27,7 @@ Quizzer is a local-first study application that turns a reusable document librar
 - Configurable question count and provider model override
 - Configurable mix of multiple-choice, fill-in-the-blank, reasoning, and coding questions
 - Single-answer or multiple-correct-answer generation for multiple-choice questions
-- Normalized fill-in-the-blank grading across generated acceptable wordings
+- Fill-in-the-blank grading across generated variants, shorthand, symbols, and omitted repeated qualifiers
 - Learner self-assessment against reference answers for reasoning and coding questions
 - Practice mode with immediate per-question answers and explanations
 - Automatic recovery of unfinished test and practice sessions
@@ -49,7 +49,7 @@ Quizzer is a local-first study application that turns a reusable document librar
 - Optional local RapidOCR analysis for text inside extracted figures
 - Fresh AI-generated practice for concepts missed on the latest attempt
 - Server-side SQLite storage with an offline IndexedDB cache
-- Original-file previews and provider-backed document Q&A
+- Original-file previews and document-scoped RAG chats with Markdown answers and source references
 
 ## How it works
 
@@ -190,9 +190,11 @@ After every validated parallel round, Quizzer checkpoints accepted questions, re
 
 If a provider runs out of quota, loses authentication, or becomes unavailable, generation pauses and offers another provider. Already accepted questions remain in memory, the replacement provider requests only the missing slots, and duplicate detection compares its output against the full accepted set. Switching providers does not consume a validation retry round.
 
-Fill-in-the-blank answers ignore capitalization, punctuation, and repeated spaces, and match any acceptable wording supplied with the generated question. Coding questions ask for a practical solution based on the source and include an example implementation plus correctness criteria. In test mode, reasoning and coding references stay hidden until review and answers are graded by the configured LLM in sequential batches of at most 10. In practice mode, the learner reveals the reference answer, compares the essential points, and records a self-assessment.
+Fill-in-the-blank generation explicitly explores canonical terms, abbreviations, symbols, conjunctions, and concise equivalent wording. Grading ignores capitalization, punctuation, and repeated spaces; it also recognizes omitted repeated qualifiers in compound answers, so `id+version` can match `document_id + document_version` while still requiring both concepts. Coding questions ask for a practical solution based on the source and include an example implementation plus correctness criteria. In test mode, reasoning and coding references stay hidden until review and answers are graded by the configured LLM in sequential batches of at most 10. In practice mode, the learner reveals the reference answer, compares the essential points, and records a self-assessment.
 
-Before starting a saved test, choose **Test mode** for the traditional submit-then-review flow or **Practice mode** for immediate feedback. Practice mode locks each submitted response, shows correctness and every multiple-choice explanation or accepted fill-in answer, and lets the learner move among unanswered questions freely. Select **Check answer** or press Enter; in a reasoning or coding response, use Shift+Enter for a new line.
+Before starting a saved test, choose **Test mode** for the traditional submit-then-review flow or **Practice mode** for immediate feedback. Practice mode locks each submitted response, shows correctness and every multiple-choice explanation or accepted fill-in answer, and lets the learner move among unanswered questions freely. Select **Check answer** or press Enter; in a reasoning or coding response, use Shift+Enter for a new line. After checking an answer, press `?` to open its Ask AI chat.
+
+Ask AI uses retrieval-augmented generation rather than placing the whole library into the prompt. Document chats retrieve only from that document. Practice chats use the test's stored document IDs as a hard metadata filter, rank matching chunks inside that scope, and send at most eight passages and four associated images. Responses render GitHub-flavored Markdown, request inline `[Source n]` citations, and show the retrieved document name, page, and excerpt below the answer.
 
 Quizzer continuously saves the active test or practice session locally and to SQLite, including the current question, answers, review marks, revealed feedback, self-assessments, shuffled choice order, mode, and timer start. In practice mode, **Pause** freezes the timer, syncs immediately, and exposes **Resume Practice** on every connected machine. If the connection drops or the page closes, reopening Quizzer restores the latest unfinished session. Submitting the attempt removes its saved draft on every synchronized device.
 
