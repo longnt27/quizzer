@@ -88,7 +88,8 @@ export default function AskAIModal({ title, emptyMessage, loadingMessage, onClos
 
   const close = () => { controller.current?.abort(); onClose(); };
 
-  return <Modal className="ask-ai-modal" open title={title} width={860} onCancel={close} footer={null} destroyOnHidden>
+  return <Modal className="ask-ai-modal" open title={title} width={860} onCancel={close} footer={null} destroyOnHidden
+    afterOpenChange={open => { if (open) questionRef.current?.focus({ cursor: 'end' }); }}>
     <div className="ai-chat-shell">
       <div className="ai-chat-toolbar">
         <div className="ai-chat-scope">
