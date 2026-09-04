@@ -8,6 +8,8 @@ import remarkGfm from 'remark-gfm';
 import type { AIAnswer, AIConversationTurn, AISourceReference, GenerationProvider } from '../types';
 import { getProviderSettings } from '../utils/providerSettings';
 import { useConfiguredProviders } from '../utils/useConfiguredProviders';
+import { db } from '../db/db';
+import { getPdfSourcePreview, type PdfSourcePreview } from '../utils/pdf';
 
 interface Props {
   title: string;
@@ -27,13 +29,15 @@ function CitationPopover({ index, source }: { index: number; source?: AISourceRe
   const triggerRef = useRef<HTMLButtonElement>(null);
   const pointerInsideCitation = useRef(false);
   const pointerInsidePreview = useRef(false);
+  const [originalPreview, setOriginalPreview] = useState<PdfSourcePreview>();
+  const [previewLoading, setPreviewLoading] = useState(false);
   const show = () => {
     window.clearTimeout(closeTimer.current);
     const bounds = triggerRef.current?.getBoundingClientRect();
     if (bounds) {
-      const width = Math.min(360, window.innerWidth - 24);
+      const width = Math.min(520, window.innerWidth - 24);
       const left = Math.min(Math.max(12, bounds.left + bounds.width / 2 - width / 2), window.innerWidth - width - 12);
-      setPosition(bounds.top > 290
+      setPosition(bounds.top > window.innerHeight / 2
         ? { left, bottom: window.innerHeight - bounds.top + 8, width }
         : { left, top: bounds.bottom + 8, width });
     }
@@ -47,6 +51,22 @@ function CitationPopover({ index, source }: { index: number; source?: AISourceRe
     }, 400);
   };
   useEffect(() => () => window.clearTimeout(closeTimer.current), []);
+  useEffect(() => {
+    if (!open || !source) return;
+    let active = true;
+    setOriginalPreview(undefined);
+    setPreviewLoading(true);
+    void db.documents.get(source.documentId).then(async document => {
+      if (!active) return;
+      if (!document?.originalFile || document.mimeType !== 'application/pdf') {
+        setOriginalPreview({ kind: 'document' });
+        return;
+      }
+      setOriginalPreview(await getPdfSourcePreview(document.originalFile, source.page, source.excerpt));
+    }).catch(() => { if (active) setOriginalPreview({ kind: 'document' }); })
+      .finally(() => { if (active) setPreviewLoading(false); });
+    return () => { active = false; };
+  }, [open, source]);
 
   return <>
     <button ref={triggerRef} type="button" className="ai-inline-citation" aria-label={`Preview source ${index}`}
@@ -56,9 +76,12 @@ function CitationPopover({ index, source }: { index: number; source?: AISourceRe
     {open && position && createPortal(<div className="ai-citation-floating" style={position}
       onPointerEnter={() => { pointerInsidePreview.current = true; window.clearTimeout(closeTimer.current); }}
       onPointerLeave={() => { pointerInsidePreview.current = false; scheduleClose(); }} role="note">
-      {source ? <div className="ai-citation-preview">
-        <strong>{source.name}{source.page ? ` · page ${source.page}` : ''}</strong>
-        {source.excerpt && <span>{source.excerpt}</span>}
+      {source ? <div className={`ai-citation-preview ${originalPreview?.kind === 'slides' ? 'is-slide' : ''}`}>
+        <strong>{source.name}{(originalPreview?.page ?? source.page) ? ` · page ${originalPreview?.page ?? source.page}` : ''}</strong>
+        {previewLoading && <span>Loading original source…</span>}
+        {originalPreview?.kind === 'slides' && originalPreview.imageUrl
+          ? <img src={originalPreview.imageUrl} alt={`Original slide ${originalPreview.page ?? ''} from ${source.name}`} />
+          : !previewLoading && source.excerpt && <span>{source.excerpt}</span>}
       </div> : 'Source reference unavailable'}
     </div>, document.body)}
   </>;

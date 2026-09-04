@@ -33,7 +33,7 @@ const splitRange = (content: string, rangeStart: number, rangeEnd: number, page:
 
 export const chunkDocumentContent = (content: string): StoredDocumentChunk[] => {
   if (!content.trim()) return [];
-  const pagePattern = /^--- Page (\d+) ---$/gm;
+  const pagePattern = /^(?:--- Page (\d+) ---|\{(\d+)\}-{20,})$/gm;
   const markers = [...content.matchAll(pagePattern)];
   if (!markers.length) return splitRange(content, 0, content.length, undefined, 0);
 
@@ -43,7 +43,8 @@ export const chunkDocumentContent = (content: string): StoredDocumentChunk[] => 
   for (const [position, marker] of markers.entries()) {
     const start = (marker.index ?? 0) + marker[0].length;
     const end = position + 1 < markers.length ? markers[position + 1].index ?? content.length : content.length;
-    chunks.push(...splitRange(content, start, end, Number(marker[1]), chunks.length));
+    const page = marker[1] ? Number(marker[1]) : Number(marker[2]) + 1;
+    chunks.push(...splitRange(content, start, end, page, chunks.length));
   }
   return chunks;
 };

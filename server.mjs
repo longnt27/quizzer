@@ -618,6 +618,8 @@ const pageNear = (markdown, index, filename) => {
   const markers = [...preceding.matchAll(/---\s*Page\s+(\d+)\s*---/gi)];
   const fromMarkdown = Number(markers.at(-1)?.[1]);
   if (fromMarkdown) return fromMarkdown;
+  const markerPages = [...preceding.matchAll(/^\{(\d+)\}-{20,}$/gm)];
+  if (markerPages.length) return Number(markerPages.at(-1)?.[1]) + 1;
   const fromName = /(?:^|[_-])page[_-]?(\d+)(?:[_-]|\.)/i.exec(filename)
     ?? /(?:^|[_-])p[_-]?(\d+)(?:[_-]|\.)/i.exec(filename);
   return fromName ? Number(fromName[1]) : undefined;
@@ -645,7 +647,7 @@ const runMarker = async ({ name, data, ocrEnabled = false }) => {
   try {
     const executable = await markerCommand();
     await new Promise((resolve, reject) => {
-      const child = spawn(executable, [input, '--output_dir', output, '--output_format', 'markdown'], { stdio: ['ignore', 'ignore', 'pipe'] });
+      const child = spawn(executable, [input, '--output_dir', output, '--output_format', 'markdown', '--paginate_output'], { stdio: ['ignore', 'ignore', 'pipe'] });
       let errors = '';
       child.stderr.on('data', chunk => { errors += chunk.toString(); });
       child.on('error', error => reject(error.code === 'ENOENT' ? new Error('Marker is not installed') : error));
