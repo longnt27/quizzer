@@ -106,7 +106,8 @@ button, input, textarea, select { font: inherit; }
 .ai-thinking-dots i:nth-child(3) { animation-delay: .3s; }
 .ai-inline-citation { display: inline; margin: 0 2px; padding: 0; border: 0; color: #1677ff; background: transparent; font-weight: 650; line-height: inherit; cursor: default; vertical-align: baseline; }
 .ai-inline-citation:hover, .ai-inline-citation:focus-visible { text-decoration: underline; }
-.ai-citation-preview { display: grid; width: min(360px, 72vw); max-height: 260px; gap: 8px; overflow-y: auto; }
+.ai-citation-floating { position: fixed; z-index: 2000; padding: 12px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: var(--surface); box-shadow: 0 6px 20px rgb(0 0 0 / 18%); }
+.ai-citation-preview { display: grid; max-height: 260px; gap: 8px; overflow-y: auto; }
 .ai-citation-preview span { opacity: .88; white-space: pre-wrap; }
 @keyframes ai-avatar-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgb(22 119 255 / 0%); } 50% { box-shadow: 0 0 0 6px rgb(22 119 255 / 14%); } }
 @keyframes ai-thinking-dot { 0%, 60%, 100% { opacity: .28; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }

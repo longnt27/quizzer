@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { Alert, Button, Input, Modal, Popover, Select, Space, Tag, Tooltip, Typography } from 'antd';
+import { Alert, Button, Input, Modal, Select, Space, Tag, Tooltip, Typography } from 'antd';
 import { ArrowUpOutlined, FileTextOutlined, RobotOutlined, StopOutlined, UserOutlined } from '@ant-design/icons';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
+import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { AIAnswer, AIConversationTurn, AISourceReference, GenerationProvider } from '../types';
@@ -21,33 +22,38 @@ interface Props {
 
 function CitationPopover({ index, source }: { index: number; source?: AISourceReference }) {
   const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState<{ left: number; top?: number; bottom?: number; width: number }>();
   const closeTimer = useRef<number | undefined>(undefined);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const previewRef = useRef<HTMLDivElement>(null);
   const show = () => {
     window.clearTimeout(closeTimer.current);
+    const bounds = triggerRef.current?.getBoundingClientRect();
+    if (bounds) {
+      const width = Math.min(360, window.innerWidth - 24);
+      const left = Math.min(Math.max(12, bounds.left + bounds.width / 2 - width / 2), window.innerWidth - width - 12);
+      setPosition(bounds.top > 290
+        ? { left, bottom: window.innerHeight - bounds.top + 8, width }
+        : { left, top: bounds.bottom + 8, width });
+    }
     setOpen(true);
   };
   const scheduleClose = () => {
     window.clearTimeout(closeTimer.current);
-    closeTimer.current = window.setTimeout(() => {
-      const triggerHovered = triggerRef.current?.matches(':hover');
-      const previewHovered = previewRef.current?.matches(':hover');
-      const triggerFocused = document.activeElement === triggerRef.current;
-      if (triggerHovered || previewHovered || triggerFocused) scheduleClose();
-      else setOpen(false);
-    }, 250);
+    closeTimer.current = window.setTimeout(() => setOpen(false), 400);
   };
   useEffect(() => () => window.clearTimeout(closeTimer.current), []);
 
-  return <Popover open={open} trigger={[]} placement="top" content={source ? <div ref={previewRef} className="ai-citation-preview"
-    onMouseEnter={show} onMouseLeave={scheduleClose}>
-    <strong>{source.name}{source.page ? ` · page ${source.page}` : ''}</strong>
-    {source.excerpt && <span>{source.excerpt}</span>}
-  </div> : 'Source reference unavailable'}>
+  return <>
     <button ref={triggerRef} type="button" className="ai-inline-citation" aria-label={`Preview source ${index}`}
-      onMouseEnter={show} onMouseLeave={scheduleClose} onFocus={show} onBlur={scheduleClose}>[{index}]</button>
-  </Popover>;
+      onPointerEnter={show} onPointerLeave={scheduleClose} onFocus={show} onBlur={scheduleClose}>[{index}]</button>
+    {open && position && createPortal(<div className="ai-citation-floating" style={position}
+      onPointerEnter={show} onPointerLeave={scheduleClose} role="note">
+      {source ? <div className="ai-citation-preview">
+        <strong>{source.name}{source.page ? ` · page ${source.page}` : ''}</strong>
+        {source.excerpt && <span>{source.excerpt}</span>}
+      </div> : 'Source reference unavailable'}
+    </div>, document.body)}
+  </>;
 }
 
 export default function AskAIModal({ title, emptyMessage, loadingMessage, onClose, scope = [], initialHistory = [], onHistoryChange, ask }: Props) {
