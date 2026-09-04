@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { Alert, Button, Input, Modal, Select, Space, Spin, Tag, Tooltip, Typography } from 'antd';
+import { Alert, Button, Input, Modal, Select, Space, Tag, Tooltip, Typography } from 'antd';
 import { FileTextOutlined, RobotOutlined, SendOutlined, StopOutlined, UserOutlined } from '@ant-design/icons';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
 import ReactMarkdown from 'react-markdown';
@@ -24,6 +24,7 @@ export default function AskAIModal({ title, emptyMessage, loadingMessage, onClos
   const [model, setModel] = useState(settings.models[settings.defaultProvider]);
   const [question, setQuestion] = useState('');
   const [history, setHistory] = useState<AIConversationTurn[]>([]);
+  const [pendingQuestion, setPendingQuestion] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const controller = useRef<AbortController | null>(null);
@@ -52,7 +53,7 @@ export default function AskAIModal({ title, emptyMessage, loadingMessage, onClos
 
   useEffect(() => {
     historyRef.current?.scrollTo({ top: historyRef.current.scrollHeight, behavior: 'smooth' });
-  }, [history, loading]);
+  }, [history, loading, pendingQuestion]);
 
   useEffect(() => () => controller.current?.abort(), []);
 
@@ -68,6 +69,7 @@ export default function AskAIModal({ title, emptyMessage, loadingMessage, onClos
     const prompt = question.trim();
     if (!prompt || loading) return;
     setQuestion('');
+    setPendingQuestion(prompt);
     setLoading(true);
     setError('');
     controller.current = new AbortController();
@@ -78,6 +80,7 @@ export default function AskAIModal({ title, emptyMessage, loadingMessage, onClos
       setQuestion(prompt);
       if ((requestError as Error).name !== 'AbortError') setError((requestError as Error).message);
     } finally {
+      setPendingQuestion('');
       setLoading(false);
       controller.current = null;
     }
@@ -111,19 +114,30 @@ export default function AskAIModal({ title, emptyMessage, loadingMessage, onClos
           <div className="ai-chat-message ai-chat-message-assistant">
             <div className="ai-chat-avatar"><RobotOutlined /></div>
             <div className="ai-chat-answer">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{turn.answer}</ReactMarkdown>
-              {!!turn.sources?.length && <div className="ai-chat-sources">
-                <Typography.Text type="secondary">Retrieved sources</Typography.Text>
-                <div>{turn.sources.map(source => <Tooltip key={source.id} title={source.excerpt}>
-                  <Tag icon={<FileTextOutlined />}>[{source.index}] {source.name}{source.page ? ` · p. ${source.page}` : ''}</Tag>
-                </Tooltip>)}</div>
-              </div>}
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
+                a: ({ href, children }) => {
+                  const citation = /^quizzer-source:(\d+)$/.exec(href ?? '');
+                  if (!citation) return <a href={href} target="_blank" rel="noreferrer">{children}</a>;
+                  const source = turn.sources?.find(item => item.index === Number(citation[1]));
+                  return <Tooltip title={source ? <div className="ai-citation-preview">
+                    <strong>{source.name}{source.page ? ` · page ${source.page}` : ''}</strong>
+                    {source.excerpt && <span>{source.excerpt}</span>}
+                  </div> : 'Source reference unavailable'}>
+                    <button type="button" className="ai-inline-citation">[{citation[1]}]</button>
+                  </Tooltip>;
+                },
+              }}>{turn.answer.replace(/\[(?:Source\s*)?(\d+)\](?!\()/gi, '[$1](quizzer-source:$1)')}</ReactMarkdown>
             </div>
           </div>
         </div>)}
-        {loading && <div className="ai-chat-message ai-chat-message-assistant">
-          <div className="ai-chat-avatar"><RobotOutlined /></div>
-          <div className="ai-chat-thinking"><Spin size="small" /><Typography.Text type="secondary">{loadingMessage}</Typography.Text></div>
+        {loading && <div className="ai-chat-exchange ai-chat-pending">
+          <div className="ai-chat-message ai-chat-message-user">
+            <div className="ai-chat-avatar"><UserOutlined /></div><div className="ai-chat-bubble">{pendingQuestion}</div>
+          </div>
+          <div className="ai-chat-message ai-chat-message-assistant">
+            <div className="ai-chat-avatar ai-chat-avatar-thinking"><RobotOutlined /></div>
+            <div className="ai-chat-thinking"><span className="ai-thinking-dots"><i /><i /><i /></span><Typography.Text type="secondary">{loadingMessage}</Typography.Text></div>
+          </div>
         </div>}
       </div>
       {error && <Alert type="error" showIcon message={error} />}
