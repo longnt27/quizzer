@@ -104,7 +104,7 @@ button, input, textarea, select { font: inherit; }
 .ai-thinking-dots i { width: 5px; height: 5px; border-radius: 50%; background: #1677ff; animation: ai-thinking-dot 1.2s ease-in-out infinite; }
 .ai-thinking-dots i:nth-child(2) { animation-delay: .15s; }
 .ai-thinking-dots i:nth-child(3) { animation-delay: .3s; }
-.ai-inline-citation { display: inline; margin: 0 2px; padding: 0; border: 0; color: #1677ff; background: transparent; font-weight: 650; line-height: inherit; cursor: help; vertical-align: baseline; }
+.ai-inline-citation { display: inline; margin: 0 2px; padding: 0; border: 0; color: #1677ff; background: transparent; font-weight: 650; line-height: inherit; cursor: default; vertical-align: baseline; }
 .ai-inline-citation:hover, .ai-inline-citation:focus-visible { text-decoration: underline; }
 .ai-citation-preview { display: grid; width: min(360px, 72vw); max-height: 260px; gap: 8px; overflow-y: auto; }
 .ai-citation-preview span { opacity: .88; white-space: pre-wrap; }
