@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Alert, Button, Input, Modal, Popover, Select, Space, Tag, Tooltip, Typography } from 'antd';
-import { FileTextOutlined, RobotOutlined, SendOutlined, StopOutlined, UserOutlined } from '@ant-design/icons';
+import { ArrowUpOutlined, FileTextOutlined, RobotOutlined, StopOutlined, UserOutlined } from '@ant-design/icons';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -152,7 +152,7 @@ export default function AskAIModal({ title, emptyMessage, loadingMessage, onClos
           aria-label="Cancel response" onClick={() => controller.current?.abort()} /></Tooltip>
           : <Tooltip title={question.trim() ? configured.providers.length ? 'Send message' : 'Connect an AI provider to send' : 'Type a message'}>
             <Button className="ai-chat-composer-action" type={question.trim() && configured.providers.length ? 'primary' : 'default'} shape="circle"
-              icon={<SendOutlined />} aria-label="Send message" disabled={!question.trim() || !configured.providers.length}
+              icon={<ArrowUpOutlined />} aria-label="Send message" disabled={!question.trim() || !configured.providers.length}
               onClick={() => void submit()} />
           </Tooltip>}
       </div>
