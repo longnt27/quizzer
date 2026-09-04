@@ -635,7 +635,7 @@ const mapWithConcurrency = async (items, concurrency, mapper) => {
   return result;
 };
 
-const runMarker = async ({ name, data }) => {
+const runMarker = async ({ name, data, ocrEnabled = false }) => {
   if (typeof data !== 'string' || !data) throw new Error('PDF data is required');
   const work = await mkdtemp(join(tmpdir(), 'quizzer-marker-'));
   const safeName = String(name || 'document.pdf').replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -657,7 +657,7 @@ const runMarker = async ({ name, data }) => {
     const markdown = await readFile(markdownPath, 'utf8');
     const references = imageReferences(markdown);
     const imagePaths = files.filter(path => /\.(png|jpe?g|webp)$/i.test(path));
-    const canOcr = await managedOcrWorks();
+    const canOcr = Boolean(ocrEnabled) && await managedOcrWorks();
     const images = await mapWithConcurrency(imagePaths, 2, async (path, index) => {
       const name = basename(path);
       const reference = references.find(item => {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { GenerationProvider } from '../types';
-import { getApiKey, PROVIDERS, type AgentProvider, type ProviderDefinition } from './providerSettings';
+import { getApiKey, getProviderSettings, PROVIDERS, type AgentProvider, type ProviderDefinition } from './providerSettings';
 
 interface IntegrationStatus {
   codex?: { connected?: boolean };
@@ -17,6 +17,7 @@ export const useConfiguredProviders = () => {
   useEffect(() => {
     let active = true;
     const refresh = async () => {
+      const settings = getProviderSettings();
       const available = new Set<GenerationProvider>(localApiProviders().map(provider => provider.id));
       try {
         const response = await fetch('/api/integrations');
@@ -28,7 +29,7 @@ export const useConfiguredProviders = () => {
         }
       } catch { /* API providers remain usable if the status check is temporarily unavailable. */ }
       if (active) {
-        setProviders(PROVIDERS.filter(provider => available.has(provider.id)) as ProviderDefinition[]);
+        setProviders(PROVIDERS.filter(provider => available.has(provider.id) && settings.enabledProviders[provider.id]) as ProviderDefinition[]);
         setLoading(false);
       }
     };

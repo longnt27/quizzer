@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Button, Divider, Input, Modal, Select, Space, Spin, Tag, Typography } from 'antd';
+import { Alert, Button, Divider, Input, Modal, Select, Space, Spin, Switch, Tag, Typography } from 'antd';
 import { ApiOutlined, CloudDownloadOutlined, LoginOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { GenerationProvider } from '../types';
 import {
@@ -32,6 +32,8 @@ export default function PluginsModal({ onClose }: Props) {
   const initial = getProviderSettings();
   const [defaultProvider, setDefaultProvider] = useState(initial.defaultProvider);
   const [models, setModels] = useState(initial.models);
+  const [enabledProviders, setEnabledProviders] = useState(initial.enabledProviders);
+  const [enabledTools, setEnabledTools] = useState(initial.enabledTools);
   const [apiKeys, setApiKeys] = useState<Record<string, string>>(() => Object.fromEntries(API_PROVIDERS.map(provider => [provider.id, getApiKey(provider.id)])));
   const [status, setStatus] = useState<IntegrationStatus | null>(null);
   const [statusError, setStatusError] = useState('');
@@ -74,10 +76,13 @@ export default function PluginsModal({ onClose }: Props) {
 
   const save = () => {
     for (const provider of API_PROVIDERS) setApiKey(provider.id, apiKeys[provider.id]?.trim() ?? '');
-    const available = PROVIDERS.filter(provider => provider.kind === 'api'
+    const available = PROVIDERS.filter(provider => enabledProviders[provider.id] && (provider.kind === 'api'
       ? Boolean(apiKeys[provider.id]?.trim())
-      : Boolean(status?.[provider.id as AgentProvider]?.connected));
-    setProviderSettings({ defaultProvider: available.some(provider => provider.id === defaultProvider) ? defaultProvider : available[0]?.id ?? defaultProvider, models });
+      : Boolean(status?.[provider.id as AgentProvider]?.connected)));
+    setProviderSettings({
+      defaultProvider: available.some(provider => provider.id === defaultProvider) ? defaultProvider : available[0]?.id ?? defaultProvider,
+      models, enabledProviders, enabledTools,
+    });
     message.success('Plugin settings saved');
     onClose();
   };
@@ -85,9 +90,9 @@ export default function PluginsModal({ onClose }: Props) {
   const markerWorking = status?.marker.job.state === 'working';
   const ocrWorking = status?.ocr?.job.state === 'working';
   const embeddingsWorking = status?.embeddings?.job.state === 'working';
-  const configuredProviderOptions = PROVIDERS.filter(provider => provider.kind === 'api'
+  const configuredProviderOptions = PROVIDERS.filter(provider => enabledProviders[provider.id] && (provider.kind === 'api'
     ? Boolean(apiKeys[provider.id]?.trim())
-    : Boolean(status?.[provider.id as AgentProvider]?.connected));
+    : Boolean(status?.[provider.id as AgentProvider]?.connected)));
   const visibleDefaultProvider = configuredProviderOptions.some(provider => provider.id === defaultProvider)
     ? defaultProvider
     : configuredProviderOptions[0]?.id;
@@ -105,6 +110,7 @@ export default function PluginsModal({ onClose }: Props) {
             {statusTag(Boolean(status?.marker.installed), Boolean(markerWorking), status?.marker.managed ? 'Installed by Quizzer' : 'Installed')}
           </div>
           {!status?.marker.installed && !markerWorking && <Button icon={<CloudDownloadOutlined />} onClick={() => void runAction('/api/integrations/marker/install')}>Install Marker</Button>}
+          {status?.marker.installed && <Space><Switch checked={enabledTools.marker} onChange={value => setEnabledTools(current => ({ ...current, marker: value }))} /><Typography.Text>Enabled</Typography.Text></Space>}
           {markerWorking && <Space><Spin size="small" /> Installing Marker…</Space>}
           {status?.marker.job.message && status.marker.job.state !== 'idle' && (
             <Alert showIcon type={status.marker.job.state === 'error' ? 'error' : status.marker.job.state === 'complete' ? 'success' : 'info'}
@@ -119,6 +125,7 @@ export default function PluginsModal({ onClose }: Props) {
             {statusTag(Boolean(status?.ocr?.installed), Boolean(ocrWorking), 'Installed by Quizzer')}
           </div>
           {!status?.ocr?.installed && !ocrWorking && <Button icon={<CloudDownloadOutlined />} onClick={() => void runAction('/api/integrations/ocr/install')}>Install Image OCR</Button>}
+          {status?.ocr?.installed && <Space><Switch checked={enabledTools.ocr} onChange={value => setEnabledTools(current => ({ ...current, ocr: value }))} /><Typography.Text>Enabled</Typography.Text></Space>}
           {ocrWorking && <Space><Spin size="small" /> Installing Image OCR…</Space>}
           {status?.ocr?.job.message && status.ocr.job.state !== 'idle' && (
             <Alert showIcon type={status.ocr.job.state === 'error' ? 'error' : status.ocr.job.state === 'complete' ? 'success' : 'info'}
@@ -136,6 +143,7 @@ export default function PluginsModal({ onClose }: Props) {
             onClick={() => void runAction('/api/integrations/embeddings/install')}>
             {status?.embeddings?.runtimeInstalled ? 'Install all-minilm' : 'Install Ollama + all-minilm'}
           </Button>}
+          {status?.embeddings?.installed && <Space><Switch checked={enabledTools.embeddings} onChange={value => setEnabledTools(current => ({ ...current, embeddings: value }))} /><Typography.Text>Enabled</Typography.Text></Space>}
           {embeddingsWorking && <Space><Spin size="small" /> Installing semantic filter…</Space>}
           {status?.embeddings?.job.message && status.embeddings.job.state !== 'idle' && <pre className="plugin-output">{status.embeddings.job.message}</pre>}
         </section>
@@ -156,6 +164,7 @@ export default function PluginsModal({ onClose }: Props) {
                 {provider.id !== 'codex' && !agent?.installed && !working && <Button icon={<CloudDownloadOutlined />} onClick={() => void runAction(`/api/integrations/${provider.id}/install`)}>Install {provider.label.split(' ')[0]}</Button>}
                 {agent?.installed && !agent.connected && !working && <Button icon={<LoginOutlined />} onClick={() => void runAction(`/api/integrations/${provider.id}/connect`)}>Connect {provider.label.split(' ')[0]}</Button>}
                 {working && <Space><Spin size="small" /> Working…</Space>}
+                {agent?.connected && <Space><Switch checked={enabledProviders[provider.id]} onChange={value => setEnabledProviders(current => ({ ...current, [provider.id]: value }))} /><Typography.Text>Enabled</Typography.Text></Space>}
               </Space>
               {loginUrl && working && <Typography.Link href={loginUrl} target="_blank" rel="noreferrer">Open the sign-in page</Typography.Link>}
               {agent?.job.message && agent.job.state !== 'idle' && <pre className="plugin-output">{agent.job.message}</pre>}
@@ -172,6 +181,7 @@ export default function PluginsModal({ onClose }: Props) {
           <Space direction="vertical" style={{ width: '100%' }}>
             <Input.Password value={apiKeys[provider.id]} onChange={event => setApiKeys(current => ({ ...current, [provider.id]: event.target.value }))} placeholder={provider.keyLabel} autoComplete="off" />
             <Input value={models[provider.id]} onChange={event => setModels(current => ({ ...current, [provider.id]: event.target.value }))} addonBefore="Default model" placeholder={provider.defaultModel} />
+            {!!apiKeys[provider.id]?.trim() && <Space><Switch checked={enabledProviders[provider.id]} onChange={value => setEnabledProviders(current => ({ ...current, [provider.id]: value }))} /><Typography.Text>Enabled</Typography.Text></Space>}
           </Space>
         </section>)}
 

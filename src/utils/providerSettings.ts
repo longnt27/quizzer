@@ -34,10 +34,16 @@ export const getProviderDefinition = (id: GenerationProvider) => PROVIDERS.find(
 export interface ProviderSettings {
   defaultProvider: GenerationProvider;
   models: Record<GenerationProvider, string>;
+  enabledProviders: Record<GenerationProvider, boolean>;
+  enabledTools: { marker: boolean; ocr: boolean; embeddings: boolean };
 }
 
 const defaultModels = Object.fromEntries(PROVIDERS.map(provider => [provider.id, provider.defaultModel])) as Record<GenerationProvider, string>;
-const defaults: ProviderSettings = { defaultProvider: 'codex', models: defaultModels };
+const defaultEnabledProviders = Object.fromEntries(PROVIDERS.map(provider => [provider.id, true])) as Record<GenerationProvider, boolean>;
+const defaultEnabledTools = { marker: true, ocr: true, embeddings: true };
+const defaults: ProviderSettings = {
+  defaultProvider: 'codex', models: defaultModels, enabledProviders: defaultEnabledProviders, enabledTools: defaultEnabledTools,
+};
 
 export const getProviderSettings = (): ProviderSettings => {
   try {
@@ -54,6 +60,8 @@ export const getProviderSettings = (): ProviderSettings => {
         ...(stored.codexModel !== undefined ? { codex: stored.codexModel } : {}),
         ...(stored.geminiModel !== undefined ? { gemini: stored.geminiModel } : {}),
       },
+      enabledProviders: { ...defaultEnabledProviders, ...(stored.enabledProviders ?? {}) },
+      enabledTools: { ...defaultEnabledTools, ...(stored.enabledTools ?? {}) },
     };
   } catch {
     return defaults;

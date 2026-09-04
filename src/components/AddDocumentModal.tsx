@@ -7,6 +7,7 @@ import { db, type StoredDocument } from '../db/db';
 import { extractPdf } from '../utils/pdf';
 import { getMessageApi } from '../utils/messageProvider';
 import { chunkDocumentContent } from '../utils/documentChunks';
+import { getProviderSettings } from '../utils/providerSettings';
 
 interface PendingDocument {
   id: string;
@@ -27,9 +28,10 @@ interface Props {
 const parseTags = (value: string) => value.split(',').map(tag => tag.trim()).filter(Boolean);
 
 export default function AddDocumentModal({ onClose, onCreated }: Props) {
+  const toolSettings = getProviderSettings().enabledTools;
   const [files, setFiles] = useState<PendingDocument[]>([]);
   const [saving, setSaving] = useState(false);
-  const [converter, setConverter] = useState<'automatic' | 'basic'>('automatic');
+  const [converter, setConverter] = useState<'automatic' | 'basic'>(toolSettings.marker ? 'automatic' : 'basic');
   const message = getMessageApi();
 
   const update = (id: string, changes: Partial<PendingDocument>) =>
@@ -42,7 +44,7 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
       let extracted: Pick<StoredDocument, 'content' | 'pageCount' | 'images'> = isPdf
         ? await extractPdf(file)
         : { content: await file.text(), pageCount: undefined };
-      if (isPdf && mode === 'automatic') {
+      if (isPdf && mode === 'automatic' && toolSettings.marker) {
         update(id, { stage: 'Extracting layout and images with Marker…' });
         try {
           const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -53,7 +55,7 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
           });
           const response = await fetch('/api/extract', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: file.name, data: dataUrl.split(',')[1] }),
+            body: JSON.stringify({ name: file.name, data: dataUrl.split(',')[1], ocrEnabled: toolSettings.ocr }),
           });
           if (response.ok) extracted = await response.json() as typeof extracted;
         } catch { /* Marker is optional; retain the basic extraction. */ }
@@ -121,7 +123,7 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
         Documents are extracted now and saved to your local library. Creating a quiz is a separate step.
       </Typography.Paragraph>
       <Select value={converter} onChange={setConverter} style={{ width: 280, marginBottom: 12 }} options={[
-        { value: 'automatic', label: 'Automatic (use Marker if installed)' },
+        ...(toolSettings.marker ? [{ value: 'automatic' as const, label: 'Automatic (use Marker if installed)' }] : []),
         { value: 'basic', label: 'Basic PDF text extraction' },
       ]} />
       <Upload.Dragger multiple showUploadList={false} beforeUpload={addFile} accept=".pdf,.txt,.md">

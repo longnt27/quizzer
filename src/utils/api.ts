@@ -1,5 +1,5 @@
 import type { GenerationOptions, GenerationProvider, QuestionCounts, QuestionType, QuizQuestion } from '../types';
-import { getApiKey } from './providerSettings';
+import { getApiKey, getProviderSettings } from './providerSettings';
 import { getGenerationBatchSize } from './generationSettings';
 
 export interface GenerationProgress {
@@ -162,6 +162,7 @@ const cosineSimilarity = (left: number[], right: number[]) => {
 };
 
 const tryEmbeddings = async (texts: string[], signal?: AbortSignal): Promise<number[][] | null> => {
+  if (!getProviderSettings().enabledTools.embeddings) return null;
   try {
     const response = await fetch('/api/embed', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
