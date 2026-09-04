@@ -3,7 +3,7 @@ import { Alert, Button, Input, Modal, Select, Space, Tag, Tooltip, Typography } 
 import { ArrowUpOutlined, FileTextOutlined, RobotOutlined, StopOutlined, UserOutlined } from '@ant-design/icons';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
 import { createPortal } from 'react-dom';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { AIAnswer, AIConversationTurn, AISourceReference, GenerationProvider } from '../types';
 import { getProviderSettings } from '../utils/providerSettings';
@@ -62,6 +62,21 @@ function CitationPopover({ index, source }: { index: number; source?: AISourceRe
       </div> : 'Source reference unavailable'}
     </div>, document.body)}
   </>;
+}
+
+function MarkdownAnswer({ answer, sources }: { answer: string; sources?: AISourceReference[] }) {
+  const components = useMemo<Components>(() => ({
+    a: ({ href, children }) => {
+      const citation = /^#quizzer-source-(\d+)$/.exec(href ?? '');
+      if (!citation) return <a href={href} target="_blank" rel="noreferrer">{children}</a>;
+      const index = Number(citation[1]);
+      return <CitationPopover index={index} source={sources?.find(item => item.index === index)} />;
+    },
+  }), [sources]);
+
+  return <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+    {answer.replace(/\[(?:Source\s*)?(\d+)\](?!\()/gi, ' [$1](#quizzer-source-$1) ')}
+  </ReactMarkdown>;
 }
 
 export default function AskAIModal({ title, emptyMessage, loadingMessage, onClose, scope = [], initialHistory = [], onHistoryChange, ask }: Props) {
@@ -177,14 +192,7 @@ export default function AskAIModal({ title, emptyMessage, loadingMessage, onClos
           <div className="ai-chat-message ai-chat-message-assistant">
             <div className="ai-chat-avatar"><RobotOutlined /></div>
             <div className="ai-chat-answer">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
-                a: ({ href, children }) => {
-                  const citation = /^#quizzer-source-(\d+)$/.exec(href ?? '');
-                  if (!citation) return <a href={href} target="_blank" rel="noreferrer">{children}</a>;
-                  const index = Number(citation[1]);
-                  return <CitationPopover index={index} source={turn.sources?.find(item => item.index === index)} />;
-                },
-              }}>{turn.answer.replace(/\[(?:Source\s*)?(\d+)\](?!\()/gi, ' [$1](#quizzer-source-$1) ')}</ReactMarkdown>
+              <MarkdownAnswer answer={turn.answer} sources={turn.sources} />
             </div>
           </div>
         </div>)}
