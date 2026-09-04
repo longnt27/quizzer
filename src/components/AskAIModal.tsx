@@ -4,7 +4,7 @@ import { ArrowUpOutlined, FileTextOutlined, RobotOutlined, StopOutlined, UserOut
 import type { TextAreaRef } from 'antd/es/input/TextArea';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { AIAnswer, AIConversationTurn, GenerationProvider } from '../types';
+import type { AIAnswer, AIConversationTurn, AISourceReference, GenerationProvider } from '../types';
 import { getProviderSettings } from '../utils/providerSettings';
 import { useConfiguredProviders } from '../utils/useConfiguredProviders';
 
@@ -15,6 +15,29 @@ interface Props {
   onClose: () => void;
   scope?: { id: string; label: string }[];
   ask: (question: string, provider: GenerationProvider, model: string, history: AIConversationTurn[], signal: AbortSignal) => Promise<AIAnswer>;
+}
+
+function CitationPopover({ index, source }: { index: number; source?: AISourceReference }) {
+  const [open, setOpen] = useState(false);
+  const closeTimer = useRef<number | undefined>(undefined);
+  const show = () => {
+    window.clearTimeout(closeTimer.current);
+    setOpen(true);
+  };
+  const scheduleClose = () => {
+    window.clearTimeout(closeTimer.current);
+    closeTimer.current = window.setTimeout(() => setOpen(false), 180);
+  };
+  useEffect(() => () => window.clearTimeout(closeTimer.current), []);
+
+  return <Popover open={open} trigger={[]} placement="top" content={source ? <div className="ai-citation-preview"
+    onMouseEnter={show} onMouseLeave={scheduleClose}>
+    <strong>{source.name}{source.page ? ` · page ${source.page}` : ''}</strong>
+    {source.excerpt && <span>{source.excerpt}</span>}
+  </div> : 'Source reference unavailable'}>
+    <button type="button" className="ai-inline-citation" aria-label={`Preview source ${index}`}
+      onMouseEnter={show} onMouseLeave={scheduleClose} onFocus={show} onBlur={scheduleClose}>[{index}]</button>
+  </Popover>;
 }
 
 export default function AskAIModal({ title, emptyMessage, loadingMessage, onClose, scope = [], ask }: Props) {
@@ -120,13 +143,8 @@ export default function AskAIModal({ title, emptyMessage, loadingMessage, onClos
                 a: ({ href, children }) => {
                   const citation = /^#quizzer-source-(\d+)$/.exec(href ?? '');
                   if (!citation) return <a href={href} target="_blank" rel="noreferrer">{children}</a>;
-                  const source = turn.sources?.find(item => item.index === Number(citation[1]));
-                  return <Popover mouseEnterDelay={0} mouseLeaveDelay={0.8} trigger={["hover", "focus"]} placement="top" content={source ? <div className="ai-citation-preview">
-                    <strong>{source.name}{source.page ? ` · page ${source.page}` : ''}</strong>
-                    {source.excerpt && <span>{source.excerpt}</span>}
-                  </div> : 'Source reference unavailable'}>
-                    <button type="button" className="ai-inline-citation" aria-label={`Preview source ${citation[1]}`}>[{citation[1]}]</button>
-                  </Popover>;
+                  const index = Number(citation[1]);
+                  return <CitationPopover index={index} source={turn.sources?.find(item => item.index === index)} />;
                 },
               }}>{turn.answer.replace(/\[(?:Source\s*)?(\d+)\](?!\()/gi, ' [$1](#quizzer-source-$1) ')}</ReactMarkdown>
             </div>
