@@ -187,6 +187,37 @@ const lessonBoundedPatterns = [
 
 export const isLessonBoundedQuestion = (statement: string) => lessonBoundedPatterns.some(pattern => pattern.test(statement));
 
+const median = (values: number[]) => {
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+};
+
+const hasBalancedChoiceLengths = (answers: Record<string, unknown>[]) => {
+  const choices = answers.map(answer => String(answer.content).trim());
+  const characters = choices.map(choice => choice.replace(/\s+/g, ' ').length);
+  const words = choices.map(choice => choice.split(/\s+/u).filter(Boolean).length);
+  const medianCharacters = median(characters);
+  const medianWords = median(words);
+  const longestCharacters = Math.max(...characters);
+  const shortestCharacters = Math.min(...characters);
+  const longestWords = Math.max(...words);
+  const shortestWords = Math.min(...words);
+
+  // Short labels and symbols naturally vary in width. Reject only conspicuous outliers where
+  // the shape of a choice gives away its correctness without requiring subject knowledge.
+  if (longestCharacters > Math.max(32, medianCharacters * 1.9) && longestCharacters - shortestCharacters > 24) return false;
+  if (longestWords > Math.max(6, medianWords * 2) && longestWords - shortestWords >= 4) return false;
+
+  const correct = answers.filter(answer => answer.correct).map(answer => String(answer.content).trim().length);
+  const incorrect = answers.filter(answer => !answer.correct).map(answer => String(answer.content).trim().length);
+  const correctMedian = median(correct);
+  const incorrectMedian = median(incorrect);
+  const larger = Math.max(correctMedian, incorrectMedian);
+  const smaller = Math.min(correctMedian, incorrectMedian);
+  return larger <= Math.max(32, smaller * 1.9) || larger - smaller <= 24;
+};
+
 export function validateQuestion(value: unknown, expectedType?: QuestionType, multipleChoiceMode: GenerationOptions['multipleChoiceMode'] = 'mixed'): value is QuizQuestion {
   if (!value || typeof value !== 'object') return false;
   const question = value as Record<string, unknown>;
@@ -208,12 +239,13 @@ export function validateQuestion(value: unknown, expectedType?: QuestionType, mu
   if (!Array.isArray(question.answer) || question.answer.length < 3 || question.answer.length > 6) return false;
   const answers = question.answer as Record<string, unknown>[];
   if (!answers.every(answer => answer && typeof answer.content === 'string' && answer.content.trim()
-    && typeof answer.explanation === 'string' && answer.explanation.trim()
+    && typeof answer.explanation === 'string' && answer.explanation.trim().length >= 12
     && typeof answer.correct === 'boolean')) return false;
   const correctCount = answers.filter(answer => answer.correct).length;
   if (correctCount < 1 || correctCount >= answers.length) return false;
   if (multipleChoiceMode === 'single' && correctCount !== 1) return false;
   if (multipleChoiceMode === 'multiple' && correctCount < 2) return false;
+  if (!hasBalancedChoiceLengths(answers)) return false;
   return new Set(answers.map(answer => normalize(String(answer.content)))).size === answers.length;
 }
 
@@ -267,7 +299,14 @@ export interface GenerationSourceContext {
 
 const typeInstructions: Record<QuestionType, string> = {
   'multiple-choice': `Create multiple-choice questions. Each needs 3-6 choices, at least one correct choice,
-at least one incorrect choice, and a useful explanation for every choice. Set type to "multiple-choice".`,
+at least one incorrect choice, and a useful explanation for every choice. Set type to "multiple-choice".
+Every incorrect choice must be a credible near miss: use a common misconception, a subtly wrong condition, a realistic
+implementation mistake, or a closely related concept from the same domain. Keep every choice in the same semantic category
+and at comparable specificity. Never use absurd, unrelated, vague, or generic filler merely to complete the choice list.
+A learner without the relevant knowledge must not be able to eliminate a choice just because it sounds noisy or malformed.
+Balance the choices' grammar, detail, and approximate length. Do not make the correct choice uniquely longer, more qualified,
+more precise, or better written than the distractors. Give each explanation enough detail to show why that exact choice is
+correct or incorrect; do not merely say that it is right, wrong, or unrelated.`,
   'fill-blank': `Create fill-in-the-blank questions. Put exactly one five-underscore blank (_____) in each statement.
 Set type to "fill-blank". Before returning each question, actively brainstorm the ways a knowledgeable learner could express
 the same answer. Provide 3-16 genuinely useful acceptedAnswers covering, when applicable: canonical terminology; common
