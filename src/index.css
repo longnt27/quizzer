@@ -50,6 +50,15 @@ button, input, textarea, select { font: inherit; }
 .plugin-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 .plugin-card-heading h5 { margin: 0 0 2px; }
 .plugin-output { max-height: 140px; margin: 8px 0 0; padding: 10px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border-radius: 6px; background: var(--code); font-size: 12px; }
+.settings-loading { min-height: 300px; display: grid; place-items: center; }
+.settings-section .ant-divider { margin: 4px 0 10px; }
+.settings-list { display: grid; gap: 8px; }
+.settings-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(190px, 250px); gap: 20px; align-items: center; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); }
+.settings-row.is-changed { border-color: #1677ff; box-shadow: inset 3px 0 #1677ff; }
+.settings-copy { min-width: 0; display: grid; gap: 5px; }
+.settings-control { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; }
+.settings-control > .ant-switch { justify-self: end; }
+.settings-control > .ant-input-number, .settings-control > .ant-select { width: 100%; }
 .question-count-grid { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 10px; }
 .question-count-grid label, .question-count-total { display: flex; min-width: 0; padding: 10px; flex-direction: column; gap: 7px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-soft); }
 .question-count-grid .ant-input-number { width: 100%; }
@@ -197,6 +206,7 @@ mark { color: #111827; }
   .document-view { padding: 16px; }
   .home-page { padding: 20px 14px 36px; }
   .home-heading, .home-card-heading { align-items: stretch; flex-direction: column; gap: 10px; }
+  .settings-row { grid-template-columns: 1fr; gap: 12px; }
   .onboarding-choice-grid { grid-template-columns: 1fr; }
   .document-view h2 { font-size: 24px; }
   .document-original-frame { min-height: 65vh; }

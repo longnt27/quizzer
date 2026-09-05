@@ -7,6 +7,7 @@ import AddTestModal from './components/AddTestModal';
 import AddDocumentModal from './components/AddDocumentModal';
 import DocumentView from './components/DocumentView';
 import PluginsModal from './components/PluginsModal';
+import SettingsModal from './components/SettingsModal';
 import GenerationWorker from './components/GenerationWorker';
 import { GenerationActivity, GenerationCenter } from './components/GenerationCenter';
 import { setMessageApi } from './utils/messageProvider';
@@ -25,6 +26,7 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDocumentModal, setShowDocumentModal] = useState(false);
   const [showPluginsModal, setShowPluginsModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showGenerationCenter, setShowGenerationCenter] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -68,6 +70,7 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
     onAddTest: () => { setShowAddModal(true); setMobileMenuOpen(false); },
     onAddDocument: () => { setShowDocumentModal(true); setMobileMenuOpen(false); },
     onOpenPlugins: () => { setShowPluginsModal(true); setMobileMenuOpen(false); },
+    onOpenSettings: () => { setShowSettingsModal(true); setMobileMenuOpen(false); },
     onOpenGeneration: () => { setShowGenerationCenter(true); setMobileMenuOpen(false); },
     onOpenHome: () => select(null),
     onOpenTutorial: () => { setShowOnboarding(true); setMobileMenuOpen(false); },
@@ -111,6 +114,7 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
         setSelection({ kind: 'document', id }); setShowDocumentModal(false);
       }} />}
       {showPluginsModal && <PluginsModal onClose={() => setShowPluginsModal(false)} />}
+      {showSettingsModal && profile && <SettingsModal profile={profile} onClose={() => setShowSettingsModal(false)} />}
       {showGenerationCenter && <GenerationCenter open onClose={() => setShowGenerationCenter(false)} onManagePlugins={() => setShowPluginsModal(true)} onOpenTest={id => {
         setSelection({ kind: 'test', id }); setSession(null);
       }} />}

@@ -59,6 +59,7 @@ test('exposes settings schema, precedence, and validated updates', async () => {
   const schema = await (await authorized('/api/v1/settings/schema')).json();
   assert.equal(schema.schema.additionalProperties, false);
   assert.ok(schema.registry.some(item => item.key === 'retrieval.mode'));
+  assert.equal(schema.profiles.balanced['generation.concurrency'], 3);
 
   const updated = await authorized('/api/v1/settings', {
     method: 'PATCH',

@@ -9,7 +9,7 @@ import {
 import { detectHardwareCapabilities } from './server/hardware-profile.mjs';
 import { ensureServiceToken, isAuthorizedRequest } from './server/auth.mjs';
 import {
-  loadResolvedSettings, readUserSettings, SETTINGS_REGISTRY, SETTINGS_SCHEMA, validateSettings, writeUserSettings,
+  HARDWARE_PROFILE_SETTINGS, loadResolvedSettings, readUserSettings, SETTINGS_REGISTRY, SETTINGS_SCHEMA, validateSettings, writeUserSettings,
 } from './server/settings.mjs';
 import { PluginManager } from './plugin-sdk/manager.mjs';
 
@@ -793,7 +793,7 @@ const handleVersionedApi = async (request, response, url) => {
       return true;
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/settings/schema') {
-      send(response, 200, { schema: SETTINGS_SCHEMA, registry: SETTINGS_REGISTRY });
+      send(response, 200, { schema: SETTINGS_SCHEMA, registry: SETTINGS_REGISTRY, profiles: HARDWARE_PROFILE_SETTINGS });
       return true;
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/settings') {

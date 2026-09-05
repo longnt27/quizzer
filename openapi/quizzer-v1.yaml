@@ -51,10 +51,17 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [schema, registry]
+                required: [schema, registry, profiles]
                 properties:
                   schema: { type: object }
                   registry: { type: array, items: { type: object } }
+                  profiles:
+                    type: object
+                    required: [lite, balanced, max]
+                    properties:
+                      lite: { type: object, additionalProperties: true }
+                      balanced: { type: object, additionalProperties: true }
+                      max: { type: object, additionalProperties: true }
         '401':
           $ref: '#/components/responses/Unauthorized'
   /settings:
