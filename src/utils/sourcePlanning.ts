@@ -200,7 +200,7 @@ export const sourceContextForSlots = (
       documentIds: [...new Set(sourceEntries.map(({ document }) => document.id))],
       sourceSpanIds: sourceEntries.map(({ document, chunkIndex }) => {
         const chunk = document.chunks?.[chunkIndex] ?? document.chunks?.[0];
-        return `${document.id}:${chunk?.id ?? chunkIndex}`;
+        return chunk?.id.startsWith(`${document.id}:`) ? chunk.id : `${document.id}:${chunk?.id ?? chunkIndex}`;
       }),
     },
   };

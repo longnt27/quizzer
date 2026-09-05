@@ -111,7 +111,9 @@ export class SparseDocumentIndex {
       const content = typeof chunk.text === 'string' ? chunk.text.trim() : document.content.slice(start, end).trim();
       const contentHash = chunk.textHash || sha256(content);
       const chunkIndex = Number.isSafeInteger(chunk.index) ? chunk.index : position;
-      const candidateId = typeof chunk.id === 'string' && chunk.id.startsWith(`${record.id}:`) ? chunk.id : undefined;
+      const candidateId = typeof chunk.id === 'string'
+        ? chunk.id.startsWith(`${record.id}:`) ? chunk.id : `${record.id}:${chunk.id}`
+        : undefined;
       return {
         spanId: candidateId || `${record.id}:span:${chunkIndex}:${contentHash.slice(0, 12)}`,
         documentId: record.id,

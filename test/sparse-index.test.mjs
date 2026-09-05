@@ -52,6 +52,11 @@ test('retrieves BM25 evidence with citations, parents, neighbors, and scoped fil
 
   const vietnamese = index.retrieve({ query: 'khóa trạng thái', tags: ['vietnamese'] });
   assert.equal(vietnamese.results[0].documentId, 'doc-vietnamese');
+
+  const browserDocument = record('doc-browser', 'Browser import', 'A browser-side chunk keeps its original stable citation identifier.');
+  browserDocument.data.chunks = [{ id: 'chunk-0', index: 0, start: 0, end: browserDocument.data.content.length }];
+  index.indexDocument(browserDocument);
+  assert.equal(index.retrieve({ query: 'stable citation identifier', documentIds: ['doc-browser'] }).results[0].sourceSpanId, 'doc-browser:chunk-0');
 });
 
 test('runs one corrective pass and clearly refuses without evidence', () => {
