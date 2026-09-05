@@ -62,6 +62,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const [externalLoading, setExternalLoading] = useState(true);
   const [developerMode, setDeveloperMode] = useState(false);
   const [pluginAction, setPluginAction] = useState('');
+  const [saving, setSaving] = useState(false);
   const [healthResults, setHealthResults] = useState<Record<string, HealthResult>>({});
   const message = getMessageApi();
 
@@ -180,17 +181,29 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
     },
   });
 
-  const save = () => {
+  const save = async () => {
     for (const provider of API_PROVIDERS) setApiKey(provider.id, apiKeys[provider.id]?.trim() ?? '');
     const available = PROVIDERS.filter(provider => enabledProviders[provider.id] && (provider.kind === 'api'
       ? Boolean(apiKeys[provider.id]?.trim())
       : Boolean(status?.[provider.id as AgentProvider]?.connected)));
-    setProviderSettings({
-      defaultProvider: available.some(provider => provider.id === defaultProvider) ? defaultProvider : available[0]?.id ?? defaultProvider,
-      models, enabledProviders, enabledTools,
-    });
-    message.success('Plugin settings saved');
-    onClose();
+    const selectedProvider = available.some(provider => provider.id === defaultProvider) ? defaultProvider : available[0]?.id ?? defaultProvider;
+    setSaving(true);
+    try {
+      await serviceJson('/api/v1/settings', 'PATCH', { values: {
+        'generation.defaultProvider': selectedProvider,
+        'extraction.marker': enabledTools.marker,
+        'extraction.ocr': enabledTools.ocr,
+        'embeddings.enabled': enabledTools.embeddings,
+      } });
+      setProviderSettings({ defaultProvider: selectedProvider, models, enabledProviders, enabledTools });
+      window.dispatchEvent(new Event('quizzer:settings-changed'));
+      message.success('Plugin settings saved');
+      onClose();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Could not save plugin settings');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const markerWorking = status?.marker.job.state === 'working';
@@ -204,7 +217,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
     : configuredProviderOptions[0]?.id;
 
   return (
-    <Modal open title={<Space><ApiOutlined /> Plugins & models</Space>} width={900} onCancel={onClose} onOk={save} okText="Save settings">
+    <Modal open title={<Space><ApiOutlined /> Plugins & models</Space>} width={900} onCancel={onClose} onOk={() => void save()} confirmLoading={saving} okText="Save settings">
       <Typography.Paragraph type="secondary">
         Connect signed-in CLI agents or enter API keys without editing terminal configuration. API keys live only in this browser tab.
       </Typography.Paragraph>

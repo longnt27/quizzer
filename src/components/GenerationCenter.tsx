@@ -13,6 +13,7 @@ import {
 import { getProviderDefinition, getProviderSettings } from '../utils/providerSettings';
 import { getMessageApi } from '../utils/messageProvider';
 import { useConfiguredProviders } from '../utils/useConfiguredProviders';
+import { serviceJson } from '../utils/serviceApi';
 
 const terminalStatuses = new Set(['completed', 'cancelled']);
 const statusColor: Record<StoredGenerationJob['status'], string> = {
@@ -96,6 +97,19 @@ export function GenerationCenter({ open, onClose, onOpenTest, onManagePlugins }:
   const jobs = useLiveQuery(() => db.generationJobs.orderBy('createdAt').reverse().toArray(), []) ?? [];
   const [instances, setInstances] = useState(getGenerationConcurrency);
   const [batchSize, setBatchSize] = useState(getGenerationBatchSize);
+  const message = getMessageApi();
+  useEffect(() => {
+    const refresh = () => {
+      setInstances(getGenerationConcurrency());
+      setBatchSize(getGenerationBatchSize());
+    };
+    window.addEventListener('quizzer:generation-settings', refresh);
+    return () => window.removeEventListener('quizzer:generation-settings', refresh);
+  }, []);
+  const persistSetting = async (key: 'generation.concurrency' | 'generation.batchSize', value: number) => {
+    try { await serviceJson('/api/v1/settings', 'PATCH', { values: { [key]: value } }); }
+    catch (error) { message.warning(error instanceof Error ? error.message : 'The setting is saved locally until the service reconnects'); }
+  };
   const clearFinished = async () => db.generationJobs.bulkDelete(jobs.filter(job => terminalStatuses.has(job.status)).map(job => job.id));
   return <Modal open={open} width={780} title="Generation queue" footer={null} onCancel={onClose}>
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -104,12 +118,14 @@ export function GenerationCenter({ open, onClose, onOpenTest, onManagePlugins }:
       <div className="generation-concurrency">
         <div><Typography.Text strong>Concurrent test instances</Typography.Text><br /><Typography.Text type="secondary">One provider request per test. Changes apply as running requests finish.</Typography.Text></div>
         <Slider min={1} max={10} value={instances} marks={{ 1: '1', 5: '5', 10: '10' }} tooltip={{ formatter: value => `${value} instance${value === 1 ? '' : 's'}` }}
-          onChange={value => { setInstances(value); setGenerationConcurrency(value); void pumpGenerationQueue(); }} />
+          onChange={value => { setInstances(value); setGenerationConcurrency(value); void pumpGenerationQueue(); }}
+          onChangeComplete={value => void persistSetting('generation.concurrency', value)} />
       </div>
       <div className="generation-concurrency">
         <div><Typography.Text strong>Questions per request</Typography.Text><br /><Typography.Text type="secondary">Larger batches are faster; smaller batches checkpoint more often.</Typography.Text></div>
         <Slider min={5} max={25} value={batchSize} marks={{ 5: '5', 10: '10', 20: '20', 25: '25' }} tooltip={{ formatter: value => `${value} questions` }}
-          onChange={value => { setBatchSize(value); setGenerationBatchSize(value); }} />
+          onChange={value => { setBatchSize(value); setGenerationBatchSize(value); }}
+          onChangeComplete={value => void persistSetting('generation.batchSize', value)} />
       </div>
       {!!jobs.some(job => terminalStatuses.has(job.status)) && <Button size="small" onClick={() => void clearFinished()}>Clear finished</Button>}
       <List locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No generation jobs" /> }} dataSource={jobs}

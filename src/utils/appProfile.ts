@@ -1,5 +1,6 @@
 import { db, type StoredAppProfile } from '../db/db';
 import type { HardwareProfileId, InterfaceMode, OnboardingStep } from '../types';
+import { serviceJson } from './serviceApi';
 
 export const CURRENT_ONBOARDING_VERSION = 1;
 export const CURRENT_WHATS_NEW_VERSION = 1;
@@ -53,9 +54,22 @@ export const updateAppProfile = async (changes: Partial<Omit<StoredAppProfile, '
   await db.profiles.update('default', { ...changes, updatedAt: Date.now() });
 };
 
-export const setInterfaceMode = (interfaceMode: InterfaceMode) => updateAppProfile({ interfaceMode });
+const persistProfileSetting = async (key: 'interface.mode' | 'hardware.profile', value: InterfaceMode | HardwareProfileId) => {
+  try {
+    await serviceJson('/api/v1/settings', 'PATCH', { values: { [key]: value } });
+    window.dispatchEvent(new Event('quizzer:settings-changed'));
+  } catch { /* The local profile remains usable while the service reconnects. */ }
+};
 
-export const setHardwareProfile = (hardwareProfile: HardwareProfileId) => updateAppProfile({ hardwareProfile });
+export const setInterfaceMode = async (interfaceMode: InterfaceMode) => {
+  await updateAppProfile({ interfaceMode });
+  await persistProfileSetting('interface.mode', interfaceMode);
+};
+
+export const setHardwareProfile = async (hardwareProfile: HardwareProfileId) => {
+  await updateAppProfile({ hardwareProfile });
+  await persistProfileSetting('hardware.profile', hardwareProfile);
+};
 
 export const advanceOnboarding = async (step: OnboardingStep, next: OnboardingStep) => {
   const profile = await ensureAppProfile();

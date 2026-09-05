@@ -18,6 +18,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import HomePage from './components/HomePage';
 import OnboardingGuide from './components/OnboardingGuide';
 import { setInterfaceMode } from './utils/appProfile';
+import { useRuntimeSettings } from './utils/useRuntimeSettings';
 
 interface ShellProps { dark: boolean; onToggleTheme: () => void; }
 
@@ -35,6 +36,7 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
   const screens = Grid.useBreakpoint();
   const mobile = screens.md === false;
   const profile = useLiveQuery(() => db.profiles.get('default'), []) as StoredAppProfile | undefined;
+  useRuntimeSettings(profile);
   setMessageApi(messageApi);
 
   useEffect(() => {

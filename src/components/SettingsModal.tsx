@@ -3,7 +3,7 @@ import { Alert, Button, Divider, Input, InputNumber, Modal, Select, Space, Spin,
 import { ReloadOutlined, SearchOutlined, SettingOutlined, UndoOutlined } from '@ant-design/icons';
 import type { StoredAppProfile } from '../db/db';
 import type { GenerationProvider, HardwareProfileId, InterfaceMode } from '../types';
-import { setHardwareProfile, setInterfaceMode } from '../utils/appProfile';
+import { updateAppProfile } from '../utils/appProfile';
 import { setGenerationBatchSize, setGenerationConcurrency } from '../utils/generationSettings';
 import { getProviderSettings, PROVIDERS, setProviderSettings } from '../utils/providerSettings';
 import { getMessageApi } from '../utils/messageProvider';
@@ -189,8 +189,9 @@ export default function SettingsModal({ profile, onClose }: Props) {
       });
       const interfaceMode = draft['interface.mode'] as InterfaceMode;
       const hardwareProfile = draft['hardware.profile'] as HardwareProfileId;
-      if (interfaceMode && interfaceMode !== profile.interfaceMode) await setInterfaceMode(interfaceMode);
-      if (hardwareProfile && hardwareProfile !== profile.hardwareProfile) await setHardwareProfile(hardwareProfile);
+      if ((interfaceMode && interfaceMode !== profile.interfaceMode) || (hardwareProfile && hardwareProfile !== profile.hardwareProfile)) {
+        await updateAppProfile({ interfaceMode, hardwareProfile });
+      }
       setGenerationConcurrency(Number(next.values['generation.concurrency']));
       setGenerationBatchSize(Number(next.values['generation.batchSize']));
       const defaultProvider = next.values['generation.defaultProvider'];
@@ -198,6 +199,7 @@ export default function SettingsModal({ profile, onClose }: Props) {
         const current = getProviderSettings();
         setProviderSettings({ ...current, defaultProvider: defaultProvider as GenerationProvider });
       }
+      window.dispatchEvent(new Event('quizzer:settings-changed'));
       message.success('Settings saved');
       onClose();
     } catch (saveError) {
