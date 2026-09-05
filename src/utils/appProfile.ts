@@ -69,7 +69,7 @@ export const advanceOnboarding = async (step: OnboardingStep, next: OnboardingSt
       completedSteps,
       currentStep: next,
       skipped: false,
-      ...(next === 'complete' ? { completedAt: Date.now() } : {}),
+      ...(step === 'complete' ? { completedAt: Date.now() } : {}),
     },
   });
 };

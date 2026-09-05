@@ -1,11 +1,12 @@
 import { useState, useSyncExternalStore } from 'react';
 import { Alert, Badge, Button, Empty, Input, Layout, List, Modal, Popconfirm, Progress, Space, Tabs, Tag, Typography } from 'antd';
-import { ApiOutlined, CloudSyncOutlined, DeleteOutlined, FileTextOutlined, FormOutlined, MoonOutlined, PlusOutlined, SearchOutlined, SyncOutlined, SunOutlined } from '@ant-design/icons';
+import { ApiOutlined, CloudSyncOutlined, DeleteOutlined, FileTextOutlined, FormOutlined, HomeOutlined, MoonOutlined, PlusOutlined, QuestionCircleOutlined, SearchOutlined, SettingOutlined, SyncOutlined, SunOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../db/db';
+import { db, type StoredAppProfile } from '../db/db';
 import { getMessageApi } from '../utils/messageProvider';
 import { countQuestionTypes } from '../utils/questions';
 import { serverSyncStatus, syncNow } from '../db/serverSync';
+import { restartOnboarding } from '../utils/appProfile';
 
 export type LibrarySelection = { kind: 'test' | 'document'; id: string } | null;
 
@@ -28,12 +29,16 @@ interface Props {
   onAddDocument: () => void;
   onOpenPlugins: () => void;
   onOpenGeneration: () => void;
+  onOpenHome: () => void;
+  onOpenTutorial: () => void;
+  profile?: StoredAppProfile;
+  onToggleInterfaceMode: () => void;
   dark: boolean;
   onToggleTheme: () => void;
   embedded?: boolean;
 }
 
-export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument, onOpenPlugins, onOpenGeneration, dark, onToggleTheme, embedded = false }: Props) {
+export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument, onOpenPlugins, onOpenGeneration, onOpenHome, onOpenTutorial, profile, onToggleInterfaceMode, dark, onToggleTheme, embedded = false }: Props) {
   const tests = useLiveQuery(() => db.tests.orderBy('createdAt').reverse().toArray(), []) ?? [];
   const documents = useLiveQuery(() => db.documents.orderBy('createdAt').reverse().toArray(), []) ?? [];
   const [tab, setTab] = useState<'tests' | 'documents'>(selection?.kind === 'document' ? 'documents' : 'tests');
@@ -62,6 +67,9 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
   const content = (
     <div className="sidebar-content">
       <Typography.Title level={4} style={{ textAlign: 'center', margin: '22px 0 10px' }}>Quizzer</Typography.Title>
+      <div className="sidebar-home">
+        <Button block type={!selection ? 'primary' : 'text'} icon={<HomeOutlined />} onClick={onOpenHome}>Home</Button>
+      </div>
       <Tabs activeKey={tab} onChange={key => { setTab(key as typeof tab); setQuery(''); }} centered
         items={[
           { key: 'tests', label: 'Tests', icon: <FormOutlined /> },
@@ -103,12 +111,17 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
         )}
       </div>
       <div className="sidebar-footer">
+        {profile && !profile.onboarding.completedAt && !profile.onboarding.skipped && <Button type="primary" icon={<QuestionCircleOutlined />} onClick={onOpenTutorial}>Resume setup</Button>}
         <Button type="text" icon={<CloudSyncOutlined spin={sync.status === 'syncing'} />} onClick={() => { setSyncDetailsOpen(true); void syncNow(); }}>
           <Badge status={sync.status === 'synced' ? 'success' : sync.status === 'offline' ? 'warning' : 'processing'} />
           {sync.status === 'offline' ? 'Offline — saved locally' : sync.lastSyncedAt ? 'Saved on server' : 'Syncing library'}
         </Button>
         <Button type="text" icon={<SyncOutlined />} onClick={onOpenGeneration}>Generation queue</Button>
         <Button type="text" icon={<ApiOutlined />} onClick={onOpenPlugins}>Plugins & models</Button>
+        {profile && <Button type="text" icon={<SettingOutlined />} onClick={onToggleInterfaceMode}>
+          {profile.interfaceMode === 'simple' ? 'Simple mode' : 'Advanced mode'}
+        </Button>}
+        <Button type="text" icon={<QuestionCircleOutlined />} onClick={async () => { await restartOnboarding(); onOpenTutorial(); }}>Restart tutorial</Button>
         <Button type="text" icon={dark ? <SunOutlined /> : <MoonOutlined />} onClick={onToggleTheme}>
           {dark ? 'Light mode' : 'Dark mode'}
         </Button>

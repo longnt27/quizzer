@@ -12,6 +12,11 @@ import { GenerationActivity, GenerationCenter } from './components/GenerationCen
 import { setMessageApi } from './utils/messageProvider';
 import type { TestSession } from './types';
 import { db } from './db/db';
+import type { StoredAppProfile } from './db/db';
+import { useLiveQuery } from 'dexie-react-hooks';
+import HomePage from './components/HomePage';
+import OnboardingGuide from './components/OnboardingGuide';
+import { ensureAppProfile, setInterfaceMode } from './utils/appProfile';
 
 interface ShellProps { dark: boolean; onToggleTheme: () => void; }
 
@@ -21,12 +26,16 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
   const [showDocumentModal, setShowDocumentModal] = useState(false);
   const [showPluginsModal, setShowPluginsModal] = useState(false);
   const [showGenerationCenter, setShowGenerationCenter] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [session, setSession] = useState<TestSession | null>(null);
   const [messageApi, contextHolder] = message.useMessage();
   const screens = Grid.useBreakpoint();
   const mobile = screens.md === false;
+  const profile = useLiveQuery(() => db.profiles.get('default'), []) as StoredAppProfile | undefined;
   setMessageApi(messageApi);
+
+  useEffect(() => { void ensureAppProfile(); }, []);
 
   useEffect(() => {
     let active = true;
@@ -62,6 +71,10 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
     onAddDocument: () => { setShowDocumentModal(true); setMobileMenuOpen(false); },
     onOpenPlugins: () => { setShowPluginsModal(true); setMobileMenuOpen(false); },
     onOpenGeneration: () => { setShowGenerationCenter(true); setMobileMenuOpen(false); },
+    onOpenHome: () => select(null),
+    onOpenTutorial: () => { setShowOnboarding(true); setMobileMenuOpen(false); },
+    profile,
+    onToggleInterfaceMode: () => profile && void setInterfaceMode(profile.interfaceMode === 'simple' ? 'advanced' : 'simple'),
     dark,
     onToggleTheme,
   };
@@ -79,16 +92,18 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
         </header>
       )}
       <main className={`app-main ${mobile && session?.mode !== 'taking' ? 'with-mobile-header' : ''}`}>
-        {selection?.kind === 'document' ? <DocumentView documentId={selection.id} /> : (
+        {selection?.kind === 'document' ? <DocumentView documentId={selection.id} /> : selection?.kind === 'test' ? (
           <MainContent
-            selectedTestId={selection?.kind === 'test' ? selection.id : null}
+            selectedTestId={selection.id}
             setSelectedTestId={id => setSelection({ kind: 'test', id })}
             session={session}
             setSession={setSession}
             onAddTest={() => setShowAddModal(true)}
             onOpenDocument={id => select({ kind: 'document', id })}
           />
-        )}
+        ) : profile ? <HomePage profile={profile} onAddDocument={() => setShowDocumentModal(true)} onAddTest={() => setShowAddModal(true)}
+          onOpenGeneration={() => setShowGenerationCenter(true)} onOpenPlugins={() => setShowPluginsModal(true)}
+          onOpenTest={id => setSelection({ kind: 'test', id })} onOpenTutorial={() => setShowOnboarding(true)} /> : null}
       </main>
       <Drawer placement="left" width="min(88vw, 340px)" open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} styles={{ body: { padding: 0 } }}>
         <Sidebar {...sidebarProps} embedded />
@@ -101,6 +116,10 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
       {showGenerationCenter && <GenerationCenter open onClose={() => setShowGenerationCenter(false)} onManagePlugins={() => setShowPluginsModal(true)} onOpenTest={id => {
         setSelection({ kind: 'test', id }); setSession(null);
       }} />}
+      {profile && <OnboardingGuide open={showOnboarding && !profile.onboarding.completedAt && !profile.onboarding.skipped} profile={profile}
+        onPause={() => setShowOnboarding(false)} onFinish={() => { setShowOnboarding(false); select(null); }}
+        onOpenPlugins={() => setShowPluginsModal(true)} onAddDocument={() => setShowDocumentModal(true)} onAddTest={() => setShowAddModal(true)}
+        onOpenTest={id => { setSelection({ kind: 'test', id }); setShowOnboarding(false); }} />}
       {session?.mode !== 'taking' && <GenerationActivity onOpen={() => setShowGenerationCenter(true)} />}
     </Layout>
   </>;
