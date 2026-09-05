@@ -8,7 +8,7 @@ import test from 'node:test';
 const directory = await mkdtemp(join(tmpdir(), 'quizzer-storage-test-'));
 process.env.QUIZZER_DATABASE_PATH = join(directory, 'quizzer.sqlite');
 const {
-  beginLegacyMigration, claimGenerationJob, completeGenerationJob, finalizeLegacyMigration, getRecord, listLegacyMigrations,
+  beginLegacyMigration, claimGenerationJob, completeGenerationJob, controlGenerationJob, finalizeLegacyMigration, getRecord, listLegacyMigrations,
   listRecords, putRecord, renewGenerationJobLease, subscribeStorageChanges, syncStorage, updateGenerationJobWithLease,
 } = await import('../server/storage.mjs');
 
@@ -154,6 +154,30 @@ test('claims one generation worker at a time and recovers expired leases', () =>
     test: { id: 'lease-test', name: 'Lease test', createdAt: 16_000, questions: [{ statement: 'Saved question' }], attempts: [] },
   });
   assert.equal(repeated.job.revision, completion.job.revision);
+});
+
+test('shares validated resume and cancel transitions across service clients', () => {
+  putRecord('generationJobs', 'control-job', {
+    id: 'control-job', testId: 'control-test', name: 'Controlled test', status: 'paused',
+    createdAt: 20, updatedAt: 20, documentIds: [], options: { provider: 'gemini' },
+    questions: [], rejected: 0, rounds: { reasoning: 2 }, error: 'Quota reached', errorCode: 'provider_limit',
+  });
+  const resumed = controlGenerationJob('control-job', 'resume', {
+    options: { provider: 'codex' }, activeRouteIndex: 1, providerAttempts: [{ outcome: 'manually-selected' }], resetRounds: true,
+  }, 21);
+  assert.equal(resumed.data.status, 'queued');
+  assert.equal(resumed.data.options.provider, 'codex');
+  assert.deepEqual(resumed.data.rounds, {});
+  assert.equal(resumed.data.error, undefined);
+  const cancelled = controlGenerationJob('control-job', 'cancel', {}, 22);
+  assert.equal(cancelled.data.status, 'cancelled');
+  assert.equal(cancelled.data.finishedAt, 22);
+  assert.equal(controlGenerationJob('control-job', 'cancel', {}, 23).revision, cancelled.revision);
+  assert.equal(controlGenerationJob('control-job', 'resume', {}, 24).data.status, 'queued');
+  const running = claimGenerationJob({ workerId: 'control-worker', leaseMs: 10_000, now: 25 });
+  assert.equal(running.id, 'control-job');
+  assert.throws(() => controlGenerationJob('control-job', 'resume', {}, 26), /running.*cannot be resumed/);
+  assert.throws(() => controlGenerationJob('control-job', 'resume', { resetRounds: 'yes' }, 26), /boolean/);
 });
 
 test('backs up, transactionally receipts, and verifies a legacy browser migration', async () => {

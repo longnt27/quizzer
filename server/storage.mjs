@@ -418,6 +418,47 @@ export const completeGenerationJob = (id, {
   return { job: getRecord('generationJobs', id), test: getRecord('tests', test.id) };
 };
 
+export const controlGenerationJob = (id, action, changes = {}, now = Date.now()) => {
+  if (action !== 'resume' && action !== 'cancel') throw new Error('Invalid generation job action');
+  validateLeaseTime(now);
+  if (!changes || typeof changes !== 'object' || Array.isArray(changes)) throw new Error('Generation action must be an object');
+  const unsupported = Object.keys(changes).filter(key => !['activeRouteIndex', 'options', 'providerAttempts', 'resetRounds'].includes(key));
+  if (unsupported.length) throw new Error(`Generation action does not support: ${unsupported.join(', ')}`);
+  if (changes.options !== undefined && (!changes.options || typeof changes.options !== 'object' || Array.isArray(changes.options))) {
+    throw new Error('Generation options must be an object');
+  }
+  if (changes.providerAttempts !== undefined && !Array.isArray(changes.providerAttempts)) throw new Error('Provider attempts must be an array');
+  if (changes.activeRouteIndex !== undefined && (!Number.isSafeInteger(changes.activeRouteIndex) || changes.activeRouteIndex < 0)) {
+    throw new Error('Active route index must be a non-negative integer');
+  }
+  if (changes.resetRounds !== undefined && typeof changes.resetRounds !== 'boolean') throw new Error('resetRounds must be a boolean');
+  const existing = getRecord('generationJobs', id);
+  if (!existing) throw new Error('Generation job not found');
+  if (action === 'cancel' && existing.data.status === 'completed') throw new Error('A completed generation job cannot be cancelled');
+  if (action === 'resume' && ['running', 'completed'].includes(existing.data.status)) {
+    throw new Error(`A ${existing.data.status} generation job cannot be resumed`);
+  }
+  if (action === 'cancel' && existing.data.status === 'cancelled') return existing;
+  const resume = action === 'resume';
+  const data = {
+    ...existing.data,
+    ...(resume && changes.options ? { options: changes.options } : {}),
+    ...(resume && changes.providerAttempts ? { providerAttempts: changes.providerAttempts } : {}),
+    ...(resume && changes.activeRouteIndex !== undefined ? { activeRouteIndex: changes.activeRouteIndex } : {}),
+    ...(resume && changes.resetRounds ? { rounds: {} } : {}),
+    status: resume ? 'queued' : 'cancelled',
+    updatedAt: now,
+    error: undefined,
+    errorCode: undefined,
+    nextAttemptAt: undefined,
+    workerId: undefined,
+    leaseId: undefined,
+    leaseExpiresAt: undefined,
+    ...(resume ? { finishedAt: undefined } : { finishedAt: now }),
+  };
+  return putRecord('generationJobs', id, data);
+};
+
 export const subscribeStorageChanges = listener => {
   if (typeof listener !== 'function') throw new Error('A storage listener function is required');
   listeners.add(listener);

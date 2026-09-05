@@ -507,6 +507,7 @@ paths:
                 resetRounds: { type: boolean }
       responses:
         '200': { description: Updated generation job }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
         '404': { $ref: '#/components/responses/NotFound' }
   /jobs/{jobId}/cancel:
     parameters:
@@ -516,6 +517,7 @@ paths:
       summary: Cancel a generation job
       responses:
         '200': { description: Updated generation job }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
         '404': { $ref: '#/components/responses/NotFound' }
   /events:
     get:

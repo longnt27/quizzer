@@ -5,7 +5,7 @@ import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promi
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import {
-  backupDatabase, beginLegacyMigration, claimGenerationJob, completeGenerationJob, deleteRecord, finalizeLegacyMigration, getRecord, listLegacyMigrations,
+  backupDatabase, beginLegacyMigration, claimGenerationJob, completeGenerationJob, controlGenerationJob, deleteRecord, finalizeLegacyMigration, getRecord, listLegacyMigrations,
   listRecords, putRecord, renewGenerationJobLease, storageInfo, subscribeStorageChanges, syncStorage, updateGenerationJobWithLease,
 } from './server/storage.mjs';
 import { detectHardwareCapabilities } from './server/hardware-profile.mjs';
@@ -1069,36 +1069,15 @@ const handleVersionedApi = async (request, response, url) => {
     const jobActionMatch = /^\/api\/v1\/jobs\/([^/]+)\/(resume|cancel)$/.exec(url.pathname);
     if (jobActionMatch && request.method === 'POST') {
       const id = decodeURIComponent(jobActionMatch[1]);
-      const existing = getRecord('generationJobs', id);
-      if (!existing) {
+      if (!getRecord('generationJobs', id)) {
         send(response, 404, { error: 'Job not found' });
         return true;
       }
-      const resume = jobActionMatch[2] === 'resume';
-      const body = resume && request.headers['content-length'] !== undefined && request.headers['content-length'] !== '0'
+      const body = request.headers['content-length'] !== undefined && request.headers['content-length'] !== '0'
         ? await readJson(request)
         : {};
-      if (body.options !== undefined && (!body.options || typeof body.options !== 'object' || Array.isArray(body.options))) {
-        throw new Error('Generation options must be an object');
-      }
-      if (body.providerAttempts !== undefined && !Array.isArray(body.providerAttempts)) throw new Error('Provider attempts must be an array');
-      if (body.activeRouteIndex !== undefined && (!Number.isSafeInteger(body.activeRouteIndex) || body.activeRouteIndex < 0)) {
-        throw new Error('Active route index must be a non-negative integer');
-      }
-      const data = {
-        ...existing.data,
-        ...(resume && body.options ? { options: body.options } : {}),
-        ...(resume && body.providerAttempts ? { providerAttempts: body.providerAttempts } : {}),
-        ...(resume && body.activeRouteIndex !== undefined ? { activeRouteIndex: body.activeRouteIndex } : {}),
-        ...(resume && body.resetRounds ? { rounds: {} } : {}),
-        status: resume ? 'queued' : 'cancelled',
-        updatedAt: Date.now(),
-        ...(resume ? { error: undefined, errorCode: undefined, nextAttemptAt: undefined, workerId: undefined }
-          : { workerId: undefined, finishedAt: Date.now() }),
-        leaseId: undefined,
-        leaseExpiresAt: undefined,
-      };
-      send(response, 200, { job: publicRecord(putRecord('generationJobs', id, data)) });
+      const job = controlGenerationJob(id, jobActionMatch[2], body);
+      send(response, 200, { job: publicRecord(job) });
       return true;
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/events') {

@@ -183,8 +183,13 @@ test('provides onboarding, document, job, and event operations', async () => {
   assert.equal(evidence.results[0].documentId, 'doc-1');
   assert.match(evidence.results[0].sourceSpanId, /^doc-1:span:/);
 
-  const resumed = await authorized('/api/v1/jobs/job-1/resume', { method: 'POST' });
-  assert.equal((await resumed.json()).job.status, 'queued');
+  const resumed = await authorized('/api/v1/jobs/job-1/resume', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ options: { provider: 'codex', questionCount: 1 }, activeRouteIndex: 0, resetRounds: true }),
+  });
+  const resumedJob = (await resumed.json()).job;
+  assert.equal(resumedJob.status, 'queued');
+  assert.equal(resumedJob.options.provider, 'codex');
   const claimed = await authorized('/api/v1/jobs/claim', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workerId: 'api-worker-one', leaseMs: 10_000 }),
   });
@@ -226,6 +231,7 @@ test('provides onboarding, document, job, and event operations', async () => {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(completionBody),
   });
   assert.equal((await repeatedCompletion.json()).job.revision, completedPayload.job.revision);
+  assert.equal((await authorized('/api/v1/jobs/job-1/cancel', { method: 'POST' })).status, 400);
 
   const events = await authorized('/api/v1/events');
   assert.match(events.headers.get('content-type'), /^text\/event-stream/);

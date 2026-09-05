@@ -350,11 +350,7 @@ const runJobs = async (action, explicitId) => {
   if (!record) fail(`Job not found: ${id}`);
   if (action === 'show') return writeResult({ job: record.data }, `${record.data.name}\nStatus: ${record.data.status}\nAccepted: ${record.data.questions?.length ?? 0}`);
   if (action !== 'resume' && action !== 'cancel') fail('Use jobs list, show, resume, or cancel');
-  const now = Date.now();
-  const job = action === 'resume'
-    ? { ...record.data, status: 'queued', updatedAt: now, error: undefined, errorCode: undefined, nextAttemptAt: undefined, workerId: undefined }
-    : { ...record.data, status: 'cancelled', updatedAt: now, finishedAt: now, workerId: undefined };
-  database.putRecord('generationJobs', id, job);
+  const job = database.controlGenerationJob(id, action, action === 'resume' ? { resetRounds: false } : {}).data;
   writeResult({ job }, `${action === 'resume' ? 'Queued' : 'Cancelled'} ${job.name}`);
 };
 
