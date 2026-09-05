@@ -1,9 +1,9 @@
 import type { AIAnswer, AIConversationTurn, GenerationProvider, QuizQuestion } from '../types';
 import type { StoredDocument } from '../db/db';
 import { requestAIAnswer } from './askDocument';
-import { retrieveDocumentContext } from './documentRetrieval';
+import { retrieveGroundedDocumentContext } from './documentRetrieval';
 
-export const askPracticeAnswer = (
+export const askPracticeAnswer = async (
   quizQuestion: QuizQuestion,
   userAnswers: string[],
   selfAssessment: boolean | undefined,
@@ -20,7 +20,7 @@ export const askPracticeAnswer = (
       ? { question: quizQuestion.statement, userAnswer: userAnswers[0] ?? '', referenceAnswer: quizQuestion.referenceAnswer, essentialReasoning: quizQuestion.explanation, selfAssessment }
       : { question: quizQuestion.statement, userAnswers, choices: quizQuestion.answer };
   const conversation = history.slice(-6).map(turn => `User: ${turn.question}\nAssistant: ${turn.answer}`).join('\n\n');
-  const retrieved = retrieveDocumentContext(documents, `${quizQuestion.statement} ${question} ${history.slice(-2).map(turn => turn.question).join(' ')}`);
+  const retrieved = await retrieveGroundedDocumentContext(documents, `${quizQuestion.statement} ${question} ${history.slice(-2).map(turn => turn.question).join(' ')}`, signal);
   const prompt = `Help the learner understand a practice-question answer that they have already checked.
 Use the supplied answer context and only the retrieved sources. Explain concepts and mistakes clearly and answer follow-up questions directly.
 When sources are available, cite supporting material inline using compact citations such as [1] and [2]. If they do not support a claim, say so.
@@ -35,7 +35,7 @@ ${JSON.stringify(context)}
 <retrieved-sources>
 ${retrieved.content || '(No source document is attached to this test.)'}
 </retrieved-sources>`;
-  return requestAIAnswer(prompt, provider, model,
-    retrieved.images.map(image => `data:${image.mimeType};base64,${image.data}`), signal)
-    .then(answer => ({ answer, sources: retrieved.sources }));
+  const answer = await requestAIAnswer(prompt, provider, model,
+    retrieved.images.map(image => `data:${image.mimeType};base64,${image.data}`), signal);
+  return { answer, sources: retrieved.sources };
 };

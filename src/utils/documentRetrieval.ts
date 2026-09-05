@@ -1,6 +1,8 @@
 import type { AISourceReference } from '../types';
 import type { StoredDocument, StoredDocumentImage } from '../db/db';
 import { chunkDocumentContent, chunkText } from './documentChunks';
+import { syncNow } from '../db/serverSync';
+import { serviceJson } from './serviceApi';
 
 const tokens = (value: string) => [...new Set(value.toLocaleLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? [])];
 
@@ -16,6 +18,23 @@ export interface RetrievedDocumentContext {
   sources: AISourceReference[];
   images: StoredDocumentImage[];
 }
+
+interface ServiceRetrievalResult {
+  sourceSpanId: string;
+  documentId: string;
+  documentName: string;
+  chunkIndex: number;
+  page?: number;
+  content: string;
+  excerpt: string;
+}
+
+interface ServiceRetrievalPreview {
+  results: ServiceRetrievalResult[];
+}
+
+const stableChunkId = (document: StoredDocument, chunkId: string) =>
+  chunkId.startsWith(`${document.id}:`) ? chunkId : `${document.id}:${chunkId}`;
 
 export const retrieveDocumentContext = (documents: StoredDocument[], query: string, maxChunks = 8): RetrievedDocumentContext => {
   const queryTokens = tokens(query);
@@ -36,7 +55,7 @@ export const retrieveDocumentContext = (documents: StoredDocument[], query: stri
     .slice(0, maxChunks);
 
   const sources = selected.map(({ document, chunk, text }, index) => ({
-    id: `${document.id}:${chunk.id}`,
+    id: stableChunkId(document, chunk.id),
     documentId: document.id,
     name: document.name,
     page: chunk.page,
@@ -61,4 +80,44 @@ export const retrieveDocumentContext = (documents: StoredDocument[], query: stri
     .map(candidate => candidate.image);
 
   return { content, sources, images };
+};
+
+export const retrieveGroundedDocumentContext = async (
+  documents: StoredDocument[],
+  query: string,
+  signal?: AbortSignal,
+): Promise<RetrievedDocumentContext> => {
+  if (!documents.length) return { content: '', sources: [], images: [] };
+  try {
+    await syncNow();
+    if (signal?.aborted) throw new DOMException('Retrieval cancelled', 'AbortError');
+    const preview = await serviceJson<ServiceRetrievalPreview>('/api/v1/retrieval/preview', 'POST', {
+      query,
+      documentIds: documents.map(document => document.id),
+      limit: 8,
+      includeNeighbors: true,
+    }, { signal });
+    const sources = preview.results.map((result, index) => ({
+      id: result.sourceSpanId,
+      documentId: result.documentId,
+      name: result.documentName,
+      page: result.page,
+      excerpt: result.excerpt,
+      index: index + 1,
+    }));
+    const content = preview.results.map((result, index) =>
+      `[Source ${index + 1}: ${result.documentName}${result.page ? `, page ${result.page}` : ''}; span ${result.sourceSpanId}]\n${result.content}`).join('\n\n');
+    const resultKeys = new Set(preview.results.map(result => `${result.documentId}:${result.chunkIndex}`));
+    const resultPages = new Set(preview.results.flatMap(result => result.page ? [`${result.documentId}:${result.page}`] : []));
+    const images = documents.flatMap(document => (document.images ?? []).flatMap(image => {
+      const chunks = document.chunks?.length ? document.chunks : chunkDocumentContent(document.content);
+      const linked = resultPages.has(`${document.id}:${image.page}`) || chunks.some(chunk => resultKeys.has(`${document.id}:${chunk.index}`)
+        && image.sourceStart !== undefined && image.sourceStart >= chunk.start && image.sourceStart < chunk.end);
+      return linked ? [image] : [];
+    })).slice(0, 4);
+    return { content, sources, images };
+  } catch (error) {
+    if ((error as Error).name === 'AbortError' || signal?.aborted) throw error;
+    return retrieveDocumentContext(documents, query);
+  }
 };
