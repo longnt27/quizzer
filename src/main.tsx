@@ -5,11 +5,12 @@ import App from './App.tsx'
 import 'antd/dist/reset.css';
 import { initializeServerSync } from './db/serverSync.ts';
 import { ensureAppProfile } from './utils/appProfile.ts';
+import { loadRememberedApiKeys } from './utils/providerSettings.ts';
 
 // Classify a profile as new or upgraded only after the first server merge. This
 // prevents a fresh browser connected to an existing library from being sent
 // through first-run onboarding before its records arrive.
-void initializeServerSync().then(() => ensureAppProfile());
+void Promise.all([initializeServerSync(), loadRememberedApiKeys().catch(() => undefined)]).then(() => ensureAppProfile());
 
 createRoot(document.getElementById('root')!).render(
     <StrictMode>

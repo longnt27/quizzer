@@ -2,6 +2,7 @@ import type { GenerationProvider, ProviderRoute } from '../types';
 
 const PROVIDER_SETTINGS_KEY = 'quizzer.providerSettings';
 const API_KEY_PREFIX = 'quizzer.apiKey.';
+let rememberedApiKeys: Partial<Record<GenerationProvider, string>> = {};
 
 export type ProviderKind = 'agent' | 'api';
 export type AgentProvider = 'codex' | 'claude-agent' | 'antigravity-agent';
@@ -84,12 +85,33 @@ export const setProviderSettings = (settings: ProviderSettings) => {
   window.dispatchEvent(new Event('quizzer:provider-settings'));
 };
 
-export const getApiKey = (provider: GenerationProvider) => sessionStorage.getItem(`${API_KEY_PREFIX}${provider}`) ?? '';
+export const getApiKey = (provider: GenerationProvider) => sessionStorage.getItem(`${API_KEY_PREFIX}${provider}`) ?? rememberedApiKeys[provider] ?? '';
 
 export const setApiKey = (provider: GenerationProvider, value: string) => {
   const key = `${API_KEY_PREFIX}${provider}`;
   if (value) sessionStorage.setItem(key, value);
   else sessionStorage.removeItem(key);
+};
+
+export const loadRememberedApiKeys = async () => {
+  if (!window.quizzerDesktop) return { values: rememberedApiKeys, providers: [] as GenerationProvider[] };
+  const values = await window.quizzerDesktop.credentials.list();
+  rememberedApiKeys = { ...values };
+  window.dispatchEvent(new Event('quizzer:provider-settings'));
+  return { values: rememberedApiKeys, providers: Object.keys(values) as GenerationProvider[] };
+};
+
+export const rememberApiKey = async (provider: GenerationProvider, value: string) => {
+  if (!window.quizzerDesktop) throw new Error('Remembered credentials are available only in the desktop app');
+  await window.quizzerDesktop.credentials.set(provider, value);
+  rememberedApiKeys = { ...rememberedApiKeys, [provider]: value.trim() };
+};
+
+export const forgetRememberedApiKey = async (provider: GenerationProvider) => {
+  if (window.quizzerDesktop) await window.quizzerDesktop.credentials.delete(provider);
+  const next = { ...rememberedApiKeys };
+  delete next[provider];
+  rememberedApiKeys = next;
 };
 
 // Retain the old Gemini key for users upgrading from earlier Quizzer builds.

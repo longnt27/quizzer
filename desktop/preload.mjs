@@ -7,4 +7,10 @@ contextBridge.exposeInMainWorld('quizzerDesktop', Object.freeze({
   architecture: process.arch,
   versions: Object.freeze({ electron: process.versions.electron, chrome: process.versions.chrome }),
   selectPluginDirectory: () => ipcRenderer.invoke('plugins:select-directory'),
+  credentials: Object.freeze({
+    status: () => ipcRenderer.invoke('credentials:status'),
+    list: () => ipcRenderer.invoke('credentials:list'),
+    set: (provider, value) => ipcRenderer.invoke('credentials:set', provider, value),
+    delete: provider => ipcRenderer.invoke('credentials:delete', provider),
+  }),
 }));

@@ -4,7 +4,8 @@ import { ApiOutlined, CheckCircleOutlined, CloudDownloadOutlined, DeleteOutlined
 import type { GenerationProvider, InterfaceMode } from '../types';
 import {
   AGENT_PROVIDERS, API_PROVIDERS, PROVIDERS, getApiKey, getProviderSettings,
-  migrateLegacyGeminiKey, setApiKey, setProviderSettings, type AgentProvider,
+  forgetRememberedApiKey, loadRememberedApiKeys, migrateLegacyGeminiKey, rememberApiKey,
+  setApiKey, setProviderSettings, type AgentProvider,
 } from '../utils/providerSettings';
 import { getMessageApi } from '../utils/messageProvider';
 import { serviceFetch, serviceJson, serviceRequest } from '../utils/serviceApi';
@@ -55,6 +56,13 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const [enabledProviders, setEnabledProviders] = useState(initial.enabledProviders);
   const [enabledTools, setEnabledTools] = useState(initial.enabledTools);
   const [apiKeys, setApiKeys] = useState<Record<string, string>>(() => Object.fromEntries(API_PROVIDERS.map(provider => [provider.id, getApiKey(provider.id)])));
+  const [rememberedProviders, setRememberedProviders] = useState<Set<string>>(new Set());
+  const [credentialStorage, setCredentialStorage] = useState<{ available: boolean; backend: string; message: string }>({
+    available: false,
+    backend: 'unavailable',
+    message: window.quizzerDesktop ? 'Checking operating-system credential protection…' : 'Remembered credentials are available only in the desktop app.',
+  });
+  const [credentialReady, setCredentialReady] = useState(!window.quizzerDesktop);
   const [status, setStatus] = useState<IntegrationStatus | null>(null);
   const [statusError, setStatusError] = useState('');
   const [externalPlugins, setExternalPlugins] = useState<ExternalPlugin[]>([]);
@@ -96,6 +104,19 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   }, []);
 
   useEffect(() => { void refresh(); void refreshExternal(); }, [refresh, refreshExternal]);
+  useEffect(() => {
+    if (!window.quizzerDesktop) return;
+    let active = true;
+    void Promise.all([window.quizzerDesktop.credentials.status(), loadRememberedApiKeys()]).then(([storage, remembered]) => {
+      if (!active) return;
+      setCredentialStorage(storage);
+      setRememberedProviders(new Set(remembered.providers));
+      setApiKeys(current => ({ ...current, ...remembered.values }));
+    }).catch(error => {
+      if (active) setCredentialStorage({ available: false, backend: 'error', message: error instanceof Error ? error.message : 'Credential storage is unavailable.' });
+    }).finally(() => { if (active) setCredentialReady(true); });
+    return () => { active = false; };
+  }, []);
   useEffect(() => {
     if (!status) return;
     const jobs = [status.marker.job, status.ocr?.job, status.embeddings?.job, ...AGENT_PROVIDERS.map(provider => status[provider.id]?.job)].filter(Boolean);
@@ -182,13 +203,18 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   });
 
   const save = async () => {
-    for (const provider of API_PROVIDERS) setApiKey(provider.id, apiKeys[provider.id]?.trim() ?? '');
     const available = PROVIDERS.filter(provider => enabledProviders[provider.id] && (provider.kind === 'api'
       ? Boolean(apiKeys[provider.id]?.trim())
       : Boolean(status?.[provider.id as AgentProvider]?.connected)));
     const selectedProvider = available.some(provider => provider.id === defaultProvider) ? defaultProvider : available[0]?.id ?? defaultProvider;
     setSaving(true);
     try {
+      if (credentialStorage.available) for (const provider of API_PROVIDERS) {
+        const value = apiKeys[provider.id]?.trim() ?? '';
+        if (rememberedProviders.has(provider.id) && value) await rememberApiKey(provider.id, value);
+        else await forgetRememberedApiKey(provider.id);
+      }
+      for (const provider of API_PROVIDERS) setApiKey(provider.id, apiKeys[provider.id]?.trim() ?? '');
       await serviceJson('/api/v1/settings', 'PATCH', { values: {
         'generation.defaultProvider': selectedProvider,
         'extraction.marker': enabledTools.marker,
@@ -216,11 +242,29 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
     ? defaultProvider
     : configuredProviderOptions[0]?.id;
 
+  const changeRemembered = (provider: (typeof API_PROVIDERS)[number], remember: boolean) => {
+    if (!remember) {
+      setRememberedProviders(current => { const next = new Set(current); next.delete(provider.id); return next; });
+      return;
+    }
+    if (!credentialStorage.available) return message.warning(credentialStorage.message);
+    Modal.confirm({
+      title: `Remember ${provider.label.replace(' – ', ' ')} credentials?`,
+      content: 'Quizzer will encrypt this API key with the operating system and store only the encrypted value in your local application data. It is never included in exports, backups, or diagnostics.',
+      okText: 'Encrypt and remember',
+      onOk: () => setRememberedProviders(current => new Set(current).add(provider.id)),
+    });
+  };
+
   return (
-    <Modal open title={<Space><ApiOutlined /> Plugins & models</Space>} width={900} onCancel={onClose} onOk={() => void save()} confirmLoading={saving} okText="Save settings">
+    <Modal open title={<Space><ApiOutlined /> Plugins & models</Space>} width={900} onCancel={onClose} onOk={() => void save()}
+      confirmLoading={saving} okButtonProps={{ disabled: !credentialReady }} okText="Save settings">
       <Typography.Paragraph type="secondary">
-        Connect signed-in CLI agents or enter API keys without editing terminal configuration. API keys live only in this browser tab.
+        Connect signed-in CLI agents or enter API keys without editing terminal configuration. API keys are session-only unless you explicitly enable OS-protected storage below.
       </Typography.Paragraph>
+      <Alert type={credentialStorage.available ? 'success' : 'info'} showIcon
+        message={credentialStorage.available ? 'OS-protected credential storage is available' : 'Credentials will remain session-only'}
+        description={credentialStorage.message} style={{ marginBottom: 16 }} />
       {statusError && <Alert type="error" showIcon message={statusError} action={<Button size="small" icon={<ReloadOutlined />} onClick={() => void refresh()}>Retry</Button>} />}
       {!status && !statusError ? <div className="plugin-loading"><Spin /></div> : <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <section className="plugin-card">
@@ -300,7 +344,11 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
           <Space direction="vertical" style={{ width: '100%' }}>
             <Input.Password value={apiKeys[provider.id]} onChange={event => setApiKeys(current => ({ ...current, [provider.id]: event.target.value }))} placeholder={provider.keyLabel} autoComplete="off" />
             <Input value={models[provider.id]} onChange={event => setModels(current => ({ ...current, [provider.id]: event.target.value }))} addonBefore="Default model" placeholder={provider.defaultModel} />
-            {!!apiKeys[provider.id]?.trim() && <Space><Switch checked={enabledProviders[provider.id]} onChange={value => setEnabledProviders(current => ({ ...current, [provider.id]: value }))} /><Typography.Text>Enabled</Typography.Text></Space>}
+            {!!apiKeys[provider.id]?.trim() && <Space wrap>
+              <Switch checked={enabledProviders[provider.id]} onChange={value => setEnabledProviders(current => ({ ...current, [provider.id]: value }))} /><Typography.Text>Enabled</Typography.Text>
+              <Switch checked={rememberedProviders.has(provider.id)} disabled={!credentialStorage.available}
+                onChange={value => changeRemembered(provider, value)} /><Typography.Text>Remember with OS protection</Typography.Text>
+            </Space>}
           </Space>
         </section>)}
 

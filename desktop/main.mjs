@@ -1,8 +1,9 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, Tray, nativeImage, net, protocol, shell, utilityProcess } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, Tray, nativeImage, net, protocol, safeStorage, shell, utilityProcess } from 'electron';
 import { existsSync } from 'node:fs';
 import { dirname, extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { ensureServiceToken } from '../server/auth.mjs';
+import { CredentialVault } from './credential-vault.mjs';
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'quizzer', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
 
@@ -17,6 +18,7 @@ let serviceToken;
 let window;
 let tray;
 let quitting = false;
+let credentialVault;
 
 const isAllowedExternalUrl = value => {
   try {
@@ -42,6 +44,22 @@ const registerValidatedIpc = () => {
       properties: ['openDirectory'],
     });
     return result.canceled ? undefined : result.filePaths[0];
+  });
+  ipcMain.handle('credentials:status', event => {
+    if (!isTrustedRenderer(event)) throw new Error('Untrusted renderer');
+    return credentialVault.status();
+  });
+  ipcMain.handle('credentials:list', async event => {
+    if (!isTrustedRenderer(event)) throw new Error('Untrusted renderer');
+    return credentialVault.list();
+  });
+  ipcMain.handle('credentials:set', async (event, provider, value) => {
+    if (!isTrustedRenderer(event)) throw new Error('Untrusted renderer');
+    return credentialVault.set(provider, value);
+  });
+  ipcMain.handle('credentials:delete', async (event, provider) => {
+    if (!isTrustedRenderer(event)) throw new Error('Untrusted renderer');
+    return credentialVault.delete(provider);
   });
 };
 
@@ -142,6 +160,7 @@ const createTray = () => {
 };
 
 app.whenReady().then(async () => {
+  credentialVault = new CredentialVault(join(app.getPath('userData'), 'credentials.json'), safeStorage);
   await startService();
   if (!developmentUrl) void registerApplicationProtocol();
   registerValidatedIpc();

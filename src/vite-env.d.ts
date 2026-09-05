@@ -14,5 +14,11 @@ interface Window {
     readonly architecture: string;
     readonly versions: Readonly<{ electron: string; chrome: string }>;
     readonly selectPluginDirectory: () => Promise<string | undefined>;
+    readonly credentials: {
+      readonly status: () => Promise<{ available: boolean; backend: string; message: string }>;
+      readonly list: () => Promise<Partial<Record<import('./types').GenerationProvider, string>>>;
+      readonly set: (provider: import('./types').GenerationProvider, value: string) => Promise<{ ok: true }>;
+      readonly delete: (provider: import('./types').GenerationProvider) => Promise<{ ok: true }>;
+    };
   };
 }
