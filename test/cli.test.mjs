@@ -168,6 +168,18 @@ test('creates a consistent backup without copying the service token', async () =
   const object = result.manifest.objects[0];
   assert.equal((await stat(join(backup, ...object.path.split('/')))).size, object.size);
   await assert.rejects(stat(join(backup, 'service-token')), /ENOENT/);
+
+  const currentDocument = (await cli('documents', 'list')).documents[0];
+  await cli('config', 'set', 'hardware.profile', 'lite');
+  await cli('documents', 'remove', currentDocument.id, '--yes');
+  await rm(join(environment.QUIZZER_APP_DATA_DIR, ...object.path.split('/')));
+  const restored = await cli('backup', 'restore', backup, '--yes');
+  assert.equal(restored.restored, true);
+  assert.equal((await cli('config', 'get', 'hardware.profile')).value, 'balanced');
+  assert.equal((await cli('documents', 'list')).documents.length, 1);
+  assert.equal((await stat(join(environment.QUIZZER_APP_DATA_DIR, ...object.path.split('/')))).size, object.size);
+  assert.equal((await cli('backup', 'verify', restored.recoveryDirectory)).valid, true);
+
   await writeFile(join(backup, ...object.path.split('/')), 'tampered');
   await assert.rejects(cli('backup', 'verify', backup), /Command failed/);
 });

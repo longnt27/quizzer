@@ -271,6 +271,8 @@ export const subscribeStorageChanges = listener => {
 
 export const backupDatabase = async destination => database.backup(destination);
 
+export const closeDatabase = () => database.close();
+
 export const storageInfo = () => ({
   databasePath,
   revision: Number(currentRevision.get().revision),

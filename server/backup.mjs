@@ -1,6 +1,6 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { chmod, copyFile, lstat, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
@@ -116,4 +116,71 @@ export const verifyBackup = async directory => {
     throw new Error('Backup object totals do not match its manifest');
   }
   return { valid: true, manifest };
+};
+
+const pathExists = path => lstat(path).then(() => true).catch(error => {
+  if (error?.code === 'ENOENT') return false;
+  throw error;
+});
+
+export const restoreBackup = async ({ directory, appDataDirectory, databasePath, settingsFile }) => {
+  const { manifest } = await verifyBackup(directory);
+  const restoreId = randomUUID();
+  const stagingRoot = join(appDataDirectory, `.restore-${restoreId}`);
+  const databaseStage = join(dirname(databasePath), `.quizzer-restore-${restoreId}.sqlite`);
+  const objectStage = join(stagingRoot, 'objects', 'sha256');
+  const configStage = join(stagingRoot, 'config.jsonc');
+  await mkdir(objectStage, { recursive: true, mode: 0o700 });
+  await mkdir(dirname(databaseStage), { recursive: true, mode: 0o700 });
+
+  try {
+    await copyFile(join(directory, manifest.database.path), databaseStage);
+    await secureFile(databaseStage);
+    for (const object of manifest.objects) {
+      const target = join(objectStage, object.sha256.slice(0, 2), object.sha256);
+      await mkdir(dirname(target), { recursive: true, mode: 0o700 });
+      await copyFile(join(directory, ...object.path.split('/')), target);
+      await secureFile(target);
+    }
+    if (manifest.config) {
+      await copyFile(join(directory, manifest.config.path), configStage);
+      await secureFile(configStage);
+    }
+
+    const operations = [
+      { target: `${databasePath}-wal` },
+      { target: `${databasePath}-shm` },
+      { target: databasePath, staged: databaseStage },
+      { target: join(appDataDirectory, 'objects', 'sha256'), staged: objectStage },
+      { target: settingsFile, staged: manifest.config ? configStage : undefined },
+    ];
+    const completed = [];
+    try {
+      for (const operation of operations) {
+        const previous = `${operation.target}.before-restore-${restoreId}`;
+        const hadPrevious = await pathExists(operation.target);
+        if (hadPrevious) await rename(operation.target, previous);
+        const completedOperation = { ...operation, previous, hadPrevious, placed: false };
+        completed.push(completedOperation);
+        if (operation.staged) {
+          await mkdir(dirname(operation.target), { recursive: true, mode: 0o700 });
+          await rename(operation.staged, operation.target);
+          completedOperation.placed = true;
+        }
+      }
+    } catch (error) {
+      for (const operation of completed.reverse()) {
+        if (operation.placed) await rm(operation.target, { recursive: true, force: true }).catch(() => {});
+        if (operation.hadPrevious) await rename(operation.previous, operation.target).catch(() => {});
+      }
+      throw error;
+    }
+    for (const operation of completed) {
+      if (operation.hadPrevious) await rm(operation.previous, { recursive: true, force: true });
+    }
+    return { restored: true, manifest };
+  } finally {
+    await rm(stagingRoot, { recursive: true, force: true }).catch(() => {});
+    await rm(databaseStage, { force: true }).catch(() => {});
+  }
 };

@@ -15,7 +15,7 @@ import { readRuntimeText, runningAsSingleExecutable } from '../server/runtime-as
 import { canonicalizeManifest } from '../release/manifest.mjs';
 import { validateReleaseManifest } from '../server/release-manifest.mjs';
 import { ObjectStore } from '../server/object-store.mjs';
-import { createBackup, verifyBackup } from '../server/backup.mjs';
+import { createBackup, restoreBackup, verifyBackup } from '../server/backup.mjs';
 
 const usage = `Quizzer CLI
 
@@ -35,6 +35,7 @@ Usage:
   quizzer migrations list [--json]
   quizzer backup create [--destination directory] [--json]
   quizzer backup verify <directory> [--json]
+  quizzer backup restore <directory> --yes [--json]
   quizzer release verify --metadata <file> --signature <file> --public-key <file> [--json]
   quizzer version
 `;
@@ -361,7 +362,44 @@ const runBackup = async action => {
     const result = await verifyBackup(directory);
     return writeResult(result, `Backup is valid: ${directory}\n${result.manifest.objects.length} objects · ${result.manifest.totals.objectBytes} bytes`);
   }
-  if (action !== 'create') fail('Use backup create or verify');
+  if (action === 'restore') {
+    const directory = parsed.positionals.shift();
+    if (!directory) fail('backup restore requires a backup directory');
+    if (flag('yes') !== 'true') fail('backup restore replaces the current library and requires --yes');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 500);
+    try {
+      const response = await fetch(`http://127.0.0.1:${process.env.QUIZZER_SERVICE_PORT || 8787}/api/health`, { signal: controller.signal });
+      if (response.ok && (await response.json().catch(() => ({}))).ok === true) {
+        fail('Quit the Quizzer desktop app and stop the local service before restoring a backup');
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('stop the local service')) throw error;
+    } finally { clearTimeout(timer); }
+
+    await verifyBackup(directory);
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const recoveryDirectory = join(appDataDirectory, 'backups', `before-restore-${stamp}`);
+    const database = await storage();
+    await createBackup({
+      destination: recoveryDirectory,
+      database,
+      objectStore,
+      settingsFile: settingsPath(appDataDirectory),
+    });
+    database.closeDatabase();
+    const result = await restoreBackup({
+      directory,
+      appDataDirectory,
+      databasePath: process.env.QUIZZER_DATABASE_PATH,
+      settingsFile: settingsPath(appDataDirectory),
+    });
+    return writeResult(
+      { ...result, directory, recoveryDirectory },
+      `Backup restored from ${directory}\nPrevious library recovery copy: ${recoveryDirectory}`,
+    );
+  }
+  if (action !== 'create') fail('Use backup create, verify, or restore');
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const directory = flag('destination', join(appDataDirectory, 'backups', stamp));
   const manifest = await createBackup({
