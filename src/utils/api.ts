@@ -2,6 +2,7 @@ import type { GenerationOptions, GenerationProvider, QuestionCounts, QuestionPro
 import { getApiKey, getProviderSettings } from './providerSettings';
 import { getGenerationBatchSize } from './generationSettings';
 import { renderGenerationPrompt } from './promptProfiles';
+import { serviceFetch } from './serviceApi';
 
 export interface GenerationProgress {
   accepted: number;
@@ -165,7 +166,7 @@ const cosineSimilarity = (left: number[], right: number[]) => {
 const tryEmbeddings = async (texts: string[], signal?: AbortSignal): Promise<number[][] | null> => {
   if (!getProviderSettings().enabledTools.embeddings) return null;
   try {
-    const response = await fetch('/api/embed', {
+    const response = await serviceFetch('/api/embed', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ texts }), signal,
     });
@@ -253,7 +254,7 @@ export function validateQuestion(value: unknown, expectedType?: QuestionType, mu
 const requestCandidates = async (prompt: string, schema: object, options: GenerationOptions, signal?: AbortSignal, images: string[] = []) => {
   let response: Response;
   try {
-    response = await fetch('/api/generate', {
+    response = await serviceFetch('/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

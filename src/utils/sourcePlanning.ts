@@ -2,6 +2,7 @@ import type { StoredCoveragePlan, StoredDocument, StoredDocumentChunk, StoredDoc
 import type { CoverageStrategy } from '../types';
 import { chunkDocumentContent, chunkText } from './documentChunks';
 import { getProviderSettings } from './providerSettings';
+import { serviceFetch } from './serviceApi';
 
 const SOURCE_CHARACTER_BUDGET = 54_000;
 const MAX_SOURCE_IMAGES = 6;
@@ -57,7 +58,7 @@ const cosineSimilarity = (left: number[], right: number[]) => {
 const embeddingImportance = async (documents: StoredDocument[], signal?: AbortSignal): Promise<number[] | null> => {
   if (!getProviderSettings().enabledTools.embeddings) return null;
   try {
-    const response = await fetch('/api/embed', {
+    const response = await serviceFetch('/api/embed', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, signal,
       body: JSON.stringify({ texts: documents.map(representativeText) }),
     });

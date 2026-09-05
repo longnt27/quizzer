@@ -8,6 +8,7 @@ import { extractPdf } from '../utils/pdf';
 import { getMessageApi } from '../utils/messageProvider';
 import { chunkDocumentContent } from '../utils/documentChunks';
 import { getProviderSettings } from '../utils/providerSettings';
+import { serviceFetch } from '../utils/serviceApi';
 
 interface PendingDocument {
   id: string;
@@ -53,7 +54,7 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
             reader.onerror = () => reject(reader.error);
             reader.readAsDataURL(file);
           });
-          const response = await fetch('/api/extract', {
+          const response = await serviceFetch('/api/extract', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name: file.name, data: dataUrl.split(',')[1], ocrEnabled: toolSettings.ocr }),
           });

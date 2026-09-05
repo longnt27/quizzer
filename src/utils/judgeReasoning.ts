@@ -1,6 +1,7 @@
 import type { CodingQuestion, GenerationProvider, ReasoningQuestion } from '../types';
 import { extractJson, ProviderRequestError } from './api';
 import { getApiKey } from './providerSettings';
+import { serviceFetch } from './serviceApi';
 
 export interface ReasoningJudgment {
   correct: boolean;
@@ -63,7 +64,7 @@ ${JSON.stringify(material)}
 
   let response: Response;
   try {
-    response = await fetch('/api/generate', {
+    response = await serviceFetch('/api/generate', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, signal,
       body: JSON.stringify({ provider, model: model || undefined, apiKey: getApiKey(provider) || undefined, prompt, schema }),
     });

@@ -44,10 +44,15 @@ test.after(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 
-test('requires authentication for the versioned API', async () => {
+test('requires authentication for every sensitive service endpoint', async () => {
   const response = await fetch(`${origin}/api/v1/health`);
   assert.equal(response.status, 401);
   assert.equal((await response.json()).code, 'unauthorized');
+  const legacyResponse = await fetch(`${origin}/api/system/capabilities`);
+  assert.equal(legacyResponse.status, 401);
+  assert.equal((await legacyResponse.json()).code, 'unauthorized');
+  assert.equal((await fetch(`${origin}/api/health`)).status, 200);
+  assert.equal((await authorized('/api/system/capabilities')).status, 200);
   assert.equal((await authorized('/api/v1/health')).status, 200);
   const contract = await authorized('/api/v1/openapi.yaml');
   assert.equal(contract.status, 200);
@@ -100,7 +105,7 @@ test('provides onboarding, document, job, and event operations', async () => {
   assert.equal(savedProfile.status, 200);
   assert.deepEqual((await savedProfile.json()).profile.onboarding, onboarding);
 
-  const sync = await fetch(`${origin}/api/storage/sync`, {
+  const sync = await authorized('/api/storage/sync', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ changes: [
       { collection: 'documents', id: 'doc-1', data: { id: 'doc-1', name: 'Guide.md', createdAt: 1, mimeType: 'text/markdown', size: 10, tags: ['iac'], content: '# Terraform\n\nRemote state locking supports safe team collaboration.' } },

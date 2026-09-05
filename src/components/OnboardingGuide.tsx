@@ -6,6 +6,7 @@ import { db, type StoredAppProfile } from '../db/db';
 import type { HardwareCapabilities, HardwareProfileId, InterfaceMode, OnboardingStep } from '../types';
 import { useConfiguredProviders } from '../utils/useConfiguredProviders';
 import { advanceOnboarding, goToOnboardingStep, ONBOARDING_STEPS, setHardwareProfile, setInterfaceMode, skipOnboarding, updateAppProfile } from '../utils/appProfile';
+import { serviceFetch } from '../utils/serviceApi';
 
 interface Props {
   open: boolean;
@@ -43,7 +44,7 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
   useEffect(() => setInstruction(profile.defaultLearningInstruction ?? ''), [profile.defaultLearningInstruction]);
   useEffect(() => {
     if (!open || hardware || hardwareError) return;
-    void fetch('/api/system/capabilities').then(async response => {
+    void serviceFetch('/api/system/capabilities').then(async response => {
       if (!response.ok) throw new Error('Hardware scan is unavailable');
       setHardware(await response.json() as HardwareCapabilities);
     }).catch(error => setHardwareError((error as Error).message));

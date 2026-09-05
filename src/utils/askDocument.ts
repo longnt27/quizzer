@@ -3,6 +3,7 @@ import type { StoredDocument } from '../db/db';
 import { extractJson, ProviderRequestError } from './api';
 import { getApiKey } from './providerSettings';
 import { retrieveDocumentContext } from './documentRetrieval';
+import { serviceFetch } from './serviceApi';
 
 export type DocumentConversationTurn = AIConversationTurn;
 
@@ -22,7 +23,7 @@ export async function requestAIAnswer(
 ) {
   let response: Response;
   try {
-    response = await fetch('/api/generate', {
+    response = await serviceFetch('/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

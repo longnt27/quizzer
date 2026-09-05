@@ -973,6 +973,9 @@ createServer(async (request, response) => {
   if (request.method === 'GET' && request.url === '/api/health') {
     return send(response, 200, { ok: true, storage: storageInfo(), providers: Object.fromEntries(Object.keys(providerRunners).map(provider => [provider, true])) });
   }
+  if (url.pathname.startsWith('/api/') && !isAuthorizedRequest(request, serviceToken)) {
+    return send(response, 401, { error: 'A valid Quizzer service token is required', code: 'unauthorized' });
+  }
   if (request.method === 'GET' && request.url === '/api/system/capabilities') {
     return send(response, 200, detectHardwareCapabilities(appDataDirectory));
   }

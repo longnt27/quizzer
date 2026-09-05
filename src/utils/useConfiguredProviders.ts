@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { GenerationProvider } from '../types';
 import { getApiKey, getProviderSettings, PROVIDERS, type AgentProvider, type ProviderDefinition } from './providerSettings';
+import { serviceFetch } from './serviceApi';
 
 interface IntegrationStatus {
   codex?: { connected?: boolean };
@@ -20,7 +21,7 @@ export const useConfiguredProviders = () => {
       const settings = getProviderSettings();
       const available = new Set<GenerationProvider>(localApiProviders().map(provider => provider.id));
       try {
-        const response = await fetch('/api/integrations');
+        const response = await serviceFetch('/api/integrations');
         const status = await response.json() as IntegrationStatus;
         if (response.ok) {
           for (const provider of PROVIDERS) {

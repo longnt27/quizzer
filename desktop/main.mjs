@@ -75,7 +75,7 @@ const registerApplicationProtocol = () => protocol.handle('quizzer', request => 
   if (url.hostname !== 'app') return new Response('Not found', { status: 404 });
   if (url.pathname.startsWith('/api/')) {
     const headers = new Headers(request.headers);
-    if (url.pathname.startsWith('/api/v1/')) headers.set('Authorization', `Bearer ${serviceToken}`);
+    headers.set('Authorization', `Bearer ${serviceToken}`);
     return net.fetch(`http://127.0.0.1:8787${url.pathname}${url.search}`, {
       method: request.method,
       headers,

@@ -7,7 +7,7 @@ import {
   migrateLegacyGeminiKey, setApiKey, setProviderSettings, type AgentProvider,
 } from '../utils/providerSettings';
 import { getMessageApi } from '../utils/messageProvider';
-import { serviceJson, serviceRequest } from '../utils/serviceApi';
+import { serviceFetch, serviceJson, serviceRequest } from '../utils/serviceApi';
 
 type JobState = 'idle' | 'working' | 'complete' | 'error';
 type AgentStatus = { installed: boolean; connected: boolean; job: { state: JobState; message: string } };
@@ -68,7 +68,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
 
   const refresh = useCallback(async () => {
     try {
-      const response = await fetch('/api/integrations');
+      const response = await serviceFetch('/api/integrations');
       const payload = await response.json() as IntegrationStatus & { error?: string };
       if (!response.ok) throw new Error(payload.error || 'Could not load plugin status');
       setStatus(payload);
@@ -105,7 +105,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   }, [refresh, status]);
 
   const start = async (path: string) => {
-    const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const response = await serviceFetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
     if (!response.ok) {
       const payload = await response.json().catch(() => ({})) as { error?: string };
       throw new Error(payload.error || 'Could not start plugin action');

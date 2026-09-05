@@ -1,5 +1,6 @@
 import type { Table } from 'dexie';
 import { db, type StoredSyncChange, type SyncCollection } from './db';
+import { serviceAuthorizationHeader } from '../utils/serviceApi';
 
 type SyncStatus = 'starting' | 'synced' | 'offline' | 'syncing';
 type SyncPhase = 'idle' | 'preparing' | 'uploading' | 'receiving' | 'applying' | 'complete' | 'error';
@@ -194,6 +195,8 @@ const postSync = (body: string, batch: number, batchCount: number) => new Promis
   const request = new XMLHttpRequest();
   request.open('POST', '/api/storage/sync');
   request.setRequestHeader('Content-Type', 'application/json');
+  const authorization = serviceAuthorizationHeader();
+  if (authorization) request.setRequestHeader('Authorization', authorization);
   request.timeout = 5 * 60_000;
   request.upload.onprogress = event => {
     const fraction = event.lengthComputable ? event.loaded / Math.max(event.total, 1) : 0;
