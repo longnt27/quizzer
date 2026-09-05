@@ -4,6 +4,7 @@ import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promi
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { storageInfo, syncStorage } from './server/storage.mjs';
+import { detectHardwareCapabilities } from './server/hardware-profile.mjs';
 
 const port = Number(process.env.QUIZZER_SERVICE_PORT || 8787);
 const maxBodyBytes = 25 * 1024 * 1024;
@@ -696,6 +697,9 @@ createServer(async (request, response) => {
   }
   if (request.method === 'GET' && request.url === '/api/health') {
     return send(response, 200, { ok: true, storage: storageInfo(), providers: Object.fromEntries(Object.keys(providerRunners).map(provider => [provider, true])) });
+  }
+  if (request.method === 'GET' && request.url === '/api/system/capabilities') {
+    return send(response, 200, detectHardwareCapabilities(process.cwd()));
   }
   if (request.method === 'POST' && request.url === '/api/storage/sync') {
     try { return send(response, 200, syncStorage(await readJson(request, maxStorageBodyBytes))); }
