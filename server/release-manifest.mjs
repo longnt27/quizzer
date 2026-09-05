@@ -18,6 +18,7 @@ export const validateReleaseManifest = manifest => {
   if (manifest.channel !== 'stable' && manifest.channel !== 'beta') errors.push('channel must be stable or beta');
   if (!Number.isFinite(Date.parse(manifest.publishedAt ?? ''))) errors.push('publishedAt must be an ISO date');
   if (manifest.signatureAlgorithm !== 'ed25519') errors.push('signatureAlgorithm must be ed25519');
+  if (typeof manifest.publicKeyId !== 'string' || !manifest.publicKeyId) errors.push('publicKeyId is missing');
   if (typeof manifest.signature !== 'string' || manifest.signature.length < 40) errors.push('signature is missing');
   if (!Array.isArray(manifest.artifacts) || !manifest.artifacts.length) errors.push('artifacts must not be empty');
 

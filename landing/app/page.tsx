@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils';
 
 type Platform = 'windows' | 'macos' | 'linux';
 type ReleaseArtifact = { platform: Platform; architecture?: string; url: string; sha256?: string; name?: string };
-type ReleaseManifest = { version: string; publishedAt?: string; signature?: string; artifacts: ReleaseArtifact[] };
+type ReleaseManifest = { version: string; publishedAt?: string; signatureAlgorithm: 'ed25519'; publicKeyId: string; signature: string; artifacts: ReleaseArtifact[] };
 
 const manifestUrl = 'https://github.com/Somethings1/quizzer/releases/latest/download/release-manifest.json';
 const releasesUrl = 'https://github.com/Somethings1/quizzer/releases/latest';
@@ -46,6 +46,33 @@ function isTrustedArtifact(artifact: ReleaseArtifact) {
   } catch { return false; }
 }
 
+function canonicalize(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalize).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => key !== 'signature')
+      .sort(([left], [right]) => left.localeCompare(right));
+    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canonicalize(item)}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function decodeBase64(value: string) {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
+  return Uint8Array.from(atob(normalized), character => character.charCodeAt(0));
+}
+
+async function verifyReleaseManifest(value: Partial<ReleaseManifest>): Promise<ReleaseManifest> {
+  const publicKey = process.env.NEXT_PUBLIC_QUIZZER_RELEASE_PUBLIC_KEY;
+  if (!publicKey) throw new Error('Release signing key is not configured');
+  if (typeof value.version !== 'string' || value.signatureAlgorithm !== 'ed25519' || typeof value.publicKeyId !== 'string'
+    || typeof value.signature !== 'string' || !Array.isArray(value.artifacts)) throw new Error('Invalid release manifest');
+  const key = await crypto.subtle.importKey('raw', decodeBase64(publicKey), { name: 'Ed25519' }, false, ['verify']);
+  const valid = await crypto.subtle.verify({ name: 'Ed25519' }, key, decodeBase64(value.signature), new TextEncoder().encode(canonicalize(value)));
+  if (!valid) throw new Error('Release manifest signature is invalid');
+  return { ...value, version: value.version, signatureAlgorithm: 'ed25519', publicKeyId: value.publicKeyId, signature: value.signature, artifacts: value.artifacts.filter(isTrustedArtifact) };
+}
+
 export default function Home() {
   const detectedPlatform = useSyncExternalStore(() => () => undefined, detectPlatform, () => 'macos' as Platform);
   const [platformOverride, setPlatformOverride] = useState<Platform>();
@@ -60,9 +87,7 @@ export default function Home() {
     const controller = new AbortController();
     void fetch(manifestUrl, { signal: controller.signal }).then(async response => {
       if (!response.ok) throw new Error('Release manifest unavailable');
-      const value = await response.json() as Partial<ReleaseManifest>;
-      if (typeof value.version !== 'string' || !Array.isArray(value.artifacts)) throw new Error('Invalid release manifest');
-      setManifest({ ...value, version: value.version, artifacts: value.artifacts.filter(isTrustedArtifact) });
+      setManifest(await verifyReleaseManifest(await response.json() as Partial<ReleaseManifest>));
     }).catch(error => { if ((error as Error).name !== 'AbortError') setManifestUnavailable(true); });
     return () => controller.abort();
   }, []);
@@ -179,7 +204,7 @@ export default function Home() {
     <section id="download" className="section download-section">
       <div className="download-panel">
         <div><p className="section-kicker">Get Quizzer</p><h2>One command. Your whole study workspace.</h2><p>Per-user installers verify checksums, add the CLI to PATH, register the desktop app, and open onboarding.</p></div>
-        <div className="download-status">{manifest ? <><Sparkles /><span><strong>Version {manifest.version}</strong><small>Release manifest loaded · {manifest.artifacts.length} signed artifacts</small></span></> : manifestUnavailable ? <><RefreshCw /><span><strong>Release manifest unavailable</strong><small>Downloads safely fall back to GitHub Releases.</small></span></> : <><RefreshCw className="spin" /><span><strong>Checking latest release</strong><small>Loading artifacts and checksums…</small></span></>}</div>
+        <div className="download-status">{manifest ? <><Sparkles /><span><strong>Version {manifest.version}</strong><small>Verified release manifest · {manifest.artifacts.length} signed artifacts</small></span></> : manifestUnavailable ? <><RefreshCw /><span><strong>Verified release unavailable</strong><small>Downloads safely fall back to GitHub Releases.</small></span></> : <><RefreshCw className="spin" /><span><strong>Checking latest release</strong><small>Verifying artifacts and checksums…</small></span></>}</div>
         <div className="install-list">{(Object.keys(platformLabel) as Platform[]).map(item => {
           const itemArtifact = manifest?.artifacts.find(candidate => candidate.platform === item);
           return <article key={item}>

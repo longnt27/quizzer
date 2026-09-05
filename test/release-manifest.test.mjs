@@ -8,6 +8,7 @@ const manifest = {
   channel: 'beta',
   publishedAt: '2026-09-05T00:00:00.000Z',
   signatureAlgorithm: 'ed25519',
+  publicKeyId: 'quizzer-release-2026',
   signature: 'dGVzdC1zaWduYXR1cmUtdGhhdC1pcy1sb25nLWVub3VnaC10by12YWxpZGF0ZQ==',
   artifacts: [{
     name: 'quizzer-macos-arm64.dmg',

@@ -4,13 +4,15 @@
   "title": "Quizzer signed release manifest",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "version", "channel", "publishedAt", "signatureAlgorithm", "signature", "artifacts"],
+  "$comment": "The Ed25519 signature covers UTF-8 canonical JSON with object keys sorted recursively and the signature property omitted.",
+  "required": ["schemaVersion", "version", "channel", "publishedAt", "signatureAlgorithm", "publicKeyId", "signature", "artifacts"],
   "properties": {
     "schemaVersion": { "const": 1 },
     "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$" },
     "channel": { "enum": ["stable", "beta"] },
     "publishedAt": { "type": "string", "format": "date-time" },
     "signatureAlgorithm": { "const": "ed25519" },
+    "publicKeyId": { "type": "string", "minLength": 1 },
     "signature": { "type": "string", "minLength": 40 },
     "artifacts": {
       "type": "array",
