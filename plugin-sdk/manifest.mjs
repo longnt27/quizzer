@@ -1,5 +1,5 @@
 import { createHash, createPublicKey, verify } from 'node:crypto';
-import { lstat, readFile } from 'node:fs/promises';
+import { lstat, readFile, realpath } from 'node:fs/promises';
 import { isAbsolute, join, normalize, sep } from 'node:path';
 
 export const PLUGIN_SCHEMA_VERSION = 1;
@@ -25,7 +25,8 @@ const requireString = (value, label, maximum = 500) => {
 
 export const validatePluginPath = value => {
   requireString(value, 'Plugin path');
-  if (isAbsolute(value) || value.includes('\\') || value.includes('\0')) throw new Error(`Unsafe plugin path: ${value}`);
+  if (isAbsolute(value) || value.includes('\\') || value.includes('\0')
+    || value.split('/').some(part => !part || part === '.' || part === '..')) throw new Error(`Unsafe plugin path: ${value}`);
   const normalized = normalize(value);
   if (normalized === '..' || normalized.startsWith(`..${sep}`) || normalized.startsWith(`.${sep}`)) throw new Error(`Unsafe plugin path: ${value}`);
   return normalized;
@@ -120,13 +121,15 @@ export const verifyPluginSignature = (manifest, trustedKeys) => {
 
 export const verifyPluginFiles = async (directory, manifest) => {
   validatePluginManifest(manifest);
-  const root = normalize(directory);
+  const root = await realpath(directory);
   for (const file of manifest.files) {
     const path = join(root, validatePluginPath(file.path));
     if (!path.startsWith(`${root}${sep}`)) throw new Error(`Plugin file escapes its directory: ${file.path}`);
     const details = await lstat(path);
     if (!details.isFile() || details.isSymbolicLink()) throw new Error(`Plugin file must be a regular file: ${file.path}`);
-    const digest = createHash('sha256').update(await readFile(path)).digest('hex');
+    const resolved = await realpath(path);
+    if (!resolved.startsWith(`${root}${sep}`)) throw new Error(`Plugin file escapes its directory: ${file.path}`);
+    const digest = createHash('sha256').update(await readFile(resolved)).digest('hex');
     if (digest !== file.sha256) throw new Error(`Plugin file hash mismatch: ${file.path}`);
   }
   return true;
@@ -134,7 +137,12 @@ export const verifyPluginFiles = async (directory, manifest) => {
 
 export const loadPluginManifest = async (directory, { verifyFiles = true } = {}) => {
   let manifest;
-  try { manifest = JSON.parse(await readFile(join(directory, 'quizzer.plugin.json'), 'utf8')); }
+  try {
+    const path = join(directory, 'quizzer.plugin.json');
+    const details = await lstat(path);
+    if (!details.isFile() || details.isSymbolicLink()) throw new Error('manifest must be a regular file');
+    manifest = JSON.parse(await readFile(path, 'utf8'));
+  }
   catch (error) { throw new Error(`Could not read quizzer.plugin.json: ${error instanceof Error ? error.message : String(error)}`); }
   validatePluginManifest(manifest);
   if (verifyFiles) await verifyPluginFiles(directory, manifest);
