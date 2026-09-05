@@ -95,7 +95,7 @@ PDF / Markdown / text
                               saved local quiz
 ```
 
-The React application never starts shell commands directly. It calls a loopback-only Node service, which invokes provider adapters, owns the SQLite library, and keeps API credentials outside browser bundles. Each browser retains an IndexedDB cache so work remains usable during a short outage and synchronizes when the server returns.
+The React application never starts shell commands directly. It calls a loopback-only Node service, which invokes provider adapters, owns the SQLite library, and keeps API credentials outside browser bundles. The desktop process waits for that service before opening and restarts it with capped backoff after an unexpected exit. Each browser retains an IndexedDB cache so work remains usable during a short outage and synchronizes when the server returns.
 
 ## Source development requirements
 

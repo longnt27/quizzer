@@ -1,5 +1,10 @@
 export const isValidServicePort = port => Number.isSafeInteger(port) && port >= 1 && port <= 65_535;
 
+export const serviceRestartDelay = attempt => {
+  if (!Number.isSafeInteger(attempt) || attempt < 0) throw new Error('Service restart attempt must be a non-negative integer');
+  return Math.min(30_000, 1_000 * (2 ** Math.min(attempt, 5)));
+};
+
 export const waitForServiceReady = (service, { timeoutMs = 120_000 } = {}) => new Promise((resolve, reject) => {
   let settled = false;
   const cleanup = () => {

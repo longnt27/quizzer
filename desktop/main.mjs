@@ -4,7 +4,7 @@ import { dirname, extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { ensureServiceToken } from '../server/auth.mjs';
 import { CredentialVault } from './credential-vault.mjs';
-import { waitForServiceReady } from './service-process.mjs';
+import { serviceRestartDelay, waitForServiceReady } from './service-process.mjs';
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'quizzer', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
 
@@ -21,6 +21,10 @@ let window;
 let tray;
 let quitting = false;
 let credentialVault;
+let serviceRecoveryEnabled = false;
+let serviceRestartAttempt = 0;
+let serviceRestartTimer;
+let serviceStableTimer;
 
 const isAllowedExternalUrl = value => {
   try {
@@ -65,11 +69,25 @@ const registerValidatedIpc = () => {
   });
 };
 
+const scheduleServiceRestart = () => {
+  if (quitting || !serviceRecoveryEnabled || serviceRestartTimer) return;
+  const delay = serviceRestartDelay(serviceRestartAttempt);
+  serviceRestartAttempt += 1;
+  process.stderr.write(`Restarting Quizzer local service in ${Math.ceil(delay / 1000)} seconds\n`);
+  serviceRestartTimer = setTimeout(() => {
+    serviceRestartTimer = undefined;
+    void startService().catch(error => {
+      process.stderr.write(`Quizzer local service restart failed: ${error instanceof Error ? error.message : String(error)}\n`);
+      scheduleServiceRestart();
+    });
+  }, delay);
+};
+
 const startService = async () => {
   const userData = app.getPath('userData');
   serviceToken = await ensureServiceToken(userData);
   const requestedPort = process.env.QUIZZER_DESKTOP_SERVICE_PORT ?? (developmentUrl ? '8787' : '0');
-  service = utilityProcess.fork(join(projectDirectory, 'server.mjs'), [], {
+  const child = utilityProcess.fork(join(projectDirectory, 'server.mjs'), [], {
     cwd: userData,
     env: {
       ...process.env,
@@ -85,12 +103,26 @@ const startService = async () => {
     stdio: 'inherit',
     serviceName: 'Quizzer local service',
   });
-  const readiness = waitForServiceReady(service);
-  service.on('spawn', () => process.stdout.write('Quizzer local service started\n'));
-  service.on('exit', code => {
-    if (!quitting && code !== 0) process.stderr.write(`Quizzer local service stopped (${code})\n`);
+  service = child;
+  const readiness = waitForServiceReady(child);
+  child.on('spawn', () => process.stdout.write('Quizzer local service started\n'));
+  child.on('exit', code => {
+    if (service !== child) return;
+    servicePort = undefined;
+    clearTimeout(serviceStableTimer);
+    if (!quitting) {
+      process.stderr.write(`Quizzer local service stopped (${code})\n`);
+      scheduleServiceRestart();
+    }
   });
-  servicePort = await readiness;
+  try {
+    servicePort = await readiness;
+  } catch (error) {
+    child.kill();
+    throw error;
+  }
+  clearTimeout(serviceStableTimer);
+  serviceStableTimer = setTimeout(() => { serviceRestartAttempt = 0; }, 60_000);
 };
 
 const registerApplicationProtocol = () => protocol.handle('quizzer', request => {
@@ -168,6 +200,8 @@ const createTray = () => {
 app.whenReady().then(async () => {
   credentialVault = new CredentialVault(join(app.getPath('userData'), 'credentials.json'), safeStorage);
   await startService();
+  serviceRecoveryEnabled = true;
+  if (!servicePort) scheduleServiceRestart();
   if (!developmentUrl) void registerApplicationProtocol();
   registerValidatedIpc();
   createWindow();
@@ -179,7 +213,12 @@ app.whenReady().then(async () => {
 });
 
 app.on('activate', () => window ? window.show() : createWindow());
-app.on('before-quit', () => { quitting = true; service?.kill(); });
+app.on('before-quit', () => {
+  quitting = true;
+  clearTimeout(serviceRestartTimer);
+  clearTimeout(serviceStableTimer);
+  service?.kill();
+});
 app.on('window-all-closed', () => {
   // The renderer currently owns active generation, so it remains alive in the tray.
 });

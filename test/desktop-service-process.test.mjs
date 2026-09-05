@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
-import { isValidServicePort, waitForServiceReady } from '../desktop/service-process.mjs';
+import { isValidServicePort, serviceRestartDelay, waitForServiceReady } from '../desktop/service-process.mjs';
 
 test('accepts only usable loopback service ports', () => {
   assert.equal(isValidServicePort(1), true);
@@ -9,6 +9,11 @@ test('accepts only usable loopback service ports', () => {
   assert.equal(isValidServicePort(0), false);
   assert.equal(isValidServicePort(65_536), false);
   assert.equal(isValidServicePort('8787'), false);
+});
+
+test('backs off repeated service restarts with a bounded delay', () => {
+  assert.deepEqual([0, 1, 2, 3, 4, 5, 6].map(serviceRestartDelay), [1_000, 2_000, 4_000, 8_000, 16_000, 30_000, 30_000]);
+  assert.throws(() => serviceRestartDelay(-1), /non-negative integer/);
 });
 
 test('waits for the utility service ready handshake and removes startup listeners', async () => {
