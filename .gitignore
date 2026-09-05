@@ -17,6 +17,8 @@ out
 .env
 .env.*
 !.env.example
+certificate.p12
+certificate.pfx
 
 # Editor directories and files
 .vscode/*

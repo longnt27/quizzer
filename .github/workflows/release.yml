@@ -1,0 +1,209 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag, such as v1.0.0-beta.1
+        required: true
+        type: string
+      channel:
+        description: Update channel
+        required: true
+        default: beta
+        type: choice
+        options: [beta, stable]
+      publish:
+        description: Publish the GitHub Release after validation
+        required: true
+        default: false
+        type: boolean
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+  RELEASE_CHANNEL: ${{ inputs.channel || (contains(github.ref_name, '-') && 'beta' || 'stable') }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Verify tag and package version
+        shell: bash
+        run: |
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          test "v${PACKAGE_VERSION}" = "$RELEASE_TAG"
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - name: Generate CycloneDX SBOM
+        run: npm sbom --sbom-format cyclonedx > sbom.cdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-metadata
+          path: sbom.cdx.json
+          if-no-files-found: error
+
+  desktop:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            platform: macos
+            architecture: arm64
+          - runner: macos-15-intel
+            platform: macos
+            architecture: x64
+          - runner: windows-2025
+            platform: windows
+            architecture: x64
+          - runner: windows-11-arm
+            platform: windows
+            architecture: arm64
+          - runner: ubuntu-24.04
+            platform: linux
+            architecture: x64
+          - runner: ubuntu-24.04-arm
+            platform: linux
+            architecture: arm64
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install Linux packaging tools
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: sudo apt-get update && sudo apt-get install --yes fakeroot rpm
+      - name: Import Apple signing identity
+        if: matrix.platform == 'macos'
+        shell: bash
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_IDENTITY_SECRET: ${{ secrets.APPLE_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          : "${MACOS_CERTIFICATE:?MACOS_CERTIFICATE is required}"
+          : "${MACOS_CERTIFICATE_PASSWORD:?MACOS_CERTIFICATE_PASSWORD is required}"
+          : "${APPLE_IDENTITY_SECRET:?APPLE_IDENTITY is required}"
+          : "${APPLE_ID:?APPLE_ID is required}"
+          : "${APPLE_APP_SPECIFIC_PASSWORD:?APPLE_APP_SPECIFIC_PASSWORD is required}"
+          : "${APPLE_TEAM_ID:?APPLE_TEAM_ID is required}"
+          node -e "require('node:fs').writeFileSync('certificate.p12', Buffer.from(process.env.MACOS_CERTIFICATE, 'base64'))"
+          security create-keychain -p actions build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p actions build.keychain
+          security import certificate.p12 -k build.keychain -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions build.keychain
+          echo "APPLE_IDENTITY=$APPLE_IDENTITY_SECRET" >> "$GITHUB_ENV"
+          echo "APPLE_ID=$APPLE_ID" >> "$GITHUB_ENV"
+          echo "APPLE_APP_SPECIFIC_PASSWORD=$APPLE_APP_SPECIFIC_PASSWORD" >> "$GITHUB_ENV"
+          echo "APPLE_TEAM_ID=$APPLE_TEAM_ID" >> "$GITHUB_ENV"
+      - name: Import Windows signing identity
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if (-not $env:WINDOWS_CERTIFICATE) { throw 'WINDOWS_CERTIFICATE is required' }
+          if (-not $env:WINDOWS_CERTIFICATE_PASSWORD) { throw 'WINDOWS_CERTIFICATE_PASSWORD is required' }
+          [IO.File]::WriteAllBytes('certificate.pfx', [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          "WINDOWS_CERTIFICATE_FILE=$((Resolve-Path 'certificate.pfx').Path)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "WINDOWS_CERTIFICATE_PASSWORD=$env:WINDOWS_CERTIFICATE_PASSWORD" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Build signed desktop distributables
+        run: npm run make:desktop
+      - name: Normalize release artifacts
+        run: node scripts/collect-release-artifacts.mjs --platform ${{ matrix.platform }} --architecture ${{ matrix.architecture }}
+      - name: Attest build provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: release-artifacts/quizzer-*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.platform }}-${{ matrix.architecture }}
+          path: release-artifacts/*
+          if-no-files-found: error
+
+  publish:
+    needs: [verify, desktop]
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          path: downloaded-artifacts
+      - name: Merge matrix artifacts
+        run: node scripts/merge-release-artifacts.mjs --input downloaded-artifacts --output release-bundle
+      - name: Add SBOM
+        shell: bash
+        run: cp downloaded-artifacts/release-metadata/sbom.cdx.json release-bundle/sbom.cdx.json
+      - name: Sign release manifest
+        env:
+          QUIZZER_RELEASE_PRIVATE_KEY: ${{ secrets.QUIZZER_RELEASE_PRIVATE_KEY }}
+          QUIZZER_RELEASE_PUBLIC_KEY_ID: ${{ vars.QUIZZER_RELEASE_PUBLIC_KEY_ID }}
+        run: npm run release:manifest -- --version "$RELEASE_TAG" --channel "$RELEASE_CHANNEL" --tag "$RELEASE_TAG" --artifacts release-bundle/artifacts.json --output release-bundle/release-manifest.json
+      - name: Attest release artifacts and manifest
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            release-bundle/quizzer-*
+            release-bundle/release-manifest.json
+            release-bundle/sbom.cdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-release-${{ env.RELEASE_TAG }}
+          path: |
+            release-bundle/quizzer-*
+            release-bundle/release-manifest.json
+            release-bundle/sbom.cdx.json
+          if-no-files-found: error
+      - name: Publish GitHub Release
+        if: github.event_name == 'workflow_dispatch' && inputs.publish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PRERELEASE=()
+          if [ "$RELEASE_CHANNEL" = beta ]; then PRERELEASE=(--prerelease); fi
+          gh release create "$RELEASE_TAG" release-bundle/quizzer-* release-bundle/release-manifest.json release-bundle/sbom.cdx.json --verify-tag --generate-notes --title "Quizzer ${RELEASE_TAG#v}" "${PRERELEASE[@]}"

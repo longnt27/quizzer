@@ -17,7 +17,15 @@ export default {
     appCategoryType: 'public.app-category.education',
     icon: platformIcon,
     extraResource: ['scripts/ocr_image.py'],
-    ignore: [/^\/landing($|\/)/, /^\/src($|\/)/, /^\/docs($|\/)/, /^\/test($|\/)/, /^\/\.quizzer/, /^\/out($|\/)/],
+    ignore: [
+      /^\/landing($|\/)/,
+      /^\/src($|\/)/,
+      /^\/docs($|\/)/,
+      /^\/test($|\/)/,
+      /^\/\.quizzer/,
+      /^\/out($|\/)/,
+      /^\/certificate\.(?:p12|pfx)$/,
+    ],
     osxSign: process.env.APPLE_IDENTITY ? { identity: process.env.APPLE_IDENTITY, hardenedRuntime: true } : undefined,
     osxNotarize: process.env.APPLE_ID && process.env.APPLE_APP_SPECIFIC_PASSWORD && process.env.APPLE_TEAM_ID ? {
       appleId: process.env.APPLE_ID,
