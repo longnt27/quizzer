@@ -10,6 +10,7 @@ import { PluginManager } from '../plugin-sdk/manager.mjs';
 import {
   loadResolvedSettings, readUserSettings, SETTINGS_REGISTRY, settingsPath, validateSettings, writeUserSettings,
 } from '../server/settings.mjs';
+import { SparseDocumentIndex } from '../server/sparse-index.mjs';
 
 const usage = `Quizzer CLI
 
@@ -21,6 +22,7 @@ Usage:
                   |remove <id> --yes [--json]
   quizzer documents list|show <id>|import <file> [--tags a,b]|remove <id> --yes [--json]
   quizzer index <document-id>|--all [--json]
+  quizzer retrieve <query> [--document <id>] [--tag <tag>] [--limit 10] [--json]
   quizzer test create --document <id> [--document <id>] [--name name] [--questions 20]
                       [--instruction text] [--provider provider] [--model model] [--json]
   quizzer jobs list|show <id>|resume <id>|cancel <id> [--json]
@@ -212,6 +214,9 @@ const runDocuments = async action => {
   if (action === 'remove') {
     if (flag('yes') !== 'true') fail('documents remove requires --yes');
     database.deleteRecord('documents', id);
+    const index = new SparseDocumentIndex(process.env.QUIZZER_DATABASE_PATH);
+    try { index.removeDocument(id); }
+    finally { index.close(); }
     return writeResult({ removed: id }, `Removed ${record.data.name}`);
   }
   fail('Use documents list, show, import, or remove');
@@ -224,12 +229,46 @@ const runIndex = async () => {
     : [database.getRecord('documents', parsed.positionals.shift())].filter(Boolean);
   if (!selected.length) fail('No matching documents to index');
   const indexed = [];
-  for (const record of selected) {
-    const chunks = chunkDocument(record.id, record.data.content);
-    database.putRecord('documents', record.id, { ...record.data, chunks, indexedAt: Date.now(), indexVersion: 1 });
-    indexed.push({ id: record.id, name: record.data.name, chunks: chunks.length });
+  const index = new SparseDocumentIndex(process.env.QUIZZER_DATABASE_PATH);
+  try {
+    for (const record of selected) {
+      const chunks = chunkDocument(record.id, record.data.content);
+      const data = { ...record.data, chunks, indexedAt: Date.now(), indexVersion: 2 };
+      database.putRecord('documents', record.id, data);
+      indexed.push(index.indexDocument({ ...record, data }, { force: true }));
+    }
+  } finally {
+    index.close();
   }
   writeResult({ indexed }, indexed.map(item => `${item.name}: ${item.chunks} chunks`).join('\n'));
+};
+
+const runRetrieve = async () => {
+  const query = parsed.positionals.join(' ').trim();
+  if (!query) fail('retrieve requires a search query');
+  const database = await storage();
+  const documentIds = flags('document').flatMap(value => value.split(',')).filter(Boolean);
+  const selected = documentIds.length
+    ? documentIds.map(id => database.getRecord('documents', id)).filter(Boolean)
+    : database.listRecords('documents');
+  if (!selected.length) fail('No matching documents are available for retrieval');
+  const index = new SparseDocumentIndex(process.env.QUIZZER_DATABASE_PATH);
+  try {
+    for (const record of selected) index.indexDocument(record);
+    const settings = await loadResolvedSettings(appDataDirectory);
+    const retrieval = index.retrieve({
+      query,
+      documentIds,
+      tags: flags('tag'),
+      limit: Number(flag('limit', '10')),
+      contextBudget: settings.values['retrieval.contextBudget'],
+    });
+    writeResult(retrieval, retrieval.results.length
+      ? retrieval.results.map(result => `${result.documentName}${result.page ? ` p.${result.page}` : ''}  ${result.sourceSpanId}\n${result.excerpt}`).join('\n\n')
+      : retrieval.refusal);
+  } finally {
+    index.close();
+  }
 };
 
 const runTestCreate = async () => {
@@ -332,6 +371,7 @@ const main = async () => {
   if (command === 'plugins') return runPlugins(parsed.positionals.shift() || 'list');
   if (command === 'documents') return runDocuments(parsed.positionals.shift() || 'list');
   if (command === 'index') return runIndex();
+  if (command === 'retrieve') return runRetrieve();
   if (command === 'test') {
     if (parsed.positionals.shift() !== 'create') fail('Use test create');
     return runTestCreate();

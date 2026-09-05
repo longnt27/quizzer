@@ -12,6 +12,7 @@ import {
   HARDWARE_PROFILE_SETTINGS, loadResolvedSettings, readUserSettings, SETTINGS_REGISTRY, SETTINGS_SCHEMA, validateSettings, writeUserSettings,
 } from './server/settings.mjs';
 import { PluginManager } from './plugin-sdk/manager.mjs';
+import { SparseDocumentIndex } from './server/sparse-index.mjs';
 
 const port = Number(process.env.QUIZZER_SERVICE_PORT || 8787);
 const maxBodyBytes = 25 * 1024 * 1024;
@@ -34,6 +35,7 @@ const builtInPlugins = Object.freeze([
   { id: 'quizzer.embed.minilm', name: 'MiniLM through Ollama', capabilities: ['embedder', 'reranker'], builtIn: true },
   { id: 'quizzer.generate.providers', name: 'Local agents and API providers', capabilities: ['generator'], builtIn: true },
 ]);
+const sparseIndex = new SparseDocumentIndex(storageInfo().databasePath);
 const windowsOllamaExecutable = process.env.LOCALAPPDATA
   ? join(process.env.LOCALAPPDATA, 'Programs', 'Ollama', 'ollama.exe')
   : 'ollama.exe';
@@ -788,7 +790,7 @@ const handleVersionedApi = async (request, response, url) => {
         apiVersion: 1,
         hardware,
         providers: Object.keys(providerRunners),
-        operations: ['settings', 'onboarding', 'plugins', 'documents', 'jobs', 'events'],
+        operations: ['settings', 'onboarding', 'plugins', 'documents', 'indexing', 'retrieval', 'jobs', 'events'],
       });
       return true;
     }
@@ -861,6 +863,54 @@ const handleVersionedApi = async (request, response, url) => {
       send(response, 200, { documents: listRecords('documents').map(documentSummary) });
       return true;
     }
+    if (request.method === 'GET' && url.pathname === '/api/v1/index/status') {
+      send(response, 200, sparseIndex.status());
+      return true;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/v1/index') {
+      const body = await readJson(request);
+      const documentIds = body?.documentIds;
+      if (documentIds !== undefined && (!Array.isArray(documentIds) || documentIds.some(id => typeof id !== 'string'))) {
+        throw new Error('documentIds must be an array of ids');
+      }
+      const selected = documentIds?.length
+        ? documentIds.map(id => getRecord('documents', id)).filter(Boolean)
+        : listRecords('documents');
+      if (!selected.length) throw new Error('No matching documents to index');
+      const indexed = selected.map(record => {
+        const result = sparseIndex.indexDocument(record, { force: body?.force === true });
+        if (!result.reused) putRecord('documents', record.id, {
+          ...record.data,
+          indexedAt: Date.now(),
+          indexVersion: 2,
+          documentVersionHash: result.versionHash,
+        });
+        return result;
+      });
+      send(response, 200, { indexed, status: sparseIndex.status() });
+      return true;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/v1/retrieval/preview') {
+      const body = await readJson(request);
+      if (typeof body?.query !== 'string' || !body.query.trim()) throw new Error('A retrieval query is required');
+      if (body.documentIds !== undefined && (!Array.isArray(body.documentIds) || body.documentIds.some(id => typeof id !== 'string'))) {
+        throw new Error('documentIds must be an array of ids');
+      }
+      const selected = body.documentIds?.length
+        ? body.documentIds.map(id => getRecord('documents', id)).filter(Boolean)
+        : listRecords('documents');
+      for (const record of selected) sparseIndex.indexDocument(record);
+      const settings = await loadResolvedSettings(appDataDirectory);
+      send(response, 200, sparseIndex.retrieve({
+        query: body.query,
+        documentIds: body.documentIds ?? [],
+        tags: body.tags ?? [],
+        limit: body.limit,
+        contextBudget: body.contextBudget ?? settings.values['retrieval.contextBudget'],
+        includeNeighbors: body.includeNeighbors !== false,
+      }));
+      return true;
+    }
     const documentMatch = /^\/api\/v1\/documents\/([^/]+)$/.exec(url.pathname);
     if (documentMatch && request.method === 'GET') {
       const record = getRecord('documents', decodeURIComponent(documentMatch[1]));
@@ -874,6 +924,7 @@ const handleVersionedApi = async (request, response, url) => {
         return true;
       }
       deleteRecord('documents', id);
+      sparseIndex.removeDocument(id);
       send(response, 200, { ok: true });
       return true;
     }
@@ -926,7 +977,14 @@ createServer(async (request, response) => {
     return send(response, 200, detectHardwareCapabilities(appDataDirectory));
   }
   if (request.method === 'POST' && request.url === '/api/storage/sync') {
-    try { return send(response, 200, syncStorage(await readJson(request, maxStorageBodyBytes))); }
+    try {
+      const body = await readJson(request, maxStorageBodyBytes);
+      const result = syncStorage(body);
+      for (const change of body?.changes ?? []) {
+        if (change.collection === 'documents' && change.deleted === true && typeof change.id === 'string') sparseIndex.removeDocument(change.id);
+      }
+      return send(response, 200, result);
+    }
     catch (error) { return send(response, 400, { error: error instanceof Error ? error.message : 'Storage sync failed' }); }
   }
   if (request.method === 'GET' && request.url === '/api/integrations') {

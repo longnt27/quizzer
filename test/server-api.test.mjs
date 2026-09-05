@@ -103,7 +103,7 @@ test('provides onboarding, document, job, and event operations', async () => {
   const sync = await fetch(`${origin}/api/storage/sync`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ changes: [
-      { collection: 'documents', id: 'doc-1', data: { id: 'doc-1', name: 'Guide.md', createdAt: 1, mimeType: 'text/markdown', size: 10, tags: [], content: 'hello' } },
+      { collection: 'documents', id: 'doc-1', data: { id: 'doc-1', name: 'Guide.md', createdAt: 1, mimeType: 'text/markdown', size: 10, tags: ['iac'], content: '# Terraform\n\nRemote state locking supports safe team collaboration.' } },
       { collection: 'generationJobs', id: 'job-1', data: { id: 'job-1', status: 'paused', updatedAt: 1, questions: [] } },
     ] }),
   });
@@ -112,6 +112,19 @@ test('provides onboarding, document, job, and event operations', async () => {
   const documents = await (await authorized('/api/v1/documents')).json();
   assert.equal(documents.documents[0].name, 'Guide.md');
   assert.equal('content' in documents.documents[0], false);
+
+  const indexed = await authorized('/api/v1/index', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ documentIds: ['doc-1'] }),
+  });
+  assert.equal((await indexed.json()).status.documentCount, 1);
+  const retrieval = await authorized('/api/v1/retrieval/preview', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: 'remote state locking', documentIds: ['doc-1'], limit: 3 }),
+  });
+  const evidence = await retrieval.json();
+  assert.equal(evidence.confidence, 'high');
+  assert.equal(evidence.results[0].documentId, 'doc-1');
+  assert.match(evidence.results[0].sourceSpanId, /^doc-1:span:/);
 
   const resumed = await authorized('/api/v1/jobs/job-1/resume', { method: 'POST' });
   assert.equal((await resumed.json()).job.status, 'queued');

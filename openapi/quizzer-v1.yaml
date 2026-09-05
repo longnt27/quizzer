@@ -232,6 +232,57 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/Okay' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /index/status:
+    get:
+      operationId: getIndexStatus
+      summary: Inspect the durable sparse index
+      responses:
+        '200':
+          description: Sparse index status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IndexStatus' }
+  /index:
+    post:
+      operationId: indexDocuments
+      summary: Incrementally index selected or all documents with SQLite FTS5
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                documentIds: { type: array, items: { type: string } }
+                force: { type: boolean, default: false }
+      responses:
+        '200': { description: Documents indexed }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+  /retrieval/preview:
+    post:
+      operationId: previewRetrieval
+      summary: Preview scoped BM25 retrieval with stable source citations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query: { type: string, minLength: 1 }
+                documentIds: { type: array, items: { type: string } }
+                tags: { type: array, items: { type: string } }
+                limit: { type: integer, minimum: 1, maximum: 50, default: 10 }
+                contextBudget: { type: integer, minimum: 256, maximum: 65536 }
+                includeNeighbors: { type: boolean, default: true }
+      responses:
+        '200':
+          description: Ranked retrieval evidence or a clear refusal
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RetrievalPreview' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
   /jobs:
     get:
       operationId: listJobs
@@ -389,6 +440,44 @@ components:
         tags: { type: array, items: { type: string } }
         chunkCount: { type: integer, minimum: 0 }
         pageCount: { type: integer, minimum: 1 }
+    IndexStatus:
+      type: object
+      required: [version, engine, documentCount, chunkCount, documents]
+      properties:
+        version: { type: integer, const: 1 }
+        engine: { type: string, const: sqlite-fts5-bm25 }
+        documentCount: { type: integer, minimum: 0 }
+        chunkCount: { type: integer, minimum: 0 }
+        documents: { type: array, items: { type: object } }
+    RetrievalResult:
+      type: object
+      required: [sourceSpanId, documentId, documentName, documentVersionHash, chunkIndex, parentId, content, excerpt, score, bm25, neighbors, parentContent]
+      properties:
+        sourceSpanId: { type: string }
+        documentId: { type: string }
+        documentName: { type: string }
+        documentVersionHash: { type: string }
+        chunkIndex: { type: integer, minimum: 0 }
+        parentId: { type: string }
+        page: { type: integer, minimum: 1 }
+        breadcrumb: { type: string }
+        content: { type: string }
+        excerpt: { type: string }
+        score: { type: number }
+        bm25: { type: number }
+        neighbors: { type: array, items: { type: object } }
+        parentContent: { type: string }
+    RetrievalPreview:
+      type: object
+      required: [query, method, correctivePass, confidence, estimatedContextTokens, results]
+      properties:
+        query: { type: string }
+        method: { type: string, const: sparse-bm25 }
+        correctivePass: { type: boolean }
+        confidence: { type: string, enum: [low, medium, high] }
+        estimatedContextTokens: { type: integer, minimum: 0 }
+        results: { type: array, items: { $ref: '#/components/schemas/RetrievalResult' } }
+        refusal: { type: string }
     GenerationJob:
       type: object
       required: [id, testId, name, status, documentIds, options, questions, createdAt, updatedAt]

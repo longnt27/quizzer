@@ -69,6 +69,9 @@ test('imports, deduplicates, indexes, and lists a real document', async () => {
   assert.equal(indexed.indexed[0].id, first.document.id);
   const listed = await cli('documents', 'list');
   assert.equal(listed.documents.length, 1);
+  const retrieval = await cli('retrieve', 'Terraform state', '--document', first.document.id);
+  assert.equal(retrieval.results[0].documentId, first.document.id);
+  assert.match(retrieval.results[0].sourceSpanId, new RegExp(`^${first.document.id}:span:`));
 });
 
 test('queues and controls a durable test generation job', async () => {
