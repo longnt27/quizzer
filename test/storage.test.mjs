@@ -71,6 +71,23 @@ test('synchronizes the versioned application profile', () => {
   assert.deepEqual(result.changes[0].data, profile);
 });
 
+test('synchronizes versioned prompt profiles', () => {
+  const promptProfile = {
+    id: 'team-grounded',
+    name: 'Team grounded',
+    version: 2,
+    templates: { generation: 'generation', grading: 'grading', rag: 'rag' },
+    createdAt: 30,
+    updatedAt: 40,
+  };
+  const result = syncStorage({
+    cursor: 4,
+    changes: [{ collection: 'promptProfiles', id: promptProfile.id, data: promptProfile }],
+  });
+  assert.equal(result.cursor, 5);
+  assert.deepEqual(getRecord('promptProfiles', promptProfile.id).data, promptProfile);
+});
+
 test('supports record-level reads, writes, and change subscriptions', () => {
   const events = [];
   const unsubscribe = subscribeStorageChanges(changes => events.push(...changes));

@@ -99,6 +99,26 @@ export interface PromptProfileSnapshot {
   version: number;
   name: string;
   template: string;
+  templates?: PromptTemplates;
+}
+
+export type PromptTemplateKind = 'generation' | 'grading' | 'rag';
+
+export interface PromptTemplates {
+  generation: string;
+  grading: string;
+  rag: string;
+}
+
+export interface PromptProfile {
+  id: string;
+  version: number;
+  name: string;
+  description?: string;
+  templates: PromptTemplates;
+  createdAt: number;
+  updatedAt: number;
+  builtIn?: boolean;
 }
 
 export interface RAGProfile {

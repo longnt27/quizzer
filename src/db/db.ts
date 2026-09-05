@@ -1,5 +1,5 @@
 import Dexie from 'dexie';
-import type { AIConversationTurn, CoverageStrategy, GenerationOptions, HardwareProfileId, InterfaceMode, OnboardingState, QuestionType, QuizAnswer, QuizQuestion } from '../types';
+import type { AIConversationTurn, CoverageStrategy, GenerationOptions, HardwareProfileId, InterfaceMode, OnboardingState, PromptProfile, QuestionType, QuizAnswer, QuizQuestion } from '../types';
 import type { ReasoningJudgment } from '../utils/judgeReasoning';
 
 export type GenerationJobStatus = 'queued' | 'running' | 'waiting' | 'paused' | 'error' | 'completed' | 'cancelled';
@@ -118,7 +118,9 @@ export interface StoredTestDraft {
   aiConversations?: Record<number, AIConversationTurn[]>;
 }
 
-export type SyncCollection = 'tests' | 'documents' | 'generationJobs' | 'testDrafts' | 'profiles';
+export type StoredPromptProfile = PromptProfile & { builtIn?: false };
+
+export type SyncCollection = 'tests' | 'documents' | 'generationJobs' | 'testDrafts' | 'profiles' | 'promptProfiles';
 
 export interface StoredSyncChange {
   key: string;
@@ -154,6 +156,7 @@ class QuizDB extends Dexie {
   syncChanges: Dexie.Table<StoredSyncChange, string>;
   syncState: Dexie.Table<StoredSyncState, string>;
   profiles: Dexie.Table<StoredAppProfile, string>;
+  promptProfiles: Dexie.Table<StoredPromptProfile, string>;
 
   constructor() {
     super('QuizDB');
@@ -192,6 +195,16 @@ class QuizDB extends Dexie {
       syncState: 'id',
       profiles: 'id, updatedAt',
     });
+    this.version(7).stores({
+      tests: 'id, name, createdAt, *documentIds',
+      documents: 'id, name, createdAt, *tags',
+      generationJobs: 'id, status, createdAt, updatedAt, *documentIds',
+      testDrafts: 'testId, updatedAt',
+      syncChanges: 'key, collection, id, changedAt',
+      syncState: 'id',
+      profiles: 'id, updatedAt',
+      promptProfiles: 'id, name, updatedAt',
+    });
     this.tests = this.table('tests');
     this.documents = this.table('documents');
     this.generationJobs = this.table('generationJobs');
@@ -199,6 +212,7 @@ class QuizDB extends Dexie {
     this.syncChanges = this.table('syncChanges');
     this.syncState = this.table('syncState');
     this.profiles = this.table('profiles');
+    this.promptProfiles = this.table('promptProfiles');
   }
 }
 

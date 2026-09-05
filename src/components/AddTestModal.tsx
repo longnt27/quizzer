@@ -8,6 +8,7 @@ import { getMessageApi } from '../utils/messageProvider';
 import { pumpGenerationQueue } from '../utils/generationQueue';
 import { getProviderDefinition, getProviderSettings } from '../utils/providerSettings';
 import { useConfiguredProviders } from '../utils/useConfiguredProviders';
+import { BUILT_IN_PROMPT_PROFILE, snapshotPromptProfile } from '../utils/promptProfiles';
 
 interface Props { onClose: () => void; onManagePlugins: () => void; profile: StoredAppProfile; }
 type CreationMode = 'combined' | 'separate';
@@ -32,6 +33,7 @@ export default function AddTestModal({ onClose, onManagePlugins, profile }: Prop
   const settings = useMemo(getProviderSettings, []);
   const configured = useConfiguredProviders();
   const documents = useLiveQuery(() => db.documents.orderBy('createdAt').reverse().toArray(), []) ?? [];
+  const customPromptProfiles = useLiveQuery(() => db.promptProfiles.orderBy('updatedAt').reverse().toArray(), []) ?? [];
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [mode, setMode] = useState<CreationMode>('combined');
   const [name, setName] = useState('Combined quiz');
@@ -45,11 +47,14 @@ export default function AddTestModal({ onClose, onManagePlugins, profile }: Prop
   const [coverageStrategy, setCoverageStrategy] = useState<CoverageStrategy>('balanced');
   const [customInstruction, setCustomInstruction] = useState(profile.defaultLearningInstruction ?? '');
   const [preset, setPreset] = useState<QuizPreset>('balanced');
+  const [promptProfileId, setPromptProfileId] = useState(BUILT_IN_PROMPT_PROFILE.id);
   const [query, setQuery] = useState('');
   const [saving, setSaving] = useState(false);
   const message = getMessageApi();
   const questionCount = multipleChoiceCount + fillBlankCount + reasoningCount + codingCount;
   const selectedProvider = getProviderDefinition(provider);
+  const promptProfiles = [BUILT_IN_PROMPT_PROFILE, ...customPromptProfiles];
+  const promptProfile = promptProfiles.find(item => item.id === promptProfileId) ?? BUILT_IN_PROMPT_PROFILE;
   const selected = documents.filter(document => selectedIds.includes(document.id));
   const visible = (() => {
     const needle = query.trim().toLowerCase();
@@ -87,7 +92,7 @@ export default function AddTestModal({ onClose, onManagePlugins, profile }: Prop
         multipleChoiceMode,
         coverageStrategy: mode === 'combined' ? coverageStrategy : 'balanced',
         customInstruction: customInstruction.trim() || undefined,
-        promptProfileSnapshot: { id: 'quizzer-balanced', version: 1, name: 'Quizzer balanced', template: 'Built-in secured quiz generation profile v1' },
+        promptProfileSnapshot: snapshotPromptProfile(promptProfile),
         ragProfile: profile.hardwareProfile === 'lite'
           ? { id: 'lite', retrieval: 'sparse', contextBudget: 12_000, rerank: false }
           : { id: profile.hardwareProfile, retrieval: 'hybrid', contextBudget: profile.hardwareProfile === 'max' ? 28_000 : 18_000, rerank: true },
@@ -150,6 +155,12 @@ export default function AddTestModal({ onClose, onManagePlugins, profile }: Prop
               options={configured.providers.map(item => ({ label: item.label, value: item.id }))} />
             <Input value={model} onChange={event => setModel(event.target.value)} addonBefore="Model" placeholder={selectedProvider.defaultModel || 'Provider default'} style={{ width: 280 }} />
           </Space>}
+          {profile.interfaceMode === 'advanced' && <div>
+            <Typography.Text strong>Prompt profile</Typography.Text>
+            <Select value={promptProfile.id} onChange={setPromptProfileId} style={{ width: '100%', marginTop: 8 }}
+              options={promptProfiles.map(item => ({ value: item.id, label: `${item.name} · v${item.version}${item.builtIn ? ' · built in' : ''}` }))} />
+            <Typography.Paragraph type="secondary" style={{ margin: '6px 0 0' }}>{promptProfile.description || 'Custom generation, grading, and retrieval instructions.'}</Typography.Paragraph>
+          </div>}
           {profile.interfaceMode === 'simple' && <div>
             <Typography.Text strong>Recommended preset</Typography.Text>
             <Select value={preset} onChange={applyPreset} style={{ width: '100%', marginTop: 8 }} options={Object.entries(presets).map(([value, item]) => ({ value, label: item.label }))} />
