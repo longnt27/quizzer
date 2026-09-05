@@ -156,6 +156,37 @@ paths:
                       $ref: '#/components/schemas/LegacyMigration'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /backups:
+    get:
+      operationId: listBackups
+      summary: List service-managed library backups and manifest status
+      responses:
+        '200':
+          description: Backup collection
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [backups]
+                properties:
+                  backups: { type: array, items: { $ref: '#/components/schemas/BackupSummary' } }
+    post:
+      operationId: createBackup
+      summary: Create a verified backup of authoritative data and content objects
+      responses:
+        '201': { description: Created backup and integrity manifest }
+  /backups/{backupId}:
+    parameters:
+      - in: path
+        name: backupId
+        required: true
+        schema: { type: string, pattern: '^[A-Za-z0-9._-]{1,160}$' }
+    get:
+      operationId: verifyBackup
+      summary: Re-hash and verify every file in a service-managed backup
+      responses:
+        '200': { description: Verified backup and integrity manifest }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
   /plugins/schema:
     get:
       operationId: getPluginManifestSchema
@@ -530,6 +561,16 @@ components:
         backupSha256: { type: string, pattern: '^[a-f0-9]{64}$' }
         startedAt: { type: integer }
         completedAt: { type: integer }
+        error: { type: string }
+    BackupSummary:
+      type: object
+      required: [id, manifestValid]
+      properties:
+        id: { type: string }
+        manifestValid: { type: boolean }
+        createdAt: { type: integer }
+        objectCount: { type: integer, minimum: 0 }
+        objectBytes: { type: integer, minimum: 0 }
         error: { type: string }
     DocumentSummary:
       type: object

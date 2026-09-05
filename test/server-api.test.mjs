@@ -184,6 +184,20 @@ test('provides onboarding, document, job, and event operations', async () => {
   await reader.cancel();
 });
 
+test('creates, lists, and verifies complete service-managed backups', async () => {
+  const created = await authorized('/api/v1/backups', { method: 'POST' });
+  assert.equal(created.status, 201);
+  const backup = (await created.json()).backup;
+  assert.match(backup.id, /^backup-/);
+  assert.ok(backup.manifest.objects.length >= 2);
+
+  const listed = await (await authorized('/api/v1/backups')).json();
+  assert.equal(listed.backups.find(item => item.id === backup.id).manifestValid, true);
+  const verified = await authorized(`/api/v1/backups/${backup.id}`);
+  assert.equal(verified.status, 200);
+  assert.equal((await verified.json()).backup.valid, true);
+});
+
 test('requires and verifies a backed-up legacy bootstrap session', async () => {
   const rejected = await authorized('/api/storage/sync', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },

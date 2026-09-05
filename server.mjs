@@ -1,23 +1,24 @@
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import {
-  beginLegacyMigration, deleteRecord, finalizeLegacyMigration, getRecord, listLegacyMigrations,
+  backupDatabase, beginLegacyMigration, deleteRecord, finalizeLegacyMigration, getRecord, listLegacyMigrations,
   listRecords, putRecord, storageInfo, subscribeStorageChanges, syncStorage,
 } from './server/storage.mjs';
 import { detectHardwareCapabilities } from './server/hardware-profile.mjs';
 import { ensureServiceToken, isAuthorizedRequest } from './server/auth.mjs';
 import {
-  HARDWARE_PROFILE_SETTINGS, loadResolvedSettings, readUserSettings, SETTINGS_REGISTRY, SETTINGS_SCHEMA, validateSettings, writeUserSettings,
+  HARDWARE_PROFILE_SETTINGS, loadResolvedSettings, readUserSettings, SETTINGS_REGISTRY, SETTINGS_SCHEMA, settingsPath, validateSettings, writeUserSettings,
 } from './server/settings.mjs';
 import { PluginManager } from './plugin-sdk/manager.mjs';
 import { SparseDocumentIndex } from './server/sparse-index.mjs';
 import { materializeRuntimeAsset, readRuntimeText, runningAsSingleExecutable } from './server/runtime-assets.mjs';
 import { collectStoredObjectReferences, materializeDocumentImages, materializeSerializedObjects, ObjectStore } from './server/object-store.mjs';
 import { sparseIndexPathFor } from './server/paths.mjs';
+import { createBackup, listBackups, verifyBackup } from './server/backup.mjs';
 
 const port = Number(process.env.QUIZZER_SERVICE_PORT || 8787);
 const maxBodyBytes = 25 * 1024 * 1024;
@@ -43,6 +44,7 @@ const builtInPlugins = Object.freeze([
   { id: 'quizzer.generate.providers', name: 'Local agents and API providers', capabilities: ['generator'], builtIn: true },
 ]);
 const objectStore = new ObjectStore(appDataDirectory);
+const manualBackupRoot = join(appDataDirectory, 'backups', 'manual');
 for (const record of listRecords('documents')) {
   try {
     const binaryMaterialized = await materializeSerializedObjects(record.data, objectStore);
@@ -847,7 +849,7 @@ const handleVersionedApi = async (request, response, url) => {
         apiVersion: 1,
         hardware,
         providers: Object.keys(providerRunners),
-        operations: ['settings', 'onboarding', 'migrations', 'plugins', 'objects', 'documents', 'indexing', 'retrieval', 'jobs', 'events'],
+        operations: ['settings', 'onboarding', 'migrations', 'backups', 'plugins', 'objects', 'documents', 'indexing', 'retrieval', 'jobs', 'events'],
       });
       return true;
     }
@@ -879,6 +881,28 @@ const handleVersionedApi = async (request, response, url) => {
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/settings/schema') {
       send(response, 200, { schema: SETTINGS_SCHEMA, registry: SETTINGS_REGISTRY, profiles: HARDWARE_PROFILE_SETTINGS });
+      return true;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/v1/backups') {
+      send(response, 200, { backups: await listBackups(manualBackupRoot) });
+      return true;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/v1/backups') {
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const id = `backup-${stamp}-${randomUUID().slice(0, 8)}`;
+      const manifest = await createBackup({
+        destination: join(manualBackupRoot, id),
+        database: { backupDatabase },
+        objectStore,
+        settingsFile: settingsPath(appDataDirectory),
+      });
+      send(response, 201, { backup: { id, manifest } });
+      return true;
+    }
+    const backupMatch = /^\/api\/v1\/backups\/([A-Za-z0-9._-]{1,160})$/.exec(url.pathname);
+    if (backupMatch && request.method === 'GET') {
+      const result = await verifyBackup(join(manualBackupRoot, backupMatch[1]));
+      send(response, 200, { backup: { id: backupMatch[1], ...result } });
       return true;
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/settings') {

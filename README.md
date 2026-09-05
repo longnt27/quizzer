@@ -257,6 +257,8 @@ When a schema-v1 database still contains the old embedded retrieval tables, Quiz
 
 Use `quizzer migrations list` to inspect IndexedDB migration status, hashes, and retained rollback paths. Use `quizzer backup create` for a consistent live backup of SQLite, configuration, and every content-addressed original; `quizzer backup verify <directory>` re-hashes every entry before you rely on it. After quitting the desktop app and local service, `quizzer backup restore <directory> --yes` verifies the backup again, preserves the current library as a recovery backup, and atomically replaces the database, object store, and safe configuration while clearing derived indexes for rebuild. Source deployments can also stop Quizzer and copy the `.quizzer-data` directory. Set `QUIZZER_DATABASE_PATH` or `QUIZZER_SPARSE_INDEX_PATH` only when custom locations are needed for a packaged or managed deployment.
 
+Authenticated desktop and remote clients can create the same complete backup with `POST /api/v1/backups`, list service-managed backups with `GET /api/v1/backups`, and perform a full integrity verification with `GET /api/v1/backups/{backupId}`. Restore remains an offline CLI operation so the active service cannot replace its own database.
+
 Select **Install Ollama + all-minilm** under **Plugins & models** to enable local semantic duplicate filtering and AI-selected source coverage. On macOS Quizzer uses Homebrew to install Ollama when needed; on Linux it uses Ollama's official installer. It then starts the local runtime and downloads `all-minilm`. If that plugin is unavailable, generation continues automatically with normalized exact matching, lexical similarity, and size-based source prioritization.
 
 ## Data and privacy

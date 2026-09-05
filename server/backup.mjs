@@ -52,6 +52,10 @@ const validateManifest = manifest => {
   return manifest;
 };
 
+export const readBackupManifest = async directory => validateManifest(
+  JSON.parse(await readFile(join(directory, 'backup-manifest.json'), 'utf8')),
+);
+
 const verifyEntry = async (directory, entry, label) => {
   if (!entry || !Number.isSafeInteger(entry.size) || entry.size < 0 || !SHA256_PATTERN.test(entry.sha256 ?? '')) {
     throw new Error(`Backup manifest has invalid ${label} metadata`);
@@ -107,7 +111,7 @@ export const createBackup = async ({ destination, database, objectStore, setting
 };
 
 export const verifyBackup = async directory => {
-  const manifest = validateManifest(JSON.parse(await readFile(join(directory, 'backup-manifest.json'), 'utf8')));
+  const manifest = await readBackupManifest(directory);
   await verifyEntry(directory, manifest.database, 'Database');
   if (manifest.config) await verifyEntry(directory, manifest.config, 'Configuration');
   for (const object of manifest.objects) await verifyEntry(directory, object, `Object ${object.sha256}`);
@@ -116,6 +120,28 @@ export const verifyBackup = async directory => {
     throw new Error('Backup object totals do not match its manifest');
   }
   return { valid: true, manifest };
+};
+
+export const listBackups = async root => {
+  const entries = await readdir(root, { withFileTypes: true }).catch(error => {
+    if (error?.code === 'ENOENT') return [];
+    throw error;
+  });
+  const backups = await Promise.all(entries.filter(entry => entry.isDirectory()).map(async entry => {
+    try {
+      const manifest = await readBackupManifest(join(root, entry.name));
+      return {
+        id: entry.name,
+        createdAt: manifest.createdAt,
+        objectCount: manifest.totals.objectCount,
+        objectBytes: manifest.totals.objectBytes,
+        manifestValid: true,
+      };
+    } catch (error) {
+      return { id: entry.name, manifestValid: false, error: error instanceof Error ? error.message : 'Invalid backup manifest' };
+    }
+  }));
+  return backups.sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0));
 };
 
 const pathExists = path => lstat(path).then(() => true).catch(error => {
