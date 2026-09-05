@@ -23,7 +23,8 @@
     "test": "node --test test/*.test.mjs",
     "preview": "vite preview",
     "package:desktop": "npm run build && node scripts/forge.mjs package",
-    "make:desktop": "npm run build && node scripts/forge.mjs make"
+    "make:desktop": "npm run build && node scripts/forge.mjs make",
+    "release:manifest": "node scripts/generate-release-manifest.mjs"
   },
   "dependencies": {
     "@codemirror/lang-json": "^6.0.2",
