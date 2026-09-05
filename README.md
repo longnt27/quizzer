@@ -117,6 +117,16 @@ npm run cli -- backup create
 
 Run `npm run cli -- help` for the complete command list. Configuration is resolved in this order: per-job override, CLI/environment override, user JSONC, hardware profile, then built-in defaults. `quizzer config path` prints the per-user configuration location. API keys and the private service token are never included in settings output or backups.
 
+External plugins use the versioned [`quizzer.plugin.json`](plugin-sdk/quizzer.plugin.schema.json) contract. Quizzer verifies every declared file hash and any Ed25519 signature before an atomic install, then runs plugin JSON-RPC out of process with a scoped temporary directory, bounded output, timeout/cancellation, a minimal environment, and only explicitly granted secrets. Signed plugins require a trusted registry key. Unsigned local plugins stay blocked unless you deliberately enable Advanced Developer Mode:
+
+```sh
+npm run cli -- config set plugins.developerMode true
+npm run cli -- plugins install ./my-plugin
+npm run cli -- plugins health dev.example.my-plugin
+```
+
+Developer Mode keeps an unsigned-plugin warning on each installed plugin. Turning it off blocks those plugins again. Updates retain a rollback copy; removals are moved into recoverable plugin storage rather than erased immediately.
+
 ### Tailscale access
 
 On macOS, double-click `start-tailscale.command` in Finder. On Windows, double-click `start-tailscale.cmd`. The cross-platform launcher detects the active Tailscale address, installs npm dependencies when needed, and prints the private URL to open from another device on the same tailnet. Keep its window open while using Quizzer and press Control-C to stop it.

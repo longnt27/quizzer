@@ -6,6 +6,7 @@ import { ensureServiceToken } from '../server/auth.mjs';
 import { chunkDocument, importDocumentFile } from '../server/document-import.mjs';
 import { detectHardwareCapabilities } from '../server/hardware-profile.mjs';
 import { databasePathFor, defaultAppDataDirectory } from '../server/paths.mjs';
+import { PluginManager } from '../plugin-sdk/manager.mjs';
 import {
   loadResolvedSettings, readUserSettings, SETTINGS_REGISTRY, settingsPath, validateSettings, writeUserSettings,
 } from '../server/settings.mjs';
@@ -16,7 +17,8 @@ Usage:
   quizzer doctor [--json]
   quizzer serve [--port 8787]
   quizzer config list|get <key>|set <key> <value>|unset <key>|path [--json]
-  quizzer plugins list [--json]
+  quizzer plugins list|install <directory>|enable <id>|disable <id>|health <id>|rollback <id>
+                  |remove <id> --yes [--json]
   quizzer documents list|show <id>|import <file> [--tags a,b]|remove <id> --yes [--json]
   quizzer index <document-id>|--all [--json]
   quizzer test create --document <id> [--document <id>] [--name name] [--questions 20]
@@ -141,6 +143,44 @@ const runDoctor = async () => {
     `Recommended profile: ${hardware.recommendedProfile}`,
     `Configured profile: ${settings.profile}`,
   ].join('\n'));
+};
+
+const runPlugins = async action => {
+  const settings = await loadResolvedSettings(appDataDirectory);
+  const manager = new PluginManager({
+    appDataDirectory,
+    developerMode: settings.values['plugins.developerMode'],
+  });
+  if (action === 'list') {
+    const plugins = await manager.list();
+    return writeResult({ plugins }, plugins.length
+      ? plugins.map(plugin => `${plugin.id}  ${plugin.version ?? '-'}  ${plugin.enabled ? 'enabled' : plugin.status}`).join('\n')
+      : 'No external plugins installed');
+  }
+  const target = parsed.positionals.shift();
+  if (!target) fail(`plugins ${action} requires ${action === 'install' ? 'a directory' : 'a plugin id'}`);
+  if (action === 'install') {
+    const plugin = await manager.install(target);
+    return writeResult({ plugin }, `Installed ${plugin.name} ${plugin.version}${plugin.warning ? `\nWarning: ${plugin.warning}` : ''}`);
+  }
+  if (action === 'enable' || action === 'disable') {
+    const plugin = await manager.setEnabled(target, action === 'enable');
+    return writeResult({ plugin }, `${action === 'enable' ? 'Enabled' : 'Disabled'} ${plugin.name}`);
+  }
+  if (action === 'health') {
+    const health = await manager.health(target);
+    return writeResult({ id: target, health }, health.ok ? `${target} is healthy (${health.durationMs} ms)` : `${target} failed: ${health.error}`);
+  }
+  if (action === 'rollback') {
+    const plugin = await manager.rollback(target);
+    return writeResult({ plugin }, `Rolled ${target} back to ${plugin.version}; review and enable it when ready`);
+  }
+  if (action === 'remove') {
+    if (flag('yes') !== 'true') fail('plugins remove requires --yes');
+    const result = await manager.remove(target);
+    return writeResult(result, `Removed ${target}. Recovery copy: ${result.recoveryPath}`);
+  }
+  fail('Use plugins list, install, enable, disable, health, rollback, or remove');
 };
 
 const runDocuments = async action => {
@@ -289,12 +329,7 @@ const main = async () => {
   }
   if (command === 'doctor') return runDoctor();
   if (command === 'config') return runConfig(parsed.positionals.shift() || 'list');
-  if (command === 'plugins') {
-    const action = parsed.positionals.shift() || 'list';
-    if (action !== 'list') fail('Use plugins list');
-    const result = await serviceRequest('/api/integrations');
-    return writeResult({ plugins: result }, Object.entries(result).map(([name, status]) => `${name}: ${status.connected || status.installed || status.available ? 'ready' : 'not ready'}`).join('\n'));
-  }
+  if (command === 'plugins') return runPlugins(parsed.positionals.shift() || 'list');
   if (command === 'documents') return runDocuments(parsed.positionals.shift() || 'list');
   if (command === 'index') return runIndex();
   if (command === 'test') {

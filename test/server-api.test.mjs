@@ -78,6 +78,14 @@ test('exposes settings schema, precedence, and validated updates', async () => {
   assert.equal(rejected.status, 400);
 });
 
+test('exposes the plugin contract and bounded lifecycle collection', async () => {
+  const schema = await (await authorized('/api/v1/plugins/schema')).json();
+  assert.equal(schema.schema.properties.protocolVersion.const, 1);
+  const collection = await (await authorized('/api/v1/plugins')).json();
+  assert.ok(collection.builtIn.some(plugin => plugin.id === 'quizzer.index.fts5'));
+  assert.deepEqual(collection.plugins, []);
+});
+
 test('provides onboarding, document, job, and event operations', async () => {
   const onboarding = {
     onboardingVersion: 1,

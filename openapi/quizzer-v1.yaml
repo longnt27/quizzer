@@ -130,6 +130,70 @@ paths:
           description: Updated profile
         '400':
           $ref: '#/components/responses/InvalidRequest'
+  /plugins/schema:
+    get:
+      operationId: getPluginManifestSchema
+      summary: Read the versioned plugin manifest JSON Schema
+      responses:
+        '200': { description: Plugin manifest schema }
+  /plugins:
+    get:
+      operationId: listPlugins
+      summary: List built-in components and installed external plugins
+      responses:
+        '200':
+          description: Plugin collection
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [builtIn, plugins]
+                properties:
+                  builtIn: { type: array, items: { $ref: '#/components/schemas/PluginSummary' } }
+                  plugins: { type: array, items: { $ref: '#/components/schemas/PluginSummary' } }
+  /plugins/install:
+    post:
+      operationId: installPlugin
+      summary: Install or update a verified local plugin directory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties:
+                path: { type: string, minLength: 1 }
+      responses:
+        '201': { description: Installed plugin }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+  /plugins/{pluginId}/{action}:
+    parameters:
+      - $ref: '#/components/parameters/PluginId'
+      - in: path
+        name: action
+        required: true
+        schema: { type: string, enum: [enable, disable, health, rollback] }
+    post:
+      operationId: managePlugin
+      summary: Enable, disable, health-check, or roll back a plugin
+      responses:
+        '200': { description: Plugin lifecycle result }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+  /plugins/{pluginId}:
+    parameters:
+      - $ref: '#/components/parameters/PluginId'
+    delete:
+      operationId: removePlugin
+      summary: Move an installed plugin to recoverable removed storage
+      parameters:
+        - in: query
+          name: confirm
+          required: true
+          schema: { type: boolean, const: true }
+      responses:
+        '200': { description: Recoverable removal result }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
   /documents:
     get:
       operationId: listDocuments
@@ -218,6 +282,11 @@ components:
     JobId:
       in: path
       name: jobId
+      required: true
+      schema: { type: string, minLength: 1 }
+    PluginId:
+      in: path
+      name: pluginId
       required: true
       schema: { type: string, minLength: 1 }
   responses:
@@ -326,3 +395,17 @@ components:
         questions: { type: array, items: { type: object } }
         createdAt: { type: integer }
         updatedAt: { type: integer }
+    PluginSummary:
+      type: object
+      required: [id, name, capabilities]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        version: { type: string }
+        capabilities: { type: array, items: { type: string } }
+        builtIn: { type: boolean }
+        enabled: { type: boolean }
+        compatible: { type: boolean }
+        status: { type: string }
+        trust: { type: string, enum: [signed, unsigned-local] }
+        warning: { type: string }

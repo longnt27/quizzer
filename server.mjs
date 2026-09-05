@@ -11,6 +11,7 @@ import { ensureServiceToken, isAuthorizedRequest } from './server/auth.mjs';
 import {
   loadResolvedSettings, readUserSettings, SETTINGS_REGISTRY, SETTINGS_SCHEMA, validateSettings, writeUserSettings,
 } from './server/settings.mjs';
+import { PluginManager } from './plugin-sdk/manager.mjs';
 
 const port = Number(process.env.QUIZZER_SERVICE_PORT || 8787);
 const maxBodyBytes = 25 * 1024 * 1024;
@@ -24,6 +25,15 @@ const managedOcrPython = join(managedOcrDirectory, process.platform === 'win32' 
 const ocrScript = process.env.QUIZZER_OCR_SCRIPT || join(resourceDirectory, 'scripts', 'ocr_image.py');
 const serviceToken = await ensureServiceToken(appDataDirectory);
 const openApiDocument = await readFile(new URL('./openapi/quizzer-v1.yaml', import.meta.url), 'utf8');
+const pluginManifestSchema = JSON.parse(await readFile(new URL('./plugin-sdk/quizzer.plugin.schema.json', import.meta.url), 'utf8'));
+const builtInPlugins = Object.freeze([
+  { id: 'quizzer.extract.basic', name: 'Basic PDF.js and text extraction', capabilities: ['extractor'], builtIn: true },
+  { id: 'quizzer.extract.marker', name: 'Marker visual extraction', capabilities: ['extractor'], builtIn: true },
+  { id: 'quizzer.ocr.rapidocr', name: 'RapidOCR', capabilities: ['ocr'], builtIn: true },
+  { id: 'quizzer.index.fts5', name: 'SQLite FTS5 and BM25', capabilities: ['vector-index'], builtIn: true },
+  { id: 'quizzer.embed.minilm', name: 'MiniLM through Ollama', capabilities: ['embedder', 'reranker'], builtIn: true },
+  { id: 'quizzer.generate.providers', name: 'Local agents and API providers', capabilities: ['generator'], builtIn: true },
+]);
 const windowsOllamaExecutable = process.env.LOCALAPPDATA
   ? join(process.env.LOCALAPPDATA, 'Programs', 'Ollama', 'ollama.exe')
   : 'ollama.exe';
@@ -70,6 +80,14 @@ const updateUserSettings = async body => {
     delete current[key];
   }
   return writeUserSettings(appDataDirectory, { ...current, ...patch });
+};
+
+const getPluginManager = async () => {
+  const settings = await loadResolvedSettings(appDataDirectory);
+  return new PluginManager({
+    appDataDirectory,
+    developerMode: settings.values['plugins.developerMode'],
+  });
 };
 
 const sendStorageEvents = (request, response) => {
@@ -770,7 +788,7 @@ const handleVersionedApi = async (request, response, url) => {
         apiVersion: 1,
         hardware,
         providers: Object.keys(providerRunners),
-        operations: ['settings', 'onboarding', 'documents', 'jobs', 'events'],
+        operations: ['settings', 'onboarding', 'plugins', 'documents', 'jobs', 'events'],
       });
       return true;
     }
@@ -786,6 +804,42 @@ const handleVersionedApi = async (request, response, url) => {
     if (request.method === 'PATCH' && url.pathname === '/api/v1/settings') {
       await updateUserSettings(await readJson(request));
       send(response, 200, await loadResolvedSettings(appDataDirectory));
+      return true;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/v1/plugins/schema') {
+      send(response, 200, { schema: pluginManifestSchema });
+      return true;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/v1/plugins') {
+      const manager = await getPluginManager();
+      send(response, 200, { builtIn: builtInPlugins, plugins: await manager.list() });
+      return true;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/v1/plugins/install') {
+      const body = await readJson(request);
+      if (typeof body?.path !== 'string' || !body.path) throw new Error('A local plugin directory path is required');
+      const manager = await getPluginManager();
+      send(response, 201, { plugin: await manager.install(body.path) });
+      return true;
+    }
+    const pluginActionMatch = /^\/api\/v1\/plugins\/([^/]+)\/(enable|disable|health|rollback)$/.exec(url.pathname);
+    if (pluginActionMatch && request.method === 'POST') {
+      const id = decodeURIComponent(pluginActionMatch[1]);
+      const action = pluginActionMatch[2];
+      const manager = await getPluginManager();
+      const result = action === 'health'
+        ? { health: await manager.health(id) }
+        : action === 'rollback'
+          ? { plugin: await manager.rollback(id) }
+          : { plugin: await manager.setEnabled(id, action === 'enable') };
+      send(response, 200, result);
+      return true;
+    }
+    const pluginMatch = /^\/api\/v1\/plugins\/([^/]+)$/.exec(url.pathname);
+    if (pluginMatch && request.method === 'DELETE') {
+      if (url.searchParams.get('confirm') !== 'true') throw new Error('Plugin removal requires confirm=true');
+      const manager = await getPluginManager();
+      send(response, 200, await manager.remove(decodeURIComponent(pluginMatch[1])));
       return true;
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/onboarding') {
