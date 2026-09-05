@@ -4,6 +4,7 @@ import { dirname, extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { ensureServiceToken } from '../server/auth.mjs';
 import { CredentialVault } from './credential-vault.mjs';
+import { isAllowedExternalUrl, isTrustedRendererUrl } from './security.mjs';
 import { serviceRestartDelay, waitForServiceReady } from './service-process.mjs';
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'quizzer', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
@@ -13,7 +14,8 @@ if (process.env.QUIZZER_USER_DATA_DIR) app.setPath('userData', process.env.QUIZZ
 const sourceDirectory = dirname(fileURLToPath(import.meta.url));
 const projectDirectory = join(sourceDirectory, '..');
 const rendererDirectory = join(projectDirectory, 'dist');
-const developmentUrl = process.env.QUIZZER_RENDERER_URL;
+const developmentUrl = app.isPackaged ? undefined : process.env.QUIZZER_RENDERER_URL;
+const externalDevelopmentPort = developmentUrl ? process.env.QUIZZER_EXTERNAL_SERVICE_PORT : undefined;
 let service;
 let serviceToken;
 let servicePort;
@@ -26,20 +28,8 @@ let serviceRestartAttempt = 0;
 let serviceRestartTimer;
 let serviceStableTimer;
 
-const isAllowedExternalUrl = value => {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'https:' && !url.username && !url.password;
-  } catch { return false; }
-};
-
 const isTrustedRenderer = event => {
-  try {
-    const rendererUrl = new URL(event.senderFrame.url);
-    return developmentUrl
-      ? rendererUrl.origin === new URL(developmentUrl).origin
-      : rendererUrl.protocol === 'quizzer:' && rendererUrl.hostname === 'app';
-  } catch { return false; }
+  return isTrustedRendererUrl(event.senderFrame.url, developmentUrl);
 };
 
 const registerValidatedIpc = () => {
@@ -86,6 +76,14 @@ const scheduleServiceRestart = () => {
 const startService = async () => {
   const userData = app.getPath('userData');
   serviceToken = await ensureServiceToken(userData);
+  if (externalDevelopmentPort !== undefined) {
+    const port = Number(externalDevelopmentPort);
+    if (!/^\d{1,5}$/.test(externalDevelopmentPort) || !Number.isSafeInteger(port) || port < 1 || port > 65_535) {
+      throw new Error('QUIZZER_EXTERNAL_SERVICE_PORT must be an integer from 1 to 65535');
+    }
+    servicePort = port;
+    return;
+  }
   const requestedPort = process.env.QUIZZER_DESKTOP_SERVICE_PORT ?? (developmentUrl ? '8787' : '0');
   const child = utilityProcess.fork(join(projectDirectory, 'server.mjs'), [], {
     cwd: userData,
@@ -173,9 +171,11 @@ const createWindow = () => {
     return { action: 'deny' };
   });
   window.webContents.on('will-navigate', (event, url) => {
-    const allowedOrigin = developmentUrl ? new URL(developmentUrl).origin : 'quizzer://app';
-    if (new URL(url).origin !== allowedOrigin) event.preventDefault();
+    if (!isTrustedRendererUrl(url, developmentUrl)) event.preventDefault();
   });
+  window.webContents.session.setPermissionCheckHandler(() => false);
+  window.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+  window.webContents.session.setDevicePermissionHandler?.(() => false);
   window.on('close', event => {
     if (quitting) return;
     event.preventDefault();
@@ -200,7 +200,7 @@ const createTray = () => {
 app.whenReady().then(async () => {
   credentialVault = new CredentialVault(join(app.getPath('userData'), 'credentials.json'), safeStorage);
   await startService();
-  serviceRecoveryEnabled = true;
+  serviceRecoveryEnabled = externalDevelopmentPort === undefined;
   if (!servicePort) scheduleServiceRestart();
   if (!developmentUrl) void registerApplicationProtocol();
   registerValidatedIpc();

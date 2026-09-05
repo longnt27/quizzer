@@ -116,7 +116,7 @@ npm run dev
 
 Open the Vite URL printed in the terminal, normally `http://localhost:5173`.
 
-`npm run dev` starts both the browser development server and the loopback generation service. The service listens on `127.0.0.1:8787` by default.
+`npm run dev` starts both the browser development server and the loopback generation service. The service listens on `127.0.0.1:8787` by default. `npm run dev:desktop` starts that same Node service beside Vite and connects Electron to it, avoiding native-addon ABI changes in the source workspace.
 
 ### Source CLI
 
