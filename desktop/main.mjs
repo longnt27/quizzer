@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu, Tray, nativeImage, net, protocol, shell, util
 import { existsSync } from 'node:fs';
 import { dirname, extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { ensureServiceToken } from '../server/auth.mjs';
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'quizzer', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
 
@@ -12,6 +13,7 @@ const projectDirectory = join(sourceDirectory, '..');
 const rendererDirectory = join(projectDirectory, 'dist');
 const developmentUrl = process.env.QUIZZER_RENDERER_URL;
 let service;
+let serviceToken;
 let window;
 let tray;
 let quitting = false;
@@ -23,8 +25,9 @@ const isAllowedExternalUrl = value => {
   } catch { return false; }
 };
 
-const startService = () => {
+const startService = async () => {
   const userData = app.getPath('userData');
+  serviceToken = await ensureServiceToken(userData);
   service = utilityProcess.fork(join(projectDirectory, 'server.mjs'), [], {
     cwd: userData,
     env: {
@@ -35,6 +38,7 @@ const startService = () => {
       QUIZZER_OCR_SCRIPT: app.isPackaged
         ? join(process.resourcesPath, 'ocr_image.py')
         : join(projectDirectory, 'scripts', 'ocr_image.py'),
+      QUIZZER_API_TOKEN: serviceToken,
       QUIZZER_SERVICE_PORT: '8787',
     },
     stdio: 'inherit',
@@ -50,9 +54,11 @@ const registerApplicationProtocol = () => protocol.handle('quizzer', request => 
   const url = new URL(request.url);
   if (url.hostname !== 'app') return new Response('Not found', { status: 404 });
   if (url.pathname.startsWith('/api/')) {
+    const headers = new Headers(request.headers);
+    if (url.pathname.startsWith('/api/v1/')) headers.set('Authorization', `Bearer ${serviceToken}`);
     return net.fetch(`http://127.0.0.1:8787${url.pathname}${url.search}`, {
       method: request.method,
-      headers: request.headers,
+      headers,
       body: request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body,
       duplex: 'half',
     });
@@ -115,11 +121,15 @@ const createTray = () => {
   tray.on('click', () => { window?.show(); window?.focus(); });
 };
 
-app.whenReady().then(() => {
-  startService();
+app.whenReady().then(async () => {
+  await startService();
   if (!developmentUrl) void registerApplicationProtocol();
   createWindow();
   createTray();
+}).catch(error => {
+  process.stderr.write(`Quizzer could not start: ${error instanceof Error ? error.message : String(error)}\n`);
+  quitting = true;
+  app.quit();
 });
 
 app.on('activate', () => window ? window.show() : createWindow());

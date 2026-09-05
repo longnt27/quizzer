@@ -3,19 +3,26 @@ import { spawn } from 'node:child_process';
 import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { storageInfo, syncStorage } from './server/storage.mjs';
+import {
+  deleteRecord, getRecord, listRecords, putRecord, storageInfo, subscribeStorageChanges, syncStorage,
+} from './server/storage.mjs';
 import { detectHardwareCapabilities } from './server/hardware-profile.mjs';
+import { ensureServiceToken, isAuthorizedRequest } from './server/auth.mjs';
+import {
+  loadResolvedSettings, readUserSettings, SETTINGS_REGISTRY, SETTINGS_SCHEMA, validateSettings, writeUserSettings,
+} from './server/settings.mjs';
 
 const port = Number(process.env.QUIZZER_SERVICE_PORT || 8787);
 const maxBodyBytes = 25 * 1024 * 1024;
 const maxStorageBodyBytes = 250 * 1024 * 1024;
-const appDataDirectory = process.env.QUIZZER_APP_DATA_DIR || process.cwd();
+const appDataDirectory = process.env.QUIZZER_APP_DATA_DIR || join(process.cwd(), '.quizzer-data');
 const resourceDirectory = process.env.QUIZZER_RESOURCE_DIR || process.cwd();
 const managedMarkerDirectory = join(appDataDirectory, '.quizzer-tools', 'marker');
 const managedMarkerExecutable = join(managedMarkerDirectory, process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'marker_single.exe' : 'marker_single');
 const managedOcrDirectory = join(appDataDirectory, '.quizzer-tools', 'ocr');
 const managedOcrPython = join(managedOcrDirectory, process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'python.exe' : 'python');
 const ocrScript = process.env.QUIZZER_OCR_SCRIPT || join(resourceDirectory, 'scripts', 'ocr_image.py');
+const serviceToken = await ensureServiceToken(appDataDirectory);
 const windowsOllamaExecutable = process.env.LOCALAPPDATA
   ? join(process.env.LOCALAPPDATA, 'Programs', 'Ollama', 'ollama.exe')
   : 'ollama.exe';
@@ -34,6 +41,53 @@ let managedOcrDetected;
 const send = (response, status, body) => {
   response.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': 'http://localhost:5173' });
   response.end(JSON.stringify(body));
+};
+
+const publicRecord = record => ({ ...record.data, id: record.id, revision: record.revision, updatedAt: record.updatedAt });
+
+const documentSummary = record => ({
+  id: record.id,
+  revision: record.revision,
+  updatedAt: record.updatedAt,
+  name: record.data.name,
+  createdAt: record.data.createdAt,
+  mimeType: record.data.mimeType,
+  size: record.data.size,
+  tags: record.data.tags ?? [],
+  pageCount: record.data.pageCount,
+  chunkCount: Array.isArray(record.data.chunks) ? record.data.chunks.length : 0,
+});
+
+const updateUserSettings = async body => {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('Settings update must be an object');
+  const current = await readUserSettings(appDataDirectory);
+  const patch = validateSettings(body.values ?? {});
+  const unset = body.unset ?? [];
+  if (!Array.isArray(unset) || unset.some(key => typeof key !== 'string')) throw new Error('unset must be an array of setting names');
+  for (const key of unset) {
+    validateSettings({ [key]: SETTINGS_REGISTRY.find(definition => definition.key === key)?.default });
+    delete current[key];
+  }
+  return writeUserSettings(appDataDirectory, { ...current, ...patch });
+};
+
+const sendStorageEvents = (request, response) => {
+  response.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  response.write(`event: ready\ndata: ${JSON.stringify({ revision: storageInfo().revision })}\n\n`);
+  const unsubscribe = subscribeStorageChanges(changes => {
+    if (!response.destroyed) response.write(`event: storage\ndata: ${JSON.stringify({ changes })}\n\n`);
+  });
+  const heartbeat = setInterval(() => {
+    if (!response.destroyed) response.write(': keepalive\n\n');
+  }, 15_000);
+  const close = () => { clearInterval(heartbeat); unsubscribe(); };
+  request.once('close', close);
+  response.once('close', close);
 };
 
 const readJson = (request, limit = maxBodyBytes) => new Promise((resolve, reject) => {
@@ -692,11 +746,114 @@ const runMarker = async ({ name, data, ocrEnabled = false }) => {
   }
 };
 
+const handleVersionedApi = async (request, response, url) => {
+  if (!url.pathname.startsWith('/api/v1/')) return false;
+  if (!isAuthorizedRequest(request, serviceToken)) {
+    send(response, 401, { error: 'A valid Quizzer service token is required', code: 'unauthorized' });
+    return true;
+  }
+
+  try {
+    if (request.method === 'GET' && url.pathname === '/api/v1/health') {
+      send(response, 200, { ok: true, version: 1, storage: storageInfo() });
+      return true;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/v1/capabilities') {
+      const hardware = detectHardwareCapabilities(appDataDirectory);
+      send(response, 200, {
+        apiVersion: 1,
+        hardware,
+        providers: Object.keys(providerRunners),
+        operations: ['settings', 'onboarding', 'documents', 'jobs', 'events'],
+      });
+      return true;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/v1/settings/schema') {
+      send(response, 200, { schema: SETTINGS_SCHEMA, registry: SETTINGS_REGISTRY });
+      return true;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/v1/settings') {
+      const profile = url.searchParams.get('profile') || undefined;
+      send(response, 200, await loadResolvedSettings(appDataDirectory, { profile }));
+      return true;
+    }
+    if (request.method === 'PATCH' && url.pathname === '/api/v1/settings') {
+      await updateUserSettings(await readJson(request));
+      send(response, 200, await loadResolvedSettings(appDataDirectory));
+      return true;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/v1/onboarding') {
+      const profile = getRecord('profiles', 'default');
+      send(response, profile ? 200 : 404, profile ? { profile: publicRecord(profile) } : { error: 'Profile not found' });
+      return true;
+    }
+    if (request.method === 'PUT' && url.pathname === '/api/v1/onboarding') {
+      const body = await readJson(request);
+      if (!body?.onboarding || typeof body.onboarding !== 'object') throw new Error('onboarding is required');
+      const current = getRecord('profiles', 'default')?.data ?? {
+        id: 'default', createdAt: Date.now(), interfaceMode: 'simple', hardwareProfile: 'lite', upgradedExistingLibrary: false,
+      };
+      const profile = { ...current, id: 'default', onboarding: body.onboarding, updatedAt: Date.now() };
+      send(response, 200, { profile: publicRecord(putRecord('profiles', 'default', profile)) });
+      return true;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/v1/documents') {
+      send(response, 200, { documents: listRecords('documents').map(documentSummary) });
+      return true;
+    }
+    const documentMatch = /^\/api\/v1\/documents\/([^/]+)$/.exec(url.pathname);
+    if (documentMatch && request.method === 'GET') {
+      const record = getRecord('documents', decodeURIComponent(documentMatch[1]));
+      send(response, record ? 200 : 404, record ? { document: publicRecord(record) } : { error: 'Document not found' });
+      return true;
+    }
+    if (documentMatch && request.method === 'DELETE') {
+      deleteRecord('documents', decodeURIComponent(documentMatch[1]));
+      send(response, 200, { ok: true });
+      return true;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/v1/jobs') {
+      send(response, 200, { jobs: listRecords('generationJobs').map(publicRecord) });
+      return true;
+    }
+    const jobActionMatch = /^\/api\/v1\/jobs\/([^/]+)\/(resume|cancel)$/.exec(url.pathname);
+    if (jobActionMatch && request.method === 'POST') {
+      const id = decodeURIComponent(jobActionMatch[1]);
+      const existing = getRecord('generationJobs', id);
+      if (!existing) {
+        send(response, 404, { error: 'Job not found' });
+        return true;
+      }
+      const resume = jobActionMatch[2] === 'resume';
+      const data = {
+        ...existing.data,
+        status: resume ? 'queued' : 'cancelled',
+        updatedAt: Date.now(),
+        ...(resume ? { error: undefined, errorCode: undefined, nextAttemptAt: undefined, workerId: undefined }
+          : { workerId: undefined, finishedAt: Date.now() }),
+      };
+      send(response, 200, { job: publicRecord(putRecord('generationJobs', id, data)) });
+      return true;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/v1/events') {
+      sendStorageEvents(request, response);
+      return true;
+    }
+  } catch (error) {
+    send(response, 400, { error: error instanceof Error ? error.message : 'Invalid API request' });
+    return true;
+  }
+  send(response, 404, { error: 'Not found' });
+  return true;
+};
+
 createServer(async (request, response) => {
+  const url = new URL(request.url || '/', 'http://127.0.0.1');
   if (request.method === 'OPTIONS') {
-    response.writeHead(204, { 'Access-Control-Allow-Origin': 'http://localhost:5173', 'Access-Control-Allow-Headers': 'Content-Type' });
+    response.writeHead(204, { 'Access-Control-Allow-Origin': 'http://localhost:5173', 'Access-Control-Allow-Headers': 'Content-Type, Authorization' });
     return response.end();
   }
+  if (await handleVersionedApi(request, response, url)) return;
   if (request.method === 'GET' && request.url === '/api/health') {
     return send(response, 200, { ok: true, storage: storageInfo(), providers: Object.fromEntries(Object.keys(providerRunners).map(provider => [provider, true])) });
   }

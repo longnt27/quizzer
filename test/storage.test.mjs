@@ -6,7 +6,7 @@ import test from 'node:test';
 
 const directory = await mkdtemp(join(tmpdir(), 'quizzer-storage-test-'));
 process.env.QUIZZER_DATABASE_PATH = join(directory, 'quizzer.sqlite');
-const { syncStorage } = await import('../server/storage.mjs');
+const { getRecord, listRecords, putRecord, subscribeStorageChanges, syncStorage } = await import('../server/storage.mjs');
 
 test.after(async () => rm(directory, { recursive: true, force: true }));
 
@@ -69,4 +69,16 @@ test('synchronizes the versioned application profile', () => {
   });
   assert.equal(result.cursor, 4);
   assert.deepEqual(result.changes[0].data, profile);
+});
+
+test('supports record-level reads, writes, and change subscriptions', () => {
+  const events = [];
+  const unsubscribe = subscribeStorageChanges(changes => events.push(...changes));
+  const record = putRecord('generationJobs', 'job-1', { id: 'job-1', status: 'paused', updatedAt: 20 });
+  unsubscribe();
+  assert.equal(record.data.status, 'paused');
+  assert.equal(getRecord('generationJobs', 'job-1').id, 'job-1');
+  assert.equal(listRecords('generationJobs')[0].data.id, 'job-1');
+  assert.equal(events.at(-1).collection, 'generationJobs');
+  assert.throws(() => listRecords('secrets'), /Unknown storage collection/);
 });

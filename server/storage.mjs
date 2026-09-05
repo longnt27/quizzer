@@ -54,6 +54,15 @@ const changesAfter = database.prepare(`
   FROM changes WHERE revision > ? ORDER BY revision ASC
 `);
 const currentRevision = database.prepare('SELECT COALESCE(MAX(revision), 0) AS revision FROM changes');
+const recordsInCollection = database.prepare(`
+  SELECT id, data, revision, updated_at AS updatedAt
+  FROM records WHERE collection = ? AND deleted = 0 ORDER BY updated_at DESC
+`);
+const recordById = database.prepare(`
+  SELECT id, data, revision, updated_at AS updatedAt
+  FROM records WHERE collection = ? AND id = ? AND deleted = 0
+`);
+const listeners = new Set();
 
 const validateChange = change => {
   if (!change || !collections.has(change.collection) || typeof change.id !== 'string' || !change.id) {
@@ -66,6 +75,7 @@ const validateChange = change => {
 
 const applyChanges = database.transaction((changes, bootstrap) => {
   const now = Date.now();
+  const applied = [];
   for (const change of changes) {
     validateChange(change);
     if (bootstrap && recordExists.get(change.collection, change.id)) continue;
@@ -77,15 +87,19 @@ const applyChanges = database.transaction((changes, bootstrap) => {
       updatedAt: now,
     };
     const result = insertChange.run(stored);
-    upsertRecord.run({ ...stored, revision: Number(result.lastInsertRowid) });
+    const revision = Number(result.lastInsertRowid);
+    upsertRecord.run({ ...stored, revision });
+    applied.push({ revision, collection: change.collection, id: change.id, deleted: Boolean(change.deleted), updatedAt: now });
   }
+  return applied;
 });
 
 export const syncStorage = ({ cursor = 0, changes = [], bootstrap = false } = {}) => {
   if (!Number.isSafeInteger(cursor) || cursor < 0 || !Array.isArray(changes) || changes.length > 10_000) {
     throw new Error('Invalid storage sync request');
   }
-  applyChanges(changes, Boolean(bootstrap));
+  const applied = applyChanges(changes, Boolean(bootstrap));
+  if (applied.length) for (const listener of listeners) listener(applied);
   const rows = changesAfter.all(cursor);
   return {
     cursor: Number(currentRevision.get().revision),
@@ -95,6 +109,40 @@ export const syncStorage = ({ cursor = 0, changes = [], bootstrap = false } = {}
       data: row.data === null ? undefined : JSON.parse(row.data),
     })),
   };
+};
+
+const validateCollection = collection => {
+  if (!collections.has(collection)) throw new Error(`Unknown storage collection: ${collection}`);
+};
+
+const decodeRecord = row => row ? { ...row, data: JSON.parse(row.data) } : undefined;
+
+export const listRecords = collection => {
+  validateCollection(collection);
+  return recordsInCollection.all(collection).map(decodeRecord);
+};
+
+export const getRecord = (collection, id) => {
+  validateCollection(collection);
+  if (typeof id !== 'string' || !id) throw new Error('A record id is required');
+  return decodeRecord(recordById.get(collection, id));
+};
+
+export const putRecord = (collection, id, data) => {
+  validateChange({ collection, id, data });
+  syncStorage({ cursor: Number(currentRevision.get().revision), changes: [{ collection, id, data }] });
+  return getRecord(collection, id);
+};
+
+export const deleteRecord = (collection, id) => {
+  validateCollection(collection);
+  syncStorage({ cursor: Number(currentRevision.get().revision), changes: [{ collection, id, deleted: true }] });
+};
+
+export const subscribeStorageChanges = listener => {
+  if (typeof listener !== 'function') throw new Error('A storage listener function is required');
+  listeners.add(listener);
+  return () => listeners.delete(listener);
 };
 
 export const storageInfo = () => ({
