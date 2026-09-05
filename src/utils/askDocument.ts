@@ -4,6 +4,7 @@ import { extractJson, ProviderRequestError } from './api';
 import { getApiKey } from './providerSettings';
 import { retrieveGroundedDocumentContext } from './documentRetrieval';
 import { serviceFetch } from './serviceApi';
+import { loadStoredImageDataUrl } from './objectStore';
 
 export type DocumentConversationTurn = AIConversationTurn;
 
@@ -73,6 +74,6 @@ ${retrieved.content}
 </document>`;
 
   const answer = await requestAIAnswer(prompt, provider, model,
-    retrieved.images.map(image => `data:${image.mimeType};base64,${image.data}`), signal);
+    await Promise.all(retrieved.images.map(loadStoredImageDataUrl)), signal);
   return { answer, sources: retrieved.sources };
 }

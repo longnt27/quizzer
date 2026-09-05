@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import test from 'node:test';
-import { isStoredObjectReference, materializeSerializedObjects, ObjectStore } from '../server/object-store.mjs';
+import { isStoredObjectReference, materializeDocumentImages, materializeSerializedObjects, ObjectStore } from '../server/object-store.mjs';
 
 const directory = await mkdtemp(join(tmpdir(), 'quizzer-object-store-test-'));
 const store = new ObjectStore(directory, { maxObjectBytes: 1024 });
@@ -47,4 +47,16 @@ test('materializes legacy serialized blobs without retaining base64 in records',
   assert.equal(materialized.originalFile.name, 'guide.txt');
   assert.equal(await readFile(store.pathFor(materialized.originalFile.sha256), 'utf8'), 'guide');
   assert.equal(JSON.stringify(materialized).includes('__quizzerBlob'), false);
+});
+
+test('materializes extracted image data into immutable object references', async () => {
+  const imageData = Buffer.from('fake-png-bytes');
+  const result = await materializeDocumentImages({
+    id: 'visual-document',
+    images: [{ id: 'figure-1', name: 'figure.png', mimeType: 'image/png', data: imageData.toString('base64'), page: 2 }],
+  }, store);
+  assert.equal(result.changed, true);
+  assert.equal(result.document.images[0].data, undefined);
+  assert.equal(result.document.images[0].object.__quizzerObject, true);
+  assert.equal(await readFile(store.pathFor(result.document.images[0].object.sha256), 'utf8'), imageData.toString());
 });

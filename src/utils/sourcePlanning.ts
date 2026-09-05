@@ -3,6 +3,7 @@ import type { CoverageStrategy } from '../types';
 import { chunkDocumentContent, chunkText } from './documentChunks';
 import { getProviderSettings } from './providerSettings';
 import { serviceFetch, serviceJson } from './serviceApi';
+import { loadStoredImageDataUrl } from './objectStore';
 
 const SOURCE_CHARACTER_BUDGET = 54_000;
 const MAX_SOURCE_IMAGES = 6;
@@ -161,7 +162,7 @@ export const buildCoveragePlan = async (
   return { documents, plan: { strategy, createdAt: Date.now(), slots } };
 };
 
-export const sourceContextForSlots = (
+export const sourceContextForSlots = async (
   documents: StoredDocument[],
   plan: StoredCoveragePlan,
   offset: number,
@@ -210,7 +211,7 @@ export const sourceContextForSlots = (
     .slice(0, MAX_SOURCE_IMAGES);
   const visualContent = selectedImages.map(({ image, document }) => imageDescription(image, document)).join('\n\n');
   const content = visualContent ? `${textContent}\n\n# Visual context\n${visualContent}` : textContent;
-  const images = selectedImages.map(({ image }) => `data:${image.mimeType};base64,${image.data}`);
+  const images = await Promise.all(selectedImages.map(({ image }) => loadStoredImageDataUrl(image)));
   const provenanceBySlot = requestedSlots.map(slot => ({
     documentIds: slot.documentIds.filter(id => documentMap.has(id)),
     sourceSpanIds: slot.documentIds.flatMap(id => {
@@ -237,7 +238,7 @@ export const retrievalContextForSlots = async (
   count: number,
   options: { customInstruction?: string; contextBudget?: number; signal?: AbortSignal } = {},
 ) => {
-  const fallback = sourceContextForSlots(documents, plan, offset, count);
+  const fallback = await sourceContextForSlots(documents, plan, offset, count);
   const documentMap = new Map(documents.map(document => [document.id, document]));
   const requestedSlots = plan.slots.slice(offset, offset + count);
   const totalBudget = Math.max(1_024, options.contextBudget ?? 12_000);

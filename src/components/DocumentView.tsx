@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Alert, Button, Card, Empty, Input, List, Space, Spin, Tabs, Tag, Typography } from 'antd';
 import { DatabaseOutlined, DownloadOutlined, ReloadOutlined, RobotOutlined, SearchOutlined } from '@ant-design/icons';
-import { db, type StoredDocument } from '../db/db';
+import { db, type StoredDocument, type StoredDocumentImage } from '../db/db';
 import { getMessageApi } from '../utils/messageProvider';
 import DocumentAskModal from './DocumentAskModal';
 import { serviceJson, serviceRequest } from '../utils/serviceApi';
 import { syncNow } from '../db/serverSync';
-import { loadStoredBlob } from '../utils/objectStore';
+import { loadStoredBlob, loadStoredImageBlob } from '../utils/objectStore';
 
 interface Props { documentId: string; }
 
@@ -31,6 +31,26 @@ interface RetrievalPreview {
   estimatedContextTokens: number;
   results: RetrievalResult[];
   refusal?: string;
+}
+
+function ExtractedImagePreview({ image }: { image: StoredDocumentImage }) {
+  const [url, setUrl] = useState('');
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let active = true;
+    let objectUrl = '';
+    void loadStoredImageBlob(image).then(blob => {
+      if (!active) return;
+      objectUrl = URL.createObjectURL(blob);
+      setUrl(objectUrl);
+    }).catch(loadError => {
+      if (active) setError(loadError instanceof Error ? loadError.message : 'Image unavailable');
+    });
+    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [image]);
+  if (error) return <Alert type="warning" showIcon message="Image unavailable" description={error} />;
+  if (!url) return <Spin tip="Loading image…"><div style={{ minHeight: 120 }} /></Spin>;
+  return <img className="document-extracted-image" src={url} alt={image.caption || image.name} />;
 }
 
 export default function DocumentView({ documentId }: Props) {
@@ -157,7 +177,7 @@ export default function DocumentView({ documentId }: Props) {
         </Card> },
         ...(document.images?.length ? [{ key: 'images', label: `Images (${document.images.length})`, children: <div className="document-image-grid">
           {document.images.map((image, index) => <Card key={image.id ?? `${image.name}-${index}`} size="small"
-            cover={<img className="document-extracted-image" src={`data:${image.mimeType};base64,${image.data}`} alt={image.caption || image.name} />}>
+            cover={<ExtractedImagePreview image={image} />}>
             <Typography.Text strong>{image.name}</Typography.Text>
             <Space wrap style={{ marginTop: 8, marginBottom: 8 }}>
               {image.page && <Tag>Page {image.page}</Tag>}

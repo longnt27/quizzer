@@ -1,7 +1,7 @@
 import type { Table } from 'dexie';
-import { db, type StoredSyncChange, type SyncCollection } from './db';
+import { db, type StoredDocument, type StoredSyncChange, type SyncCollection } from './db';
 import { serviceAuthorizationHeader } from '../utils/serviceApi';
-import { storeBlob } from '../utils/objectStore';
+import { storeBlob, storeDocumentImages } from '../utils/objectStore';
 
 type SyncStatus = 'starting' | 'synced' | 'offline' | 'syncing';
 type SyncPhase = 'idle' | 'preparing' | 'uploading' | 'receiving' | 'applying' | 'complete' | 'error';
@@ -67,6 +67,10 @@ const serialize = async (value: unknown): Promise<unknown> => {
   }
   return value;
 };
+
+const serializeRecord = async (collection: SyncCollection, record: Record<string, unknown>) => serialize(
+  collection === 'documents' ? await storeDocumentImages(record as unknown as StoredDocument) : record,
+);
 
 const deserialize = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(deserialize);
@@ -141,7 +145,7 @@ const outgoingChanges = async (bootstrap: boolean): Promise<OutgoingChange[]> =>
     let completed = 0;
     for (const { collection, records: tableRecords } of records) {
       for (const record of tableRecords) {
-        result.push({ collection, id: String(record.id ?? record.testId), data: await serialize(record) });
+        result.push({ collection, id: String(record.id ?? record.testId), data: await serializeRecord(collection, record) });
         completed += 1;
         updateSnapshot({ completed, percent: total ? Math.round(completed / total * 15) : 15 });
       }
@@ -158,7 +162,7 @@ const outgoingChanges = async (bootstrap: boolean): Promise<OutgoingChange[]> =>
       collection: change.collection,
       id: change.id,
       deleted: change.deleted || !record,
-      data: record ? await serialize(record) : undefined,
+      data: record ? await serializeRecord(change.collection, record) : undefined,
       changedAt: change.changedAt,
     });
     updateSnapshot({ completed: index + 1, percent: pending.length ? Math.round((index + 1) / pending.length * 15) : 15 });

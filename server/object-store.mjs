@@ -151,3 +151,24 @@ export const materializeSerializedObjects = async (value, objectStore) => {
     Object.entries(value).map(async ([key, item]) => [key, await materializeSerializedObjects(item, objectStore)]),
   ));
 };
+
+export const materializeDocumentImages = async (document, objectStore) => {
+  if (!Array.isArray(document?.images)) return { document, changed: false };
+  let changed = false;
+  const images = await Promise.all(document.images.map(async image => {
+    if (!image || typeof image !== 'object' || typeof image.data !== 'string') return image;
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(image.data) || image.data.length % 4 === 1) {
+      throw new Error(`Invalid legacy image payload: ${image.name || 'unnamed image'}`);
+    }
+    const { data, ...metadata } = image;
+    changed = true;
+    return {
+      ...metadata,
+      object: await objectStore.putBuffer(Buffer.from(data, 'base64'), {
+        type: image.mimeType,
+        name: image.name,
+      }),
+    };
+  }));
+  return { document: changed ? { ...document, images } : document, changed };
+};

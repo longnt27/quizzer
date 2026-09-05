@@ -1,4 +1,4 @@
-import type { StoredObjectReference } from '../db/db';
+import type { StoredDocument, StoredDocumentImage, StoredObjectReference } from '../db/db';
 import { serviceFetch } from './serviceApi';
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
@@ -51,4 +51,38 @@ export const loadStoredBlob = async (value: Blob | StoredObjectReference): Promi
   return value.name
     ? new File([data], value.name, { type: value.type, lastModified: value.lastModified })
     : new Blob([data], { type: value.type });
+};
+
+const legacyImageBlob = (image: StoredDocumentImage) => {
+  if (typeof image.data !== 'string') throw new Error(`Image data is unavailable: ${image.name}`);
+  const binary = atob(image.data);
+  return new Blob([Uint8Array.from(binary, character => character.charCodeAt(0))], { type: image.mimeType });
+};
+
+export const storeDocumentImages = async (document: StoredDocument): Promise<StoredDocument> => {
+  if (!document.images?.some(image => typeof image.data === 'string')) return document;
+  return {
+    ...document,
+    images: await Promise.all(document.images.map(async image => {
+      if (typeof image.data !== 'string') return image;
+      const metadata = { ...image };
+      delete metadata.data;
+      return { ...metadata, object: await storeBlob(legacyImageBlob(image)) };
+    })),
+  };
+};
+
+export const loadStoredImageBlob = (image: StoredDocumentImage) => image.object
+  ? loadStoredBlob(image.object)
+  : Promise.resolve(legacyImageBlob(image));
+
+export const loadStoredImageDataUrl = async (image: StoredDocumentImage) => {
+  if (typeof image.data === 'string') return `data:${image.mimeType};base64,${image.data}`;
+  const blob = await loadStoredImageBlob(image);
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error(`Could not read image: ${image.name}`));
+    reader.readAsDataURL(blob);
+  });
 };

@@ -87,7 +87,8 @@ export interface StoredDocumentImage {
   id?: string;
   name: string;
   mimeType: string;
-  data: string;
+  data?: string;
+  object?: StoredObjectReference;
   page?: number;
   sourceStart?: number;
   caption?: string;

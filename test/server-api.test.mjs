@@ -134,7 +134,7 @@ test('provides onboarding, document, job, and event operations', async () => {
   const sync = await authorized('/api/storage/sync', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ changes: [
-      { collection: 'documents', id: 'doc-1', data: { id: 'doc-1', name: 'Guide.md', createdAt: 1, mimeType: 'text/markdown', size: 10, tags: ['iac'], content: '# Terraform\n\nRemote state locking supports safe team collaboration.', originalFile: { __quizzerBlob: true, type: 'text/markdown', name: 'Guide.md', data: `data:text/markdown;base64,${Buffer.from('# Terraform').toString('base64')}` } } },
+      { collection: 'documents', id: 'doc-1', data: { id: 'doc-1', name: 'Guide.md', createdAt: 1, mimeType: 'text/markdown', size: 10, tags: ['iac'], content: '# Terraform\n\nRemote state locking supports safe team collaboration.', originalFile: { __quizzerBlob: true, type: 'text/markdown', name: 'Guide.md', data: `data:text/markdown;base64,${Buffer.from('# Terraform').toString('base64')}` }, images: [{ id: 'figure-1', name: 'state.png', mimeType: 'image/png', data: Buffer.from('state diagram').toString('base64'), page: 1 }] } },
       { collection: 'generationJobs', id: 'job-1', data: { id: 'job-1', status: 'paused', updatedAt: 1, questions: [] } },
     ] }),
   });
@@ -146,8 +146,12 @@ test('provides onboarding, document, job, and event operations', async () => {
   const storedDocument = (await (await authorized('/api/v1/documents/doc-1')).json()).document;
   assert.equal(storedDocument.originalFile.__quizzerObject, true);
   assert.equal(JSON.stringify(storedDocument).includes('__quizzerBlob'), false);
+  assert.equal(storedDocument.images[0].data, undefined);
+  assert.equal(storedDocument.images[0].object.__quizzerObject, true);
   const original = await authorized(`/api/v1/objects/${storedDocument.originalFile.sha256}`);
   assert.equal(await original.text(), '# Terraform');
+  const figure = await authorized(`/api/v1/objects/${storedDocument.images[0].object.sha256}`);
+  assert.equal(await figure.text(), 'state diagram');
 
   const indexed = await authorized('/api/v1/index', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ documentIds: ['doc-1'] }),

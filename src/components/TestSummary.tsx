@@ -62,7 +62,7 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
             const found = documents.filter(document => Boolean(document));
             if (found.length) return {
                 content: found.map(document => `# Document: ${document!.name}\n\n${document!.content}`).join('\n\n---\n\n'),
-                images: found.flatMap(document => document!.images?.map(image => `data:${image.mimeType};base64,${image.data}`) ?? []),
+                images: [] as string[],
                 documents: found as StoredDocument[],
             };
         }

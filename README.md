@@ -247,7 +247,7 @@ Quizzer continuously saves the active test or practice session locally and to SQ
 
 ## Server database and IndexedDB migration
 
-Quizzer automatically creates `.quizzer-data/quizzer.sqlite` on the machine running `npm run dev` or `npm run tailscale`. Metadata, extracted text, tests, attempts, generation jobs, and unfinished sessions are synchronized to this database. Original uploaded files are verified by SHA-256 and deduplicated in `.quizzer-data/objects/sha256`; SQLite stores only immutable references to them. SQLite write-ahead logging protects concurrent browser writes, while an ordered change log propagates updates and deletions between machines.
+Quizzer automatically creates `.quizzer-data/quizzer.sqlite` on the machine running `npm run dev` or `npm run tailscale`. Metadata, extracted text, tests, attempts, generation jobs, and unfinished sessions are synchronized to this database. Original uploaded files and extracted figures are verified by SHA-256 and deduplicated in `.quizzer-data/objects/sha256`; SQLite stores only immutable references to them. SQLite write-ahead logging protects concurrent browser writes, while an ordered change log propagates updates and deletions between machines.
 
 To migrate the existing Zen Browser library, start this updated version and open Quizzer once in the same Zen profile and at the exact same URL previously used. IndexedDB is isolated by browser profile and URL origin, so this one visit is required for the page to read the old `QuizDB` database. Before accepting the first batch, the service creates and hashes a timestamped SQLite backup under the application-data `backups/migrations` directory. Each imported record is receipted with SHA-256 in the same transaction as its batch; Quizzer verifies the final record count, aggregate hash, and SQLite presence before the browser marks the import complete. The sidebar then changes from **Syncing library** to **Saved on server**. You can open the same Quizzer URL from another machine after that; it downloads the server library automatically.
 
@@ -259,7 +259,7 @@ Select **Install Ollama + all-minilm** under **Plugins & models** to enable loca
 
 ## Data and privacy
 
-- Document metadata, extracted content, quizzes, attempts, generation checkpoints, and unfinished sessions are stored in server-side SQLite. Original uploaded files live in the content-addressed object store outside the database.
+- Document metadata, extracted text, quizzes, attempts, generation checkpoints, and unfinished sessions are stored in server-side SQLite. Original uploaded files and extracted figures live in the content-addressed object store outside the database.
 - Each browser keeps a synchronized IndexedDB cache named `QuizDB` for responsive UI and offline recovery.
 - New `Blob` and `File` values are uploaded through the authenticated object API and verified against their SHA-256 address before their reference is synchronized. Legacy base64 records are materialized into the same object store before SQLite accepts them.
 - Agent requests use the selected locally authenticated CLI.

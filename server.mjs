@@ -16,7 +16,7 @@ import {
 import { PluginManager } from './plugin-sdk/manager.mjs';
 import { SparseDocumentIndex } from './server/sparse-index.mjs';
 import { materializeRuntimeAsset, readRuntimeText, runningAsSingleExecutable } from './server/runtime-assets.mjs';
-import { materializeSerializedObjects, ObjectStore } from './server/object-store.mjs';
+import { materializeDocumentImages, materializeSerializedObjects, ObjectStore } from './server/object-store.mjs';
 
 const port = Number(process.env.QUIZZER_SERVICE_PORT || 8787);
 const maxBodyBytes = 25 * 1024 * 1024;
@@ -42,6 +42,17 @@ const builtInPlugins = Object.freeze([
   { id: 'quizzer.generate.providers', name: 'Local agents and API providers', capabilities: ['generator'], builtIn: true },
 ]);
 const objectStore = new ObjectStore(appDataDirectory);
+for (const record of listRecords('documents')) {
+  try {
+    const binaryMaterialized = await materializeSerializedObjects(record.data, objectStore);
+    const migrated = await materializeDocumentImages(binaryMaterialized, objectStore);
+    if (migrated.changed || JSON.stringify(binaryMaterialized) !== JSON.stringify(record.data)) {
+      putRecord('documents', record.id, migrated.document);
+    }
+  } catch (error) {
+    process.stderr.write(`Could not migrate binary assets for ${record.id}: ${error instanceof Error ? error.message : String(error)}\n`);
+  }
+}
 const sparseIndex = new SparseDocumentIndex(storageInfo().databasePath);
 const windowsOllamaExecutable = process.env.LOCALAPPDATA
   ? join(process.env.LOCALAPPDATA, 'Programs', 'Ollama', 'ollama.exe')
@@ -785,11 +796,12 @@ const runMarker = async ({ name, data, ocrEnabled = false }) => {
       const caption = cleanMarkdownContext(reference?.caption || '');
       const ocrText = canOcr ? await runManagedOcr(path).catch(() => '') : '';
       const lower = name.toLowerCase();
+      const mimeType = lower.endsWith('.png') ? 'image/png' : lower.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
       return {
         id: `image-${index}`,
         name,
-        mimeType: lower.endsWith('.png') ? 'image/png' : lower.endsWith('.webp') ? 'image/webp' : 'image/jpeg',
-        data: (await readFile(path)).toString('base64'),
+        mimeType,
+        object: await objectStore.putBuffer(await readFile(path), { type: mimeType, name }),
         page: pageNear(markdown, sourceStart ?? 0, name),
         sourceStart,
         caption: caption || undefined,
@@ -1043,10 +1055,14 @@ createServer(async (request, response) => {
         `${change.collection}:${change.id}`,
         createHash('sha256').update(JSON.stringify(change)).digest('hex'),
       ])) : undefined;
-      const changes = await Promise.all((body?.changes ?? []).map(async change => ({
-        ...change,
-        ...(change.data === undefined ? {} : { data: await materializeSerializedObjects(change.data, objectStore) }),
-      })));
+      const changes = await Promise.all((body?.changes ?? []).map(async change => {
+        if (change.data === undefined) return { ...change };
+        const binaryMaterialized = await materializeSerializedObjects(change.data, objectStore);
+        const data = change.collection === 'documents'
+          ? (await materializeDocumentImages(binaryMaterialized, objectStore)).document
+          : binaryMaterialized;
+        return { ...change, data };
+      }));
       const result = syncStorage({ ...body, changes }, { migrationPayloadHashes });
       if (body?.bootstrap && body.migration?.complete === true) {
         result.migration = finalizeLegacyMigration(body.migration.id);

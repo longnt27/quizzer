@@ -2,6 +2,7 @@ import type { AIAnswer, AIConversationTurn, GenerationProvider, QuizQuestion } f
 import type { StoredDocument } from '../db/db';
 import { requestAIAnswer } from './askDocument';
 import { retrieveGroundedDocumentContext } from './documentRetrieval';
+import { loadStoredImageDataUrl } from './objectStore';
 
 export const askPracticeAnswer = async (
   quizQuestion: QuizQuestion,
@@ -36,6 +37,6 @@ ${JSON.stringify(context)}
 ${retrieved.content || '(No source document is attached to this test.)'}
 </retrieved-sources>`;
   const answer = await requestAIAnswer(prompt, provider, model,
-    retrieved.images.map(image => `data:${image.mimeType};base64,${image.data}`), signal);
+    await Promise.all(retrieved.images.map(loadStoredImageDataUrl)), signal);
   return { answer, sources: retrieved.sources };
 };
