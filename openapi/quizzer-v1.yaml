@@ -1,0 +1,328 @@
+openapi: 3.1.0
+info:
+  title: Quizzer Local Service API
+  version: 1.0.0
+  description: Authenticated loopback API shared by the Quizzer desktop app and CLI.
+servers:
+  - url: http://127.0.0.1:8787/api/v1
+security:
+  - bearerToken: []
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Check service and storage health
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /capabilities:
+    get:
+      operationId: getCapabilities
+      summary: Inspect hardware and available service capabilities
+      responses:
+        '200':
+          description: Capability snapshot
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [apiVersion, hardware, providers, operations]
+                properties:
+                  apiVersion: { type: integer, const: 1 }
+                  hardware: { $ref: '#/components/schemas/HardwareCapabilities' }
+                  providers: { type: array, items: { type: string } }
+                  operations: { type: array, items: { type: string } }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /settings/schema:
+    get:
+      operationId: getSettingsSchema
+      summary: Read settings JSON Schema and UI metadata
+      responses:
+        '200':
+          description: Settings contract
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [schema, registry]
+                properties:
+                  schema: { type: object }
+                  registry: { type: array, items: { type: object } }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /settings:
+    get:
+      operationId: getSettings
+      summary: Resolve effective settings with provenance
+      parameters:
+        - in: query
+          name: profile
+          schema: { type: string, enum: [lite, balanced, max] }
+      responses:
+        '200':
+          description: Resolved settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolvedSettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      operationId: updateSettings
+      summary: Update or reset user setting overrides
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                values: { type: object, additionalProperties: true }
+                unset: { type: array, items: { type: string } }
+      responses:
+        '200':
+          description: Updated effective settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolvedSettings'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /onboarding:
+    get:
+      operationId: getOnboarding
+      summary: Read the durable default application profile and onboarding state
+      responses:
+        '200':
+          description: Stored profile
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [profile]
+                properties:
+                  profile: { $ref: '#/components/schemas/ApplicationProfile' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      operationId: updateOnboarding
+      summary: Update onboarding progress on the default application profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [onboarding]
+              properties:
+                onboarding: { $ref: '#/components/schemas/OnboardingState' }
+      responses:
+        '200':
+          description: Updated profile
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+  /documents:
+    get:
+      operationId: listDocuments
+      summary: List document metadata without source bodies
+      responses:
+        '200':
+          description: Document summaries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [documents]
+                properties:
+                  documents:
+                    type: array
+                    items: { $ref: '#/components/schemas/DocumentSummary' }
+  /documents/{documentId}:
+    parameters:
+      - $ref: '#/components/parameters/DocumentId'
+    get:
+      operationId: getDocument
+      summary: Read a document and its extracted content
+      responses:
+        '200': { description: Stored document }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteDocument
+      summary: Delete a document
+      responses:
+        '200': { $ref: '#/components/responses/Okay' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /jobs:
+    get:
+      operationId: listJobs
+      summary: List durable generation jobs and their checkpoints
+      responses:
+        '200':
+          description: Generation jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [jobs]
+                properties:
+                  jobs: { type: array, items: { $ref: '#/components/schemas/GenerationJob' } }
+  /jobs/{jobId}/resume:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    post:
+      operationId: resumeJob
+      summary: Queue the unfinished portion of a generation job
+      responses:
+        '200': { description: Updated generation job }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /jobs/{jobId}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    post:
+      operationId: cancelJob
+      summary: Cancel a generation job
+      responses:
+        '200': { description: Updated generation job }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /events:
+    get:
+      operationId: streamEvents
+      summary: Stream storage and progress changes
+      responses:
+        '200':
+          description: Server-sent event stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+components:
+  securitySchemes:
+    bearerToken:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque local token
+  parameters:
+    DocumentId:
+      in: path
+      name: documentId
+      required: true
+      schema: { type: string, minLength: 1 }
+    JobId:
+      in: path
+      name: jobId
+      required: true
+      schema: { type: string, minLength: 1 }
+  responses:
+    Okay:
+      description: Operation completed
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [ok]
+            properties:
+              ok: { type: boolean, const: true }
+    InvalidRequest:
+      description: Request validation failed
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: A valid local bearer token is required
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Resource was not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+        code: { type: string }
+    Health:
+      type: object
+      required: [ok, version, storage]
+      properties:
+        ok: { type: boolean, const: true }
+        version: { type: integer, const: 1 }
+        storage:
+          type: object
+          required: [databasePath, revision]
+          properties:
+            databasePath: { type: string }
+            revision: { type: integer, minimum: 0 }
+    HardwareCapabilities:
+      type: object
+      required: [platform, architecture, cpuCores, memoryGB, freeDiskGB, acceleration, recommendedProfile, reasons]
+      properties:
+        platform: { type: string }
+        architecture: { type: string }
+        cpuCores: { type: integer, minimum: 1 }
+        memoryGB: { type: number, minimum: 0 }
+        freeDiskGB: { type: number, minimum: 0 }
+        acceleration: { type: array, items: { type: string } }
+        recommendedProfile: { type: string, enum: [lite, balanced, max] }
+        reasons: { type: array, items: { type: string } }
+    ResolvedSettings:
+      type: object
+      required: [profile, values, sources]
+      properties:
+        profile: { type: string, enum: [lite, balanced, max] }
+        values: { type: object, additionalProperties: true }
+        sources: { type: object, additionalProperties: { type: string } }
+    OnboardingState:
+      type: object
+      required: [onboardingVersion, completedSteps, currentStep, skipped]
+      properties:
+        onboardingVersion: { type: integer, minimum: 1 }
+        completedSteps: { type: array, items: { type: string } }
+        currentStep: { type: string }
+        skipped: { type: boolean }
+        completedAt: { type: integer }
+    ApplicationProfile:
+      type: object
+      required: [id, interfaceMode, hardwareProfile, onboarding, createdAt, updatedAt]
+      properties:
+        id: { type: string, const: default }
+        interfaceMode: { type: string, enum: [simple, advanced] }
+        hardwareProfile: { type: string, enum: [lite, balanced, max] }
+        onboarding: { $ref: '#/components/schemas/OnboardingState' }
+        createdAt: { type: integer }
+        updatedAt: { type: integer }
+    DocumentSummary:
+      type: object
+      required: [id, name, mimeType, size, tags, chunkCount]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        mimeType: { type: string }
+        size: { type: integer, minimum: 0 }
+        tags: { type: array, items: { type: string } }
+        chunkCount: { type: integer, minimum: 0 }
+        pageCount: { type: integer, minimum: 1 }
+    GenerationJob:
+      type: object
+      required: [id, testId, name, status, documentIds, options, questions, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        testId: { type: string }
+        name: { type: string }
+        status: { type: string, enum: [queued, running, waiting, paused, error, completed, cancelled] }
+        documentIds: { type: array, items: { type: string } }
+        options: { type: object }
+        questions: { type: array, items: { type: object } }
+        createdAt: { type: integer }
+        updatedAt: { type: integer }

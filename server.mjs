@@ -23,6 +23,7 @@ const managedOcrDirectory = join(appDataDirectory, '.quizzer-tools', 'ocr');
 const managedOcrPython = join(managedOcrDirectory, process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'python.exe' : 'python');
 const ocrScript = process.env.QUIZZER_OCR_SCRIPT || join(resourceDirectory, 'scripts', 'ocr_image.py');
 const serviceToken = await ensureServiceToken(appDataDirectory);
+const openApiDocument = await readFile(new URL('./openapi/quizzer-v1.yaml', import.meta.url), 'utf8');
 const windowsOllamaExecutable = process.env.LOCALAPPDATA
   ? join(process.env.LOCALAPPDATA, 'Programs', 'Ollama', 'ollama.exe')
   : 'ollama.exe';
@@ -758,6 +759,11 @@ const handleVersionedApi = async (request, response, url) => {
       send(response, 200, { ok: true, version: 1, storage: storageInfo() });
       return true;
     }
+    if (request.method === 'GET' && url.pathname === '/api/v1/openapi.yaml') {
+      response.writeHead(200, { 'Content-Type': 'application/yaml; charset=utf-8', 'Cache-Control': 'no-store' });
+      response.end(openApiDocument);
+      return true;
+    }
     if (request.method === 'GET' && url.pathname === '/api/v1/capabilities') {
       const hardware = detectHardwareCapabilities(appDataDirectory);
       send(response, 200, {
@@ -808,7 +814,12 @@ const handleVersionedApi = async (request, response, url) => {
       return true;
     }
     if (documentMatch && request.method === 'DELETE') {
-      deleteRecord('documents', decodeURIComponent(documentMatch[1]));
+      const id = decodeURIComponent(documentMatch[1]);
+      if (!getRecord('documents', id)) {
+        send(response, 404, { error: 'Document not found' });
+        return true;
+      }
+      deleteRecord('documents', id);
       send(response, 200, { ok: true });
       return true;
     }

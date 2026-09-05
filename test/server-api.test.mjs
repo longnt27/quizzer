@@ -49,6 +49,10 @@ test('requires authentication for the versioned API', async () => {
   assert.equal(response.status, 401);
   assert.equal((await response.json()).code, 'unauthorized');
   assert.equal((await authorized('/api/v1/health')).status, 200);
+  const contract = await authorized('/api/v1/openapi.yaml');
+  assert.equal(contract.status, 200);
+  assert.match(contract.headers.get('content-type'), /application\/yaml/);
+  assert.match(await contract.text(), /openapi: 3\.1\.0[\s\S]*\/jobs\/\{jobId\}\/resume:/);
 });
 
 test('exposes settings schema, precedence, and validated updates', async () => {
