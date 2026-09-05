@@ -161,7 +161,9 @@ test('provides onboarding, document, job, and event operations', async () => {
   const indexed = await authorized('/api/v1/index', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ documentIds: ['doc-1'] }),
   });
-  assert.equal((await indexed.json()).status.documentCount, 1);
+  const indexResult = await indexed.json();
+  assert.equal(indexResult.status.documentCount, 1);
+  assert.match(indexResult.status.databasePath, /indexes[/\\]sparse\.sqlite$/);
   const retrieval = await authorized('/api/v1/retrieval/preview', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query: 'remote state locking', documentIds: ['doc-1'], limit: 3 }),

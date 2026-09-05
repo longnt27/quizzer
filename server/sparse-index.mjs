@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 import Database from 'better-sqlite3';
+import { mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { chunkDocument } from './document-import.mjs';
 
 const sha256 = value => createHash('sha256').update(value).digest('hex');
@@ -35,6 +37,8 @@ const documentVersionHash = document => sha256(JSON.stringify({
 
 export class SparseDocumentIndex {
   constructor(databasePath) {
+    mkdirSync(dirname(databasePath), { recursive: true });
+    this.databasePath = databasePath;
     this.database = new Database(databasePath);
     this.database.pragma('journal_mode = WAL');
     this.database.exec(`
@@ -148,6 +152,7 @@ export class SparseDocumentIndex {
     return {
       version: 1,
       engine: 'sqlite-fts5-bm25',
+      databasePath: this.databasePath,
       documentCount: totals.documents,
       chunkCount: totals.chunks,
       documents,

@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import { createHash } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
-import { mkdir, readFile } from 'node:fs/promises';
+import { createReadStream, mkdirSync } from 'node:fs';
+import { chmod, mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 const collections = new Set(['tests', 'documents', 'generationJobs', 'testDrafts', 'profiles', 'promptProfiles']);
@@ -13,8 +13,33 @@ mkdirSync(dirname(databasePath), { recursive: true });
 const database = new Database(databasePath);
 database.pragma('journal_mode = WAL');
 database.pragma('foreign_keys = ON');
+const hashFile = path => new Promise((resolve, reject) => {
+  const digest = createHash('sha256');
+  const input = createReadStream(path);
+  input.on('data', chunk => digest.update(chunk));
+  input.once('error', reject);
+  input.once('end', () => resolve(digest.digest('hex')));
+});
 const schemaVersion = Number(database.pragma('user_version', { simple: true }));
-if (schemaVersion > 1) throw new Error(`Quizzer database schema ${schemaVersion} is newer than this server supports`);
+if (schemaVersion > 2) throw new Error(`Quizzer database schema ${schemaVersion} is newer than this server supports`);
+let schemaBackupPath;
+if (schemaVersion === 1) {
+  const backupDirectory = join(process.env.QUIZZER_APP_DATA_DIR || dirname(databasePath), 'backups', 'schema');
+  await mkdir(backupDirectory, { recursive: true, mode: 0o700 });
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  schemaBackupPath = join(backupDirectory, `before-schema-v2-${stamp}.sqlite`);
+  await database.backup(schemaBackupPath);
+  await chmod(schemaBackupPath, 0o600).catch(error => { if (process.platform !== 'win32') throw error; });
+  const backupSha256 = await hashFile(schemaBackupPath);
+  await writeFile(`${schemaBackupPath}.sha256`, `${backupSha256}  ${schemaBackupPath.split(/[\\/]/).at(-1)}\n`, { mode: 0o600, flag: 'wx' });
+  database.exec(`
+    DROP TRIGGER IF EXISTS rag_chunks_ai;
+    DROP TRIGGER IF EXISTS rag_chunks_ad;
+    DROP TRIGGER IF EXISTS rag_chunks_au;
+    DROP TABLE IF EXISTS rag_chunks_fts;
+    DROP TABLE IF EXISTS rag_chunks;
+  `);
+}
 database.exec(`
   CREATE TABLE IF NOT EXISTS records (
     collection TEXT NOT NULL,
@@ -56,7 +81,7 @@ database.exec(`
     FOREIGN KEY (migration_id) REFERENCES legacy_migrations(id) ON DELETE CASCADE
   );
 `);
-database.pragma('user_version = 1');
+database.pragma('user_version = 2');
 
 const insertChange = database.prepare(`
   INSERT INTO changes (collection, record_id, data, deleted, updated_at)
@@ -203,7 +228,7 @@ export const beginLegacyMigration = async migrationInput => {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const backupPath = join(backupDirectory, `before-indexeddb-${stamp}-${migration.id.slice(0, 12)}.sqlite`);
   await database.backup(backupPath);
-  const backupSha256 = sha256(await readFile(backupPath));
+  const backupSha256 = await hashFile(backupPath);
   insertMigration.run({ ...migration, backupPath, backupSha256, startedAt: Date.now() });
   return migrationById.get(migration.id);
 };
@@ -275,5 +300,7 @@ export const closeDatabase = () => database.close();
 
 export const storageInfo = () => ({
   databasePath,
+  schemaVersion: 2,
+  ...(schemaBackupPath ? { schemaBackupPath } : {}),
   revision: Number(currentRevision.get().revision),
 });

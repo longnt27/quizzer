@@ -17,6 +17,7 @@ import { PluginManager } from './plugin-sdk/manager.mjs';
 import { SparseDocumentIndex } from './server/sparse-index.mjs';
 import { materializeRuntimeAsset, readRuntimeText, runningAsSingleExecutable } from './server/runtime-assets.mjs';
 import { collectStoredObjectReferences, materializeDocumentImages, materializeSerializedObjects, ObjectStore } from './server/object-store.mjs';
+import { sparseIndexPathFor } from './server/paths.mjs';
 
 const port = Number(process.env.QUIZZER_SERVICE_PORT || 8787);
 const maxBodyBytes = 25 * 1024 * 1024;
@@ -61,7 +62,7 @@ await pruneUnreferencedObjects();
 setInterval(() => void pruneUnreferencedObjects().catch(error => {
   process.stderr.write(`Object cleanup failed: ${error instanceof Error ? error.message : String(error)}\n`);
 }), 6 * 60 * 60 * 1000).unref();
-const sparseIndex = new SparseDocumentIndex(storageInfo().databasePath);
+const sparseIndex = new SparseDocumentIndex(process.env.QUIZZER_SPARSE_INDEX_PATH || sparseIndexPathFor(appDataDirectory));
 const windowsOllamaExecutable = process.env.LOCALAPPDATA
   ? join(process.env.LOCALAPPDATA, 'Programs', 'Ollama', 'ollama.exe')
   : 'ollama.exe';

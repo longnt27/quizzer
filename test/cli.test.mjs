@@ -122,6 +122,7 @@ test('imports, deduplicates, indexes, and lists a real document', async () => {
   assert.equal(duplicate.duplicateOf, first.document.id);
   const indexed = await cli('index', '--all');
   assert.equal(indexed.indexed[0].id, first.document.id);
+  assert.ok((await stat(join(environment.QUIZZER_APP_DATA_DIR, 'indexes', 'sparse.sqlite'))).size > 0);
   const listed = await cli('documents', 'list');
   assert.equal(listed.documents.length, 1);
   const retrieval = await cli('retrieve', 'Terraform state', '--document', first.document.id);
@@ -178,6 +179,7 @@ test('creates a consistent backup without copying the service token', async () =
   assert.equal((await cli('config', 'get', 'hardware.profile')).value, 'balanced');
   assert.equal((await cli('documents', 'list')).documents.length, 1);
   assert.equal((await stat(join(environment.QUIZZER_APP_DATA_DIR, ...object.path.split('/')))).size, object.size);
+  await assert.rejects(stat(join(environment.QUIZZER_APP_DATA_DIR, 'indexes', 'sparse.sqlite')), /ENOENT/);
   assert.equal((await cli('backup', 'verify', restored.recoveryDirectory)).valid, true);
 
   await writeFile(join(backup, ...object.path.split('/')), 'tampered');

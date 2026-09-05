@@ -565,10 +565,11 @@ components:
         unreferencedBytes: { type: integer, minimum: 0 }
     IndexStatus:
       type: object
-      required: [version, engine, documentCount, chunkCount, documents]
+      required: [version, engine, databasePath, documentCount, chunkCount, documents]
       properties:
         version: { type: integer, const: 1 }
         engine: { type: string, const: sqlite-fts5-bm25 }
+        databasePath: { type: string }
         documentCount: { type: integer, minimum: 0 }
         chunkCount: { type: integer, minimum: 0 }
         documents: { type: array, items: { type: object } }

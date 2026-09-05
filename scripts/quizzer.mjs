@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { ensureServiceToken } from '../server/auth.mjs';
 import { chunkDocument, importDocumentFile } from '../server/document-import.mjs';
 import { detectHardwareCapabilities } from '../server/hardware-profile.mjs';
-import { databasePathFor, defaultAppDataDirectory } from '../server/paths.mjs';
+import { databasePathFor, defaultAppDataDirectory, sparseIndexPathFor } from '../server/paths.mjs';
 import { PluginManager } from '../plugin-sdk/manager.mjs';
 import {
   loadResolvedSettings, readUserSettings, SETTINGS_REGISTRY, settingsPath, validateSettings, writeUserSettings,
@@ -62,6 +62,7 @@ const appDataDirectory = defaultAppDataDirectory();
 process.env.QUIZZER_APP_DATA_DIR = appDataDirectory;
 process.env.QUIZZER_DATABASE_PATH ||= databasePathFor(appDataDirectory);
 const objectStore = new ObjectStore(appDataDirectory);
+const sparseIndexPath = process.env.QUIZZER_SPARSE_INDEX_PATH || sparseIndexPathFor(appDataDirectory);
 
 const flag = (name, fallback) => parsed.flags.get(name)?.at(-1) ?? fallback;
 const flags = name => parsed.flags.get(name) ?? [];
@@ -150,6 +151,7 @@ const runDoctor = async () => {
     ok: true,
     appDataDirectory,
     databasePath: process.env.QUIZZER_DATABASE_PATH,
+    sparseIndexPath,
     service,
     hardware,
     settings: { profile: settings.profile, values: settings.values },
@@ -157,6 +159,7 @@ const runDoctor = async () => {
   writeResult(report, [
     `App data: ${report.appDataDirectory}`,
     `Database: ${report.databasePath}`,
+    `Sparse index: ${report.sparseIndexPath}`,
     `Service: ${service.reachable ? 'ready' : 'not running'}`,
     `Hardware: ${hardware.architecture}, ${hardware.cpuCores} cores, ${hardware.memoryGB} GB RAM`,
     `Recommended profile: ${hardware.recommendedProfile}`,
@@ -231,7 +234,7 @@ const runDocuments = async action => {
   if (action === 'remove') {
     if (flag('yes') !== 'true') fail('documents remove requires --yes');
     database.deleteRecord('documents', id);
-    const index = new SparseDocumentIndex(process.env.QUIZZER_DATABASE_PATH);
+    const index = new SparseDocumentIndex(sparseIndexPath);
     try { index.removeDocument(id); }
     finally { index.close(); }
     return writeResult({ removed: id }, `Removed ${record.data.name}`);
@@ -246,7 +249,7 @@ const runIndex = async () => {
     : [database.getRecord('documents', parsed.positionals.shift())].filter(Boolean);
   if (!selected.length) fail('No matching documents to index');
   const indexed = [];
-  const index = new SparseDocumentIndex(process.env.QUIZZER_DATABASE_PATH);
+  const index = new SparseDocumentIndex(sparseIndexPath);
   try {
     for (const record of selected) {
       const chunks = chunkDocument(record.id, record.data.content);
@@ -269,7 +272,7 @@ const runRetrieve = async () => {
     ? documentIds.map(id => database.getRecord('documents', id)).filter(Boolean)
     : database.listRecords('documents');
   if (!selected.length) fail('No matching documents are available for retrieval');
-  const index = new SparseDocumentIndex(process.env.QUIZZER_DATABASE_PATH);
+  const index = new SparseDocumentIndex(sparseIndexPath);
   try {
     for (const record of selected) index.indexDocument(record);
     const settings = await loadResolvedSettings(appDataDirectory);

@@ -129,8 +129,10 @@ export const restoreBackup = async ({ directory, appDataDirectory, databasePath,
   const stagingRoot = join(appDataDirectory, `.restore-${restoreId}`);
   const databaseStage = join(dirname(databasePath), `.quizzer-restore-${restoreId}.sqlite`);
   const objectStage = join(stagingRoot, 'objects', 'sha256');
+  const indexStage = join(stagingRoot, 'indexes');
   const configStage = join(stagingRoot, 'config.jsonc');
   await mkdir(objectStage, { recursive: true, mode: 0o700 });
+  await mkdir(indexStage, { recursive: true, mode: 0o700 });
   await mkdir(dirname(databaseStage), { recursive: true, mode: 0o700 });
 
   try {
@@ -152,6 +154,7 @@ export const restoreBackup = async ({ directory, appDataDirectory, databasePath,
       { target: `${databasePath}-shm` },
       { target: databasePath, staged: databaseStage },
       { target: join(appDataDirectory, 'objects', 'sha256'), staged: objectStage },
+      { target: join(appDataDirectory, 'indexes'), staged: indexStage },
       { target: settingsFile, staged: manifest.config ? configStage : undefined },
     ];
     const completed = [];
