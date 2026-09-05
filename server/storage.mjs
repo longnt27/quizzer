@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-const collections = new Set(['tests', 'documents', 'generationJobs', 'testDrafts']);
+const collections = new Set(['tests', 'documents', 'generationJobs', 'testDrafts', 'profiles']);
 const databasePath = process.env.QUIZZER_DATABASE_PATH || join(process.cwd(), '.quizzer-data', 'quizzer.sqlite');
 
 mkdirSync(dirname(databasePath), { recursive: true });

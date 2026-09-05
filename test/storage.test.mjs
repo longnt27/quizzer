@@ -52,3 +52,21 @@ test('rejects unknown collections and malformed records', () => {
     changes: [{ collection: 'documents', id: 'bad', data: 'not an object' }],
   }), /must contain an object/);
 });
+
+test('synchronizes the versioned application profile', () => {
+  const profile = {
+    id: 'default',
+    interfaceMode: 'simple',
+    hardwareProfile: 'lite',
+    onboarding: { onboardingVersion: 1, completedSteps: [], currentStep: 'welcome', skipped: false },
+    createdAt: 10,
+    updatedAt: 10,
+    upgradedExistingLibrary: false,
+  };
+  const result = syncStorage({
+    cursor: 3,
+    changes: [{ collection: 'profiles', id: profile.id, data: profile }],
+  });
+  assert.equal(result.cursor, 4);
+  assert.deepEqual(result.changes[0].data, profile);
+});

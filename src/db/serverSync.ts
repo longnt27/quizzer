@@ -30,7 +30,7 @@ type OutgoingChange = {
   changedAt?: number;
 };
 
-const collections: SyncCollection[] = ['tests', 'documents', 'generationJobs', 'testDrafts'];
+const collections: SyncCollection[] = ['tests', 'documents', 'generationJobs', 'testDrafts', 'profiles'];
 const listeners = new Set<() => void>();
 let snapshot: ServerSyncSnapshot = {
   status: 'starting', phase: 'idle', percent: 0, completed: 0, total: 0, pending: 0,
