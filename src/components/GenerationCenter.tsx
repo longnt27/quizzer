@@ -10,7 +10,7 @@ import {
 import {
   getGenerationBatchSize, getGenerationConcurrency, setGenerationBatchSize, setGenerationConcurrency,
 } from '../utils/generationSettings';
-import { getProviderDefinition, getProviderSettings } from '../utils/providerSettings';
+import { getProviderDefinition, getProviderRoute, getProviderSettings } from '../utils/providerSettings';
 import { getMessageApi } from '../utils/messageProvider';
 import { useConfiguredProviders } from '../utils/useConfiguredProviders';
 import { serviceJson } from '../utils/serviceApi';
@@ -48,7 +48,13 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
 
   const resume = async () => {
     if (!configured.providers.some(item => item.id === provider)) return message.error('Connect an AI provider first');
-    await resumeGenerationJob(job.id, { ...job.options, provider, model: model.trim() || undefined });
+    const selectedRoute = getProviderRoute(provider, model, true);
+    const existingRoutes = job.options.routeChain ?? [];
+    const existingIndex = existingRoutes.findIndex(route => route.provider === selectedRoute.provider && route.model === selectedRoute.model);
+    const routeChain = existingIndex >= 0
+      ? existingRoutes.map((route, index) => index === existingIndex ? { ...route, approved: true } : route)
+      : [...existingRoutes, selectedRoute];
+    await resumeGenerationJob(job.id, { ...job.options, provider, model: model.trim() || undefined, routeChain });
   };
 
   return <List.Item className="generation-job">
@@ -67,6 +73,13 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
       {job.progress && !terminalStatuses.has(job.status) && <Typography.Text type="secondary">
         {job.progress.phase === 'requesting' ? 'Requesting' : 'Checking'} {job.progress.currentType?.replaceAll('-', ' ')} · round {job.progress.round}/{job.progress.maxRounds} · {job.rejected} rejected
       </Typography.Text>}
+      {!!job.providerAttempts?.length && <div>
+        <Typography.Text type="secondary">Route history</Typography.Text>
+        <Space wrap style={{ marginLeft: 8 }}>{job.providerAttempts.map((attempt, index) => <Tag key={`${attempt.at}:${index}`}
+          color={attempt.outcome === 'failed' ? 'error' : attempt.outcome === 'completed' ? 'success' : 'blue'}>
+          {getProviderDefinition(attempt.provider).label} · {attempt.outcome.replace('-', ' ')} · {attempt.accepted} saved
+        </Tag>)}</Space>
+      </div>}
       {job.error && <Alert type={job.status === 'error' ? 'error' : 'warning'} showIcon message={job.error} />}
       {job.status === 'paused' && <Space direction="vertical" style={{ width: '100%' }}>
         <Typography.Text type="secondary">Accepted questions are saved. Choose a provider for only the unfinished portion.</Typography.Text>
@@ -79,6 +92,9 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
           <Input value={model} onChange={event => setModel(event.target.value)} addonBefore="Model" placeholder={providerDefinition.defaultModel || 'Provider default'} style={{ width: 260 }} />
           <Button type="primary" icon={<PlayCircleOutlined />} onClick={() => void resume()}>Continue</Button>
         </Space>}
+        {!!configured.providers.length && <Alert type={providerDefinition.kind === 'api' ? 'warning' : 'info'} showIcon
+          message={providerDefinition.kind === 'api' ? 'Remote API route · charges and provider data handling may apply' : 'Signed-in agent route'}
+          description="Continuing explicitly approves this route for only the unfinished questions. Existing accepted questions are retained." />}
       </Space>}
       <Space wrap>
         {(job.status === 'queued' || job.status === 'running' || job.status === 'waiting' || job.status === 'paused') &&

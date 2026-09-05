@@ -1,4 +1,4 @@
-import type { GenerationProvider } from '../types';
+import type { GenerationProvider, ProviderRoute } from '../types';
 
 const PROVIDER_SETTINGS_KEY = 'quizzer.providerSettings';
 const API_KEY_PREFIX = 'quizzer.apiKey.';
@@ -30,6 +30,17 @@ export const PROVIDERS: readonly ProviderDefinition[] = [
 export const API_PROVIDERS = PROVIDERS.filter(provider => provider.kind === 'api') as readonly (ProviderDefinition & { id: ApiProvider })[];
 export const AGENT_PROVIDERS = PROVIDERS.filter(provider => provider.kind === 'agent') as readonly (ProviderDefinition & { id: AgentProvider })[];
 export const getProviderDefinition = (id: GenerationProvider) => PROVIDERS.find(provider => provider.id === id) ?? PROVIDERS[0];
+
+export const getProviderRoute = (provider: GenerationProvider, model?: string, approved = false): ProviderRoute => {
+  const definition = getProviderDefinition(provider);
+  return {
+    provider,
+    model: model?.trim() || undefined,
+    privacy: definition.kind === 'agent' ? 'signed-in-agent' : 'remote-api',
+    paid: definition.kind === 'api',
+    approved,
+  };
+};
 
 export interface ProviderSettings {
   defaultProvider: GenerationProvider;

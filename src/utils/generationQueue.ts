@@ -5,6 +5,7 @@ import { generateQuiz, getGenerationErrorCode, getRequestedCounts } from './api'
 import { getGenerationConcurrency } from './generationSettings';
 import { buildCoveragePlan, ensureDocumentChunks, retrievalContextForSlots } from './sourcePlanning';
 import { syncNow } from '../db/serverSync';
+import type { ProviderAttempt, ProviderRoute } from '../types';
 
 const workerId = uuidv4();
 const active = new Map<string, AbortController>();
@@ -36,6 +37,11 @@ const processJob = async (job: StoredGenerationJob) => {
   const controller = new AbortController();
   active.set(job.id, controller);
   try {
+    const routeChain: ProviderRoute[] = job.options.routeChain?.length
+      ? job.options.routeChain
+      : [{ provider: job.options.provider, model: job.options.model, privacy: 'remote-api', paid: true, approved: true }];
+    let routeIndex = job.activeRouteIndex ?? Math.max(0, routeChain.findIndex(route => route.provider === job.options.provider && route.model === job.options.model));
+    let providerAttempts: ProviderAttempt[] = [...(job.providerAttempts ?? [])];
     const documents = await db.documents.bulkGet(job.documentIds);
     const available = documents.filter(document => document !== undefined);
     if (available.length !== job.documentIds.length) throw new Error('One or more source documents were deleted before generation completed.');
@@ -66,7 +72,33 @@ const processJob = async (job: StoredGenerationJob) => {
       progress => { void db.generationJobs.update(job.id, { progress, updatedAt: Date.now() }); },
       [],
       undefined,
-      undefined,
+      async failure => {
+        providerAttempts = [...providerAttempts, {
+          provider: failure.provider,
+          model: routeChain[routeIndex]?.model,
+          routeIndex,
+          at: Date.now(),
+          accepted: failure.accepted,
+          outcome: 'failed',
+          errorCode: failure.code,
+          message: failure.message,
+        }];
+        const nextRouteIndex = routeChain.findIndex((route, index) => index > routeIndex && route.approved);
+        if (nextRouteIndex < 0) {
+          await db.generationJobs.update(job.id, { providerAttempts, updatedAt: Date.now() });
+          return null;
+        }
+        routeIndex = nextRouteIndex;
+        const route = routeChain[routeIndex];
+        const replacement = { ...job.options, provider: route.provider, model: route.model, routeChain };
+        await db.generationJobs.update(job.id, {
+          options: replacement,
+          activeRouteIndex: routeIndex,
+          providerAttempts,
+          updatedAt: Date.now(),
+        });
+        return replacement;
+      },
       { questions: job.questions, rejected: job.rejected, rounds: job.rounds, options: job.options },
       checkpoint => db.generationJobs.update(job.id, {
         questions: checkpoint.questions,
@@ -99,6 +131,15 @@ const processJob = async (job: StoredGenerationJob) => {
       });
       await db.generationJobs.update(job.id, {
         status: 'completed', questions, finishedAt, updatedAt: finishedAt, workerId: undefined,
+        activeRouteIndex: routeIndex,
+        providerAttempts: [...providerAttempts, {
+          provider: latest.options.provider,
+          model: latest.options.model,
+          routeIndex,
+          at: finishedAt,
+          accepted: questions.length,
+          outcome: 'completed',
+        }],
         progress: latest.progress ? { ...latest.progress, accepted: questions.length, phase: 'validating' } : undefined,
       });
     });
@@ -156,8 +197,19 @@ export const retryGenerationJob = async (id: string) => {
 };
 
 export const resumeGenerationJob = async (id: string, options: GenerationOptions) => {
+  const existing = await db.generationJobs.get(id);
+  const routeIndex = Math.max(0, options.routeChain?.findIndex(route => route.provider === options.provider && route.model === options.model) ?? 0);
+  const providerAttempts = [...(existing?.providerAttempts ?? []), {
+    provider: options.provider,
+    model: options.model,
+    routeIndex,
+    at: Date.now(),
+    accepted: existing?.questions.length ?? 0,
+    outcome: 'manually-selected' as const,
+  }];
   await db.generationJobs.update(id, {
-    status: 'queued', options, error: undefined, errorCode: undefined, nextAttemptAt: undefined, workerId: undefined, updatedAt: Date.now(),
+    status: 'queued', options, activeRouteIndex: routeIndex, providerAttempts,
+    error: undefined, errorCode: undefined, nextAttemptAt: undefined, workerId: undefined, updatedAt: Date.now(),
   });
   void pumpGenerationQueue();
 };

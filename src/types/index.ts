@@ -94,6 +94,17 @@ export interface ProviderRoute {
   approved: boolean;
 }
 
+export interface ProviderAttempt {
+  provider: GenerationProvider;
+  model?: string;
+  routeIndex: number;
+  at: number;
+  accepted: number;
+  outcome: 'failed' | 'completed' | 'manually-selected';
+  errorCode?: string;
+  message?: string;
+}
+
 export interface PromptProfileSnapshot {
   id: string;
   version: number;

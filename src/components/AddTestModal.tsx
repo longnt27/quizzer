@@ -3,10 +3,10 @@ import { Alert, Button, Checkbox, Empty, Input, InputNumber, List, Modal, Radio,
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db, type StoredAppProfile, type StoredGenerationJob } from '../db/db';
-import type { CoverageStrategy, GenerationOptions } from '../types';
+import type { CoverageStrategy, GenerationOptions, GenerationProvider } from '../types';
 import { getMessageApi } from '../utils/messageProvider';
 import { pumpGenerationQueue } from '../utils/generationQueue';
-import { getProviderDefinition, getProviderSettings } from '../utils/providerSettings';
+import { getProviderDefinition, getProviderRoute, getProviderSettings } from '../utils/providerSettings';
 import { useConfiguredProviders } from '../utils/useConfiguredProviders';
 import { BUILT_IN_PROMPT_PROFILE, snapshotPromptProfile } from '../utils/promptProfiles';
 
@@ -39,6 +39,7 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
   const [name, setName] = useState('Combined quiz');
   const [provider, setProvider] = useState<GenerationOptions['provider']>(settings.defaultProvider);
   const [model, setModel] = useState(settings.models[settings.defaultProvider]);
+  const [failoverProviders, setFailoverProviders] = useState<GenerationProvider[]>([]);
   const [multipleChoiceCount, setMultipleChoiceCount] = useState(15);
   const [fillBlankCount, setFillBlankCount] = useState(3);
   const [reasoningCount, setReasoningCount] = useState(2);
@@ -96,13 +97,10 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
         ragProfile: profile.hardwareProfile === 'lite'
           ? { id: 'lite', retrieval: 'sparse', contextBudget: 12_000, rerank: false }
           : { id: profile.hardwareProfile, retrieval: 'hybrid', contextBudget: profile.hardwareProfile === 'max' ? 28_000 : 18_000, rerank: true },
-        routeChain: [{
-          provider,
-          model: model.trim() || undefined,
-          privacy: provider === 'codex' || provider.endsWith('-agent') ? 'signed-in-agent' : 'remote-api',
-          paid: provider !== 'codex' && !provider.endsWith('-agent'),
-          approved: true,
-        }],
+        routeChain: [
+          getProviderRoute(provider, model, true),
+          ...failoverProviders.filter(item => item !== provider).map(item => getProviderRoute(item, settings.models[item], true)),
+        ],
         resolvedSettings: { interfaceMode: profile.interfaceMode, hardwareProfile: profile.hardwareProfile },
       };
       const requestedSources = mode === 'combined'
@@ -155,6 +153,19 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
               options={configured.providers.map(item => ({ label: item.label, value: item.id }))} />
             <Input value={model} onChange={event => setModel(event.target.value)} addonBefore="Model" placeholder={selectedProvider.defaultModel || 'Provider default'} style={{ width: 280 }} />
           </Space>}
+          {!!configured.providers.length && profile.interfaceMode === 'advanced' && <div>
+            <Typography.Text strong>Automatic failover routes</Typography.Text>
+            <Select mode="multiple" value={failoverProviders.filter(item => item !== provider)}
+              onChange={values => setFailoverProviders(values as GenerationProvider[])} style={{ width: '100%', marginTop: 8 }}
+              placeholder="Pause for approval when the primary route fails"
+              options={configured.providers.filter(item => item.id !== provider).map(item => ({
+                value: item.id,
+                label: `${item.label} · ${item.kind === 'api' ? 'remote API / may incur cost' : 'signed-in agent'}`,
+              }))} />
+            <Typography.Paragraph type="secondary" style={{ margin: '6px 0 0' }}>
+              Selecting a route pre-approves sending only unfinished source batches to it. Routes run in the order shown; unselected routes always require approval.
+            </Typography.Paragraph>
+          </div>}
           {profile.interfaceMode === 'advanced' && <div>
             <Typography.Text strong>Prompt profile</Typography.Text>
             <Select value={promptProfile.id} onChange={setPromptProfileId} style={{ width: '100%', marginTop: 8 }}

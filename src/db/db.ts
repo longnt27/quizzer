@@ -1,5 +1,5 @@
 import Dexie from 'dexie';
-import type { AIConversationTurn, CoverageStrategy, GenerationOptions, HardwareProfileId, InterfaceMode, OnboardingState, PromptProfile, QuestionType, QuizAnswer, QuizQuestion } from '../types';
+import type { AIConversationTurn, CoverageStrategy, GenerationOptions, HardwareProfileId, InterfaceMode, OnboardingState, PromptProfile, ProviderAttempt, QuestionType, QuizAnswer, QuizQuestion } from '../types';
 import type { ReasoningJudgment } from '../utils/judgeReasoning';
 
 export type GenerationJobStatus = 'queued' | 'running' | 'waiting' | 'paused' | 'error' | 'completed' | 'cancelled';
@@ -18,6 +18,8 @@ export interface StoredGenerationJob {
   rejected: number;
   rounds: Partial<Record<QuestionType, number>>;
   coveragePlan?: StoredCoveragePlan;
+  activeRouteIndex?: number;
+  providerAttempts?: ProviderAttempt[];
   progress?: {
     accepted: number;
     target: number;
