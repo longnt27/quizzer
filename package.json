@@ -31,19 +31,14 @@
     "@uiw/react-codemirror": "^4.23.13",
     "antd": "^5.26.2",
     "better-sqlite3": "^12.11.1",
-    "codemirror": "^6.0.2",
     "dexie": "^4.0.11",
     "dexie-react-hooks": "^1.1.7",
-    "jsonlint-mod": "^1.7.6",
-    "jszip": "^3.10.1",
-    "lodash": "^4.17.21",
     "pdfjs-dist": "^5.3.31",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "react-json-view": "^1.21.3",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
-    "uuid": "^11.1.0"
+    "uuid": "^14.0.2"
   },
   "devDependencies": {
     "@electron-forge/cli": "^7.11.2",

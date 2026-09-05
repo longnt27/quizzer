@@ -94,7 +94,7 @@ Marker, image OCR, and the local semantic duplicate filter are optional and inst
 ```sh
 git clone https://github.com/Somethings1/quizzer.git
 cd quizzer
-npm ci --legacy-peer-deps
+npm ci
 npm run dev
 ```
 
