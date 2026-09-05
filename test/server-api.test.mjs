@@ -110,12 +110,17 @@ test('stores and streams authenticated content-addressed objects', async () => {
   assert.equal(Number(inspected.headers.get('content-length')), source.length);
   const downloaded = await authorized(`/api/v1/objects/${digest}`);
   assert.deepEqual(Buffer.from(await downloaded.arrayBuffer()), source);
+  const status = await (await authorized('/api/v1/objects/status')).json();
+  assert.ok(status.unreferencedCount >= 1);
 
   const rejected = await authorized(`/api/v1/objects/${'0'.repeat(64)}`, {
     method: 'PUT', headers: { 'Content-Type': 'application/octet-stream' }, body: source,
   });
   assert.equal(rejected.status, 400);
   assert.match((await rejected.json()).error, /hash mismatch/);
+  const pruned = await authorized('/api/v1/objects/unreferenced?confirm=true&minimumAgeHours=0', { method: 'DELETE' });
+  assert.ok((await pruned.json()).removed.some(object => object.sha256 === digest));
+  assert.equal((await authorized(`/api/v1/objects/${digest}`)).status, 404);
 });
 
 test('provides onboarding, document, job, and event operations', async () => {

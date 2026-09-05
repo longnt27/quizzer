@@ -16,7 +16,7 @@ import {
 import { PluginManager } from './plugin-sdk/manager.mjs';
 import { SparseDocumentIndex } from './server/sparse-index.mjs';
 import { materializeRuntimeAsset, readRuntimeText, runningAsSingleExecutable } from './server/runtime-assets.mjs';
-import { materializeDocumentImages, materializeSerializedObjects, ObjectStore } from './server/object-store.mjs';
+import { collectStoredObjectReferences, materializeDocumentImages, materializeSerializedObjects, ObjectStore } from './server/object-store.mjs';
 
 const port = Number(process.env.QUIZZER_SERVICE_PORT || 8787);
 const maxBodyBytes = 25 * 1024 * 1024;
@@ -53,6 +53,14 @@ for (const record of listRecords('documents')) {
     process.stderr.write(`Could not migrate binary assets for ${record.id}: ${error instanceof Error ? error.message : String(error)}\n`);
   }
 }
+const referencedObjectIds = () => collectStoredObjectReferences(listRecords('documents').map(record => record.data));
+const pruneUnreferencedObjects = (minimumAgeMs = 24 * 60 * 60 * 1000) => objectStore.garbageCollect(
+  referencedObjectIds(), { minimumAgeMs },
+);
+await pruneUnreferencedObjects();
+setInterval(() => void pruneUnreferencedObjects().catch(error => {
+  process.stderr.write(`Object cleanup failed: ${error instanceof Error ? error.message : String(error)}\n`);
+}), 6 * 60 * 60 * 1000).unref();
 const sparseIndex = new SparseDocumentIndex(storageInfo().databasePath);
 const windowsOllamaExecutable = process.env.LOCALAPPDATA
   ? join(process.env.LOCALAPPDATA, 'Programs', 'Ollama', 'ollama.exe')
@@ -853,6 +861,19 @@ const handleVersionedApi = async (request, response, url) => {
         contentLength: request.headers['content-length'] === undefined ? undefined : Number(request.headers['content-length']),
       });
       send(response, 201, { object: reference });
+      return true;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/v1/objects/status') {
+      send(response, 200, await objectStore.status(referencedObjectIds()));
+      return true;
+    }
+    if (request.method === 'DELETE' && url.pathname === '/api/v1/objects/unreferenced') {
+      if (url.searchParams.get('confirm') !== 'true') throw new Error('Object cleanup requires confirm=true');
+      const minimumAgeHours = Number(url.searchParams.get('minimumAgeHours') ?? 24);
+      if (!Number.isFinite(minimumAgeHours) || minimumAgeHours < 0 || minimumAgeHours > 8_760) {
+        throw new Error('minimumAgeHours must be between 0 and 8760');
+      }
+      send(response, 200, await pruneUnreferencedObjects(minimumAgeHours * 60 * 60 * 1000));
       return true;
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/settings/schema') {

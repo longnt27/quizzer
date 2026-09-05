@@ -274,6 +274,31 @@ paths:
       responses:
         '200': { description: Object exists }
         '404': { $ref: '#/components/responses/NotFound' }
+  /objects/status:
+    get:
+      operationId: getObjectStoreStatus
+      summary: Inspect content-addressed storage usage and reference counts
+      responses:
+        '200':
+          description: Object storage usage
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectStoreStatus' }
+  /objects/unreferenced:
+    delete:
+      operationId: pruneUnreferencedObjects
+      summary: Remove unreferenced objects after a safety retention period
+      parameters:
+        - in: query
+          name: confirm
+          required: true
+          schema: { type: boolean, const: true }
+        - in: query
+          name: minimumAgeHours
+          schema: { type: number, minimum: 0, maximum: 8760, default: 24 }
+      responses:
+        '200': { description: Reclaimed object summary }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
   /documents/{documentId}:
     parameters:
       - $ref: '#/components/parameters/DocumentId'
@@ -528,6 +553,16 @@ components:
         type: { type: string }
         name: { type: string }
         lastModified: { type: integer, minimum: 0 }
+    ObjectStoreStatus:
+      type: object
+      required: [objectCount, objectBytes, referencedCount, referencedBytes, unreferencedCount, unreferencedBytes]
+      properties:
+        objectCount: { type: integer, minimum: 0 }
+        objectBytes: { type: integer, minimum: 0 }
+        referencedCount: { type: integer, minimum: 0 }
+        referencedBytes: { type: integer, minimum: 0 }
+        unreferencedCount: { type: integer, minimum: 0 }
+        unreferencedBytes: { type: integer, minimum: 0 }
     IndexStatus:
       type: object
       required: [version, engine, documentCount, chunkCount, documents]

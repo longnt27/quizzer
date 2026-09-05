@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import test from 'node:test';
-import { isStoredObjectReference, materializeDocumentImages, materializeSerializedObjects, ObjectStore } from '../server/object-store.mjs';
+import { collectStoredObjectReferences, isStoredObjectReference, materializeDocumentImages, materializeSerializedObjects, ObjectStore } from '../server/object-store.mjs';
 
 const directory = await mkdtemp(join(tmpdir(), 'quizzer-object-store-test-'));
 const store = new ObjectStore(directory, { maxObjectBytes: 1024 });
@@ -59,4 +59,18 @@ test('materializes extracted image data into immutable object references', async
   assert.equal(result.document.images[0].data, undefined);
   assert.equal(result.document.images[0].object.__quizzerObject, true);
   assert.equal(await readFile(store.pathFor(result.document.images[0].object.sha256), 'utf8'), imageData.toString());
+});
+
+test('reports usage and reclaims only old unreferenced objects', async () => {
+  const orphan = await store.putBuffer(Buffer.from('orphaned upload'));
+  const all = await store.list();
+  const referenced = new Set(all.map(object => object.sha256).filter(sha256 => sha256 !== orphan.sha256));
+  const old = new Date(Date.now() - 48 * 60 * 60 * 1000);
+  await utimes(store.pathFor(orphan.sha256), old, old);
+  const status = await store.status(referenced);
+  assert.equal(status.unreferencedCount, 1);
+  assert.equal(collectStoredObjectReferences({ nested: [...referenced].map(sha256 => ({ __quizzerObject: true, algorithm: 'sha256', sha256, size: 1 })) }).size, referenced.size);
+  const pruned = await store.garbageCollect(referenced, { minimumAgeMs: 24 * 60 * 60 * 1000 });
+  assert.deepEqual(pruned.removed.map(object => object.sha256), [orphan.sha256]);
+  assert.equal((await store.status(referenced)).unreferencedCount, 0);
 });

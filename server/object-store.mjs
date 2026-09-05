@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { access, mkdir, open, readdir, rename, rm, stat } from 'node:fs/promises';
+import { access, mkdir, open, readdir, rename, rm, stat, utimes } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
@@ -89,6 +89,8 @@ export class ObjectStore {
       } catch (error) {
         if (error?.code !== 'EEXIST' && error?.code !== 'EPERM') throw error;
         await access(destination);
+        const now = new Date();
+        await utimes(destination, now, now);
         await rm(temporaryPath, { force: true });
       }
       return referenceFor(sha256, size, metadata);
@@ -120,12 +122,52 @@ export class ObjectStore {
       for (const entry of await readdir(join(this.root, prefix.name), { withFileTypes: true })) {
         if (!entry.isFile() || !SHA256_PATTERN.test(entry.name) || !entry.name.startsWith(prefix.name)) continue;
         const details = await stat(join(this.root, prefix.name, entry.name));
-        result.push({ sha256: entry.name, size: details.size, path: join(this.root, prefix.name, entry.name) });
+        result.push({ sha256: entry.name, size: details.size, modifiedAt: details.mtimeMs, path: join(this.root, prefix.name, entry.name) });
       }
     }
     return result.sort((left, right) => left.sha256.localeCompare(right.sha256));
   }
+
+  async status(referenced = new Set()) {
+    const objects = await this.list();
+    const referencedObjects = objects.filter(object => referenced.has(object.sha256));
+    return {
+      objectCount: objects.length,
+      objectBytes: objects.reduce((sum, object) => sum + object.size, 0),
+      referencedCount: referencedObjects.length,
+      referencedBytes: referencedObjects.reduce((sum, object) => sum + object.size, 0),
+      unreferencedCount: objects.length - referencedObjects.length,
+      unreferencedBytes: objects.reduce((sum, object) => referenced.has(object.sha256) ? sum : sum + object.size, 0),
+    };
+  }
+
+  async garbageCollect(referenced, { minimumAgeMs = 24 * 60 * 60 * 1000, now = Date.now() } = {}) {
+    if (!(referenced instanceof Set)) throw new Error('Object garbage collection requires a reference set');
+    if (!Number.isFinite(minimumAgeMs) || minimumAgeMs < 0) throw new Error('Invalid object retention period');
+    const removed = [];
+    for (const object of await this.list()) {
+      if (referenced.has(object.sha256) || now - object.modifiedAt < minimumAgeMs) continue;
+      await rm(object.path);
+      removed.push({ sha256: object.sha256, size: object.size });
+    }
+    return {
+      removed,
+      removedCount: removed.length,
+      reclaimedBytes: removed.reduce((sum, object) => sum + object.size, 0),
+    };
+  }
 }
+
+export const collectStoredObjectReferences = (value, result = new Set()) => {
+  if (Array.isArray(value)) {
+    for (const item of value) collectStoredObjectReferences(item, result);
+  } else if (isStoredObjectReference(value)) {
+    result.add(value.sha256);
+  } else if (value && typeof value === 'object') {
+    for (const item of Object.values(value)) collectStoredObjectReferences(item, result);
+  }
+  return result;
+};
 
 const decodeLegacyBlob = value => {
   if (!value || typeof value !== 'object' || value.__quizzerBlob !== true || typeof value.data !== 'string') return undefined;
