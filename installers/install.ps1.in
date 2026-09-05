@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$ReleaseBaseUrl = 'https://github.com/Somethings1/quizzer/releases/latest/download'
+$ReleaseBaseUrl = '__QUIZZER_RELEASE_BASE_URL__'
 $MetadataName = 'release-manifest.canonical.json'
 $SignatureName = 'release-manifest.sig'
 $TemporaryDirectory = Join-Path ([IO.Path]::GetTempPath()) ("quizzer-install-" + [Guid]::NewGuid().ToString('N'))

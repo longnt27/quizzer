@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-release_base_url='https://github.com/Somethings1/quizzer/releases/latest/download'
+release_base_url='__QUIZZER_RELEASE_BASE_URL__'
 metadata_name='release-manifest.canonical.json'
 signature_name='release-manifest.sig'
 

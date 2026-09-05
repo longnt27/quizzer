@@ -7,10 +7,21 @@ import {
 import { validateReleaseManifest } from '../server/release-manifest.mjs';
 
 const publicKeyPlaceholder = '__QUIZZER_RELEASE_PUBLIC_KEY_PEM__';
+const releaseBaseUrlPlaceholder = '__QUIZZER_RELEASE_BASE_URL__';
 
-const renderTemplate = (template, publicKeyPem) => {
+const renderTemplate = (template, publicKeyPem, releaseBaseUrl) => {
   if (template.split(publicKeyPlaceholder).length !== 2) throw new Error('Installer template must contain the release public key placeholder exactly once');
-  return template.replace(publicKeyPlaceholder, publicKeyPem.trim());
+  if (template.split(releaseBaseUrlPlaceholder).length !== 2) throw new Error('Installer template must contain the release base URL placeholder exactly once');
+  return template.replace(publicKeyPlaceholder, publicKeyPem.trim()).replace(releaseBaseUrlPlaceholder, releaseBaseUrl);
+};
+
+const releaseBaseUrlFor = manifest => {
+  const bases = new Set(manifest.artifacts.map(artifact => {
+    const url = new URL(artifact.url);
+    return `${url.origin}${url.pathname.slice(0, url.pathname.lastIndexOf('/'))}`;
+  }));
+  if (bases.size !== 1) throw new Error('All release artifacts must use the same versioned download directory');
+  return [...bases][0];
 };
 
 export const prepareReleaseInstallers = async ({
@@ -27,6 +38,7 @@ export const prepareReleaseInstallers = async ({
   const publicKey = createPublicKey(privateKey);
   if (!verifyReleaseManifestSignature(manifest, publicKey)) throw new Error('Release manifest was not signed by the supplied release key');
   const publicKeyPem = publicKey.export({ format: 'pem', type: 'spki' }).toString();
+  const releaseBaseUrl = releaseBaseUrlFor(manifest);
   const [shellTemplate, powershellTemplate] = await Promise.all([
     readFile(shellTemplatePath, 'utf8'), readFile(powershellTemplatePath, 'utf8'),
   ]);
@@ -42,8 +54,8 @@ export const prepareReleaseInstallers = async ({
   await Promise.all([
     writeFile(paths.metadata, canonicalMetadata, { mode: 0o644 }),
     writeFile(paths.signature, signature, { mode: 0o644 }),
-    writeFile(paths.shell, renderTemplate(shellTemplate, publicKeyPem), { mode: 0o755 }),
-    writeFile(paths.powershell, renderTemplate(powershellTemplate, publicKeyPem), { mode: 0o644 }),
+    writeFile(paths.shell, renderTemplate(shellTemplate, publicKeyPem, releaseBaseUrl), { mode: 0o755 }),
+    writeFile(paths.powershell, renderTemplate(powershellTemplate, publicKeyPem, releaseBaseUrl), { mode: 0o644 }),
   ]);
   await chmod(paths.shell, 0o755);
   return { ...paths, publicKeyPem };

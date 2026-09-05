@@ -50,8 +50,12 @@ test('renders installers with the signing key and exact verifiable release metad
     const powershell = await readFile(result.powershell, 'utf8');
     assert.doesNotMatch(shell, /__QUIZZER_RELEASE_PUBLIC_KEY_PEM__/);
     assert.doesNotMatch(powershell, /__QUIZZER_RELEASE_PUBLIC_KEY_PEM__/);
+    assert.doesNotMatch(shell, /__QUIZZER_RELEASE_BASE_URL__/);
+    assert.doesNotMatch(powershell, /__QUIZZER_RELEASE_BASE_URL__/);
     assert.match(shell, /BEGIN PUBLIC KEY/);
     assert.match(powershell, /BEGIN PUBLIC KEY/);
+    assert.match(shell, /releases\/download\/v1\.0\.0-beta\.1/);
+    assert.match(powershell, /releases\/download\/v1\.0\.0-beta\.1/);
     assert.equal((await stat(result.shell)).mode & 0o777, 0o755);
     await execute('sh', ['-n', result.shell]);
     if (process.platform === 'linux') {
