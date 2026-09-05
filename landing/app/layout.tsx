@@ -20,13 +20,14 @@ export const metadata: Metadata = {
     type: 'website',
     title: 'Quizzer — Your documents. Your questions.',
     description: 'Create source-grounded quizzes locally with the AI provider you choose.',
-    images: [{ url: 'https://raw.githubusercontent.com/Somethings1/quizzer/main/landing/public/og.png', width: 1200, height: 630, alt: 'Quizzer — Your documents. Your questions.' }],
+    url: 'https://quizzer-local-first.banana-2524.chatgpt.site',
+    images: [{ url: 'https://quizzer-local-first.banana-2524.chatgpt.site/og.png', width: 1200, height: 630, alt: 'Quizzer — Your documents. Your questions.' }],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Quizzer — Your documents. Your questions.',
     description: 'Create source-grounded quizzes locally with the AI provider you choose.',
-    images: ['https://raw.githubusercontent.com/Somethings1/quizzer/main/landing/public/og.png'],
+    images: ['https://quizzer-local-first.banana-2524.chatgpt.site/og.png'],
   },
 };
 
