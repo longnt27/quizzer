@@ -39,7 +39,7 @@ let snapshot: ServerSyncSnapshot = {
   status: 'starting', phase: 'idle', percent: 0, completed: 0, total: 0, pending: 0,
   detail: 'Connecting to the server library…',
 };
-let applyingRemoteChanges = false;
+let remoteApplyDepth = 0;
 let syncPromise: Promise<void> | undefined;
 let retryTimer: number | undefined;
 
@@ -105,7 +105,7 @@ const migrationFingerprint = async (changes: OutgoingChange[]) => {
 };
 
 export const queueServerChange = async (collection: SyncCollection, id: string, deleted: boolean) => {
-  if (applyingRemoteChanges) return;
+  if (remoteApplyDepth > 0) return;
   const change: StoredSyncChange = {
     key: `${collection}:${id}`,
     collection,
@@ -177,7 +177,7 @@ const applyServerChanges = async (
   bootstrapped: boolean,
   migration?: MigrationSession,
 ) => {
-  applyingRemoteChanges = true;
+  remoteApplyDepth += 1;
   try {
     await db.transaction('rw', [...collections.map(tableFor), db.syncChanges, db.syncState], async () => {
       for (const change of changes) {
@@ -201,7 +201,19 @@ const applyServerChanges = async (
       });
     });
   } finally {
-    applyingRemoteChanges = false;
+    remoteApplyDepth -= 1;
+  }
+};
+
+export const applyServiceRecord = async (collection: SyncCollection, id: string, record: unknown) => {
+  remoteApplyDepth += 1;
+  try {
+    await db.transaction('rw', tableFor(collection), db.syncChanges, async () => {
+      await tableFor(collection).put(record as Record<string, unknown>);
+      await db.syncChanges.delete(`${collection}:${id}`);
+    });
+  } finally {
+    remoteApplyDepth -= 1;
   }
 };
 

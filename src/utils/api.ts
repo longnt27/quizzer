@@ -370,7 +370,7 @@ export async function generateQuiz(
   content: string,
   options: GenerationOptions,
   signal?: AbortSignal,
-  onProgress?: (progress: GenerationProgress) => void,
+  onProgress?: (progress: GenerationProgress) => void | Promise<void>,
   images: string[] = [],
   focus?: string,
   onProviderFailure?: (failure: ProviderFailure) => Promise<GenerationOptions | null>,
@@ -400,7 +400,7 @@ export async function generateQuiz(
       const missing = typeTarget - typeAccepted;
       const requested = Math.min(getGenerationBatchSize(), missing);
       const parallelRequests = 1;
-      onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'requesting', provider: activeOptions.provider, parallelRequests });
+      await onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'requesting', provider: activeOptions.provider, parallelRequests });
       const source = sourceProvider
         ? await sourceProvider({ type, typeAccepted, count: requested, round })
         : { content, images };
@@ -427,7 +427,7 @@ export async function generateQuiz(
         }
         throw error;
       }
-      onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'validating', provider: activeOptions.provider, parallelRequests });
+      await onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'validating', provider: activeOptions.provider, parallelRequests });
       if (!candidates.length) rejected += requested;
       const validCandidates = candidates.flatMap((candidate, sourceIndex) =>
         validateQuestion(candidate, type, activeOptions.multipleChoiceMode) ? [{ candidate, sourceIndex }] : []);
@@ -451,7 +451,7 @@ export async function generateQuiz(
         if (candidateVector) acceptedVectors.push(candidateVector);
         if (typeAccepted === typeTarget) break;
       }
-      onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'validating', provider: activeOptions.provider, parallelRequests });
+      await onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'validating', provider: activeOptions.provider, parallelRequests });
       rounds[type] = round;
       await onCheckpoint?.({ questions: [...accepted], rejected, rounds: { ...rounds }, options: activeOptions });
       round++;

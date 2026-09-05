@@ -147,7 +147,10 @@ test('provides onboarding, document, job, and event operations', async () => {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ changes: [
       { collection: 'documents', id: 'doc-1', data: { id: 'doc-1', name: 'Guide.md', createdAt: 1, mimeType: 'text/markdown', size: 10, tags: ['iac'], content: '# Terraform\n\nRemote state locking supports safe team collaboration.', originalFile: { __quizzerBlob: true, type: 'text/markdown', name: 'Guide.md', data: `data:text/markdown;base64,${Buffer.from('# Terraform').toString('base64')}` }, images: [{ id: 'figure-1', name: 'state.png', mimeType: 'image/png', data: Buffer.from('state diagram').toString('base64'), page: 1 }] } },
-      { collection: 'generationJobs', id: 'job-1', data: { id: 'job-1', status: 'paused', updatedAt: 1, questions: [] } },
+      { collection: 'generationJobs', id: 'job-1', data: {
+        id: 'job-1', testId: 'generated-test-1', name: 'Generated test', status: 'paused', createdAt: 1, updatedAt: 1,
+        documentIds: ['doc-1'], options: { provider: 'gemini', questionCount: 1 }, questions: [], rejected: 0, rounds: {},
+      } },
     ] }),
   });
   assert.equal(sync.status, 200);
@@ -198,6 +201,31 @@ test('provides onboarding, document, job, and event operations', async () => {
     body: JSON.stringify({ workerId: 'api-worker-one', leaseId: leasedJob.leaseId, leaseMs: 20_000 }),
   });
   assert.ok((await renewed.json()).job.leaseExpiresAt > leasedJob.leaseExpiresAt);
+  const checkpointed = await authorized('/api/v1/jobs/job-1', {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workerId: 'api-worker-one', leaseId: leasedJob.leaseId, patch: { rejected: 1, rounds: { reasoning: 1 } } }),
+  });
+  assert.equal((await checkpointed.json()).job.rejected, 1);
+  const staleCheckpoint = await authorized('/api/v1/jobs/job-1', {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workerId: 'api-worker-two', leaseId: leasedJob.leaseId, patch: { rejected: 99 } }),
+  });
+  assert.equal(staleCheckpoint.status, 400);
+  const completionBody = {
+    workerId: 'api-worker-one', leaseId: leasedJob.leaseId, completionId: 'api-completion-one',
+    test: { id: 'generated-test-1', name: 'Generated test', createdAt: Date.now(), questions: [{ statement: 'What is state locking?' }], attempts: [] },
+    patch: { questions: [{ statement: 'What is state locking?' }], rejected: 1 },
+  };
+  const completed = await authorized('/api/v1/jobs/job-1/complete', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(completionBody),
+  });
+  const completedPayload = await completed.json();
+  assert.equal(completedPayload.job.status, 'completed');
+  assert.equal(completedPayload.test.id, 'generated-test-1');
+  const repeatedCompletion = await authorized('/api/v1/jobs/job-1/complete', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(completionBody),
+  });
+  assert.equal((await repeatedCompletion.json()).job.revision, completedPayload.job.revision);
 
   const events = await authorized('/api/v1/events');
   assert.match(events.headers.get('content-type'), /^text\/event-stream/);

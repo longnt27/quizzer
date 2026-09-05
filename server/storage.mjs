@@ -293,6 +293,23 @@ const validateWorker = (workerId, leaseMs) => {
   if (!Number.isSafeInteger(leaseMs) || leaseMs < 10_000 || leaseMs > 120_000) throw new Error('Generation lease must be between 10 and 120 seconds');
 };
 
+const validateLeaseTime = now => {
+  if (!Number.isSafeInteger(now) || now < 0) throw new Error('Invalid generation lease time');
+};
+
+const requireActiveGenerationLease = (existing, { workerId, leaseId, now }) => {
+  if (!existing) throw new Error('Generation job not found');
+  if (typeof workerId !== 'string' || !/^[A-Za-z0-9-]{8,100}$/.test(workerId)) throw new Error('Invalid generation worker id');
+  if (typeof leaseId !== 'string' || !/^[A-Za-z0-9-]{8,100}$/.test(leaseId)) throw new Error('Invalid generation lease id');
+  validateLeaseTime(now);
+  if (existing.data.status !== 'running' || existing.data.workerId !== workerId || existing.data.leaseId !== leaseId) {
+    throw new Error('Generation lease is no longer owned by this worker');
+  }
+  if (!Number.isSafeInteger(existing.data.leaseExpiresAt) || existing.data.leaseExpiresAt <= now) {
+    throw new Error('Generation lease has expired');
+  }
+};
+
 const claimGenerationJobTransaction = database.transaction((workerId, leaseMs, now) => {
   const candidates = recordsInCollection.all('generationJobs').map(decodeRecord).filter(record => {
     const job = record.data;
@@ -318,19 +335,87 @@ const claimGenerationJobTransaction = database.transaction((workerId, leaseMs, n
 
 export const claimGenerationJob = ({ workerId, leaseMs = 45_000, now = Date.now() } = {}) => {
   validateWorker(workerId, leaseMs);
-  if (!Number.isSafeInteger(now) || now < 0) throw new Error('Invalid generation claim time');
+  validateLeaseTime(now);
   return claimGenerationJobTransaction(workerId, leaseMs, now);
 };
 
 export const renewGenerationJobLease = (id, { workerId, leaseId, leaseMs = 45_000, now = Date.now() } = {}) => {
   validateWorker(workerId, leaseMs);
-  if (typeof leaseId !== 'string' || !/^[A-Za-z0-9-]{8,100}$/.test(leaseId)) throw new Error('Invalid generation lease id');
   const existing = getRecord('generationJobs', id);
-  if (!existing) throw new Error('Generation job not found');
-  if (existing.data.status !== 'running' || existing.data.workerId !== workerId || existing.data.leaseId !== leaseId) {
-    throw new Error('Generation lease is no longer owned by this worker');
-  }
+  requireActiveGenerationLease(existing, { workerId, leaseId, now });
   return putRecord('generationJobs', id, { ...existing.data, leaseExpiresAt: now + leaseMs, updatedAt: now });
+};
+
+const generationPatchKeys = new Set([
+  'activeRouteIndex', 'coveragePlan', 'error', 'errorCode', 'nextAttemptAt', 'options',
+  'progress', 'providerAttempts', 'questions', 'rejected', 'rounds', 'status',
+]);
+const workerStatuses = new Set(['running', 'waiting', 'paused', 'error']);
+
+const validateGenerationPatch = patch => {
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch) || !Object.keys(patch).length) {
+    throw new Error('A generation job patch is required');
+  }
+  const unsupported = Object.keys(patch).filter(key => !generationPatchKeys.has(key));
+  if (unsupported.length) throw new Error(`Generation workers cannot update: ${unsupported.join(', ')}`);
+  if (patch.status !== undefined && !workerStatuses.has(patch.status)) throw new Error('Invalid worker generation status');
+};
+
+export const updateGenerationJobWithLease = (id, { workerId, leaseId, patch, now = Date.now() } = {}) => {
+  validateGenerationPatch(patch);
+  const existing = getRecord('generationJobs', id);
+  requireActiveGenerationLease(existing, { workerId, leaseId, now });
+  const running = (patch.status ?? existing.data.status) === 'running';
+  return putRecord('generationJobs', id, {
+    ...existing.data,
+    ...patch,
+    updatedAt: now,
+    ...(running ? {} : { workerId: undefined, leaseId: undefined, leaseExpiresAt: undefined }),
+  });
+};
+
+export const completeGenerationJob = (id, {
+  workerId, leaseId, completionId, test, patch = {}, now = Date.now(),
+} = {}) => {
+  if (typeof completionId !== 'string' || !/^[A-Za-z0-9-]{8,100}$/.test(completionId)) throw new Error('Invalid generation completion id');
+  if (!test || typeof test !== 'object' || Array.isArray(test) || typeof test.id !== 'string' || !Array.isArray(test.questions)) {
+    throw new Error('A completed test record is required');
+  }
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw new Error('Generation completion patch must be an object');
+  if (Object.hasOwn(patch, 'status')) throw new Error('Generation completion status is managed by the service');
+  validateGenerationPatch({ questions: patch.questions ?? test.questions, ...patch });
+  if (patch.questions && JSON.stringify(patch.questions) !== JSON.stringify(test.questions)) {
+    throw new Error('Completed job questions must match the stored test');
+  }
+  const existing = getRecord('generationJobs', id);
+  if (existing?.data.status === 'completed' && existing.data.completionId === completionId) {
+    const storedTest = getRecord('tests', existing.data.testId);
+    if (!storedTest) throw new Error('Completed generation job is missing its test');
+    return { job: existing, test: storedTest };
+  }
+  requireActiveGenerationLease(existing, { workerId, leaseId, now });
+  if (test.id !== existing.data.testId) throw new Error('Completed test does not match the generation job');
+  if (getRecord('tests', test.id)) throw new Error('Completed test already exists');
+  const job = {
+    ...existing.data,
+    ...patch,
+    status: 'completed',
+    questions: test.questions,
+    completionId,
+    finishedAt: now,
+    updatedAt: now,
+    workerId: undefined,
+    leaseId: undefined,
+    leaseExpiresAt: undefined,
+  };
+  syncStorage({
+    cursor: Number(currentRevision.get().revision),
+    changes: [
+      { collection: 'tests', id: test.id, data: test },
+      { collection: 'generationJobs', id, data: job },
+    ],
+  });
+  return { job: getRecord('generationJobs', id), test: getRecord('tests', test.id) };
 };
 
 export const subscribeStorageChanges = listener => {

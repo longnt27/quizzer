@@ -427,6 +427,26 @@ paths:
       responses:
         '200': { description: Claimed job, or an empty result when no job is runnable }
         '400': { $ref: '#/components/responses/InvalidRequest' }
+  /jobs/{jobId}:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    patch:
+      operationId: checkpointGenerationJob
+      summary: Persist a generation checkpoint while the worker lease is active
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workerId, leaseId, patch]
+              properties:
+                workerId: { type: string, minLength: 8, maxLength: 100 }
+                leaseId: { type: string, minLength: 8, maxLength: 100 }
+                patch: { $ref: '#/components/schemas/GenerationJobPatch' }
+      responses:
+        '200': { description: Durable generation checkpoint }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
   /jobs/{jobId}/lease:
     parameters:
       - $ref: '#/components/parameters/JobId'
@@ -447,12 +467,44 @@ paths:
       responses:
         '200': { description: Renewed job and lease expiry }
         '400': { $ref: '#/components/responses/InvalidRequest' }
+  /jobs/{jobId}/complete:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    post:
+      operationId: completeGenerationJob
+      summary: Atomically store a generated test and complete its leased job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workerId, leaseId, completionId, test]
+              properties:
+                workerId: { type: string, minLength: 8, maxLength: 100 }
+                leaseId: { type: string, minLength: 8, maxLength: 100 }
+                completionId: { type: string, minLength: 8, maxLength: 100 }
+                test: { type: object }
+                patch: { $ref: '#/components/schemas/GenerationJobPatch' }
+      responses:
+        '200': { description: Completed job and generated test }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
   /jobs/{jobId}/resume:
     parameters:
       - $ref: '#/components/parameters/JobId'
     post:
       operationId: resumeJob
       summary: Queue the unfinished portion of a generation job
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                options: { type: object }
+                activeRouteIndex: { type: integer, minimum: 0 }
+                providerAttempts: { type: array, items: { type: object } }
+                resetRounds: { type: boolean }
       responses:
         '200': { description: Updated generation job }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -696,6 +748,24 @@ components:
         workerId: { type: string }
         leaseId: { type: string }
         leaseExpiresAt: { type: integer }
+        completionId: { type: string }
+    GenerationJobPatch:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        activeRouteIndex: { type: integer, minimum: 0 }
+        coveragePlan: { type: object }
+        error: { type: string }
+        errorCode: { type: string }
+        nextAttemptAt: { type: integer }
+        options: { type: object }
+        progress: { type: object }
+        providerAttempts: { type: array, items: { type: object } }
+        questions: { type: array, items: { type: object } }
+        rejected: { type: integer, minimum: 0 }
+        rounds: { type: object }
+        status: { type: string, enum: [running, waiting, paused, error] }
     PluginSummary:
       type: object
       required: [id, name, capabilities]

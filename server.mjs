@@ -5,8 +5,8 @@ import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promi
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import {
-  backupDatabase, beginLegacyMigration, claimGenerationJob, deleteRecord, finalizeLegacyMigration, getRecord, listLegacyMigrations,
-  listRecords, putRecord, renewGenerationJobLease, storageInfo, subscribeStorageChanges, syncStorage,
+  backupDatabase, beginLegacyMigration, claimGenerationJob, completeGenerationJob, deleteRecord, finalizeLegacyMigration, getRecord, listLegacyMigrations,
+  listRecords, putRecord, renewGenerationJobLease, storageInfo, subscribeStorageChanges, syncStorage, updateGenerationJobWithLease,
 } from './server/storage.mjs';
 import { detectHardwareCapabilities } from './server/hardware-profile.mjs';
 import { ensureServiceToken, isAuthorizedRequest } from './server/auth.mjs';
@@ -1052,6 +1052,20 @@ const handleVersionedApi = async (request, response, url) => {
       send(response, 200, { job: publicRecord(job) });
       return true;
     }
+    const jobCompleteMatch = /^\/api\/v1\/jobs\/([^/]+)\/complete$/.exec(url.pathname);
+    if (jobCompleteMatch && request.method === 'POST') {
+      const body = await readJson(request);
+      const result = completeGenerationJob(decodeURIComponent(jobCompleteMatch[1]), body);
+      send(response, 200, { job: publicRecord(result.job), test: publicRecord(result.test) });
+      return true;
+    }
+    const jobMatch = /^\/api\/v1\/jobs\/([^/]+)$/.exec(url.pathname);
+    if (jobMatch && request.method === 'PATCH') {
+      const body = await readJson(request);
+      const job = updateGenerationJobWithLease(decodeURIComponent(jobMatch[1]), body);
+      send(response, 200, { job: publicRecord(job) });
+      return true;
+    }
     const jobActionMatch = /^\/api\/v1\/jobs\/([^/]+)\/(resume|cancel)$/.exec(url.pathname);
     if (jobActionMatch && request.method === 'POST') {
       const id = decodeURIComponent(jobActionMatch[1]);
@@ -1061,8 +1075,22 @@ const handleVersionedApi = async (request, response, url) => {
         return true;
       }
       const resume = jobActionMatch[2] === 'resume';
+      const body = resume && request.headers['content-length'] !== undefined && request.headers['content-length'] !== '0'
+        ? await readJson(request)
+        : {};
+      if (body.options !== undefined && (!body.options || typeof body.options !== 'object' || Array.isArray(body.options))) {
+        throw new Error('Generation options must be an object');
+      }
+      if (body.providerAttempts !== undefined && !Array.isArray(body.providerAttempts)) throw new Error('Provider attempts must be an array');
+      if (body.activeRouteIndex !== undefined && (!Number.isSafeInteger(body.activeRouteIndex) || body.activeRouteIndex < 0)) {
+        throw new Error('Active route index must be a non-negative integer');
+      }
       const data = {
         ...existing.data,
+        ...(resume && body.options ? { options: body.options } : {}),
+        ...(resume && body.providerAttempts ? { providerAttempts: body.providerAttempts } : {}),
+        ...(resume && body.activeRouteIndex !== undefined ? { activeRouteIndex: body.activeRouteIndex } : {}),
+        ...(resume && body.resetRounds ? { rounds: {} } : {}),
         status: resume ? 'queued' : 'cancelled',
         updatedAt: Date.now(),
         ...(resume ? { error: undefined, errorCode: undefined, nextAttemptAt: undefined, workerId: undefined }

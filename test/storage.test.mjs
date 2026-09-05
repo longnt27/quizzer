@@ -8,8 +8,8 @@ import test from 'node:test';
 const directory = await mkdtemp(join(tmpdir(), 'quizzer-storage-test-'));
 process.env.QUIZZER_DATABASE_PATH = join(directory, 'quizzer.sqlite');
 const {
-  beginLegacyMigration, claimGenerationJob, finalizeLegacyMigration, getRecord, listLegacyMigrations,
-  listRecords, putRecord, renewGenerationJobLease, subscribeStorageChanges, syncStorage,
+  beginLegacyMigration, claimGenerationJob, completeGenerationJob, finalizeLegacyMigration, getRecord, listLegacyMigrations,
+  listRecords, putRecord, renewGenerationJobLease, subscribeStorageChanges, syncStorage, updateGenerationJobWithLease,
 } = await import('../server/storage.mjs');
 
 const sha256 = value => createHash('sha256').update(value).digest('hex');
@@ -120,6 +120,11 @@ test('claims one generation worker at a time and recovers expired leases', () =>
   assert.equal(claimed.data.leaseExpiresAt, 11_000);
   assert.match(claimed.data.leaseId, /^[a-f0-9-]{36}$/);
   assert.equal(claimGenerationJob({ workerId: 'worker-two', leaseMs: 10_000, now: 2_000 }), undefined);
+  const checkpointed = updateGenerationJobWithLease('lease-job', {
+    workerId: 'worker-one', leaseId: claimed.data.leaseId, now: 3_000,
+    patch: { questions: [{ statement: 'Saved question' }], rejected: 2, rounds: { reasoning: 1 } },
+  });
+  assert.equal(checkpointed.data.questions[0].statement, 'Saved question');
   assert.throws(() => renewGenerationJobLease('lease-job', {
     workerId: 'worker-two', leaseId: claimed.data.leaseId, leaseMs: 10_000, now: 2_000,
   }), /no longer owned/);
@@ -127,9 +132,28 @@ test('claims one generation worker at a time and recovers expired leases', () =>
     workerId: 'worker-one', leaseId: claimed.data.leaseId, leaseMs: 10_000, now: 5_000,
   });
   assert.equal(renewed.data.leaseExpiresAt, 15_000);
+  assert.throws(() => renewGenerationJobLease('lease-job', {
+    workerId: 'worker-one', leaseId: claimed.data.leaseId, leaseMs: 10_000, now: 15_000,
+  }), /expired/);
   const recovered = claimGenerationJob({ workerId: 'worker-two', leaseMs: 10_000, now: 15_001 });
   assert.equal(recovered.data.workerId, 'worker-two');
   assert.notEqual(recovered.data.leaseId, claimed.data.leaseId);
+  assert.throws(() => updateGenerationJobWithLease('lease-job', {
+    workerId: 'worker-one', leaseId: claimed.data.leaseId, now: 16_000, patch: { rejected: 99 },
+  }), /no longer owned/);
+  const completion = completeGenerationJob('lease-job', {
+    workerId: 'worker-two', leaseId: recovered.data.leaseId, completionId: 'completion-one', now: 16_000,
+    test: { id: 'lease-test', name: 'Lease test', createdAt: 16_000, questions: [{ statement: 'Saved question' }], attempts: [] },
+    patch: { questions: [{ statement: 'Saved question' }], rejected: 2 },
+  });
+  assert.equal(completion.job.data.status, 'completed');
+  assert.equal(completion.job.data.leaseId, undefined);
+  assert.equal(completion.test.data.id, 'lease-test');
+  const repeated = completeGenerationJob('lease-job', {
+    workerId: 'worker-two', leaseId: recovered.data.leaseId, completionId: 'completion-one', now: 17_000,
+    test: { id: 'lease-test', name: 'Lease test', createdAt: 16_000, questions: [{ statement: 'Saved question' }], attempts: [] },
+  });
+  assert.equal(repeated.job.revision, completion.job.revision);
 });
 
 test('backs up, transactionally receipts, and verifies a legacy browser migration', async () => {

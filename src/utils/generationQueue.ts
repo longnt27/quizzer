@@ -1,21 +1,26 @@
-import { db, type StoredGenerationJob } from '../db/db';
+import { db, type StoredGenerationJob, type StoredTest } from '../db/db';
 import type { GenerationOptions, QuestionType } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { generateQuiz, getGenerationErrorCode, getRequestedCounts } from './api';
 import { getGenerationConcurrency } from './generationSettings';
 import { buildCoveragePlan, ensureDocumentChunks, retrievalContextForSlots } from './sourcePlanning';
-import { syncNow } from '../db/serverSync';
+import { applyServiceRecord, syncNow } from '../db/serverSync';
 import type { ProviderAttempt, ProviderRoute } from '../types';
 import { serviceJson } from './serviceApi';
 
 const workerId = uuidv4();
 const active = new Map<string, AbortController>();
 let pumping = false;
+type WorkerJobPatch = Partial<Pick<StoredGenerationJob,
+  'activeRouteIndex' | 'coveragePlan' | 'error' | 'errorCode' | 'nextAttemptAt' | 'options' |
+  'progress' | 'providerAttempts' | 'questions' | 'rejected' | 'rounds' | 'status'>>;
+
+const storeServiceJob = (job: StoredGenerationJob) => applyServiceRecord('generationJobs', job.id, job);
 
 const claimNextJob = async (): Promise<StoredGenerationJob | undefined> => {
   await syncNow();
   const { job } = await serviceJson<{ job?: StoredGenerationJob }>('/api/v1/jobs/claim', 'POST', { workerId, leaseMs: 45_000 });
-  if (job) await db.generationJobs.put(job);
+  if (job) await storeServiceJob(job);
   return job;
 };
 
@@ -24,6 +29,21 @@ const processJob = async (job: StoredGenerationJob) => {
   active.set(job.id, controller);
   let leaseLost = false;
   let renewing = false;
+  const persistPatch = async (patch: WorkerJobPatch) => {
+    if (!job.leaseId || leaseLost) throw new Error('Generation lease is unavailable');
+    try {
+      const { job: saved } = await serviceJson<{ job: StoredGenerationJob }>(`/api/v1/jobs/${encodeURIComponent(job.id)}`, 'PATCH', {
+        workerId, leaseId: job.leaseId, patch,
+      });
+      Object.assign(job, saved);
+      await storeServiceJob(saved);
+      return saved;
+    } catch (error) {
+      leaseLost = true;
+      controller.abort();
+      throw error;
+    }
+  };
   const renewLease = async () => {
     if (!job.leaseId || renewing || controller.signal.aborted) return;
     renewing = true;
@@ -57,7 +77,7 @@ const processJob = async (job: StoredGenerationJob) => {
     let coveragePlan = job.coveragePlan;
     if (!coveragePlan || coveragePlan.strategy !== strategy || coveragePlan.slots.length !== target) {
       coveragePlan = (await buildCoveragePlan(chunkedDocuments, target, strategy, controller.signal)).plan;
-      await db.generationJobs.update(job.id, { coveragePlan, updatedAt: Date.now() });
+      await persistPatch({ coveragePlan });
     }
     await syncNow();
     const offsets: Record<QuestionType, number> = {
@@ -71,7 +91,7 @@ const processJob = async (job: StoredGenerationJob) => {
       content,
       job.options,
       controller.signal,
-      progress => { void db.generationJobs.update(job.id, { progress, updatedAt: Date.now() }); },
+      progress => persistPatch({ progress }).then(() => undefined),
       [],
       undefined,
       async failure => {
@@ -87,27 +107,25 @@ const processJob = async (job: StoredGenerationJob) => {
         }];
         const nextRouteIndex = routeChain.findIndex((route, index) => index > routeIndex && route.approved);
         if (nextRouteIndex < 0) {
-          await db.generationJobs.update(job.id, { providerAttempts, updatedAt: Date.now() });
+          await persistPatch({ providerAttempts });
           return null;
         }
         routeIndex = nextRouteIndex;
         const route = routeChain[routeIndex];
         const replacement = { ...job.options, provider: route.provider, model: route.model, routeChain };
-        await db.generationJobs.update(job.id, {
+        await persistPatch({
           options: replacement,
           activeRouteIndex: routeIndex,
           providerAttempts,
-          updatedAt: Date.now(),
         });
         return replacement;
       },
       { questions: job.questions, rejected: job.rejected, rounds: job.rounds, options: job.options },
-      checkpoint => db.generationJobs.update(job.id, {
+      checkpoint => persistPatch({
         questions: checkpoint.questions,
         rejected: checkpoint.rejected,
         rounds: checkpoint.rounds,
         options: checkpoint.options,
-        updatedAt: Date.now(),
       }).then(() => undefined),
       request => retrievalContextForSlots(
         chunkedDocuments,
@@ -120,19 +138,20 @@ const processJob = async (job: StoredGenerationJob) => {
     const latest = await db.generationJobs.get(job.id);
     if (!latest || latest.status === 'cancelled') return;
     const finishedAt = Date.now();
-    await db.transaction('rw', db.tests, db.generationJobs, async () => {
-      await db.tests.put({
-        id: job.testId,
-        name: job.name,
-        createdAt: finishedAt,
+    const test: StoredTest = {
+      id: job.testId,
+      name: job.name,
+      createdAt: finishedAt,
+      questions,
+      attempts: [],
+      documentIds: job.documentIds,
+      fileContent: content,
+      generationOptions: latest.options,
+    };
+    const completed = await serviceJson<{ job: StoredGenerationJob; test: StoredTest }>(`/api/v1/jobs/${encodeURIComponent(job.id)}/complete`, 'POST', {
+      workerId, leaseId: job.leaseId, completionId: uuidv4(), test,
+      patch: {
         questions,
-        attempts: [],
-        documentIds: job.documentIds,
-        fileContent: content,
-        generationOptions: latest.options,
-      });
-      await db.generationJobs.update(job.id, {
-        status: 'completed', questions, finishedAt, updatedAt: finishedAt, workerId: undefined, leaseId: undefined, leaseExpiresAt: undefined,
         activeRouteIndex: routeIndex,
         providerAttempts: [...providerAttempts, {
           provider: latest.options.provider,
@@ -143,33 +162,35 @@ const processJob = async (job: StoredGenerationJob) => {
           outcome: 'completed',
         }],
         progress: latest.progress ? { ...latest.progress, accepted: questions.length, phase: 'validating' } : undefined,
-      });
+      },
     });
-    await syncNow();
+    Object.assign(job, completed.job);
+    await applyServiceRecord('tests', completed.test.id, completed.test);
+    await storeServiceJob(completed.job);
   } catch (error) {
     const latest = await db.generationJobs.get(job.id);
     if (!latest || latest.status === 'cancelled') return;
+    if (leaseLost) {
+      await syncNow();
+      return;
+    }
     const code = getGenerationErrorCode(error);
-    if ((error as Error).name === 'AbortError') {
-      if (leaseLost) await syncNow();
-      else await db.generationJobs.update(job.id, {
-        status: 'cancelled', error: undefined, workerId: undefined, leaseId: undefined, leaseExpiresAt: undefined, updatedAt: Date.now(),
-      });
-    } else if (code === 'connection_lost') {
-      await db.generationJobs.update(job.id, {
-        status: 'waiting', error: (error as Error).message, errorCode: code,
-        nextAttemptAt: Date.now() + 5_000, workerId: undefined, leaseId: undefined, leaseExpiresAt: undefined, updatedAt: Date.now(),
-      });
-    } else if (code === 'provider_limit' || code === 'provider_auth' || code === 'provider_unavailable') {
-      await db.generationJobs.update(job.id, {
-        status: 'paused', error: (error as Error).message, errorCode: code,
-        workerId: undefined, leaseId: undefined, leaseExpiresAt: undefined, updatedAt: Date.now(),
-      });
-    } else {
-      await db.generationJobs.update(job.id, {
-        status: 'error', error: (error as Error).message, errorCode: code,
-        workerId: undefined, leaseId: undefined, leaseExpiresAt: undefined, updatedAt: Date.now(),
-      });
+    try {
+      if ((error as Error).name === 'AbortError') {
+        await persistPatch({ status: 'error', error: 'Generation was interrupted.', errorCode: 'cancelled' });
+      } else if (code === 'connection_lost') {
+        await persistPatch({
+          status: 'waiting', error: (error as Error).message, errorCode: code,
+          nextAttemptAt: Date.now() + 5_000,
+        });
+      } else if (code === 'provider_limit' || code === 'provider_auth' || code === 'provider_unavailable') {
+        await persistPatch({ status: 'paused', error: (error as Error).message, errorCode: code });
+      } else {
+        await persistPatch({ status: 'error', error: (error as Error).message, errorCode: code });
+      }
+    } catch (persistenceError) {
+      console.warn('Quizzer could not persist the generation failure because the worker lease was lost.', persistenceError);
+      await syncNow();
     }
   } finally {
     window.clearInterval(leaseTimer);
@@ -195,17 +216,14 @@ export const pumpGenerationQueue = async () => {
 };
 
 export const cancelGenerationJob = async (id: string) => {
-  await db.generationJobs.update(id, {
-    status: 'cancelled', workerId: undefined, leaseId: undefined, leaseExpiresAt: undefined, finishedAt: Date.now(), updatedAt: Date.now(),
-  });
+  const { job } = await serviceJson<{ job: StoredGenerationJob }>(`/api/v1/jobs/${encodeURIComponent(id)}/cancel`, 'POST', {});
+  await storeServiceJob(job);
   active.get(id)?.abort();
 };
 
 export const retryGenerationJob = async (id: string) => {
-  await db.generationJobs.update(id, {
-    status: 'queued', rounds: {}, error: undefined, errorCode: undefined, nextAttemptAt: undefined,
-    workerId: undefined, leaseId: undefined, leaseExpiresAt: undefined, updatedAt: Date.now(),
-  });
+  const { job } = await serviceJson<{ job: StoredGenerationJob }>(`/api/v1/jobs/${encodeURIComponent(id)}/resume`, 'POST', { resetRounds: true });
+  await storeServiceJob(job);
   void pumpGenerationQueue();
 };
 
@@ -220,11 +238,10 @@ export const resumeGenerationJob = async (id: string, options: GenerationOptions
     accepted: existing?.questions.length ?? 0,
     outcome: 'manually-selected' as const,
   }];
-  await db.generationJobs.update(id, {
-    status: 'queued', options, activeRouteIndex: routeIndex, providerAttempts,
-    error: undefined, errorCode: undefined, nextAttemptAt: undefined,
-    workerId: undefined, leaseId: undefined, leaseExpiresAt: undefined, updatedAt: Date.now(),
+  const { job } = await serviceJson<{ job: StoredGenerationJob }>(`/api/v1/jobs/${encodeURIComponent(id)}/resume`, 'POST', {
+    options, activeRouteIndex: routeIndex, providerAttempts,
   });
+  await storeServiceJob(job);
   void pumpGenerationQueue();
 };
 

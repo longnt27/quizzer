@@ -39,6 +39,7 @@ export interface StoredGenerationJob {
   workerId?: string;
   leaseId?: string;
   leaseExpiresAt?: number;
+  completionId?: string;
 }
 
 export interface StoredTest {
