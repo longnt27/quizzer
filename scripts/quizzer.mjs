@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createPublicKey, randomUUID, verify } from 'node:crypto';
-import { copyFile, mkdir, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ensureServiceToken } from '../server/auth.mjs';
 import { chunkDocument, importDocumentFile } from '../server/document-import.mjs';
@@ -15,6 +15,7 @@ import { readRuntimeText, runningAsSingleExecutable } from '../server/runtime-as
 import { canonicalizeManifest } from '../release/manifest.mjs';
 import { validateReleaseManifest } from '../server/release-manifest.mjs';
 import { ObjectStore } from '../server/object-store.mjs';
+import { createBackup, verifyBackup } from '../server/backup.mjs';
 
 const usage = `Quizzer CLI
 
@@ -33,6 +34,7 @@ Usage:
   quizzer resume <job-id> [--json]
   quizzer migrations list [--json]
   quizzer backup create [--destination directory] [--json]
+  quizzer backup verify <directory> [--json]
   quizzer release verify --metadata <file> --signature <file> --public-key <file> [--json]
   quizzer version
 `;
@@ -353,17 +355,22 @@ const runJobs = async (action, explicitId) => {
 };
 
 const runBackup = async action => {
-  if (action !== 'create') fail('Use backup create');
-  const database = await storage();
+  if (action === 'verify') {
+    const directory = parsed.positionals.shift();
+    if (!directory) fail('backup verify requires a backup directory');
+    const result = await verifyBackup(directory);
+    return writeResult(result, `Backup is valid: ${directory}\n${result.manifest.objects.length} objects · ${result.manifest.totals.objectBytes} bytes`);
+  }
+  if (action !== 'create') fail('Use backup create or verify');
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const directory = flag('destination', join(appDataDirectory, 'backups', stamp));
-  await mkdir(directory, { recursive: true, mode: 0o700 });
-  const databaseDestination = join(directory, 'quizzer.sqlite');
-  await database.backupDatabase(databaseDestination);
-  await copyFile(settingsPath(appDataDirectory), join(directory, 'config.jsonc')).catch(error => {
-    if (error?.code !== 'ENOENT') throw error;
+  const manifest = await createBackup({
+    destination: directory,
+    database: await storage(),
+    objectStore,
+    settingsFile: settingsPath(appDataDirectory),
   });
-  writeResult({ directory, files: ['quizzer.sqlite', 'config.jsonc (when present)'] }, `Backup created at ${directory}`);
+  writeResult({ directory, manifest }, `Backup created at ${directory}\n${manifest.objects.length} objects · ${manifest.totals.objectBytes} bytes`);
 };
 
 const runMigrations = async action => {

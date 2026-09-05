@@ -162,7 +162,14 @@ test('creates a consistent backup without copying the service token', async () =
   assert.equal(result.directory, backup);
   assert.ok((await stat(join(backup, 'quizzer.sqlite'))).size > 0);
   assert.equal(JSON.parse(await readFile(join(backup, 'config.jsonc'), 'utf8'))['hardware.profile'], 'balanced');
+  assert.equal(result.manifest.objects.length, 1);
+  assert.match(result.manifest.objects[0].sha256, /^[a-f0-9]{64}$/);
+  assert.equal((await cli('backup', 'verify', backup)).valid, true);
+  const object = result.manifest.objects[0];
+  assert.equal((await stat(join(backup, ...object.path.split('/')))).size, object.size);
   await assert.rejects(stat(join(backup, 'service-token')), /ENOENT/);
+  await writeFile(join(backup, ...object.path.split('/')), 'tampered');
+  await assert.rejects(cli('backup', 'verify', backup), /Command failed/);
 });
 
 test('reports durable legacy migration history', async () => {
