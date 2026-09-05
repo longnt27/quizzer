@@ -1,9 +1,22 @@
-import { Alert, Button, Card, Col, Empty, Progress, Row, Segmented, Space, Statistic, Tag, Typography } from 'antd';
-import { ApiOutlined, FileAddOutlined, FormOutlined, PlayCircleOutlined, RocketOutlined, SyncOutlined } from '@ant-design/icons';
+import { useCallback, useEffect, useState } from 'react';
+import { Alert, Badge, Button, Card, Col, Empty, List, Progress, Row, Segmented, Space, Statistic, Tag, Typography } from 'antd';
+import { ApiOutlined, DatabaseOutlined, FileAddOutlined, FormOutlined, PlayCircleOutlined, ReloadOutlined, RocketOutlined, SafetyCertificateOutlined, SyncOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type StoredAppProfile } from '../db/db';
 import type { InterfaceMode } from '../types';
 import { CURRENT_WHATS_NEW_VERSION, ONBOARDING_STEPS, setInterfaceMode, updateAppProfile } from '../utils/appProfile';
+import { serviceRequest } from '../utils/serviceApi';
+import { useConfiguredProviders } from '../utils/useConfiguredProviders';
+
+interface IndexHealth {
+  documentCount: number;
+  chunkCount: number;
+}
+
+interface PluginHealth {
+  builtIn: Array<{ id: string }>;
+  plugins: Array<{ id: string; enabled: boolean; compatible: boolean; status: 'installed' | 'blocked' | 'broken' }>;
+}
 
 interface Props {
   profile: StoredAppProfile;
@@ -16,18 +29,46 @@ interface Props {
 }
 
 export default function HomePage({ profile, onAddDocument, onAddTest, onOpenGeneration, onOpenPlugins, onOpenTest, onOpenTutorial }: Props) {
+  const configured = useConfiguredProviders();
+  const [systemHealth, setSystemHealth] = useState<{ index?: IndexHealth; plugins?: PluginHealth; error?: string; loading: boolean }>({ loading: true });
   const data = useLiveQuery(async () => {
-    const [documents, tests, jobs, drafts] = await Promise.all([
+    const [documents, testCount, tests, jobs, drafts] = await Promise.all([
       db.documents.count(),
+      db.tests.count(),
       db.tests.orderBy('createdAt').reverse().limit(4).toArray(),
       db.generationJobs.toArray(),
       db.testDrafts.orderBy('updatedAt').reverse().toArray(),
     ]);
-    return { documents, tests, jobs, drafts };
+    return { documents, testCount, tests, jobs, drafts };
   }, []);
   const activeJobs = data?.jobs.filter(job => ['queued', 'running', 'waiting', 'paused'].includes(job.status)) ?? [];
   const completion = Math.round(profile.onboarding.completedSteps.length / ONBOARDING_STEPS.length * 100);
   const showWhatsNew = profile.upgradedExistingLibrary && profile.whatsNewDismissedVersion !== CURRENT_WHATS_NEW_VERSION;
+  const refreshHealth = useCallback(async () => {
+    setSystemHealth(current => ({ ...current, loading: true }));
+    try {
+      const [index, plugins] = await Promise.all([
+        serviceRequest<IndexHealth>('/api/v1/index/status'),
+        serviceRequest<PluginHealth>('/api/v1/plugins'),
+      ]);
+      setSystemHealth({ index, plugins, loading: false });
+    } catch (error) {
+      setSystemHealth(current => ({ ...current, error: error instanceof Error ? error.message : 'Local service is unavailable', loading: false }));
+    }
+  }, []);
+  useEffect(() => {
+    void refreshHealth();
+    const timer = window.setInterval(() => void refreshHealth(), 15_000);
+    return () => window.clearInterval(timer);
+  }, [refreshHealth]);
+
+  const pluginProblems = systemHealth.plugins?.plugins.filter(plugin => !plugin.compatible || plugin.status !== 'installed').length ?? 0;
+  const healthRows = [
+    { label: 'Local service', detail: systemHealth.error ? 'Unavailable' : 'Authenticated and ready', status: systemHealth.error ? 'error' as const : 'success' as const, icon: <SafetyCertificateOutlined /> },
+    { label: 'Retrieval index', detail: `${systemHealth.index?.documentCount ?? 0}/${data?.documents ?? 0} documents · ${systemHealth.index?.chunkCount ?? 0} spans`, status: systemHealth.index?.documentCount === (data?.documents ?? 0) ? 'success' as const : 'warning' as const, icon: <DatabaseOutlined /> },
+    { label: 'AI routes', detail: configured.loading ? 'Checking providers…' : `${configured.providers.length} route${configured.providers.length === 1 ? '' : 's'} available`, status: configured.providers.length ? 'success' as const : 'warning' as const, icon: <ApiOutlined /> },
+    { label: 'Plugins', detail: pluginProblems ? `${pluginProblems} need attention` : `${systemHealth.plugins?.builtIn.length ?? 0} built in · ${systemHealth.plugins?.plugins.length ?? 0} external`, status: pluginProblems ? 'error' as const : 'success' as const, icon: <RocketOutlined /> },
+  ];
 
   return <div className="home-page">
     <div className="home-heading">
@@ -54,7 +95,7 @@ export default function HomePage({ profile, onAddDocument, onAddTest, onOpenGene
 
     <Row gutter={[16, 16]}>
       <Col xs={12} md={6}><Card><Statistic title="Documents" value={data?.documents ?? 0} prefix={<FileAddOutlined />} /></Card></Col>
-      <Col xs={12} md={6}><Card><Statistic title="Tests" value={data?.tests.length ?? 0} prefix={<FormOutlined />} /></Card></Col>
+      <Col xs={12} md={6}><Card><Statistic title="Tests" value={data?.testCount ?? 0} prefix={<FormOutlined />} /></Card></Col>
       <Col xs={12} md={6}><Card><Statistic title="Active jobs" value={activeJobs.length} prefix={<SyncOutlined spin={activeJobs.some(job => job.status === 'running')} />} /></Card></Col>
       <Col xs={12} md={6}><Card><Statistic title="Profile" value={profile.hardwareProfile.toUpperCase()} prefix={<ApiOutlined />} /></Card></Col>
     </Row>
@@ -66,6 +107,14 @@ export default function HomePage({ profile, onAddDocument, onAddTest, onOpenGene
         <Button icon={<ApiOutlined />} onClick={onOpenPlugins}>Configure AI</Button>
         <Button icon={<SyncOutlined />} onClick={onOpenGeneration}>View activity</Button>
       </Space>
+    </Card>
+
+    <Card title="System health" extra={<Button size="small" icon={<ReloadOutlined spin={systemHealth.loading} />} onClick={() => void refreshHealth()}>Refresh</Button>}>
+      {systemHealth.error && <Alert type="error" showIcon message="Quizzer's local service could not be reached" description={systemHealth.error} style={{ marginBottom: 12 }} />}
+      <List size="small" dataSource={healthRows} renderItem={item => <List.Item actions={item.label === 'AI routes' || item.label === 'Plugins'
+        ? [<Button type="link" size="small" key="manage" onClick={onOpenPlugins}>Manage</Button>] : undefined}>
+        <List.Item.Meta avatar={<span className="system-health-icon">{item.icon}</span>} title={<Space><Badge status={item.status} />{item.label}</Space>} description={item.detail} />
+      </List.Item>} />
     </Card>
 
     <Row gutter={[16, 16]}>
