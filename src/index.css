@@ -68,6 +68,17 @@ button, input, textarea, select { font: inherit; }
 .command-palette-command:hover, .command-palette-command:focus-visible { background: var(--selected); outline: none; }
 .command-palette-command > span:nth-child(2) { min-width: 0; display: grid; gap: 2px; }
 .command-palette-icon { color: #1677ff; font-size: 18px; }
+.prompt-studio-layout { min-height: min(680px, 75vh); display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 22px; }
+.prompt-profile-sidebar { min-height: 0; display: flex; flex-direction: column; gap: 8px; border-right: 1px solid var(--border); padding-right: 14px; }
+.prompt-profile-sidebar .ant-list { min-height: 0; overflow-y: auto; }
+.prompt-profile-sidebar .ant-list-item { padding: 3px 0; border: 0; }
+.prompt-profile-choice { width: 100%; padding: 10px; display: grid; gap: 7px; border: 1px solid transparent; border-radius: 8px; color: var(--text); background: transparent; text-align: left; cursor: pointer; }
+.prompt-profile-choice:hover, .prompt-profile-choice:focus-visible, .prompt-profile-choice.is-selected { border-color: #1677ff; background: var(--selected); outline: none; }
+.prompt-studio-editor { min-width: 0; }
+.prompt-studio-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 14px; }
+.prompt-studio-heading > div:first-child { flex: 1; display: grid; gap: 7px; }
+.prompt-template-editor, .prompt-preview { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.55; }
+.prompt-preview { max-height: 280px; margin: 6px 0 0; padding: 14px; overflow: auto; white-space: pre-wrap; border: 1px solid var(--border); border-radius: 8px; background: var(--code); }
 .question-count-grid { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 10px; }
 .question-count-grid label, .question-count-total { display: flex; min-width: 0; padding: 10px; flex-direction: column; gap: 7px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-soft); }
 .question-count-grid .ant-input-number { width: 100%; }
@@ -216,6 +227,9 @@ mark { color: #111827; }
   .home-page { padding: 20px 14px 36px; }
   .home-heading, .home-card-heading { align-items: stretch; flex-direction: column; gap: 10px; }
   .settings-row { grid-template-columns: 1fr; gap: 12px; }
+  .prompt-studio-layout { min-height: auto; grid-template-columns: 1fr; }
+  .prompt-profile-sidebar { max-height: 260px; border-right: 0; border-bottom: 1px solid var(--border); padding: 0 0 14px; }
+  .prompt-studio-heading { align-items: stretch; flex-direction: column; }
   .onboarding-choice-grid { grid-template-columns: 1fr; }
   .document-view h2 { font-size: 24px; }
   .document-original-frame { min-height: 65vh; }

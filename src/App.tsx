@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button, ConfigProvider, Drawer, Grid, Layout, message, theme } from 'antd';
-import { ApiOutlined, FileAddOutlined, FormOutlined, HomeOutlined, MenuOutlined, MoonOutlined, QuestionCircleOutlined, SettingOutlined, SwapOutlined, SyncOutlined, SunOutlined } from '@ant-design/icons';
+import { ApiOutlined, ExperimentOutlined, FileAddOutlined, FormOutlined, HomeOutlined, MenuOutlined, MoonOutlined, QuestionCircleOutlined, SettingOutlined, SwapOutlined, SyncOutlined, SunOutlined } from '@ant-design/icons';
 import Sidebar, { type LibrarySelection } from './components/Sidebar';
 import MainContent from './components/MainContent';
 import AddTestModal from './components/AddTestModal';
@@ -9,6 +9,7 @@ import DocumentView from './components/DocumentView';
 import PluginsModal from './components/PluginsModal';
 import SettingsModal from './components/SettingsModal';
 import CommandPalette, { type PaletteCommand } from './components/CommandPalette';
+import PromptStudio from './components/PromptStudio';
 import GenerationWorker from './components/GenerationWorker';
 import { GenerationActivity, GenerationCenter } from './components/GenerationCenter';
 import { setMessageApi } from './utils/messageProvider';
@@ -30,6 +31,7 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
   const [showPluginsModal, setShowPluginsModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [showPromptStudio, setShowPromptStudio] = useState(false);
   const [showGenerationCenter, setShowGenerationCenter] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -76,6 +78,7 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
     onOpenPlugins: () => { setShowPluginsModal(true); setMobileMenuOpen(false); },
     onOpenSettings: () => { setShowSettingsModal(true); setMobileMenuOpen(false); },
     onOpenCommandPalette: () => { setShowCommandPalette(true); setMobileMenuOpen(false); },
+    onOpenPromptStudio: () => { setShowPromptStudio(true); setMobileMenuOpen(false); },
     onOpenGeneration: () => { setShowGenerationCenter(true); setMobileMenuOpen(false); },
     onOpenHome: () => select(null),
     onOpenTutorial: () => { setShowOnboarding(true); setMobileMenuOpen(false); },
@@ -107,6 +110,7 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
     { id: 'activity', label: 'Open generation queue', description: 'Review active, paused, and completed jobs.', keywords: ['activity', 'jobs'], icon: <SyncOutlined />, run: () => setShowGenerationCenter(true) },
     { id: 'plugins', label: 'Open plugins & models', description: 'Configure providers, extraction, OCR, and external plugins.', keywords: ['provider', 'api', 'models'], icon: <ApiOutlined />, run: () => setShowPluginsModal(true) },
     { id: 'settings', label: 'Open Settings', description: 'Search and edit resolved application settings.', shortcut: '⌘ ,', icon: <SettingOutlined />, run: () => setShowSettingsModal(true) },
+    ...(profile?.interfaceMode === 'advanced' ? [{ id: 'prompts', label: 'Open Prompt Studio', description: 'Edit, validate, preview, import, and export prompt profiles.', keywords: ['templates', 'generation', 'grading', 'rag'], icon: <ExperimentOutlined />, run: () => setShowPromptStudio(true) }] : []),
     { id: 'mode', label: `Switch to ${profile?.interfaceMode === 'advanced' ? 'Simple' : 'Advanced'} mode`, description: 'Change disclosure without changing stored capabilities or data.', keywords: ['interface'], icon: <SwapOutlined />, run: () => profile && setInterfaceMode(profile.interfaceMode === 'simple' ? 'advanced' : 'simple') },
     { id: 'tutorial', label: 'Restart tutorial', description: 'Return to the resumable first-run walkthrough.', keywords: ['help', 'onboarding'], icon: <QuestionCircleOutlined />, run: async () => { await restartOnboarding(); setShowOnboarding(true); } },
     { id: 'theme', label: `Use ${dark ? 'light' : 'dark'} theme`, description: 'Change the application color theme.', keywords: ['appearance'], icon: dark ? <SunOutlined /> : <MoonOutlined />, run: onToggleTheme },
@@ -141,13 +145,14 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
       <Drawer placement="left" width="min(88vw, 340px)" open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} styles={{ body: { padding: 0 } }}>
         <Sidebar {...sidebarProps} embedded />
       </Drawer>
-      {showAddModal && profile && <AddTestModal profile={profile} onClose={() => setShowAddModal(false)} onManagePlugins={() => setShowPluginsModal(true)} />}
+      {showAddModal && profile && <AddTestModal profile={profile} onClose={() => setShowAddModal(false)} onManagePlugins={() => setShowPluginsModal(true)} onOpenPromptStudio={() => setShowPromptStudio(true)} />}
       {showDocumentModal && <AddDocumentModal onClose={() => setShowDocumentModal(false)} onCreated={id => {
         setSelection({ kind: 'document', id }); setShowDocumentModal(false);
       }} />}
       {showPluginsModal && profile && <PluginsModal interfaceMode={profile.interfaceMode} onClose={() => setShowPluginsModal(false)} />}
       {showSettingsModal && profile && <SettingsModal profile={profile} onClose={() => setShowSettingsModal(false)} />}
       <CommandPalette open={showCommandPalette} commands={commands} onClose={() => setShowCommandPalette(false)} />
+      {showPromptStudio && <PromptStudio onClose={() => setShowPromptStudio(false)} />}
       {showGenerationCenter && <GenerationCenter open onClose={() => setShowGenerationCenter(false)} onManagePlugins={() => setShowPluginsModal(true)} onOpenTest={id => {
         setSelection({ kind: 'test', id }); setSession(null);
       }} />}

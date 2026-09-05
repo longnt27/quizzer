@@ -10,7 +10,7 @@ import { getProviderDefinition, getProviderSettings } from '../utils/providerSet
 import { useConfiguredProviders } from '../utils/useConfiguredProviders';
 import { BUILT_IN_PROMPT_PROFILE, snapshotPromptProfile } from '../utils/promptProfiles';
 
-interface Props { onClose: () => void; onManagePlugins: () => void; profile: StoredAppProfile; }
+interface Props { onClose: () => void; onManagePlugins: () => void; onOpenPromptStudio: () => void; profile: StoredAppProfile; }
 type CreationMode = 'combined' | 'separate';
 type QuizPreset = 'quick' | 'balanced' | 'deep';
 
@@ -29,7 +29,7 @@ const uniqueTestName = (requestedName: string, usedNames: Set<string>) => {
   return candidate;
 };
 
-export default function AddTestModal({ onClose, onManagePlugins, profile }: Props) {
+export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStudio, profile }: Props) {
   const settings = useMemo(getProviderSettings, []);
   const configured = useConfiguredProviders();
   const documents = useLiveQuery(() => db.documents.orderBy('createdAt').reverse().toArray(), []) ?? [];
@@ -160,6 +160,7 @@ export default function AddTestModal({ onClose, onManagePlugins, profile }: Prop
             <Select value={promptProfile.id} onChange={setPromptProfileId} style={{ width: '100%', marginTop: 8 }}
               options={promptProfiles.map(item => ({ value: item.id, label: `${item.name} · v${item.version}${item.builtIn ? ' · built in' : ''}` }))} />
             <Typography.Paragraph type="secondary" style={{ margin: '6px 0 0' }}>{promptProfile.description || 'Custom generation, grading, and retrieval instructions.'}</Typography.Paragraph>
+            <Button type="link" size="small" onClick={onOpenPromptStudio}>Open Prompt Studio</Button>
           </div>}
           {profile.interfaceMode === 'simple' && <div>
             <Typography.Text strong>Recommended preset</Typography.Text>
