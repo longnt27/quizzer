@@ -1,0 +1,313 @@
+#!/usr/bin/env node
+import { randomUUID } from 'node:crypto';
+import { copyFile, mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
+import { ensureServiceToken } from '../server/auth.mjs';
+import { chunkDocument, importDocumentFile } from '../server/document-import.mjs';
+import { detectHardwareCapabilities } from '../server/hardware-profile.mjs';
+import { databasePathFor, defaultAppDataDirectory } from '../server/paths.mjs';
+import {
+  loadResolvedSettings, readUserSettings, SETTINGS_REGISTRY, settingsPath, validateSettings, writeUserSettings,
+} from '../server/settings.mjs';
+
+const usage = `Quizzer CLI
+
+Usage:
+  quizzer doctor [--json]
+  quizzer serve [--port 8787]
+  quizzer config list|get <key>|set <key> <value>|unset <key>|path [--json]
+  quizzer plugins list [--json]
+  quizzer documents list|show <id>|import <file> [--tags a,b]|remove <id> --yes [--json]
+  quizzer index <document-id>|--all [--json]
+  quizzer test create --document <id> [--document <id>] [--name name] [--questions 20]
+                      [--instruction text] [--provider provider] [--model model] [--json]
+  quizzer jobs list|show <id>|resume <id>|cancel <id> [--json]
+  quizzer resume <job-id> [--json]
+  quizzer backup create [--destination directory] [--json]
+  quizzer version
+`;
+
+const parseArguments = arguments_ => {
+  const positionals = [];
+  const flags = new Map();
+  const booleanFlags = new Set(['all', 'help', 'json', 'yes']);
+  for (let index = 0; index < arguments_.length; index += 1) {
+    const argument = arguments_[index];
+    if (!argument.startsWith('--')) { positionals.push(argument); continue; }
+    const equals = argument.indexOf('=');
+    const name = argument.slice(2, equals >= 0 ? equals : undefined);
+    let value = equals >= 0 ? argument.slice(equals + 1) : 'true';
+    if (equals < 0 && !booleanFlags.has(name) && arguments_[index + 1] && !arguments_[index + 1].startsWith('--')) value = arguments_[++index];
+    flags.set(name, [...(flags.get(name) ?? []), value]);
+  }
+  return { positionals, flags };
+};
+
+const parsed = parseArguments(process.argv.slice(2));
+const jsonOutput = parsed.flags.has('json');
+const appDataDirectory = defaultAppDataDirectory();
+process.env.QUIZZER_APP_DATA_DIR = appDataDirectory;
+process.env.QUIZZER_DATABASE_PATH ||= databasePathFor(appDataDirectory);
+
+const flag = (name, fallback) => parsed.flags.get(name)?.at(-1) ?? fallback;
+const flags = name => parsed.flags.get(name) ?? [];
+const writeResult = (value, human) => {
+  if (jsonOutput || human === undefined) process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+  else process.stdout.write(`${human}\n`);
+};
+const fail = message => { throw new Error(message); };
+
+let storageModule;
+const storage = async () => {
+  storageModule ??= await import('../server/storage.mjs');
+  return storageModule;
+};
+
+const serviceRequest = async (path, init = {}) => {
+  const token = await ensureServiceToken(appDataDirectory);
+  const base = process.env.QUIZZER_SERVICE_URL || 'http://127.0.0.1:8787';
+  const response = await fetch(`${base.replace(/\/$/, '')}${path}`, {
+    ...init,
+    headers: { Authorization: `Bearer ${token}`, ...(init.headers ?? {}) },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `Quizzer service returned ${response.status}`);
+  return payload;
+};
+
+const parseSettingValue = (key, raw) => {
+  const definition = SETTINGS_REGISTRY.find(item => item.key === key);
+  if (!definition) fail(`Unknown setting: ${key}`);
+  if (definition.type === 'boolean') {
+    if (/^(true|1|yes|on)$/i.test(raw)) return true;
+    if (/^(false|0|no|off)$/i.test(raw)) return false;
+    fail(`${key} must be true or false`);
+  }
+  if (definition.type === 'integer') return Number(raw);
+  return raw;
+};
+
+const runConfig = async action => {
+  if (action === 'path') return writeResult({ path: settingsPath(appDataDirectory) }, settingsPath(appDataDirectory));
+  const current = await readUserSettings(appDataDirectory);
+  if (action === 'list') {
+    const resolved = await loadResolvedSettings(appDataDirectory);
+    const rows = SETTINGS_REGISTRY.map(item => ({ key: item.key, value: resolved.values[item.key], source: resolved.sources[item.key] }));
+    return writeResult({ profile: resolved.profile, settings: rows }, rows.map(row => `${row.key}=${JSON.stringify(row.value)} (${row.source})`).join('\n'));
+  }
+  const key = parsed.positionals.shift();
+  if (!key) fail(`config ${action} requires a setting name`);
+  if (action === 'get') {
+    const resolved = await loadResolvedSettings(appDataDirectory);
+    if (!(key in resolved.values)) fail(`Unknown setting: ${key}`);
+    return writeResult({ key, value: resolved.values[key], source: resolved.sources[key] }, String(resolved.values[key]));
+  }
+  if (action === 'set') {
+    const raw = parsed.positionals.shift();
+    if (raw === undefined) fail('config set requires a value');
+    const next = { ...current, [key]: parseSettingValue(key, raw) };
+    validateSettings(next);
+    await writeUserSettings(appDataDirectory, next);
+    return writeResult({ key, value: next[key] }, `Saved ${key}=${JSON.stringify(next[key])}`);
+  }
+  if (action === 'unset') {
+    validateSettings({ [key]: SETTINGS_REGISTRY.find(item => item.key === key)?.default });
+    delete current[key];
+    await writeUserSettings(appDataDirectory, current);
+    return writeResult({ key, removed: true }, `Reset ${key} to its profile/default value`);
+  }
+  fail('Use config list, get, set, unset, or path');
+};
+
+const runDoctor = async () => {
+  const hardware = detectHardwareCapabilities(appDataDirectory);
+  const settings = await loadResolvedSettings(appDataDirectory);
+  let service = { reachable: false };
+  try { service = { reachable: true, ...await serviceRequest('/api/v1/health') }; }
+  catch (error) { service = { reachable: false, error: error instanceof Error ? error.message : String(error) }; }
+  const report = {
+    ok: true,
+    appDataDirectory,
+    databasePath: process.env.QUIZZER_DATABASE_PATH,
+    service,
+    hardware,
+    settings: { profile: settings.profile, values: settings.values },
+  };
+  writeResult(report, [
+    `App data: ${report.appDataDirectory}`,
+    `Database: ${report.databasePath}`,
+    `Service: ${service.reachable ? 'ready' : 'not running'}`,
+    `Hardware: ${hardware.architecture}, ${hardware.cpuCores} cores, ${hardware.memoryGB} GB RAM`,
+    `Recommended profile: ${hardware.recommendedProfile}`,
+    `Configured profile: ${settings.profile}`,
+  ].join('\n'));
+};
+
+const runDocuments = async action => {
+  const database = await storage();
+  if (action === 'list') {
+    const documents = database.listRecords('documents').map(record => ({
+      id: record.id, name: record.data.name, size: record.data.size, tags: record.data.tags ?? [],
+      chunks: record.data.chunks?.length ?? 0, createdAt: record.data.createdAt,
+    }));
+    return writeResult({ documents }, documents.length ? documents.map(item => `${item.id}  ${item.name}  ${item.chunks} chunks`).join('\n') : 'No documents');
+  }
+  if (action === 'import') {
+    const path = parsed.positionals.shift();
+    if (!path) fail('documents import requires a file path');
+    const document = await importDocumentFile(path, { tags: String(flag('tags', '')).split(',') });
+    const duplicate = database.listRecords('documents').find(record => record.data.contentHash === document.contentHash);
+    if (duplicate) return writeResult({ imported: false, duplicateOf: duplicate.id, document: duplicate.data }, `Already imported as ${duplicate.data.name} (${duplicate.id})`);
+    database.putRecord('documents', document.id, document);
+    return writeResult({ imported: true, document }, `Imported ${document.name} (${document.id}) with ${document.chunks.length} chunks`);
+  }
+  const id = parsed.positionals.shift();
+  if (!id) fail(`documents ${action} requires a document id`);
+  const record = database.getRecord('documents', id);
+  if (!record) fail(`Document not found: ${id}`);
+  if (action === 'show') {
+    const document = { ...record.data, originalFile: undefined };
+    return writeResult({ document }, `${document.name}\n${document.mimeType} · ${document.size} bytes · ${document.chunks?.length ?? 0} chunks\n\n${document.content.slice(0, 800)}`);
+  }
+  if (action === 'remove') {
+    if (flag('yes') !== 'true') fail('documents remove requires --yes');
+    database.deleteRecord('documents', id);
+    return writeResult({ removed: id }, `Removed ${record.data.name}`);
+  }
+  fail('Use documents list, show, import, or remove');
+};
+
+const runIndex = async () => {
+  const database = await storage();
+  const selected = flag('all') === 'true'
+    ? database.listRecords('documents')
+    : [database.getRecord('documents', parsed.positionals.shift())].filter(Boolean);
+  if (!selected.length) fail('No matching documents to index');
+  const indexed = [];
+  for (const record of selected) {
+    const chunks = chunkDocument(record.id, record.data.content);
+    database.putRecord('documents', record.id, { ...record.data, chunks, indexedAt: Date.now(), indexVersion: 1 });
+    indexed.push({ id: record.id, name: record.data.name, chunks: chunks.length });
+  }
+  writeResult({ indexed }, indexed.map(item => `${item.name}: ${item.chunks} chunks`).join('\n'));
+};
+
+const runTestCreate = async () => {
+  const database = await storage();
+  const documentIds = flags('document').flatMap(value => value.split(',')).filter(Boolean);
+  if (!documentIds.length) fail('test create requires at least one --document id');
+  for (const id of documentIds) if (!database.getRecord('documents', id)) fail(`Document not found: ${id}`);
+  const questionCount = Number(flag('questions', '20'));
+  if (!Number.isSafeInteger(questionCount) || questionCount < 1 || questionCount > 200) fail('--questions must be an integer from 1 to 200');
+  const settings = await loadResolvedSettings(appDataDirectory);
+  const provider = flag('provider', settings.values['generation.defaultProvider']);
+  const supportedProviders = ['codex', 'claude-agent', 'antigravity-agent', 'gemini', 'anthropic', 'openai', 'openrouter', 'deepseek'];
+  if (!supportedProviders.includes(provider)) fail(`Unsupported provider: ${provider}`);
+  const now = Date.now();
+  const jobId = randomUUID();
+  const name = flag('name', `Quiz ${new Date(now).toLocaleDateString()}`);
+  const model = flag('model', undefined);
+  const customInstruction = flag('instruction', undefined);
+  const privacy = provider === 'codex' || provider.endsWith('-agent') ? 'signed-in-agent' : 'remote-api';
+  const job = {
+    id: jobId,
+    testId: randomUUID(),
+    name,
+    createdAt: now,
+    updatedAt: now,
+    status: 'queued',
+    documentIds,
+    options: {
+      provider,
+      ...(model ? { model } : {}),
+      questionCount,
+      ...(customInstruction ? { customInstruction } : {}),
+      ragProfile: {
+        id: settings.profile,
+        retrieval: settings.values['retrieval.mode'],
+        contextBudget: settings.values['retrieval.contextBudget'],
+        rerank: settings.values['retrieval.rerank'],
+      },
+      routeChain: [{ provider, ...(model ? { model } : {}), privacy, paid: privacy === 'remote-api', approved: true }],
+      resolvedSettings: settings.values,
+    },
+    questions: [],
+    rejected: 0,
+    rounds: {},
+  };
+  database.putRecord('generationJobs', job.id, job);
+  writeResult({ job }, `Queued ${name} (${job.id}). Open Quizzer to process it.`);
+};
+
+const runJobs = async (action, explicitId) => {
+  const database = await storage();
+  if (action === 'list') {
+    const jobs = database.listRecords('generationJobs').map(record => record.data);
+    return writeResult({ jobs }, jobs.length ? jobs.map(job => `${job.id}  ${job.status}  ${job.name}`).join('\n') : 'No jobs');
+  }
+  const id = explicitId || parsed.positionals.shift();
+  if (!id) fail(`jobs ${action} requires a job id`);
+  const record = database.getRecord('generationJobs', id);
+  if (!record) fail(`Job not found: ${id}`);
+  if (action === 'show') return writeResult({ job: record.data }, `${record.data.name}\nStatus: ${record.data.status}\nAccepted: ${record.data.questions?.length ?? 0}`);
+  if (action !== 'resume' && action !== 'cancel') fail('Use jobs list, show, resume, or cancel');
+  const now = Date.now();
+  const job = action === 'resume'
+    ? { ...record.data, status: 'queued', updatedAt: now, error: undefined, errorCode: undefined, nextAttemptAt: undefined, workerId: undefined }
+    : { ...record.data, status: 'cancelled', updatedAt: now, finishedAt: now, workerId: undefined };
+  database.putRecord('generationJobs', id, job);
+  writeResult({ job }, `${action === 'resume' ? 'Queued' : 'Cancelled'} ${job.name}`);
+};
+
+const runBackup = async action => {
+  if (action !== 'create') fail('Use backup create');
+  const database = await storage();
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const directory = flag('destination', join(appDataDirectory, 'backups', stamp));
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const databaseDestination = join(directory, 'quizzer.sqlite');
+  await database.backupDatabase(databaseDestination);
+  await copyFile(settingsPath(appDataDirectory), join(directory, 'config.jsonc')).catch(error => {
+    if (error?.code !== 'ENOENT') throw error;
+  });
+  writeResult({ directory, files: ['quizzer.sqlite', 'config.jsonc (when present)'] }, `Backup created at ${directory}`);
+};
+
+const main = async () => {
+  const command = parsed.positionals.shift();
+  if (!command || command === 'help' || flag('help') === 'true') return process.stdout.write(usage);
+  if (command === 'version') {
+    const packageJson = JSON.parse(await (await import('node:fs/promises')).readFile(new URL('../package.json', import.meta.url), 'utf8'));
+    return process.stdout.write(`${packageJson.version}\n`);
+  }
+  if (command === 'serve') {
+    const port = Number(flag('port', '8787'));
+    if (!Number.isSafeInteger(port) || port < 1 || port > 65535) fail('--port must be a valid TCP port');
+    process.env.QUIZZER_SERVICE_PORT = String(port);
+    await import('../server.mjs');
+    return;
+  }
+  if (command === 'doctor') return runDoctor();
+  if (command === 'config') return runConfig(parsed.positionals.shift() || 'list');
+  if (command === 'plugins') {
+    const action = parsed.positionals.shift() || 'list';
+    if (action !== 'list') fail('Use plugins list');
+    const result = await serviceRequest('/api/integrations');
+    return writeResult({ plugins: result }, Object.entries(result).map(([name, status]) => `${name}: ${status.connected || status.installed || status.available ? 'ready' : 'not ready'}`).join('\n'));
+  }
+  if (command === 'documents') return runDocuments(parsed.positionals.shift() || 'list');
+  if (command === 'index') return runIndex();
+  if (command === 'test') {
+    if (parsed.positionals.shift() !== 'create') fail('Use test create');
+    return runTestCreate();
+  }
+  if (command === 'jobs') return runJobs(parsed.positionals.shift() || 'list');
+  if (command === 'resume') return runJobs('resume', parsed.positionals.shift());
+  if (command === 'backup') return runBackup(parsed.positionals.shift() || 'create');
+  fail(`Unknown command: ${command}\n\n${usage}`);
+};
+
+main().catch(error => {
+  process.stderr.write(`quizzer: ${error instanceof Error ? error.message : String(error)}\n`);
+  process.exitCode = 1;
+});

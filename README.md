@@ -102,6 +102,21 @@ Open the Vite URL printed in the terminal, normally `http://localhost:5173`.
 
 `npm run dev` starts both the browser development server and the loopback generation service. The service listens on `127.0.0.1:8787` by default.
 
+### Source CLI
+
+The same SQLite library and typed settings registry are available through the development CLI:
+
+```sh
+npm run cli -- doctor
+npm run cli -- config list
+npm run cli -- documents import ./notes.pdf --tags infrastructure,terraform
+npm run cli -- test create --document DOCUMENT_ID --questions 20 --instruction "Terraform coding questions only"
+npm run cli -- jobs list
+npm run cli -- backup create
+```
+
+Run `npm run cli -- help` for the complete command list. Configuration is resolved in this order: per-job override, CLI/environment override, user JSONC, hardware profile, then built-in defaults. `quizzer config path` prints the per-user configuration location. API keys and the private service token are never included in settings output or backups.
+
 ### Tailscale access
 
 On macOS, double-click `start-tailscale.command` in Finder. On Windows, double-click `start-tailscale.cmd`. The cross-platform launcher detects the active Tailscale address, installs npm dependencies when needed, and prints the private URL to open from another device on the same tailnet. Keep its window open while using Quizzer and press Control-C to stop it.
@@ -210,7 +225,7 @@ To migrate the existing Zen Browser library, start this updated version and open
 
 The initial import merges records by ID in bounded batches and runs behind the usable interface. Existing server records win an initial-import conflict, preventing an old browser cache from replacing a newer shared copy. Later edits are ordered by the server and synchronized every five seconds, when the tab becomes visible, and immediately after reconnecting. While offline, the sidebar shows **Offline — saved locally** and pending mutations remain in IndexedDB. Select the sync row to see preparation, batch and byte-transfer progress, local application, the pending-change count, the latest successful sync time, or the connection error.
 
-For backups, stop Quizzer and copy the `.quizzer-data` directory. Set `QUIZZER_DATABASE_PATH` only when a custom database location is needed for a packaged or managed deployment.
+Use `quizzer backup create` for a consistent live SQLite backup. Source deployments can also stop Quizzer and copy the `.quizzer-data` directory. Set `QUIZZER_DATABASE_PATH` only when a custom database location is needed for a packaged or managed deployment.
 
 Select **Install Ollama + all-minilm** under **Plugins & models** to enable local semantic duplicate filtering and AI-selected source coverage. On macOS Quizzer uses Homebrew to install Ollama when needed; on Linux it uses Ollama's official installer. It then starts the local runtime and downloads `all-minilm`. If that plugin is unavailable, generation continues automatically with normalized exact matching, lexical similarity, and size-based source prioritization.
 
@@ -235,7 +250,10 @@ Do not upload confidential material unless the selected provider and your accoun
 | `npm run tailscale` | Start Quizzer on this machine's Tailscale address |
 | `npm run dev:web` | Start only Vite; generation endpoints must be provided separately |
 | `npm run service` | Start only the loopback generation service |
+| `npm run cli -- help` | Run the source CLI for configuration, documents, jobs, and backups |
 | `npm run build` | Type-check and create the production browser bundle |
+| `npm run package:desktop` | Build an unpacked desktop application for the current platform |
+| `npm run make:desktop` | Build the current platform's configured installer/archive |
 | `npm run lint` | Run ESLint |
 | `npm test` | Run server storage tests |
 | `npm run preview` | Preview the browser bundle; start the service separately for generation |

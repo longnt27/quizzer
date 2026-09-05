@@ -8,12 +8,16 @@
   "version": "0.0.0",
   "type": "module",
   "main": "desktop/main.mjs",
+  "bin": {
+    "quizzer": "scripts/quizzer.mjs"
+  },
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:desktop": "node scripts/desktop-dev.mjs",
     "tailscale": "node scripts/tailscale.mjs",
     "dev:web": "vite",
     "service": "node server.mjs",
+    "cli": "node scripts/quizzer.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test": "node --test test/*.test.mjs",
