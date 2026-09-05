@@ -136,6 +136,9 @@ export interface StoredSyncState {
   id: 'server';
   cursor: number;
   bootstrapped: boolean;
+  migrationId?: string;
+  migrationExpectedRecords?: number;
+  migrationExpectedHash?: string;
 }
 
 export interface StoredAppProfile {

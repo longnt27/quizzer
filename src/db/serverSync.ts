@@ -30,6 +30,7 @@ type OutgoingChange = {
   deleted?: boolean;
   changedAt?: number;
 };
+type MigrationSession = { id: string; expectedRecords: number; expectedHash: string };
 
 const collections: SyncCollection[] = ['tests', 'documents', 'generationJobs', 'testDrafts', 'profiles', 'promptProfiles'];
 const listeners = new Set<() => void>();
@@ -96,6 +97,20 @@ const deserialize = (value: unknown): unknown => {
     return Object.fromEntries(Object.entries(object).map(([key, item]) => [key, deserialize(item)]));
   }
   return value;
+};
+
+const sha256 = async (value: string) => {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+};
+
+const migrationFingerprint = async (changes: OutgoingChange[]) => {
+  const items = await Promise.all(changes.map(async change => ({
+    key: `${change.collection}:${change.id}`,
+    payloadHash: await sha256(JSON.stringify(change)),
+  })));
+  items.sort((left, right) => left.key < right.key ? -1 : left.key > right.key ? 1 : 0);
+  return sha256(items.map(item => `${item.key}:${item.payloadHash}\n`).join(''));
 };
 
 export const queueServerChange = async (collection: SyncCollection, id: string, deleted: boolean) => {
@@ -169,6 +184,7 @@ const applyServerChanges = async (
   cursor: number,
   sent: Array<{ collection: SyncCollection; id: string; changedAt?: number }>,
   bootstrapped: boolean,
+  migration?: MigrationSession,
 ) => {
   applyingRemoteChanges = true;
   try {
@@ -184,7 +200,14 @@ const applyServerChanges = async (
         const marker = await db.syncChanges.get(`${item.collection}:${item.id}`);
         if (marker && marker.changedAt === item.changedAt) await db.syncChanges.delete(marker.key);
       }
-      await db.syncState.put({ id: 'server', cursor, bootstrapped });
+      await db.syncState.put({
+        id: 'server', cursor, bootstrapped,
+        ...(!bootstrapped && migration ? {
+          migrationId: migration.id,
+          migrationExpectedRecords: migration.expectedRecords,
+          migrationExpectedHash: migration.expectedHash,
+        } : {}),
+      });
     });
   } finally {
     applyingRemoteChanges = false;
@@ -230,6 +253,24 @@ const runSync = async () => {
   const state = await db.syncState.get('server');
   const bootstrap = !state?.bootstrapped;
   const outgoing = await outgoingChanges(bootstrap);
+  let migration: MigrationSession | undefined;
+  if (bootstrap) {
+    const expectedHash = await migrationFingerprint(outgoing);
+    const expectedRecords = outgoing.length;
+    const contentsUnchanged = state?.migrationExpectedHash === expectedHash
+      && state.migrationExpectedRecords === expectedRecords;
+    migration = {
+      id: contentsUnchanged && state?.migrationId ? state.migrationId : crypto.randomUUID(),
+      expectedRecords,
+      expectedHash,
+    };
+    await db.syncState.put({
+      id: 'server', cursor: state?.cursor ?? 0, bootstrapped: false,
+      migrationId: migration.id,
+      migrationExpectedRecords: migration.expectedRecords,
+      migrationExpectedHash: migration.expectedHash,
+    });
+  }
   const batches: typeof outgoing[] = [];
   let currentBatch: typeof outgoing = [];
   let currentBytes = 0;
@@ -250,13 +291,18 @@ const runSync = async () => {
   for (const [index, batch] of batches.entries()) {
     const batchNumber = index + 1;
     updateSnapshot({ phase: 'uploading', percent: 15, completed: 0, total: 0, detail: `Uploading batch ${batchNumber} of ${batches.length} to SQLite…` });
-    const payload = await postSync(JSON.stringify({ cursor, bootstrap, changes: batch }), batchNumber, batches.length);
+    const payload = await postSync(JSON.stringify({
+      cursor,
+      bootstrap,
+      changes: batch,
+      ...(migration ? { migration: { ...migration, batch: batchNumber, batches: batches.length, complete: batchNumber === batches.length } } : {}),
+    }), batchNumber, batches.length);
     updateSnapshot({
       phase: 'applying', percent: 75, completed: 0, total: payload.changes.length,
       detail: payload.changes.length ? `Applying server changes from batch ${batchNumber} of ${batches.length}…` : 'Library is already up to date.',
     });
     cursor = payload.cursor;
-    await applyServerChanges(payload.changes, cursor, batch, batchNumber === batches.length);
+    await applyServerChanges(payload.changes, cursor, batch, batchNumber === batches.length, migration);
   }
 };
 

@@ -4,7 +4,8 @@ import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promi
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import {
-  deleteRecord, getRecord, listRecords, putRecord, storageInfo, subscribeStorageChanges, syncStorage,
+  beginLegacyMigration, deleteRecord, finalizeLegacyMigration, getRecord, listLegacyMigrations,
+  listRecords, putRecord, storageInfo, subscribeStorageChanges, syncStorage,
 } from './server/storage.mjs';
 import { detectHardwareCapabilities } from './server/hardware-profile.mjs';
 import { ensureServiceToken, isAuthorizedRequest } from './server/auth.mjs';
@@ -793,7 +794,7 @@ const handleVersionedApi = async (request, response, url) => {
         apiVersion: 1,
         hardware,
         providers: Object.keys(providerRunners),
-        operations: ['settings', 'onboarding', 'plugins', 'documents', 'indexing', 'retrieval', 'jobs', 'events'],
+        operations: ['settings', 'onboarding', 'migrations', 'plugins', 'documents', 'indexing', 'retrieval', 'jobs', 'events'],
       });
       return true;
     }
@@ -958,6 +959,10 @@ const handleVersionedApi = async (request, response, url) => {
       sendStorageEvents(request, response);
       return true;
     }
+    if (request.method === 'GET' && url.pathname === '/api/v1/migrations') {
+      send(response, 200, { migrations: listLegacyMigrations() });
+      return true;
+    }
   } catch (error) {
     send(response, 400, { error: error instanceof Error ? error.message : 'Invalid API request' });
     return true;
@@ -985,7 +990,14 @@ createServer(async (request, response) => {
   if (request.method === 'POST' && request.url === '/api/storage/sync') {
     try {
       const body = await readJson(request, maxStorageBodyBytes);
+      if (body?.bootstrap) {
+        if (!body.migration) throw new Error('A verified legacy migration session is required for initial browser import');
+        await beginLegacyMigration(body.migration);
+      }
       const result = syncStorage(body);
+      if (body?.bootstrap && body.migration?.complete === true) {
+        result.migration = finalizeLegacyMigration(body.migration.id);
+      }
       for (const change of body?.changes ?? []) {
         if (change.collection === 'documents' && change.deleted === true && typeof change.id === 'string') sparseIndex.removeDocument(change.id);
       }

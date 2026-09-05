@@ -1,12 +1,22 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
 const directory = await mkdtemp(join(tmpdir(), 'quizzer-storage-test-'));
 process.env.QUIZZER_DATABASE_PATH = join(directory, 'quizzer.sqlite');
-const { getRecord, listRecords, putRecord, subscribeStorageChanges, syncStorage } = await import('../server/storage.mjs');
+const {
+  beginLegacyMigration, finalizeLegacyMigration, getRecord, listLegacyMigrations,
+  listRecords, putRecord, subscribeStorageChanges, syncStorage,
+} = await import('../server/storage.mjs');
+
+const sha256 = value => createHash('sha256').update(value).digest('hex');
+const fingerprint = changes => sha256(changes.map(change => ({
+  key: `${change.collection}:${change.id}`,
+  payloadHash: sha256(JSON.stringify(change)),
+})).sort((left, right) => left.key.localeCompare(right.key)).map(item => `${item.key}:${item.payloadHash}\n`).join(''));
 
 test.after(async () => rm(directory, { recursive: true, force: true }));
 
@@ -98,4 +108,37 @@ test('supports record-level reads, writes, and change subscriptions', () => {
   assert.equal(listRecords('generationJobs')[0].data.id, 'job-1');
   assert.equal(events.at(-1).collection, 'generationJobs');
   assert.throws(() => listRecords('secrets'), /Unknown storage collection/);
+});
+
+test('backs up, transactionally receipts, and verifies a legacy browser migration', async () => {
+  const changes = [
+    { collection: 'documents', id: 'legacy-doc', data: { id: 'legacy-doc', name: 'Legacy.md', content: 'Migrated content' } },
+    { collection: 'tests', id: 'legacy-test', data: { id: 'legacy-test', name: 'Legacy quiz', questions: [], attempts: [] } },
+  ];
+  const migration = {
+    id: 'migration-success-0001',
+    expectedRecords: changes.length,
+    expectedHash: fingerprint(changes),
+  };
+  const prepared = await beginLegacyMigration(migration);
+  assert.equal(prepared.status, 'prepared');
+  assert.ok((await stat(prepared.backupPath)).size > 0);
+  assert.equal(sha256(await readFile(prepared.backupPath)), prepared.backupSha256);
+  syncStorage({ cursor: 0, bootstrap: true, changes, migration });
+  const completed = finalizeLegacyMigration(migration.id);
+  assert.equal(completed.status, 'complete');
+  assert.equal(completed.receivedRecords, 2);
+  assert.equal(completed.receivedHash, migration.expectedHash);
+  assert.equal(getRecord('documents', 'legacy-doc').data.name, 'Legacy.md');
+  assert.equal(listLegacyMigrations()[0].backupPath, prepared.backupPath);
+});
+
+test('keeps the rollback backup when migration verification fails', async () => {
+  const changes = [{ collection: 'tests', id: 'legacy-bad', data: { id: 'legacy-bad', name: 'Mismatch', questions: [], attempts: [] } }];
+  const migration = { id: 'migration-failure-0001', expectedRecords: 1, expectedHash: '0'.repeat(64) };
+  const prepared = await beginLegacyMigration(migration);
+  syncStorage({ cursor: 0, bootstrap: true, changes, migration });
+  assert.throws(() => finalizeLegacyMigration(migration.id), /verification failed.*Rollback backup/);
+  assert.ok((await stat(prepared.backupPath)).size > 0);
+  assert.equal(listLegacyMigrations().find(item => item.id === migration.id).status, 'failed');
 });

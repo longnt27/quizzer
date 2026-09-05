@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -9,6 +10,7 @@ const directory = await mkdtemp(join(tmpdir(), 'quizzer-api-test-'));
 const port = 18_787;
 const token = 'quizzer-test-token-0123456789abcdef';
 const origin = `http://127.0.0.1:${port}`;
+const sha256 = value => createHash('sha256').update(value).digest('hex');
 const server = spawn(process.execPath, ['server.mjs'], {
   cwd: new URL('..', import.meta.url),
   env: {
@@ -140,4 +142,36 @@ test('provides onboarding, document, job, and event operations', async () => {
   const firstEvent = new TextDecoder().decode((await reader.read()).value);
   assert.match(firstEvent, /event: ready/);
   await reader.cancel();
+});
+
+test('requires and verifies a backed-up legacy bootstrap session', async () => {
+  const rejected = await authorized('/api/storage/sync', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bootstrap: true, changes: [] }),
+  });
+  assert.equal(rejected.status, 400);
+
+  const changes = [{
+    collection: 'tests', id: 'legacy-api-test',
+    data: { id: 'legacy-api-test', name: 'Imported from IndexedDB', createdAt: 1, questions: [], attempts: [] },
+  }];
+  const payloadHash = sha256(JSON.stringify(changes[0]));
+  const migration = {
+    id: 'migration-api-success-0001',
+    expectedRecords: 1,
+    expectedHash: sha256(`tests:legacy-api-test:${payloadHash}\n`),
+    batch: 1,
+    batches: 1,
+    complete: true,
+  };
+  const response = await authorized('/api/storage/sync', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cursor: 0, bootstrap: true, changes, migration }),
+  });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).migration.status, 'complete');
+  const migrations = await (await authorized('/api/v1/migrations')).json();
+  const completed = migrations.migrations.find(item => item.id === migration.id);
+  assert.equal(completed.receivedHash, migration.expectedHash);
+  assert.ok((await stat(completed.backupPath)).size > 0);
 });

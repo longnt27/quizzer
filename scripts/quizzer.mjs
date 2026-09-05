@@ -30,6 +30,7 @@ Usage:
                       [--instruction text] [--provider provider] [--model model] [--json]
   quizzer jobs list|show <id>|resume <id>|cancel <id> [--json]
   quizzer resume <job-id> [--json]
+  quizzer migrations list [--json]
   quizzer backup create [--destination directory] [--json]
   quizzer release verify --metadata <file> --signature <file> --public-key <file> [--json]
   quizzer version
@@ -363,6 +364,15 @@ const runBackup = async action => {
   writeResult({ directory, files: ['quizzer.sqlite', 'config.jsonc (when present)'] }, `Backup created at ${directory}`);
 };
 
+const runMigrations = async action => {
+  if (action !== 'list') fail('Use migrations list');
+  const database = await storage();
+  const migrations = database.listLegacyMigrations();
+  return writeResult({ migrations }, migrations.length
+    ? migrations.map(item => `${item.id}  ${item.status}  ${item.receivedRecords}/${item.expectedRecords}\n  rollback: ${item.backupPath}`).join('\n')
+    : 'No legacy migrations have run');
+};
+
 const runRelease = async action => {
   if (action !== 'verify') fail('Use release verify');
   const metadataPath = flag('metadata');
@@ -414,6 +424,7 @@ const main = async () => {
   }
   if (command === 'jobs') return runJobs(parsed.positionals.shift() || 'list');
   if (command === 'resume') return runJobs('resume', parsed.positionals.shift());
+  if (command === 'migrations') return runMigrations(parsed.positionals.shift() || 'list');
   if (command === 'backup') return runBackup(parsed.positionals.shift() || 'create');
   if (command === 'release') return runRelease(parsed.positionals.shift() || 'verify');
   fail(`Unknown command: ${command}\n\n${usage}`);

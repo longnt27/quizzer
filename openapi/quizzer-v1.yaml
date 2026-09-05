@@ -137,6 +137,25 @@ paths:
           description: Updated profile
         '400':
           $ref: '#/components/responses/InvalidRequest'
+  /migrations:
+    get:
+      operationId: listMigrations
+      summary: List verified legacy browser imports and their rollback backups
+      responses:
+        '200':
+          description: Migration history
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [migrations]
+                properties:
+                  migrations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LegacyMigration'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /plugins/schema:
     get:
       operationId: getPluginManifestSchema
@@ -429,6 +448,21 @@ components:
         onboarding: { $ref: '#/components/schemas/OnboardingState' }
         createdAt: { type: integer }
         updatedAt: { type: integer }
+    LegacyMigration:
+      type: object
+      required: [id, status, expectedRecords, expectedHash, receivedRecords, backupPath, backupSha256, startedAt]
+      properties:
+        id: { type: string }
+        status: { type: string, enum: [prepared, complete, failed] }
+        expectedRecords: { type: integer, minimum: 0 }
+        expectedHash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        receivedRecords: { type: integer, minimum: 0 }
+        receivedHash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        backupPath: { type: string }
+        backupSha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+        startedAt: { type: integer }
+        completedAt: { type: integer }
+        error: { type: string }
     DocumentSummary:
       type: object
       required: [id, name, mimeType, size, tags, chunkCount]

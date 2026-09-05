@@ -161,3 +161,8 @@ test('creates a consistent backup without copying the service token', async () =
   assert.equal(JSON.parse(await readFile(join(backup, 'config.jsonc'), 'utf8'))['hardware.profile'], 'balanced');
   await assert.rejects(stat(join(backup, 'service-token')), /ENOENT/);
 });
+
+test('reports durable legacy migration history', async () => {
+  const result = await cli('migrations', 'list');
+  assert.deepEqual(result.migrations, []);
+});
