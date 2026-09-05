@@ -108,7 +108,7 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
       <Drawer placement="left" width="min(88vw, 340px)" open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} styles={{ body: { padding: 0 } }}>
         <Sidebar {...sidebarProps} embedded />
       </Drawer>
-      {showAddModal && <AddTestModal onClose={() => setShowAddModal(false)} onManagePlugins={() => setShowPluginsModal(true)} />}
+      {showAddModal && profile && <AddTestModal profile={profile} onClose={() => setShowAddModal(false)} onManagePlugins={() => setShowPluginsModal(true)} />}
       {showDocumentModal && <AddDocumentModal onClose={() => setShowDocumentModal(false)} onCreated={id => {
         setSelection({ kind: 'document', id }); setShowDocumentModal(false);
       }} />}

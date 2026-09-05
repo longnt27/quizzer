@@ -1,4 +1,4 @@
-import type { GenerationOptions, GenerationProvider, QuestionCounts, QuestionType, QuizQuestion } from '../types';
+import type { GenerationOptions, GenerationProvider, QuestionCounts, QuestionProvenance, QuestionType, QuizQuestion } from '../types';
 import { getApiKey, getProviderSettings } from './providerSettings';
 import { getGenerationBatchSize } from './generationSettings';
 
@@ -295,6 +295,7 @@ export interface GenerationSourceContext {
   content: string;
   images?: string[];
   instruction?: string;
+  provenance?: QuestionProvenance;
 }
 
 const typeInstructions: Record<QuestionType, string> = {
@@ -406,7 +407,7 @@ export async function generateQuiz(
       const source = sourceProvider
         ? await sourceProvider({ type, typeAccepted, count: requested, round })
         : { content, images };
-      const sourceFocus = [focus, source.instruction].filter(Boolean).join('\n\n');
+      const sourceFocus = [options.customInstruction, focus, source.instruction].filter(Boolean).join('\n\n');
       let candidates: unknown[];
       try {
         candidates = await requestCandidates(buildPrompt(source.content, type, requested, accepted, sourceFocus, activeOptions.multipleChoiceMode), schemas[type], activeOptions, signal, source.images ?? images);
@@ -442,7 +443,10 @@ export async function generateQuiz(
           tokenSimilarity(existing.statement, candidate.statement) >= 0.82
         ) || (candidateVector ? acceptedVectors.some(vector => cosineSimilarity(vector, candidateVector) >= 0.90) : false);
         if (duplicate) { rejected++; continue; }
-        accepted.push(candidate);
+        accepted.push(source.provenance ? {
+          ...candidate,
+          provenance: { ...source.provenance, provider: activeOptions.provider, model: activeOptions.model },
+        } as QuizQuestion : candidate);
         typeAccepted++;
         if (candidateVector) acceptedVectors.push(candidateVector);
         if (typeAccepted === typeTarget) break;

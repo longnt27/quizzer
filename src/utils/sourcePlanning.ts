@@ -196,5 +196,12 @@ export const sourceContextForSlots = (
     content,
     images,
     instruction: `Follow this coverage assignment, creating approximately one question for each line:\n${assignments.join('\n')}`,
+    provenance: {
+      documentIds: [...new Set(sourceEntries.map(({ document }) => document.id))],
+      sourceSpanIds: sourceEntries.map(({ document, chunkIndex }) => {
+        const chunk = document.chunks?.[chunkIndex] ?? document.chunks?.[0];
+        return `${document.id}:${chunk?.id ?? chunkIndex}`;
+      }),
+    },
   };
 };

@@ -2,15 +2,22 @@ import { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Checkbox, Empty, Input, InputNumber, List, Modal, Radio, Select, Space, Spin, Tag, Typography } from 'antd';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
-import { db, type StoredGenerationJob } from '../db/db';
+import { db, type StoredAppProfile, type StoredGenerationJob } from '../db/db';
 import type { CoverageStrategy, GenerationOptions } from '../types';
 import { getMessageApi } from '../utils/messageProvider';
 import { pumpGenerationQueue } from '../utils/generationQueue';
 import { getProviderDefinition, getProviderSettings } from '../utils/providerSettings';
 import { useConfiguredProviders } from '../utils/useConfiguredProviders';
 
-interface Props { onClose: () => void; onManagePlugins: () => void; }
+interface Props { onClose: () => void; onManagePlugins: () => void; profile: StoredAppProfile; }
 type CreationMode = 'combined' | 'separate';
+type QuizPreset = 'quick' | 'balanced' | 'deep';
+
+const presets: Record<QuizPreset, { label: string; description: string; counts: [number, number, number, number] }> = {
+  quick: { label: 'Quick review · 10 questions', description: 'Fast recall with a small reasoning check.', counts: [8, 1, 1, 0] },
+  balanced: { label: 'Balanced learning · 20 questions', description: 'A practical mix of recall and explanation.', counts: [15, 3, 2, 0] },
+  deep: { label: 'Deep practice · 30 questions', description: 'More reasoning, fill-in, and coding practice.', counts: [18, 6, 4, 2] },
+};
 
 const uniqueTestName = (requestedName: string, usedNames: Set<string>) => {
   const base = requestedName.trim() || 'Untitled test';
@@ -21,7 +28,7 @@ const uniqueTestName = (requestedName: string, usedNames: Set<string>) => {
   return candidate;
 };
 
-export default function AddTestModal({ onClose, onManagePlugins }: Props) {
+export default function AddTestModal({ onClose, onManagePlugins, profile }: Props) {
   const settings = useMemo(getProviderSettings, []);
   const configured = useConfiguredProviders();
   const documents = useLiveQuery(() => db.documents.orderBy('createdAt').reverse().toArray(), []) ?? [];
@@ -36,6 +43,8 @@ export default function AddTestModal({ onClose, onManagePlugins }: Props) {
   const [codingCount, setCodingCount] = useState(0);
   const [multipleChoiceMode, setMultipleChoiceMode] = useState<'single' | 'multiple'>('single');
   const [coverageStrategy, setCoverageStrategy] = useState<CoverageStrategy>('balanced');
+  const [customInstruction, setCustomInstruction] = useState(profile.defaultLearningInstruction ?? '');
+  const [preset, setPreset] = useState<QuizPreset>('balanced');
   const [query, setQuery] = useState('');
   const [saving, setSaving] = useState(false);
   const message = getMessageApi();
@@ -57,6 +66,15 @@ export default function AddTestModal({ onClose, onManagePlugins }: Props) {
 
   const toggle = (id: string) => setSelectedIds(ids => ids.includes(id) ? ids.filter(item => item !== id) : [...ids, id]);
 
+  const applyPreset = (next: QuizPreset) => {
+    setPreset(next);
+    const [multipleChoice, fillBlank, reasoning, coding] = presets[next].counts;
+    setMultipleChoiceCount(multipleChoice);
+    setFillBlankCount(fillBlank);
+    setReasoningCount(reasoning);
+    setCodingCount(coding);
+  };
+
   const create = async () => {
     if (!selected.length) return;
     if (questionCount < 1 || questionCount > 200) return message.error('Choose between 1 and 200 questions in total');
@@ -68,6 +86,19 @@ export default function AddTestModal({ onClose, onManagePlugins }: Props) {
         questionCounts: { multipleChoice: multipleChoiceCount, fillBlank: fillBlankCount, reasoning: reasoningCount, coding: codingCount },
         multipleChoiceMode,
         coverageStrategy: mode === 'combined' ? coverageStrategy : 'balanced',
+        customInstruction: customInstruction.trim() || undefined,
+        promptProfileSnapshot: { id: 'quizzer-balanced', version: 1, name: 'Quizzer balanced', template: 'Built-in secured quiz generation profile v1' },
+        ragProfile: profile.hardwareProfile === 'lite'
+          ? { id: 'lite', retrieval: 'sparse', contextBudget: 12_000, rerank: false }
+          : { id: profile.hardwareProfile, retrieval: 'hybrid', contextBudget: profile.hardwareProfile === 'max' ? 28_000 : 18_000, rerank: true },
+        routeChain: [{
+          provider,
+          model: model.trim() || undefined,
+          privacy: provider === 'codex' || provider.endsWith('-agent') ? 'signed-in-agent' : 'remote-api',
+          paid: provider !== 'codex' && !provider.endsWith('-agent'),
+          approved: true,
+        }],
+        resolvedSettings: { interfaceMode: profile.interfaceMode, hardwareProfile: profile.hardwareProfile },
       };
       const requestedSources = mode === 'combined'
         ? [{ name: name.trim() || 'Combined quiz', documentIds: selected.map(document => document.id) }]
@@ -113,20 +144,25 @@ export default function AddTestModal({ onClose, onManagePlugins }: Props) {
           {!configured.loading && !configured.providers.length && <Alert type="warning" showIcon message="No AI provider is configured"
             description="Connect a CLI agent or add an API key before creating a test."
             action={<Button size="small" onClick={onManagePlugins}>Open plugins</Button>} />}
-          {!!configured.providers.length && <Space wrap>
+          {!!configured.providers.length && profile.interfaceMode === 'advanced' && <Space wrap>
             <Typography.Text>Provider</Typography.Text>
             <Select value={provider} onChange={next => { setProvider(next); setModel(settings.models[next]); }} style={{ width: 190 }}
               options={configured.providers.map(item => ({ label: item.label, value: item.id }))} />
             <Input value={model} onChange={event => setModel(event.target.value)} addonBefore="Model" placeholder={selectedProvider.defaultModel || 'Provider default'} style={{ width: 280 }} />
           </Space>}
-          <div className="question-count-grid">
+          {profile.interfaceMode === 'simple' && <div>
+            <Typography.Text strong>Recommended preset</Typography.Text>
+            <Select value={preset} onChange={applyPreset} style={{ width: '100%', marginTop: 8 }} options={Object.entries(presets).map(([value, item]) => ({ value, label: item.label }))} />
+            <Typography.Paragraph type="secondary" style={{ margin: '6px 0 0' }}>{presets[preset].description}</Typography.Paragraph>
+          </div>}
+          {profile.interfaceMode === 'advanced' && <div className="question-count-grid">
             <label><Typography.Text strong>Multiple choice</Typography.Text><InputNumber min={0} max={200} value={multipleChoiceCount} onChange={value => setMultipleChoiceCount(value ?? 0)} /></label>
             <label><Typography.Text strong>Fill in the blank</Typography.Text><InputNumber min={0} max={200} value={fillBlankCount} onChange={value => setFillBlankCount(value ?? 0)} /></label>
             <label><Typography.Text strong>Reasoning</Typography.Text><InputNumber min={0} max={200} value={reasoningCount} onChange={value => setReasoningCount(value ?? 0)} /></label>
             <label><Typography.Text strong>Coding</Typography.Text><InputNumber min={0} max={200} value={codingCount} onChange={value => setCodingCount(value ?? 0)} /></label>
             <div className="question-count-total"><Typography.Text type="secondary">Total</Typography.Text><Typography.Text strong>{questionCount}</Typography.Text></div>
-          </div>
-          {multipleChoiceCount > 0 && <div>
+          </div>}
+          {profile.interfaceMode === 'advanced' && multipleChoiceCount > 0 && <div>
             <Typography.Text strong>Multiple-choice answer style</Typography.Text><br />
             <Radio.Group value={multipleChoiceMode} onChange={event => setMultipleChoiceMode(event.target.value)}
               className="answer-mode-selector" optionType="button" buttonStyle="solid" style={{ marginTop: 8 }} options={[
@@ -134,7 +170,7 @@ export default function AddTestModal({ onClose, onManagePlugins }: Props) {
                 { label: 'Multiple correct answers', value: 'multiple' },
               ]} />
           </div>}
-          {mode === 'combined' && selected.length > 1 && <div>
+          {profile.interfaceMode === 'advanced' && mode === 'combined' && selected.length > 1 && <div>
             <Typography.Text strong>Document coverage</Typography.Text><br />
             <Select value={coverageStrategy} onChange={setCoverageStrategy} style={{ width: '100%', marginTop: 8 }} options={[
               { value: 'balanced', label: 'Balanced — spread questions evenly across documents' },
@@ -153,6 +189,14 @@ export default function AddTestModal({ onClose, onManagePlugins }: Props) {
               : 'Quizzer will sample across the selection. Increase the question count to guarantee at least one question per document.'} />}
           {questionCount < 1 && <Alert type="error" showIcon message="Choose at least one question." />}
           {questionCount > 200 && <Alert type="error" showIcon message="A test can contain at most 200 questions." />}
+          <div>
+            <Typography.Text strong>Custom learning instruction <Typography.Text type="secondary">(optional)</Typography.Text></Typography.Text>
+            <Input.TextArea rows={3} maxLength={2000} showCount value={customInstruction} onChange={event => setCustomInstruction(event.target.value)}
+              placeholder="For example: coding questions about Terraform only" style={{ marginTop: 8 }} />
+          </div>
+          {!!configured.providers.length && profile.interfaceMode === 'simple' && <Alert type="info" showIcon
+            message={`Privacy & cost review · ${selectedProvider.label}`}
+            description={<span>Quizzer sends only selected source excerpts and, when supported, relevant images to this route. Provider charges and data handling may apply. <Button type="link" size="small" onClick={onManagePlugins}>Change AI</Button></span>} />}
           {!saving && <Typography.Text type="secondary">Provider defaults are saved in <Button type="link" size="small" onClick={onManagePlugins}>Plugins & models</Button>. You can override the model for this job.</Typography.Text>}
           <Input.Search value={query} onChange={event => setQuery(event.target.value)} placeholder="Filter documents by name or tag" />
           <List bordered size="small" style={{ maxHeight: 290, overflowY: 'auto' }} dataSource={visible}
