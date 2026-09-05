@@ -236,6 +236,44 @@ paths:
                   documents:
                     type: array
                     items: { $ref: '#/components/schemas/DocumentSummary' }
+  /objects/{sha256}:
+    parameters:
+      - $ref: '#/components/parameters/ObjectSha256'
+    put:
+      operationId: putObject
+      summary: Store an immutable binary object after verifying its SHA-256 id
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        '201':
+          description: Stored or deduplicated object reference
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [object]
+                properties:
+                  object: { $ref: '#/components/schemas/StoredObjectReference' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+    get:
+      operationId: getObject
+      summary: Stream an immutable binary object
+      responses:
+        '200':
+          description: Stored binary content
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '404': { $ref: '#/components/responses/NotFound' }
+    head:
+      operationId: inspectObject
+      summary: Check an immutable object and its byte size without downloading it
+      responses:
+        '200': { description: Object exists }
+        '404': { $ref: '#/components/responses/NotFound' }
   /documents/{documentId}:
     parameters:
       - $ref: '#/components/parameters/DocumentId'
@@ -366,6 +404,11 @@ components:
       name: pluginId
       required: true
       schema: { type: string, minLength: 1 }
+    ObjectSha256:
+      in: path
+      name: sha256
+      required: true
+      schema: { type: string, pattern: '^[a-f0-9]{64}$' }
   responses:
     Okay:
       description: Operation completed
@@ -474,6 +517,17 @@ components:
         tags: { type: array, items: { type: string } }
         chunkCount: { type: integer, minimum: 0 }
         pageCount: { type: integer, minimum: 1 }
+    StoredObjectReference:
+      type: object
+      required: [__quizzerObject, algorithm, sha256, size]
+      properties:
+        __quizzerObject: { type: boolean, const: true }
+        algorithm: { type: string, const: sha256 }
+        sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+        size: { type: integer, minimum: 0 }
+        type: { type: string }
+        name: { type: string }
+        lastModified: { type: integer, minimum: 0 }
     IndexStatus:
       type: object
       required: [version, engine, documentCount, chunkCount, documents]

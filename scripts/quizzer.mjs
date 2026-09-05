@@ -14,6 +14,7 @@ import { SparseDocumentIndex } from '../server/sparse-index.mjs';
 import { readRuntimeText, runningAsSingleExecutable } from '../server/runtime-assets.mjs';
 import { canonicalizeManifest } from '../release/manifest.mjs';
 import { validateReleaseManifest } from '../server/release-manifest.mjs';
+import { ObjectStore } from '../server/object-store.mjs';
 
 const usage = `Quizzer CLI
 
@@ -57,6 +58,7 @@ const jsonOutput = parsed.flags.has('json');
 const appDataDirectory = defaultAppDataDirectory();
 process.env.QUIZZER_APP_DATA_DIR = appDataDirectory;
 process.env.QUIZZER_DATABASE_PATH ||= databasePathFor(appDataDirectory);
+const objectStore = new ObjectStore(appDataDirectory);
 
 const flag = (name, fallback) => parsed.flags.get(name)?.at(-1) ?? fallback;
 const flags = name => parsed.flags.get(name) ?? [];
@@ -209,7 +211,7 @@ const runDocuments = async action => {
   if (action === 'import') {
     const path = parsed.positionals.shift();
     if (!path) fail('documents import requires a file path');
-    const document = await importDocumentFile(path, { tags: String(flag('tags', '')).split(',') });
+    const document = await importDocumentFile(path, { tags: String(flag('tags', '')).split(','), objectStore });
     const duplicate = database.listRecords('documents').find(record => record.data.contentHash === document.contentHash);
     if (duplicate) return writeResult({ imported: false, duplicateOf: duplicate.id, document: duplicate.data }, `Already imported as ${duplicate.data.name} (${duplicate.id})`);
     database.putRecord('documents', document.id, document);

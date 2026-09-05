@@ -6,6 +6,7 @@ import { getMessageApi } from '../utils/messageProvider';
 import DocumentAskModal from './DocumentAskModal';
 import { serviceJson, serviceRequest } from '../utils/serviceApi';
 import { syncNow } from '../db/serverSync';
+import { loadStoredBlob } from '../utils/objectStore';
 
 interface Props { documentId: string; }
 
@@ -37,6 +38,8 @@ export default function DocumentView({ documentId }: Props) {
   const [tagText, setTagText] = useState('');
   const [originalUrl, setOriginalUrl] = useState('');
   const [originalText, setOriginalText] = useState('');
+  const [originalLoading, setOriginalLoading] = useState(false);
+  const [originalError, setOriginalError] = useState('');
   const [askOpen, setAskOpen] = useState(false);
   const [indexStatus, setIndexStatus] = useState<IndexStatus>();
   const [indexing, setIndexing] = useState(false);
@@ -60,15 +63,25 @@ export default function DocumentView({ documentId }: Props) {
 
   useEffect(() => {
     const file = document?.originalFile;
-    if (!file) { setOriginalUrl(''); setOriginalText(''); return; }
-    const url = URL.createObjectURL(file);
+    if (!file) { setOriginalUrl(''); setOriginalText(''); setOriginalLoading(false); setOriginalError(''); return; }
     let active = true;
-    setOriginalUrl(url);
+    let url = '';
+    setOriginalUrl('');
     setOriginalText('');
-    if (file.type.startsWith('text/') || /\.(?:md|markdown|txt)$/i.test(document.name)) {
-      void file.text().then(text => { if (active) setOriginalText(text); });
-    }
-    return () => { active = false; URL.revokeObjectURL(url); };
+    setOriginalError('');
+    setOriginalLoading(true);
+    void loadStoredBlob(file).then(async blob => {
+      if (!active) return;
+      url = URL.createObjectURL(blob);
+      setOriginalUrl(url);
+      if (blob.type.startsWith('text/') || /\.(?:md|markdown|txt)$/i.test(document.name)) {
+        const text = await blob.text();
+        if (active) setOriginalText(text);
+      }
+    }).catch(error => {
+      if (active) setOriginalError(error instanceof Error ? error.message : 'Could not load the original file');
+    }).finally(() => { if (active) setOriginalLoading(false); });
+    return () => { active = false; if (url) URL.revokeObjectURL(url); };
   }, [document]);
 
   if (document === undefined) return <Spin style={{ margin: 40 }} />;
@@ -179,8 +192,10 @@ export default function DocumentView({ documentId }: Props) {
         </Card> },
         { key: 'original', label: 'Original file', children: <Card>
           {!document.originalFile ? <Alert type="info" showIcon message="The original file is unavailable" description="This document may have been added by an older Quizzer version that stored only extracted text." />
-            : document.mimeType === 'application/pdf' ? <iframe className="document-original-frame" src={originalUrl} title={`Original ${document.name}`} />
-              : document.mimeType.startsWith('image/') ? <img className="document-original-image" src={originalUrl} alt={document.name} />
+            : originalError ? <Alert type="error" showIcon message="The original file could not be opened" description={originalError} />
+              : originalLoading ? <Spin tip="Loading and verifying the original file…"><div style={{ minHeight: 120 }} /></Spin>
+                : document.mimeType === 'application/pdf' ? <iframe className="document-original-frame" src={originalUrl} title={`Original ${document.name}`} />
+                  : document.mimeType.startsWith('image/') ? <img className="document-original-image" src={originalUrl} alt={document.name} />
                 : originalText ? <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace, monospace' }}>{originalText}</Typography.Paragraph>
                   : <Empty description="Preview is unavailable for this file type"><Button href={originalUrl} download={document.name} icon={<DownloadOutlined />}>Download original</Button></Empty>}
         </Card> },

@@ -114,6 +114,9 @@ test('imports, deduplicates, indexes, and lists a real document', async () => {
   const first = await cli('documents', 'import', source, '--tags', 'iac,terraform');
   assert.equal(first.imported, true);
   assert.equal(first.document.tags.length, 2);
+  assert.equal(first.document.originalFile.__quizzerObject, true);
+  assert.equal(first.document.originalFile.sha256, first.document.contentHash);
+  assert.equal((await stat(join(environment.QUIZZER_APP_DATA_DIR, 'objects', 'sha256', first.document.contentHash.slice(0, 2), first.document.contentHash))).size, first.document.size);
   const duplicate = await cli('documents', 'import', source);
   assert.equal(duplicate.imported, false);
   assert.equal(duplicate.duplicateOf, first.document.id);

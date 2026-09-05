@@ -143,7 +143,7 @@ const validateChange = change => {
   }
 };
 
-const applyChanges = database.transaction((changes, bootstrap, migrationId) => {
+const applyChanges = database.transaction((changes, bootstrap, migrationId, migrationPayloadHashes) => {
   const now = Date.now();
   const applied = [];
   for (const change of changes) {
@@ -152,7 +152,7 @@ const applyChanges = database.transaction((changes, bootstrap, migrationId) => {
       migrationId,
       collection: change.collection,
       id: change.id,
-      payloadHash: sha256(JSON.stringify(change)),
+      payloadHash: migrationPayloadHashes?.get(`${change.collection}:${change.id}`) ?? sha256(JSON.stringify(change)),
     });
     if (bootstrap && recordExists.get(change.collection, change.id)) continue;
     const stored = {
@@ -170,13 +170,13 @@ const applyChanges = database.transaction((changes, bootstrap, migrationId) => {
   return applied;
 });
 
-export const syncStorage = ({ cursor = 0, changes = [], bootstrap = false, migration } = {}) => {
+export const syncStorage = ({ cursor = 0, changes = [], bootstrap = false, migration } = {}, { migrationPayloadHashes } = {}) => {
   if (!Number.isSafeInteger(cursor) || cursor < 0 || !Array.isArray(changes) || changes.length > 10_000) {
     throw new Error('Invalid storage sync request');
   }
   if (migration && !bootstrap) throw new Error('Legacy migration metadata requires bootstrap mode');
   if (migration) validateMigration(migration);
-  const applied = applyChanges(changes, Boolean(bootstrap), migration?.id);
+  const applied = applyChanges(changes, Boolean(bootstrap), migration?.id, migrationPayloadHashes);
   if (applied.length) for (const listener of listeners) listener(applied);
   const rows = changesAfter.all(cursor);
   return {

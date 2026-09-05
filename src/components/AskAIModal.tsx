@@ -10,6 +10,7 @@ import { getProviderSettings } from '../utils/providerSettings';
 import { useConfiguredProviders } from '../utils/useConfiguredProviders';
 import { db } from '../db/db';
 import { getPdfSourcePreview, type PdfSourcePreview } from '../utils/pdf';
+import { loadStoredBlob } from '../utils/objectStore';
 
 interface Props {
   title: string;
@@ -62,7 +63,9 @@ function CitationPopover({ index, source }: { index: number; source?: AISourceRe
         setOriginalPreview({ kind: 'document' });
         return;
       }
-      setOriginalPreview(await getPdfSourcePreview(document.originalFile, source.page, source.excerpt));
+      const originalFile = await loadStoredBlob(document.originalFile);
+      const preview = await getPdfSourcePreview(originalFile, source.page, source.excerpt);
+      if (active) setOriginalPreview(preview);
     }).catch(() => { if (active) setOriginalPreview({ kind: 'document' }); })
       .finally(() => { if (active) setPreviewLoading(false); });
     return () => { active = false; };

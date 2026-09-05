@@ -70,7 +70,7 @@ const pageForOffset = (content, offset) => {
   return page || undefined;
 };
 
-export const importDocumentFile = async (path, { tags = [] } = {}) => {
+export const importDocumentFile = async (path, { tags = [], objectStore } = {}) => {
   const absolutePath = resolve(path);
   const details = await stat(absolutePath);
   if (!details.isFile()) throw new Error('Document path must refer to a file');
@@ -84,6 +84,11 @@ export const importDocumentFile = async (path, { tags = [] } = {}) => {
     : { content: data.toString('utf8'), parserVersion: 'utf8-1' };
   if (!extracted.content.trim()) throw new Error('The document contains no extractable text');
   const id = randomUUID();
+  const originalMetadata = {
+    type: isPdf ? 'application/pdf' : textExtensions.get(extension),
+    name: basename(absolutePath),
+    lastModified: Math.round(details.mtimeMs),
+  };
   return {
     id,
     name: basename(absolutePath),
@@ -96,12 +101,10 @@ export const importDocumentFile = async (path, { tags = [] } = {}) => {
     contentHash: sha256(data),
     parserVersion: extracted.parserVersion,
     chunks: chunkDocument(id, extracted.content),
-    originalFile: {
+    originalFile: objectStore ? await objectStore.putBuffer(data, originalMetadata) : {
       __quizzerBlob: true,
-      type: isPdf ? 'application/pdf' : textExtensions.get(extension),
-      data: `data:${isPdf ? 'application/pdf' : textExtensions.get(extension)};base64,${data.toString('base64')}`,
-      name: basename(absolutePath),
-      lastModified: Math.round(details.mtimeMs),
+      ...originalMetadata,
+      data: `data:${originalMetadata.type};base64,${data.toString('base64')}`,
     },
   };
 };

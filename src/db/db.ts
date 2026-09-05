@@ -68,9 +68,19 @@ export interface StoredDocument {
   tags: string[];
   content: string;
   pageCount?: number;
-  originalFile?: Blob;
+  originalFile?: Blob | StoredObjectReference;
   images?: StoredDocumentImage[];
   chunks?: StoredDocumentChunk[];
+}
+
+export interface StoredObjectReference {
+  __quizzerObject: true;
+  algorithm: 'sha256';
+  sha256: string;
+  size: number;
+  type?: string;
+  name?: string;
+  lastModified?: number;
 }
 
 export interface StoredDocumentImage {

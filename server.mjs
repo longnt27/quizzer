@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -15,6 +16,7 @@ import {
 import { PluginManager } from './plugin-sdk/manager.mjs';
 import { SparseDocumentIndex } from './server/sparse-index.mjs';
 import { materializeRuntimeAsset, readRuntimeText, runningAsSingleExecutable } from './server/runtime-assets.mjs';
+import { materializeSerializedObjects, ObjectStore } from './server/object-store.mjs';
 
 const port = Number(process.env.QUIZZER_SERVICE_PORT || 8787);
 const maxBodyBytes = 25 * 1024 * 1024;
@@ -39,6 +41,7 @@ const builtInPlugins = Object.freeze([
   { id: 'quizzer.embed.minilm', name: 'MiniLM through Ollama', capabilities: ['embedder', 'reranker'], builtIn: true },
   { id: 'quizzer.generate.providers', name: 'Local agents and API providers', capabilities: ['generator'], builtIn: true },
 ]);
+const objectStore = new ObjectStore(appDataDirectory);
 const sparseIndex = new SparseDocumentIndex(storageInfo().databasePath);
 const windowsOllamaExecutable = process.env.LOCALAPPDATA
   ? join(process.env.LOCALAPPDATA, 'Programs', 'Ollama', 'ollama.exe')
@@ -58,6 +61,35 @@ let managedOcrDetected;
 const send = (response, status, body) => {
   response.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': 'http://localhost:5173' });
   response.end(JSON.stringify(body));
+};
+
+const sendStoredObject = async (request, response, sha256) => {
+  let details;
+  try { details = await objectStore.stat(sha256); }
+  catch (error) {
+    if (error?.code === 'ENOENT') {
+      send(response, 404, { error: 'Stored object not found' });
+      return;
+    }
+    throw error;
+  }
+  response.writeHead(200, {
+    'Content-Type': 'application/octet-stream',
+    'Content-Length': details.size,
+    'Cache-Control': 'private, immutable, max-age=31536000',
+    'Access-Control-Allow-Origin': 'http://localhost:5173',
+  });
+  if (request.method === 'HEAD') {
+    response.end();
+    return;
+  }
+  await new Promise((resolve, reject) => {
+    const stream = objectStore.createReadStream(sha256);
+    stream.once('error', reject);
+    response.once('finish', resolve);
+    response.once('close', resolve);
+    stream.pipe(response);
+  });
 };
 
 const publicRecord = record => ({ ...record.data, id: record.id, revision: record.revision, updatedAt: record.updatedAt });
@@ -794,8 +826,21 @@ const handleVersionedApi = async (request, response, url) => {
         apiVersion: 1,
         hardware,
         providers: Object.keys(providerRunners),
-        operations: ['settings', 'onboarding', 'migrations', 'plugins', 'documents', 'indexing', 'retrieval', 'jobs', 'events'],
+        operations: ['settings', 'onboarding', 'migrations', 'plugins', 'objects', 'documents', 'indexing', 'retrieval', 'jobs', 'events'],
       });
+      return true;
+    }
+    const objectMatch = /^\/api\/v1\/objects\/([a-f0-9]{64})$/.exec(url.pathname);
+    if (objectMatch && (request.method === 'GET' || request.method === 'HEAD')) {
+      await sendStoredObject(request, response, objectMatch[1]);
+      return true;
+    }
+    if (objectMatch && request.method === 'PUT') {
+      const reference = await objectStore.putStream(request, objectMatch[1], {
+        type: request.headers['content-type'],
+        contentLength: request.headers['content-length'] === undefined ? undefined : Number(request.headers['content-length']),
+      });
+      send(response, 201, { object: reference });
       return true;
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/settings/schema') {
@@ -994,7 +1039,15 @@ createServer(async (request, response) => {
         if (!body.migration) throw new Error('A verified legacy migration session is required for initial browser import');
         await beginLegacyMigration(body.migration);
       }
-      const result = syncStorage(body);
+      const migrationPayloadHashes = body?.bootstrap ? new Map((body.changes ?? []).map(change => [
+        `${change.collection}:${change.id}`,
+        createHash('sha256').update(JSON.stringify(change)).digest('hex'),
+      ])) : undefined;
+      const changes = await Promise.all((body?.changes ?? []).map(async change => ({
+        ...change,
+        ...(change.data === undefined ? {} : { data: await materializeSerializedObjects(change.data, objectStore) }),
+      })));
+      const result = syncStorage({ ...body, changes }, { migrationPayloadHashes });
       if (body?.bootstrap && body.migration?.complete === true) {
         result.migration = finalizeLegacyMigration(body.migration.id);
       }

@@ -94,6 +94,30 @@ test('exposes the plugin contract and bounded lifecycle collection', async () =>
   assert.deepEqual(collection.plugins, []);
 });
 
+test('stores and streams authenticated content-addressed objects', async () => {
+  const source = Buffer.from('source object bytes');
+  const digest = sha256(source);
+  const uploaded = await authorized(`/api/v1/objects/${digest}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/octet-stream' }, body: source,
+  });
+  assert.equal(uploaded.status, 201);
+  assert.deepEqual((await uploaded.json()).object, {
+    __quizzerObject: true, algorithm: 'sha256', sha256: digest, size: source.length, type: 'application/octet-stream',
+  });
+
+  const inspected = await authorized(`/api/v1/objects/${digest}`, { method: 'HEAD' });
+  assert.equal(inspected.status, 200);
+  assert.equal(Number(inspected.headers.get('content-length')), source.length);
+  const downloaded = await authorized(`/api/v1/objects/${digest}`);
+  assert.deepEqual(Buffer.from(await downloaded.arrayBuffer()), source);
+
+  const rejected = await authorized(`/api/v1/objects/${'0'.repeat(64)}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/octet-stream' }, body: source,
+  });
+  assert.equal(rejected.status, 400);
+  assert.match((await rejected.json()).error, /hash mismatch/);
+});
+
 test('provides onboarding, document, job, and event operations', async () => {
   const onboarding = {
     onboardingVersion: 1,
@@ -110,7 +134,7 @@ test('provides onboarding, document, job, and event operations', async () => {
   const sync = await authorized('/api/storage/sync', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ changes: [
-      { collection: 'documents', id: 'doc-1', data: { id: 'doc-1', name: 'Guide.md', createdAt: 1, mimeType: 'text/markdown', size: 10, tags: ['iac'], content: '# Terraform\n\nRemote state locking supports safe team collaboration.' } },
+      { collection: 'documents', id: 'doc-1', data: { id: 'doc-1', name: 'Guide.md', createdAt: 1, mimeType: 'text/markdown', size: 10, tags: ['iac'], content: '# Terraform\n\nRemote state locking supports safe team collaboration.', originalFile: { __quizzerBlob: true, type: 'text/markdown', name: 'Guide.md', data: `data:text/markdown;base64,${Buffer.from('# Terraform').toString('base64')}` } } },
       { collection: 'generationJobs', id: 'job-1', data: { id: 'job-1', status: 'paused', updatedAt: 1, questions: [] } },
     ] }),
   });
@@ -119,6 +143,11 @@ test('provides onboarding, document, job, and event operations', async () => {
   const documents = await (await authorized('/api/v1/documents')).json();
   assert.equal(documents.documents[0].name, 'Guide.md');
   assert.equal('content' in documents.documents[0], false);
+  const storedDocument = (await (await authorized('/api/v1/documents/doc-1')).json()).document;
+  assert.equal(storedDocument.originalFile.__quizzerObject, true);
+  assert.equal(JSON.stringify(storedDocument).includes('__quizzerBlob'), false);
+  const original = await authorized(`/api/v1/objects/${storedDocument.originalFile.sha256}`);
+  assert.equal(await original.text(), '# Terraform');
 
   const indexed = await authorized('/api/v1/index', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ documentIds: ['doc-1'] }),
@@ -153,7 +182,10 @@ test('requires and verifies a backed-up legacy bootstrap session', async () => {
 
   const changes = [{
     collection: 'tests', id: 'legacy-api-test',
-    data: { id: 'legacy-api-test', name: 'Imported from IndexedDB', createdAt: 1, questions: [], attempts: [] },
+    data: {
+      id: 'legacy-api-test', name: 'Imported from IndexedDB', createdAt: 1, questions: [], attempts: [],
+      attachment: { __quizzerBlob: true, type: 'text/plain', data: `data:text/plain;base64,${Buffer.from('legacy attachment').toString('base64')}` },
+    },
   }];
   const payloadHash = sha256(JSON.stringify(changes[0]));
   const migration = {
@@ -169,7 +201,10 @@ test('requires and verifies a backed-up legacy bootstrap session', async () => {
     body: JSON.stringify({ cursor: 0, bootstrap: true, changes, migration }),
   });
   assert.equal(response.status, 200);
-  assert.equal((await response.json()).migration.status, 'complete');
+  const migrationResponse = await response.json();
+  assert.equal(migrationResponse.migration.status, 'complete');
+  const migratedChange = migrationResponse.changes.find(change => change.id === changes[0].id);
+  assert.equal(migratedChange.data.attachment.__quizzerObject, true);
   const migrations = await (await authorized('/api/v1/migrations')).json();
   const completed = migrations.migrations.find(item => item.id === migration.id);
   assert.equal(completed.receivedHash, migration.expectedHash);

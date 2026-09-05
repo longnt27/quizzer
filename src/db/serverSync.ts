@@ -1,6 +1,7 @@
 import type { Table } from 'dexie';
 import { db, type StoredSyncChange, type SyncCollection } from './db';
 import { serviceAuthorizationHeader } from '../utils/serviceApi';
+import { storeBlob } from '../utils/objectStore';
 
 type SyncStatus = 'starting' | 'synced' | 'offline' | 'syncing';
 type SyncPhase = 'idle' | 'preparing' | 'uploading' | 'receiving' | 'applying' | 'complete' | 'error';
@@ -58,22 +59,8 @@ export const serverSyncStatus = {
   getSnapshot: () => snapshot,
 };
 
-const blobToDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
-  const reader = new FileReader();
-  reader.onload = () => resolve(String(reader.result));
-  reader.onerror = () => reject(reader.error ?? new Error('Could not read document file'));
-  reader.readAsDataURL(blob);
-});
-
 const serialize = async (value: unknown): Promise<unknown> => {
-  if (value instanceof Blob) {
-    return {
-      __quizzerBlob: true,
-      type: value.type,
-      data: await blobToDataUrl(value),
-      ...(value instanceof File ? { name: value.name, lastModified: value.lastModified } : {}),
-    };
-  }
+  if (value instanceof Blob) return storeBlob(value);
   if (Array.isArray(value)) return Promise.all(value.map(serialize));
   if (value && typeof value === 'object') {
     return Object.fromEntries(await Promise.all(Object.entries(value).map(async ([key, item]) => [key, await serialize(item)])));
