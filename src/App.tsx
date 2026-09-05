@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button, ConfigProvider, Drawer, Grid, Layout, message, theme } from 'antd';
-import { MenuOutlined } from '@ant-design/icons';
+import { ApiOutlined, FileAddOutlined, FormOutlined, HomeOutlined, MenuOutlined, MoonOutlined, QuestionCircleOutlined, SettingOutlined, SwapOutlined, SyncOutlined, SunOutlined } from '@ant-design/icons';
 import Sidebar, { type LibrarySelection } from './components/Sidebar';
 import MainContent from './components/MainContent';
 import AddTestModal from './components/AddTestModal';
@@ -8,6 +8,7 @@ import AddDocumentModal from './components/AddDocumentModal';
 import DocumentView from './components/DocumentView';
 import PluginsModal from './components/PluginsModal';
 import SettingsModal from './components/SettingsModal';
+import CommandPalette, { type PaletteCommand } from './components/CommandPalette';
 import GenerationWorker from './components/GenerationWorker';
 import { GenerationActivity, GenerationCenter } from './components/GenerationCenter';
 import { setMessageApi } from './utils/messageProvider';
@@ -17,7 +18,7 @@ import type { StoredAppProfile } from './db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import HomePage from './components/HomePage';
 import OnboardingGuide from './components/OnboardingGuide';
-import { setInterfaceMode } from './utils/appProfile';
+import { restartOnboarding, setInterfaceMode } from './utils/appProfile';
 import { useRuntimeSettings } from './utils/useRuntimeSettings';
 
 interface ShellProps { dark: boolean; onToggleTheme: () => void; }
@@ -28,6 +29,7 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
   const [showDocumentModal, setShowDocumentModal] = useState(false);
   const [showPluginsModal, setShowPluginsModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showGenerationCenter, setShowGenerationCenter] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -73,6 +75,7 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
     onAddDocument: () => { setShowDocumentModal(true); setMobileMenuOpen(false); },
     onOpenPlugins: () => { setShowPluginsModal(true); setMobileMenuOpen(false); },
     onOpenSettings: () => { setShowSettingsModal(true); setMobileMenuOpen(false); },
+    onOpenCommandPalette: () => { setShowCommandPalette(true); setMobileMenuOpen(false); },
     onOpenGeneration: () => { setShowGenerationCenter(true); setMobileMenuOpen(false); },
     onOpenHome: () => select(null),
     onOpenTutorial: () => { setShowOnboarding(true); setMobileMenuOpen(false); },
@@ -81,6 +84,33 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
     dark,
     onToggleTheme,
   };
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+      if (event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setShowCommandPalette(true);
+      } else if (event.key === ',') {
+        event.preventDefault();
+        setShowSettingsModal(true);
+      }
+    };
+    window.addEventListener('keydown', handleShortcut);
+    return () => window.removeEventListener('keydown', handleShortcut);
+  }, []);
+
+  const commands: PaletteCommand[] = [
+    { id: 'home', label: 'Go to Home', description: 'Open recent work, setup progress, and system status.', keywords: ['navigation'], icon: <HomeOutlined />, run: () => select(null) },
+    { id: 'test-create', label: 'Create a test', description: 'Choose sources and generate a new quiz.', keywords: ['quiz', 'generate'], icon: <FormOutlined />, run: () => setShowAddModal(true) },
+    { id: 'document-add', label: 'Add documents', description: 'Import and index source material.', keywords: ['import', 'pdf', 'text'], icon: <FileAddOutlined />, run: () => setShowDocumentModal(true) },
+    { id: 'activity', label: 'Open generation queue', description: 'Review active, paused, and completed jobs.', keywords: ['activity', 'jobs'], icon: <SyncOutlined />, run: () => setShowGenerationCenter(true) },
+    { id: 'plugins', label: 'Open plugins & models', description: 'Configure providers, extraction, OCR, and external plugins.', keywords: ['provider', 'api', 'models'], icon: <ApiOutlined />, run: () => setShowPluginsModal(true) },
+    { id: 'settings', label: 'Open Settings', description: 'Search and edit resolved application settings.', shortcut: '⌘ ,', icon: <SettingOutlined />, run: () => setShowSettingsModal(true) },
+    { id: 'mode', label: `Switch to ${profile?.interfaceMode === 'advanced' ? 'Simple' : 'Advanced'} mode`, description: 'Change disclosure without changing stored capabilities or data.', keywords: ['interface'], icon: <SwapOutlined />, run: () => profile && setInterfaceMode(profile.interfaceMode === 'simple' ? 'advanced' : 'simple') },
+    { id: 'tutorial', label: 'Restart tutorial', description: 'Return to the resumable first-run walkthrough.', keywords: ['help', 'onboarding'], icon: <QuestionCircleOutlined />, run: async () => { await restartOnboarding(); setShowOnboarding(true); } },
+    { id: 'theme', label: `Use ${dark ? 'light' : 'dark'} theme`, description: 'Change the application color theme.', keywords: ['appearance'], icon: dark ? <SunOutlined /> : <MoonOutlined />, run: onToggleTheme },
+  ];
 
   return <>
     {contextHolder}
@@ -117,6 +147,7 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
       }} />}
       {showPluginsModal && profile && <PluginsModal interfaceMode={profile.interfaceMode} onClose={() => setShowPluginsModal(false)} />}
       {showSettingsModal && profile && <SettingsModal profile={profile} onClose={() => setShowSettingsModal(false)} />}
+      <CommandPalette open={showCommandPalette} commands={commands} onClose={() => setShowCommandPalette(false)} />
       {showGenerationCenter && <GenerationCenter open onClose={() => setShowGenerationCenter(false)} onManagePlugins={() => setShowPluginsModal(true)} onOpenTest={id => {
         setSelection({ kind: 'test', id }); setSession(null);
       }} />}

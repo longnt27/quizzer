@@ -1,6 +1,6 @@
 import { useState, useSyncExternalStore } from 'react';
 import { Alert, Badge, Button, Empty, Input, Layout, List, Modal, Popconfirm, Progress, Space, Tabs, Tag, Typography } from 'antd';
-import { ApiOutlined, CloudSyncOutlined, DeleteOutlined, FileTextOutlined, FormOutlined, HomeOutlined, MoonOutlined, PlusOutlined, QuestionCircleOutlined, SearchOutlined, SettingOutlined, SwapOutlined, SyncOutlined, SunOutlined } from '@ant-design/icons';
+import { ApiOutlined, CloudSyncOutlined, DeleteOutlined, FileTextOutlined, FormOutlined, HomeOutlined, MacCommandOutlined, MoonOutlined, PlusOutlined, QuestionCircleOutlined, SearchOutlined, SettingOutlined, SwapOutlined, SyncOutlined, SunOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type StoredAppProfile } from '../db/db';
 import { getMessageApi } from '../utils/messageProvider';
@@ -29,6 +29,7 @@ interface Props {
   onAddDocument: () => void;
   onOpenPlugins: () => void;
   onOpenSettings: () => void;
+  onOpenCommandPalette: () => void;
   onOpenGeneration: () => void;
   onOpenHome: () => void;
   onOpenTutorial: () => void;
@@ -39,7 +40,7 @@ interface Props {
   embedded?: boolean;
 }
 
-export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument, onOpenPlugins, onOpenSettings, onOpenGeneration, onOpenHome, onOpenTutorial, profile, onToggleInterfaceMode, dark, onToggleTheme, embedded = false }: Props) {
+export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument, onOpenPlugins, onOpenSettings, onOpenCommandPalette, onOpenGeneration, onOpenHome, onOpenTutorial, profile, onToggleInterfaceMode, dark, onToggleTheme, embedded = false }: Props) {
   const tests = useLiveQuery(() => db.tests.orderBy('createdAt').reverse().toArray(), []) ?? [];
   const documents = useLiveQuery(() => db.documents.orderBy('createdAt').reverse().toArray(), []) ?? [];
   const [tab, setTab] = useState<'tests' | 'documents'>(selection?.kind === 'document' ? 'documents' : 'tests');
@@ -120,6 +121,7 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
         <Button type="text" icon={<SyncOutlined />} onClick={onOpenGeneration}>Generation queue</Button>
         <Button type="text" icon={<ApiOutlined />} onClick={onOpenPlugins}>Plugins & models</Button>
         <Button type="text" icon={<SettingOutlined />} onClick={onOpenSettings}>Settings</Button>
+        <Button type="text" icon={<MacCommandOutlined />} onClick={onOpenCommandPalette}>Command palette <span className="sidebar-shortcut">⌘/Ctrl K</span></Button>
         {profile && <Button type="text" icon={<SwapOutlined />} onClick={onToggleInterfaceMode}>
           Switch to {profile.interfaceMode === 'simple' ? 'Advanced' : 'Simple'} mode
         </Button>}
