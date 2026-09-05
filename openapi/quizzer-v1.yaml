@@ -410,6 +410,43 @@ paths:
                 required: [jobs]
                 properties:
                   jobs: { type: array, items: { $ref: '#/components/schemas/GenerationJob' } }
+  /jobs/claim:
+    post:
+      operationId: claimGenerationJob
+      summary: Atomically claim the next runnable job with an expiring worker lease
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workerId]
+              properties:
+                workerId: { type: string, minLength: 8, maxLength: 100 }
+                leaseMs: { type: integer, minimum: 10000, maximum: 120000, default: 45000 }
+      responses:
+        '200': { description: Claimed job, or an empty result when no job is runnable }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+  /jobs/{jobId}/lease:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    post:
+      operationId: renewGenerationJobLease
+      summary: Renew a job lease only when the worker still owns its token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workerId, leaseId]
+              properties:
+                workerId: { type: string, minLength: 8, maxLength: 100 }
+                leaseId: { type: string, minLength: 8, maxLength: 100 }
+                leaseMs: { type: integer, minimum: 10000, maximum: 120000, default: 45000 }
+      responses:
+        '200': { description: Renewed job and lease expiry }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
   /jobs/{jobId}/resume:
     parameters:
       - $ref: '#/components/parameters/JobId'
@@ -656,6 +693,9 @@ components:
         questions: { type: array, items: { type: object } }
         createdAt: { type: integer }
         updatedAt: { type: integer }
+        workerId: { type: string }
+        leaseId: { type: string }
+        leaseExpiresAt: { type: integer }
     PluginSummary:
       type: object
       required: [id, name, capabilities]

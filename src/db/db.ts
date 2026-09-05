@@ -37,6 +37,8 @@ export interface StoredGenerationJob {
   errorCode?: string;
   nextAttemptAt?: number;
   workerId?: string;
+  leaseId?: string;
+  leaseExpiresAt?: number;
 }
 
 export interface StoredTest {

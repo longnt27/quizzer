@@ -6,36 +6,38 @@ import { getGenerationConcurrency } from './generationSettings';
 import { buildCoveragePlan, ensureDocumentChunks, retrievalContextForSlots } from './sourcePlanning';
 import { syncNow } from '../db/serverSync';
 import type { ProviderAttempt, ProviderRoute } from '../types';
+import { serviceJson } from './serviceApi';
 
 const workerId = uuidv4();
 const active = new Map<string, AbortController>();
-let recovering: Promise<void> | null = null;
 let pumping = false;
 
-const recoverInterruptedJobs = () => {
-  if (!recovering) recovering = db.generationJobs.where('status').equals('running').toArray().then(async jobs => {
-    const interrupted = jobs.filter(job => job.workerId !== workerId);
-    await Promise.all(interrupted.map(job => db.generationJobs.update(job.id, {
-      status: 'queued', workerId: undefined, error: 'Generation was interrupted and will resume from its last checkpoint.', updatedAt: Date.now(),
-    })));
-  });
-  return recovering;
+const claimNextJob = async (): Promise<StoredGenerationJob | undefined> => {
+  await syncNow();
+  const { job } = await serviceJson<{ job?: StoredGenerationJob }>('/api/v1/jobs/claim', 'POST', { workerId, leaseMs: 45_000 });
+  if (job) await db.generationJobs.put(job);
+  return job;
 };
-
-const claimNextJob = async (): Promise<StoredGenerationJob | undefined> => db.transaction('rw', db.generationJobs, async () => {
-  const now = Date.now();
-  const candidates = (await db.generationJobs.where('status').anyOf('queued', 'waiting').toArray())
-    .filter(job => job.status === 'queued' || (navigator.onLine && (job.nextAttemptAt ?? 0) <= now))
-    .sort((left, right) => left.createdAt - right.createdAt);
-  const job = candidates[0];
-  if (!job) return undefined;
-  await db.generationJobs.update(job.id, { status: 'running', workerId, error: undefined, errorCode: undefined, updatedAt: now });
-  return { ...job, status: 'running', workerId, error: undefined, errorCode: undefined, updatedAt: now };
-});
 
 const processJob = async (job: StoredGenerationJob) => {
   const controller = new AbortController();
   active.set(job.id, controller);
+  let leaseLost = false;
+  let renewing = false;
+  const renewLease = async () => {
+    if (!job.leaseId || renewing || controller.signal.aborted) return;
+    renewing = true;
+    try {
+      const { job: renewed } = await serviceJson<{ job: StoredGenerationJob }>(`/api/v1/jobs/${encodeURIComponent(job.id)}/lease`, 'POST', {
+        workerId, leaseId: job.leaseId, leaseMs: 45_000,
+      });
+      job.leaseExpiresAt = renewed.leaseExpiresAt;
+    } catch {
+      leaseLost = true;
+      controller.abort();
+    } finally { renewing = false; }
+  };
+  const leaseTimer = window.setInterval(() => void renewLease(), 15_000);
   try {
     const routeChain: ProviderRoute[] = job.options.routeChain?.length
       ? job.options.routeChain
@@ -130,7 +132,7 @@ const processJob = async (job: StoredGenerationJob) => {
         generationOptions: latest.options,
       });
       await db.generationJobs.update(job.id, {
-        status: 'completed', questions, finishedAt, updatedAt: finishedAt, workerId: undefined,
+        status: 'completed', questions, finishedAt, updatedAt: finishedAt, workerId: undefined, leaseId: undefined, leaseExpiresAt: undefined,
         activeRouteIndex: routeIndex,
         providerAttempts: [...providerAttempts, {
           provider: latest.options.provider,
@@ -143,27 +145,34 @@ const processJob = async (job: StoredGenerationJob) => {
         progress: latest.progress ? { ...latest.progress, accepted: questions.length, phase: 'validating' } : undefined,
       });
     });
+    await syncNow();
   } catch (error) {
     const latest = await db.generationJobs.get(job.id);
     if (!latest || latest.status === 'cancelled') return;
     const code = getGenerationErrorCode(error);
     if ((error as Error).name === 'AbortError') {
-      await db.generationJobs.update(job.id, { status: 'cancelled', error: undefined, workerId: undefined, updatedAt: Date.now() });
+      if (leaseLost) await syncNow();
+      else await db.generationJobs.update(job.id, {
+        status: 'cancelled', error: undefined, workerId: undefined, leaseId: undefined, leaseExpiresAt: undefined, updatedAt: Date.now(),
+      });
     } else if (code === 'connection_lost') {
       await db.generationJobs.update(job.id, {
         status: 'waiting', error: (error as Error).message, errorCode: code,
-        nextAttemptAt: Date.now() + 5_000, workerId: undefined, updatedAt: Date.now(),
+        nextAttemptAt: Date.now() + 5_000, workerId: undefined, leaseId: undefined, leaseExpiresAt: undefined, updatedAt: Date.now(),
       });
     } else if (code === 'provider_limit' || code === 'provider_auth' || code === 'provider_unavailable') {
       await db.generationJobs.update(job.id, {
-        status: 'paused', error: (error as Error).message, errorCode: code, workerId: undefined, updatedAt: Date.now(),
+        status: 'paused', error: (error as Error).message, errorCode: code,
+        workerId: undefined, leaseId: undefined, leaseExpiresAt: undefined, updatedAt: Date.now(),
       });
     } else {
       await db.generationJobs.update(job.id, {
-        status: 'error', error: (error as Error).message, errorCode: code, workerId: undefined, updatedAt: Date.now(),
+        status: 'error', error: (error as Error).message, errorCode: code,
+        workerId: undefined, leaseId: undefined, leaseExpiresAt: undefined, updatedAt: Date.now(),
       });
     }
   } finally {
+    window.clearInterval(leaseTimer);
     active.delete(job.id);
     void pumpGenerationQueue();
   }
@@ -173,25 +182,29 @@ export const pumpGenerationQueue = async () => {
   if (pumping) return;
   pumping = true;
   try {
-    await recoverInterruptedJobs();
     while (navigator.onLine && active.size < getGenerationConcurrency()) {
       const job = await claimNextJob();
       if (!job || active.has(job.id)) break;
       void processJob(job);
     }
+  } catch (error) {
+    console.warn('Quizzer could not claim a generation job from the local service.', error);
   } finally {
     pumping = false;
   }
 };
 
 export const cancelGenerationJob = async (id: string) => {
-  await db.generationJobs.update(id, { status: 'cancelled', workerId: undefined, finishedAt: Date.now(), updatedAt: Date.now() });
+  await db.generationJobs.update(id, {
+    status: 'cancelled', workerId: undefined, leaseId: undefined, leaseExpiresAt: undefined, finishedAt: Date.now(), updatedAt: Date.now(),
+  });
   active.get(id)?.abort();
 };
 
 export const retryGenerationJob = async (id: string) => {
   await db.generationJobs.update(id, {
-    status: 'queued', rounds: {}, error: undefined, errorCode: undefined, nextAttemptAt: undefined, workerId: undefined, updatedAt: Date.now(),
+    status: 'queued', rounds: {}, error: undefined, errorCode: undefined, nextAttemptAt: undefined,
+    workerId: undefined, leaseId: undefined, leaseExpiresAt: undefined, updatedAt: Date.now(),
   });
   void pumpGenerationQueue();
 };
@@ -209,7 +222,8 @@ export const resumeGenerationJob = async (id: string, options: GenerationOptions
   }];
   await db.generationJobs.update(id, {
     status: 'queued', options, activeRouteIndex: routeIndex, providerAttempts,
-    error: undefined, errorCode: undefined, nextAttemptAt: undefined, workerId: undefined, updatedAt: Date.now(),
+    error: undefined, errorCode: undefined, nextAttemptAt: undefined,
+    workerId: undefined, leaseId: undefined, leaseExpiresAt: undefined, updatedAt: Date.now(),
   });
   void pumpGenerationQueue();
 };

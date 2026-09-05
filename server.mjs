@@ -5,8 +5,8 @@ import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promi
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import {
-  backupDatabase, beginLegacyMigration, deleteRecord, finalizeLegacyMigration, getRecord, listLegacyMigrations,
-  listRecords, putRecord, storageInfo, subscribeStorageChanges, syncStorage,
+  backupDatabase, beginLegacyMigration, claimGenerationJob, deleteRecord, finalizeLegacyMigration, getRecord, listLegacyMigrations,
+  listRecords, putRecord, renewGenerationJobLease, storageInfo, subscribeStorageChanges, syncStorage,
 } from './server/storage.mjs';
 import { detectHardwareCapabilities } from './server/hardware-profile.mjs';
 import { ensureServiceToken, isAuthorizedRequest } from './server/auth.mjs';
@@ -1039,6 +1039,19 @@ const handleVersionedApi = async (request, response, url) => {
       send(response, 200, { jobs: listRecords('generationJobs').map(publicRecord) });
       return true;
     }
+    if (request.method === 'POST' && url.pathname === '/api/v1/jobs/claim') {
+      const body = await readJson(request);
+      const job = claimGenerationJob({ workerId: body?.workerId, leaseMs: body?.leaseMs });
+      send(response, 200, { job: job ? publicRecord(job) : undefined });
+      return true;
+    }
+    const jobLeaseMatch = /^\/api\/v1\/jobs\/([^/]+)\/lease$/.exec(url.pathname);
+    if (jobLeaseMatch && request.method === 'POST') {
+      const body = await readJson(request);
+      const job = renewGenerationJobLease(decodeURIComponent(jobLeaseMatch[1]), body);
+      send(response, 200, { job: publicRecord(job) });
+      return true;
+    }
     const jobActionMatch = /^\/api\/v1\/jobs\/([^/]+)\/(resume|cancel)$/.exec(url.pathname);
     if (jobActionMatch && request.method === 'POST') {
       const id = decodeURIComponent(jobActionMatch[1]);
@@ -1054,6 +1067,8 @@ const handleVersionedApi = async (request, response, url) => {
         updatedAt: Date.now(),
         ...(resume ? { error: undefined, errorCode: undefined, nextAttemptAt: undefined, workerId: undefined }
           : { workerId: undefined, finishedAt: Date.now() }),
+        leaseId: undefined,
+        leaseExpiresAt: undefined,
       };
       send(response, 200, { job: publicRecord(putRecord('generationJobs', id, data)) });
       return true;

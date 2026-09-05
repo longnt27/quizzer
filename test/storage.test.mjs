@@ -8,8 +8,8 @@ import test from 'node:test';
 const directory = await mkdtemp(join(tmpdir(), 'quizzer-storage-test-'));
 process.env.QUIZZER_DATABASE_PATH = join(directory, 'quizzer.sqlite');
 const {
-  beginLegacyMigration, finalizeLegacyMigration, getRecord, listLegacyMigrations,
-  listRecords, putRecord, subscribeStorageChanges, syncStorage,
+  beginLegacyMigration, claimGenerationJob, finalizeLegacyMigration, getRecord, listLegacyMigrations,
+  listRecords, putRecord, renewGenerationJobLease, subscribeStorageChanges, syncStorage,
 } = await import('../server/storage.mjs');
 
 const sha256 = value => createHash('sha256').update(value).digest('hex');
@@ -108,6 +108,28 @@ test('supports record-level reads, writes, and change subscriptions', () => {
   assert.equal(listRecords('generationJobs')[0].data.id, 'job-1');
   assert.equal(events.at(-1).collection, 'generationJobs');
   assert.throws(() => listRecords('secrets'), /Unknown storage collection/);
+});
+
+test('claims one generation worker at a time and recovers expired leases', () => {
+  putRecord('generationJobs', 'lease-job', {
+    id: 'lease-job', testId: 'lease-test', name: 'Lease test', status: 'queued',
+    createdAt: 10, updatedAt: 10, documentIds: [], options: {}, questions: [], rejected: 0, rounds: {},
+  });
+  const claimed = claimGenerationJob({ workerId: 'worker-one', leaseMs: 10_000, now: 1_000 });
+  assert.equal(claimed.data.workerId, 'worker-one');
+  assert.equal(claimed.data.leaseExpiresAt, 11_000);
+  assert.match(claimed.data.leaseId, /^[a-f0-9-]{36}$/);
+  assert.equal(claimGenerationJob({ workerId: 'worker-two', leaseMs: 10_000, now: 2_000 }), undefined);
+  assert.throws(() => renewGenerationJobLease('lease-job', {
+    workerId: 'worker-two', leaseId: claimed.data.leaseId, leaseMs: 10_000, now: 2_000,
+  }), /no longer owned/);
+  const renewed = renewGenerationJobLease('lease-job', {
+    workerId: 'worker-one', leaseId: claimed.data.leaseId, leaseMs: 10_000, now: 5_000,
+  });
+  assert.equal(renewed.data.leaseExpiresAt, 15_000);
+  const recovered = claimGenerationJob({ workerId: 'worker-two', leaseMs: 10_000, now: 15_001 });
+  assert.equal(recovered.data.workerId, 'worker-two');
+  assert.notEqual(recovered.data.leaseId, claimed.data.leaseId);
 });
 
 test('backs up, transactionally receipts, and verifies a legacy browser migration', async () => {

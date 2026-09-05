@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream, mkdirSync } from 'node:fs';
 import { chmod, mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -286,6 +286,51 @@ export const putRecord = (collection, id, data) => {
 export const deleteRecord = (collection, id) => {
   validateCollection(collection);
   syncStorage({ cursor: Number(currentRevision.get().revision), changes: [{ collection, id, deleted: true }] });
+};
+
+const validateWorker = (workerId, leaseMs) => {
+  if (typeof workerId !== 'string' || !/^[A-Za-z0-9-]{8,100}$/.test(workerId)) throw new Error('Invalid generation worker id');
+  if (!Number.isSafeInteger(leaseMs) || leaseMs < 10_000 || leaseMs > 120_000) throw new Error('Generation lease must be between 10 and 120 seconds');
+};
+
+const claimGenerationJobTransaction = database.transaction((workerId, leaseMs, now) => {
+  const candidates = recordsInCollection.all('generationJobs').map(decodeRecord).filter(record => {
+    const job = record.data;
+    return job.status === 'queued'
+      || (job.status === 'waiting' && (job.nextAttemptAt ?? 0) <= now)
+      || (job.status === 'running' && (!Number.isFinite(job.leaseExpiresAt) || job.leaseExpiresAt <= now));
+  }).sort((left, right) => (left.data.createdAt ?? 0) - (right.data.createdAt ?? 0));
+  const selected = candidates[0];
+  if (!selected) return undefined;
+  const data = {
+    ...selected.data,
+    status: 'running',
+    workerId,
+    leaseId: randomUUID(),
+    leaseExpiresAt: now + leaseMs,
+    error: undefined,
+    errorCode: undefined,
+    nextAttemptAt: undefined,
+    updatedAt: now,
+  };
+  return putRecord('generationJobs', selected.id, data);
+});
+
+export const claimGenerationJob = ({ workerId, leaseMs = 45_000, now = Date.now() } = {}) => {
+  validateWorker(workerId, leaseMs);
+  if (!Number.isSafeInteger(now) || now < 0) throw new Error('Invalid generation claim time');
+  return claimGenerationJobTransaction(workerId, leaseMs, now);
+};
+
+export const renewGenerationJobLease = (id, { workerId, leaseId, leaseMs = 45_000, now = Date.now() } = {}) => {
+  validateWorker(workerId, leaseMs);
+  if (typeof leaseId !== 'string' || !/^[A-Za-z0-9-]{8,100}$/.test(leaseId)) throw new Error('Invalid generation lease id');
+  const existing = getRecord('generationJobs', id);
+  if (!existing) throw new Error('Generation job not found');
+  if (existing.data.status !== 'running' || existing.data.workerId !== workerId || existing.data.leaseId !== leaseId) {
+    throw new Error('Generation lease is no longer owned by this worker');
+  }
+  return putRecord('generationJobs', id, { ...existing.data, leaseExpiresAt: now + leaseMs, updatedAt: now });
 };
 
 export const subscribeStorageChanges = listener => {
