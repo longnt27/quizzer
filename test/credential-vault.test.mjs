@@ -45,3 +45,14 @@ test('rejects unknown providers, invalid values, and insecure Linux fallback sto
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('uses safe storage on platforms without Linux backend reporting', () => {
+  const encryption = fakeEncryption(true);
+  delete encryption.getSelectedStorageBackend;
+  const vault = new CredentialVault('/unused/credentials.json', encryption);
+  assert.deepEqual(vault.status(), {
+    available: true,
+    backend: 'os-protected',
+    message: 'Credentials are protected by the operating system.',
+  });
+});

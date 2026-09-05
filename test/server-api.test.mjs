@@ -7,10 +7,10 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 const directory = await mkdtemp(join(tmpdir(), 'quizzer-api-test-'));
-const port = 18_787;
 const token = 'quizzer-test-token-0123456789abcdef';
-const origin = `http://127.0.0.1:${port}`;
+let origin;
 const sha256 = value => createHash('sha256').update(value).digest('hex');
+let serverStdout = '';
 let serverStderr = '';
 let serverExit;
 const server = spawn(process.execPath, ['server.mjs'], {
@@ -20,9 +20,14 @@ const server = spawn(process.execPath, ['server.mjs'], {
     QUIZZER_APP_DATA_DIR: directory,
     QUIZZER_DATABASE_PATH: join(directory, 'quizzer.sqlite'),
     QUIZZER_API_TOKEN: token,
-    QUIZZER_SERVICE_PORT: String(port),
+    QUIZZER_SERVICE_PORT: '0',
   },
   stdio: ['ignore', 'pipe', 'pipe'],
+});
+server.stdout.on('data', chunk => {
+  serverStdout += chunk;
+  const match = /Quizzer service listening on (http:\/\/127\.0\.0\.1:\d+)/.exec(serverStdout);
+  if (match) origin = match[1];
 });
 server.stderr.on('data', chunk => { serverStderr += chunk; });
 server.once('exit', (code, signal) => { serverExit = { code, signal }; });
@@ -35,14 +40,14 @@ const authorized = (path, init = {}) => fetch(`${origin}${path}`, {
 const waitForServer = async () => {
   for (let attempt = 0; attempt < 200; attempt += 1) {
     if (serverExit) {
-      throw new Error(`Test service exited before startup (${JSON.stringify(serverExit)}):\n${serverStderr}`);
+      throw new Error(`Test service exited before startup (${JSON.stringify(serverExit)}):\n${serverStdout}${serverStderr}`);
     }
     try {
-      if ((await fetch(`${origin}/api/health`)).ok) return;
+      if (origin && (await fetch(`${origin}/api/health`)).ok) return;
     } catch { /* Server is starting. */ }
     await new Promise(resolve => setTimeout(resolve, 50));
   }
-  throw new Error(`Test service did not start within 10 seconds:\n${serverStderr}`);
+  throw new Error(`Test service did not start within 10 seconds:\n${serverStdout}${serverStderr}`);
 };
 
 await waitForServer();

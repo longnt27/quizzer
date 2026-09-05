@@ -118,7 +118,11 @@ export const queueServerChange = async (collection: SyncCollection, id: string, 
 };
 
 const markChanged = (collection: SyncCollection, id: string, deleted: boolean) => {
-  void queueServerChange(collection, id, deleted);
+  window.setTimeout(() => {
+    void queueServerChange(collection, id, deleted).catch(error => {
+      console.warn('Quizzer could not queue a browser change for server synchronization.', error);
+    });
+  }, 0);
 };
 
 const installHooks = () => {

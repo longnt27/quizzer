@@ -4,6 +4,7 @@ import { dirname, extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { ensureServiceToken } from '../server/auth.mjs';
 import { CredentialVault } from './credential-vault.mjs';
+import { waitForServiceReady } from './service-process.mjs';
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'quizzer', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
 
@@ -15,6 +16,7 @@ const rendererDirectory = join(projectDirectory, 'dist');
 const developmentUrl = process.env.QUIZZER_RENDERER_URL;
 let service;
 let serviceToken;
+let servicePort;
 let window;
 let tray;
 let quitting = false;
@@ -66,6 +68,7 @@ const registerValidatedIpc = () => {
 const startService = async () => {
   const userData = app.getPath('userData');
   serviceToken = await ensureServiceToken(userData);
+  const requestedPort = process.env.QUIZZER_DESKTOP_SERVICE_PORT ?? (developmentUrl ? '8787' : '0');
   service = utilityProcess.fork(join(projectDirectory, 'server.mjs'), [], {
     cwd: userData,
     env: {
@@ -77,24 +80,27 @@ const startService = async () => {
         ? join(process.resourcesPath, 'ocr_image.py')
         : join(projectDirectory, 'scripts', 'ocr_image.py'),
       QUIZZER_API_TOKEN: serviceToken,
-      QUIZZER_SERVICE_PORT: '8787',
+      QUIZZER_SERVICE_PORT: requestedPort,
     },
     stdio: 'inherit',
     serviceName: 'Quizzer local service',
   });
+  const readiness = waitForServiceReady(service);
   service.on('spawn', () => process.stdout.write('Quizzer local service started\n'));
   service.on('exit', code => {
     if (!quitting && code !== 0) process.stderr.write(`Quizzer local service stopped (${code})\n`);
   });
+  servicePort = await readiness;
 };
 
 const registerApplicationProtocol = () => protocol.handle('quizzer', request => {
   const url = new URL(request.url);
   if (url.hostname !== 'app') return new Response('Not found', { status: 404 });
   if (url.pathname.startsWith('/api/')) {
+    if (!servicePort) return new Response('Service unavailable', { status: 503 });
     const headers = new Headers(request.headers);
     headers.set('Authorization', `Bearer ${serviceToken}`);
-    return net.fetch(`http://127.0.0.1:8787${url.pathname}${url.search}`, {
+    return net.fetch(`http://127.0.0.1:${servicePort}${url.pathname}${url.search}`, {
       method: request.method,
       headers,
       body: request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body,
@@ -122,7 +128,7 @@ const createWindow = () => {
     backgroundColor: '#101214',
     show: false,
     webPreferences: {
-      preload: join(sourceDirectory, 'preload.mjs'),
+      preload: join(sourceDirectory, 'preload.cjs'),
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,

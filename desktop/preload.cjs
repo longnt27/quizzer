@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+const { contextBridge, ipcRenderer } = require('electron');
 
 // Expose immutable, non-sensitive diagnostics only. Product operations use
 // the same validated local HTTP service as the web and CLI clients.

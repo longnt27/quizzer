@@ -20,7 +20,11 @@ import { collectStoredObjectReferences, materializeDocumentImages, materializeSe
 import { sparseIndexPathFor } from './server/paths.mjs';
 import { createBackup, listBackups, verifyBackup } from './server/backup.mjs';
 
-const port = Number(process.env.QUIZZER_SERVICE_PORT || 8787);
+const configuredPortValue = process.env.QUIZZER_SERVICE_PORT ?? '8787';
+const configuredPort = Number(configuredPortValue);
+if (!/^\d{1,5}$/.test(configuredPortValue) || !Number.isSafeInteger(configuredPort) || configuredPort < 0 || configuredPort > 65_535) {
+  throw new Error('QUIZZER_SERVICE_PORT must be an integer from 0 to 65535');
+}
 const maxBodyBytes = 25 * 1024 * 1024;
 const maxStorageBodyBytes = 250 * 1024 * 1024;
 const appDataDirectory = process.env.QUIZZER_APP_DATA_DIR || join(process.cwd(), '.quizzer-data');
@@ -1096,7 +1100,7 @@ const handleVersionedApi = async (request, response, url) => {
   return true;
 };
 
-createServer(async (request, response) => {
+const serviceServer = createServer(async (request, response) => {
   const url = new URL(request.url || '/', 'http://127.0.0.1');
   if (request.method === 'OPTIONS') {
     response.writeHead(204, { 'Access-Control-Allow-Origin': 'http://localhost:5173', 'Access-Control-Allow-Headers': 'Content-Type, Authorization' });
@@ -1229,6 +1233,15 @@ createServer(async (request, response) => {
       code: normalized?.code,
     });
   }
-}).listen(port, '127.0.0.1', () => {
+});
+
+serviceServer.once('error', error => {
+  process.parentPort?.postMessage?.({ type: 'quizzer-service-error', message: error instanceof Error ? error.message : String(error) });
+  throw error;
+});
+serviceServer.listen(configuredPort, '127.0.0.1', () => {
+  const address = serviceServer.address();
+  const port = typeof address === 'object' && address ? address.port : configuredPort;
+  process.parentPort?.postMessage?.({ type: 'quizzer-service-ready', port });
   process.stdout.write(`Quizzer service listening on http://127.0.0.1:${port}\n`);
 });

@@ -11,7 +11,9 @@ export class CredentialVault {
   }
 
   status() {
-    const backend = this.encryption.getSelectedStorageBackend();
+    const backend = typeof this.encryption.getSelectedStorageBackend === 'function'
+      ? this.encryption.getSelectedStorageBackend()
+      : 'os-protected';
     const available = this.encryption.isEncryptionAvailable() && backend !== 'basic_text';
     return {
       available,

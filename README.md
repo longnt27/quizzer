@@ -291,7 +291,7 @@ Do not upload confidential material unless the selected provider and your accoun
 | `npm test` | Run server storage tests |
 | `npm run preview` | Preview the browser bundle; start the service separately for generation |
 
-The development service uses its internal loopback port automatically. Packagers may override `QUIZZER_SERVICE_PORT` and the matching Vite proxy when building a custom distribution.
+Source development uses loopback port 8787 so Vite can proxy API requests. The packaged desktop app asks the operating system for an unused ephemeral loopback port, waits for an authenticated utility-process ready message, and only then opens the renderer; set `QUIZZER_DESKTOP_SERVICE_PORT` only for a managed desktop deployment that requires a fixed port.
 
 ## Troubleshooting
 
