@@ -298,6 +298,7 @@ export interface GenerationSourceContext {
   images?: string[];
   instruction?: string;
   provenance?: QuestionProvenance;
+  provenanceBySlot?: QuestionProvenance[];
 }
 
 const typeInstructions: Record<QuestionType, string> = {
@@ -428,21 +429,23 @@ export async function generateQuiz(
       }
       onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'validating', provider: activeOptions.provider, parallelRequests });
       if (!candidates.length) rejected += requested;
-      const validCandidates = candidates.filter(candidate => validateQuestion(candidate, type, activeOptions.multipleChoiceMode)) as QuizQuestion[];
+      const validCandidates = candidates.flatMap((candidate, sourceIndex) =>
+        validateQuestion(candidate, type, activeOptions.multipleChoiceMode) ? [{ candidate, sourceIndex }] : []);
       rejected += candidates.length - validCandidates.length;
-      const vectors = await tryEmbeddings([...accepted, ...validCandidates].map(question => question.statement), signal);
+      const vectors = await tryEmbeddings([...accepted.map(candidate => candidate.statement), ...validCandidates.map(item => item.candidate.statement)], signal);
       const priorAcceptedCount = accepted.length;
       const acceptedVectors = vectors?.slice(0, accepted.length) ?? [];
-      for (const [candidateIndex, candidate] of validCandidates.entries()) {
+      for (const [candidateIndex, { candidate, sourceIndex }] of validCandidates.entries()) {
         const candidateVector = vectors?.[priorAcceptedCount + candidateIndex];
         const duplicate = accepted.some(existing =>
           normalize(existing.statement) === normalize(candidate.statement) ||
           tokenSimilarity(existing.statement, candidate.statement) >= 0.82
         ) || (candidateVector ? acceptedVectors.some(vector => cosineSimilarity(vector, candidateVector) >= 0.90) : false);
         if (duplicate) { rejected++; continue; }
-        accepted.push(source.provenance ? {
+        const provenance = source.provenanceBySlot?.[sourceIndex] ?? source.provenance;
+        accepted.push(provenance ? {
           ...candidate,
-          provenance: { ...source.provenance, provider: activeOptions.provider, model: activeOptions.model },
+          provenance: { ...provenance, provider: activeOptions.provider, model: activeOptions.model },
         } as QuizQuestion : candidate);
         typeAccepted++;
         if (candidateVector) acceptedVectors.push(candidateVector);

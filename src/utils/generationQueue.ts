@@ -3,7 +3,8 @@ import type { GenerationOptions, QuestionType } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { generateQuiz, getGenerationErrorCode, getRequestedCounts } from './api';
 import { getGenerationConcurrency } from './generationSettings';
-import { buildCoveragePlan, ensureDocumentChunks, sourceContextForSlots } from './sourcePlanning';
+import { buildCoveragePlan, ensureDocumentChunks, retrievalContextForSlots } from './sourcePlanning';
+import { syncNow } from '../db/serverSync';
 
 const workerId = uuidv4();
 const active = new Map<string, AbortController>();
@@ -50,6 +51,7 @@ const processJob = async (job: StoredGenerationJob) => {
       coveragePlan = (await buildCoveragePlan(chunkedDocuments, target, strategy, controller.signal)).plan;
       await db.generationJobs.update(job.id, { coveragePlan, updatedAt: Date.now() });
     }
+    await syncNow();
     const offsets: Record<QuestionType, number> = {
       'multiple-choice': 0,
       'fill-blank': counts.multipleChoice,
@@ -73,7 +75,13 @@ const processJob = async (job: StoredGenerationJob) => {
         options: checkpoint.options,
         updatedAt: Date.now(),
       }).then(() => undefined),
-      request => sourceContextForSlots(chunkedDocuments, coveragePlan!, offsets[request.type] + request.typeAccepted, request.count),
+      request => retrievalContextForSlots(
+        chunkedDocuments,
+        coveragePlan!,
+        offsets[request.type] + request.typeAccepted,
+        request.count,
+        { customInstruction: job.options.customInstruction, contextBudget: job.options.ragProfile?.contextBudget, signal: controller.signal },
+      ),
     );
     const latest = await db.generationJobs.get(job.id);
     if (!latest || latest.status === 'cancelled') return;

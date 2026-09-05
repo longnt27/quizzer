@@ -2,10 +2,23 @@ import type { StoredCoveragePlan, StoredDocument, StoredDocumentChunk, StoredDoc
 import type { CoverageStrategy } from '../types';
 import { chunkDocumentContent, chunkText } from './documentChunks';
 import { getProviderSettings } from './providerSettings';
-import { serviceFetch } from './serviceApi';
+import { serviceFetch, serviceJson } from './serviceApi';
 
 const SOURCE_CHARACTER_BUDGET = 54_000;
 const MAX_SOURCE_IMAGES = 6;
+
+interface RetrievedEvidence {
+  sourceSpanId: string;
+  documentId: string;
+  documentName: string;
+  page?: number;
+  breadcrumb?: string;
+  content: string;
+}
+
+interface RetrievalPreview {
+  results: RetrievedEvidence[];
+}
 
 const searchTokens = (value: string) => new Set(value.toLocaleLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? []);
 
@@ -102,6 +115,11 @@ const balancedDocumentSequence = (documents: StoredDocument[], count: number) =>
   return documents[slot % documents.length];
 });
 
+const sourceSpanId = (document: StoredDocument, chunkIndex: number) => {
+  const chunk = document.chunks?.[chunkIndex] ?? document.chunks?.[0];
+  return chunk?.id.startsWith(`${document.id}:`) ? chunk.id : `${document.id}:${chunk?.id ?? chunkIndex}`;
+};
+
 export const buildCoveragePlan = async (
   sourceDocuments: StoredDocument[],
   questionCount: number,
@@ -193,16 +211,93 @@ export const sourceContextForSlots = (
   const visualContent = selectedImages.map(({ image, document }) => imageDescription(image, document)).join('\n\n');
   const content = visualContent ? `${textContent}\n\n# Visual context\n${visualContent}` : textContent;
   const images = selectedImages.map(({ image }) => `data:${image.mimeType};base64,${image.data}`);
+  const provenanceBySlot = requestedSlots.map(slot => ({
+    documentIds: slot.documentIds.filter(id => documentMap.has(id)),
+    sourceSpanIds: slot.documentIds.flatMap(id => {
+      const document = documentMap.get(id);
+      return document ? [sourceSpanId(document, slot.chunkIndexes[id] ?? 0)] : [];
+    }),
+  }));
   return {
     content,
     images,
     instruction: `Follow this coverage assignment, creating approximately one question for each line:\n${assignments.join('\n')}`,
     provenance: {
       documentIds: [...new Set(sourceEntries.map(({ document }) => document.id))],
-      sourceSpanIds: sourceEntries.map(({ document, chunkIndex }) => {
-        const chunk = document.chunks?.[chunkIndex] ?? document.chunks?.[0];
-        return chunk?.id.startsWith(`${document.id}:`) ? chunk.id : `${document.id}:${chunk?.id ?? chunkIndex}`;
-      }),
+      sourceSpanIds: sourceEntries.map(({ document, chunkIndex }) => sourceSpanId(document, chunkIndex)),
     },
+    provenanceBySlot,
+  };
+};
+
+export const retrievalContextForSlots = async (
+  documents: StoredDocument[],
+  plan: StoredCoveragePlan,
+  offset: number,
+  count: number,
+  options: { customInstruction?: string; contextBudget?: number; signal?: AbortSignal } = {},
+) => {
+  const fallback = sourceContextForSlots(documents, plan, offset, count);
+  const documentMap = new Map(documents.map(document => [document.id, document]));
+  const requestedSlots = plan.slots.slice(offset, offset + count);
+  const totalBudget = Math.max(1_024, options.contextBudget ?? 12_000);
+  const slotBudget = Math.max(512, Math.floor(totalBudget / Math.max(1, requestedSlots.length)));
+  const slotContexts = await Promise.all(requestedSlots.map(async (slot, slotIndex) => {
+    const seed = slot.documentIds.flatMap(id => {
+      const document = documentMap.get(id);
+      if (!document) return [];
+      const chunk = document.chunks?.[slot.chunkIndexes[id] ?? 0] ?? document.chunks?.[0];
+      return [chunk ? chunkText(document.content, chunk).slice(0, 600) : document.content.slice(0, 600)];
+    }).join('\n');
+    try {
+      const preview = await serviceJson<RetrievalPreview>('/api/v1/retrieval/preview', 'POST', {
+        query: [options.customInstruction, seed].filter(Boolean).join('\n'),
+        documentIds: slot.documentIds,
+        limit: Math.min(4, Math.max(2, slot.documentIds.length * 2)),
+        contextBudget: slotBudget,
+        includeNeighbors: true,
+      }, { signal: options.signal });
+      if (!preview.results.length) throw new Error('No grounded evidence was found');
+      return { evidence: preview.results, provenance: {
+        documentIds: [...new Set(preview.results.map(result => result.documentId))],
+        sourceSpanIds: preview.results.map(result => result.sourceSpanId),
+      } };
+    } catch (error) {
+      if ((error as Error).name === 'AbortError' || options.signal?.aborted) throw error;
+      const provenance = fallback.provenanceBySlot[slotIndex];
+      const evidence = slot.documentIds.flatMap(id => {
+        const document = documentMap.get(id);
+        if (!document) return [];
+        const chunkIndex = slot.chunkIndexes[id] ?? 0;
+        const chunk = document.chunks?.[chunkIndex] ?? document.chunks?.[0];
+        return [{
+          sourceSpanId: sourceSpanId(document, chunkIndex),
+          documentId: id,
+          documentName: document.name,
+          page: chunk?.page,
+          content: chunk ? chunkText(document.content, chunk) : document.content,
+        }];
+      });
+      return { evidence, provenance };
+    }
+  }));
+  const evidence = new Map<string, RetrievedEvidence>();
+  for (const slot of slotContexts) for (const result of slot.evidence) evidence.set(result.sourceSpanId, result);
+  if (!evidence.size) return fallback;
+  const content = [...evidence.values()].map((result, index) => {
+    const location = [result.breadcrumb, result.page ? `page ${result.page}` : ''].filter(Boolean).join(' · ');
+    return `## Evidence ${index + 1}: ${result.documentName}${location ? ` · ${location}` : ''}\nSource span: ${result.sourceSpanId}\n${result.content}`;
+  }).join('\n\n');
+  const assignments = slotContexts.map((slot, index) =>
+    `Question ${index + 1}: ground the answer in ${slot.provenance.sourceSpanIds.join(', ')}`).join('\n');
+  return {
+    content,
+    images: fallback.images,
+    instruction: `Use only the retrieved evidence. Follow this coverage assignment:\n${assignments}`,
+    provenance: {
+      documentIds: [...new Set(slotContexts.flatMap(slot => slot.provenance.documentIds))],
+      sourceSpanIds: [...new Set(slotContexts.flatMap(slot => slot.provenance.sourceSpanIds))],
+    },
+    provenanceBySlot: slotContexts.map(slot => slot.provenance),
   };
 };

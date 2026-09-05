@@ -45,7 +45,13 @@ export const serviceRequest = async <Response>(path: string, init: RequestInit =
   return payload;
 };
 
-export const serviceJson = <Response>(path: string, method: 'POST' | 'PATCH' | 'PUT' | 'DELETE', body?: unknown) => serviceRequest<Response>(path, {
+export const serviceJson = <Response>(
+  path: string,
+  method: 'POST' | 'PATCH' | 'PUT' | 'DELETE',
+  body?: unknown,
+  init: Omit<RequestInit, 'body' | 'method'> = {},
+) => serviceRequest<Response>(path, {
+  ...init,
   method,
   ...(body === undefined ? {} : { body: JSON.stringify(body) }),
 });

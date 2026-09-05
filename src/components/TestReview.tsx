@@ -3,6 +3,7 @@ import { Alert, Button, Typography, Row, Col, Space, Tag } from 'antd';
 import { StoredTest } from '../db/db';
 import type { QuizAnswer } from '../types';
 import { getQuestionAnswerTexts, getQuestionType, isQuestionCorrect } from '../utils/questions';
+import QuestionCitations from './QuestionCitations';
 
 const { Title, Paragraph } = Typography;
 
@@ -343,6 +344,8 @@ const TestReview: React.FC<Props> = ({ test, onBack }) => {
                     <Alert type="info" showIcon message="Reference answer" description={q.referenceAnswer} />
                     <Typography.Paragraph type="secondary">{questionType === 'coding' ? 'Solution criteria' : 'Essential reasoning'}: {q.explanation}</Typography.Paragraph>
                 </Space>}
+
+                <QuestionCitations provenance={q.provenance} />
 
                 <div style={{ marginTop: 'auto', paddingTop: 32 }}>
                     <Space>

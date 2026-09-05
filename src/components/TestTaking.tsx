@@ -25,6 +25,7 @@ import { getProviderSettings } from '../utils/providerSettings';
 import { getMessageApi } from '../utils/messageProvider';
 import { queueServerChange, serverSyncStatus, syncNow } from '../db/serverSync';
 import PracticeAnswerAskModal from './PracticeAnswerAskModal';
+import QuestionCitations from './QuestionCitations';
 
 const { Title, Paragraph } = Typography;
 
@@ -600,6 +601,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                         <Typography.Paragraph type="secondary">{q.explanation}</Typography.Paragraph>
                       </div>
                     )}
+                    {practice && submitted && <QuestionCitations provenance={q.provenance} />}
                     {practice && submitted && <Button className="practice-ask-ai" icon={<RobotOutlined />} onClick={() => setAskQuestionIndex(questionIndex)}>
                       Ask AI about this answer <span className="practice-shortcut">?</span>
                     </Button>}

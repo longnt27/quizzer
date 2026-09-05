@@ -16,7 +16,8 @@ import { QuizQuestion, TestSession, type GenerationOptions, type QuestionType } 
 import JsonFixerModal from './JsonFixerModal';
 import { getMessageApi } from '../utils/messageProvider';
 import { countQuestionTypes, getQuestionType, isQuestionCorrect } from '../utils/questions';
-import { buildCoveragePlan, ensureDocumentChunks, sourceContextForSlots } from '../utils/sourcePlanning';
+import { buildCoveragePlan, ensureDocumentChunks, retrievalContextForSlots } from '../utils/sourcePlanning';
+import { syncNow } from '../db/serverSync';
 
 const { Title, Paragraph, Text } = Typography;
 const shuffle = <T,>(items: T[]): T[] => {
@@ -81,6 +82,7 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
         const counts = getRequestedCounts(options);
         const total = counts.multipleChoice + counts.fillBlank + counts.reasoning + counts.coding;
         const plan = (await buildCoveragePlan(chunkedDocuments, total, options.coverageStrategy ?? 'balanced')).plan;
+        await syncNow();
         const offsets: Record<QuestionType, number> = {
             'multiple-choice': 0,
             'fill-blank': counts.multipleChoice,
@@ -88,7 +90,13 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
             coding: counts.multipleChoice + counts.fillBlank + counts.reasoning,
         };
         return generateQuiz('', options, undefined, undefined, [], focus, undefined, undefined, undefined,
-            request => sourceContextForSlots(chunkedDocuments, plan, offsets[request.type] + request.typeAccepted, request.count));
+            request => retrievalContextForSlots(
+                chunkedDocuments,
+                plan,
+                offsets[request.type] + request.typeAccepted,
+                request.count,
+                { customInstruction: [options.customInstruction, focus].filter(Boolean).join('\n'), contextBudget: options.ragProfile?.contextBudget },
+            ));
     };
 
     const handleRetake = () => {
