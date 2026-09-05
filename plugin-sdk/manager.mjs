@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { copyFile, lstat, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, normalize, resolve } from 'node:path';
 import {
   assertPluginTrust, isPluginCompatible, loadPluginManifest, validatePluginPath,
@@ -69,7 +69,10 @@ export class PluginManager {
   async list() {
     await this.prepare();
     const state = await this.readState();
-    const entries = await readdir(this.installedRoot, { withFileTypes: true });
+    const [entries, rollbackEntries] = await Promise.all([
+      readdir(this.installedRoot, { withFileTypes: true }),
+      readdir(this.rollbackRoot, { withFileTypes: true }),
+    ]);
     return Promise.all(entries.filter(entry => entry.isDirectory()).map(async entry => {
       try {
         const { manifest } = await this.installedPlugin(entry.name);
@@ -90,6 +93,7 @@ export class PluginManager {
           warning: blocked ?? saved.warning,
           installedAt: saved.installedAt,
           status: blocked ? 'blocked' : 'installed',
+          rollbackAvailable: rollbackEntries.some(rollback => rollback.isDirectory() && rollback.name.startsWith(`${manifest.id}--`)),
         };
       } catch (error) {
         return { id: entry.name, enabled: false, compatible: false, status: 'broken', error: error instanceof Error ? error.message : String(error) };
@@ -116,36 +120,40 @@ export class PluginManager {
     const trust = assertPluginTrust(manifest, { developerMode: this.developerMode, trustedKeys: this.trustedKeys });
     const destination = this.directoryFor(manifest.id);
     const staging = join(this.stagingRoot, `${manifest.id}-${randomUUID()}`);
-    await this.copyVerifiedPlugin(sourceDirectory, staging, manifest);
-    const stagedManifest = await loadPluginManifest(staging);
-    assertPluginTrust(stagedManifest, { developerMode: this.developerMode, trustedKeys: this.trustedKeys });
-    let previous;
     try {
-      const details = await lstat(destination);
-      if (!details.isDirectory()) throw new Error(`Plugin destination is not a directory: ${manifest.id}`);
-      let version = 'unknown';
-      try { version = (await this.installedPlugin(manifest.id)).manifest.version; }
-      catch { /* Preserve a broken install so the verified replacement can repair it. */ }
-      previous = join(this.rollbackRoot, `${manifest.id}--${version}--${Date.now()}`);
-      await rename(destination, previous);
-    } catch (error) {
-      if (error?.code !== 'ENOENT') throw error;
+      await this.copyVerifiedPlugin(sourceDirectory, staging, manifest);
+      const stagedManifest = await loadPluginManifest(staging);
+      assertPluginTrust(stagedManifest, { developerMode: this.developerMode, trustedKeys: this.trustedKeys });
+      let previous;
+      try {
+        const details = await lstat(destination);
+        if (!details.isDirectory()) throw new Error(`Plugin destination is not a directory: ${manifest.id}`);
+        let version = 'unknown';
+        try { version = (await this.installedPlugin(manifest.id)).manifest.version; }
+        catch { /* Preserve a broken install so the verified replacement can repair it. */ }
+        previous = join(this.rollbackRoot, `${manifest.id}--${version}--${Date.now()}`);
+        await rename(destination, previous);
+      } catch (error) {
+        if (error?.code !== 'ENOENT') throw error;
+      }
+      try { await rename(staging, destination); }
+      catch (error) {
+        if (previous) await rename(previous, destination).catch(() => {});
+        throw error;
+      }
+      const state = await this.readState();
+      state.plugins[manifest.id] = {
+        enabled: true,
+        trust,
+        installedAt: Date.now(),
+        source: 'local',
+        ...(trust === 'unsigned-local' ? { warning: 'Unsigned local plugin enabled through Advanced Developer Mode.' } : {}),
+      };
+      await this.writeState(state);
+      return (await this.list()).find(plugin => plugin.id === manifest.id);
+    } finally {
+      await rm(staging, { recursive: true, force: true });
     }
-    try { await rename(staging, destination); }
-    catch (error) {
-      if (previous) await rename(previous, destination).catch(() => {});
-      throw error;
-    }
-    const state = await this.readState();
-    state.plugins[manifest.id] = {
-      enabled: true,
-      trust,
-      installedAt: Date.now(),
-      source: 'local',
-      ...(trust === 'unsigned-local' ? { warning: 'Unsigned local plugin enabled through Advanced Developer Mode.' } : {}),
-    };
-    await this.writeState(state);
-    return (await this.list()).find(plugin => plugin.id === manifest.id);
   }
 
   async setEnabled(id, enabled) {

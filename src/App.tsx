@@ -113,7 +113,7 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
       {showDocumentModal && <AddDocumentModal onClose={() => setShowDocumentModal(false)} onCreated={id => {
         setSelection({ kind: 'document', id }); setShowDocumentModal(false);
       }} />}
-      {showPluginsModal && <PluginsModal onClose={() => setShowPluginsModal(false)} />}
+      {showPluginsModal && profile && <PluginsModal interfaceMode={profile.interfaceMode} onClose={() => setShowPluginsModal(false)} />}
       {showSettingsModal && profile && <SettingsModal profile={profile} onClose={() => setShowSettingsModal(false)} />}
       {showGenerationCenter && <GenerationCenter open onClose={() => setShowGenerationCenter(false)} onManagePlugins={() => setShowPluginsModal(true)} onOpenTest={id => {
         setSelection({ kind: 'test', id }); setSession(null);

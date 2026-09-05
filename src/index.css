@@ -47,9 +47,11 @@ button, input, textarea, select { font: inherit; }
 .sidebar-footer .ant-btn { justify-content: flex-start; }
 .plugin-loading { display: grid; min-height: 220px; place-items: center; }
 .plugin-card { padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); }
+.plugin-card-warning { border-color: #faad14; }
 .plugin-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 .plugin-card-heading h5 { margin: 0 0 2px; }
 .plugin-output { max-height: 140px; margin: 8px 0 0; padding: 10px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border-radius: 6px; background: var(--code); font-size: 12px; }
+.plugin-permissions { display: grid; gap: 6px; }
 .settings-loading { min-height: 300px; display: grid; place-items: center; }
 .settings-section .ant-divider { margin: 4px 0 10px; }
 .settings-list { display: grid; gap: 8px; }

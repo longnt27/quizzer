@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Divider, Input, Modal, Select, Space, Spin, Switch, Tag, Typography } from 'antd';
-import { ApiOutlined, CloudDownloadOutlined, LoginOutlined, ReloadOutlined } from '@ant-design/icons';
-import type { GenerationProvider } from '../types';
+import { ApiOutlined, CheckCircleOutlined, CloudDownloadOutlined, DeleteOutlined, FolderOpenOutlined, LoginOutlined, ReloadOutlined, RollbackOutlined } from '@ant-design/icons';
+import type { GenerationProvider, InterfaceMode } from '../types';
 import {
   AGENT_PROVIDERS, API_PROVIDERS, PROVIDERS, getApiKey, getProviderSettings,
   migrateLegacyGeminiKey, setApiKey, setProviderSettings, type AgentProvider,
 } from '../utils/providerSettings';
 import { getMessageApi } from '../utils/messageProvider';
+import { serviceJson, serviceRequest } from '../utils/serviceApi';
 
 type JobState = 'idle' | 'working' | 'complete' | 'error';
 type AgentStatus = { installed: boolean; connected: boolean; job: { state: JobState; message: string } };
@@ -19,7 +20,26 @@ interface IntegrationStatus {
   embeddings: { installed: boolean; runtimeInstalled: boolean; job: { state: JobState; message: string } };
 }
 
-interface Props { onClose: () => void; }
+interface ExternalPlugin {
+  id: string;
+  name?: string;
+  version?: string;
+  capabilities?: string[];
+  resources?: { memoryMB: number; diskMB: number; accelerators?: string[] };
+  permissions?: { network: string[]; filesystem: string[]; secrets: string[]; subprocess: boolean };
+  enabled: boolean;
+  trust?: 'signed' | 'unsigned-local';
+  compatible: boolean;
+  status: 'installed' | 'blocked' | 'broken';
+  warning?: string;
+  error?: string;
+  rollbackAvailable?: boolean;
+}
+
+interface PluginCollection { plugins: ExternalPlugin[]; }
+interface HealthResult { ok: boolean; result?: unknown; error?: string; durationMs: number; }
+
+interface Props { interfaceMode: InterfaceMode; onClose: () => void; }
 
 const statusTag = (ready: boolean, working: boolean, readyText: string) => (
   <Tag color={working ? 'processing' : ready ? 'success' : 'default'}>
@@ -27,7 +47,7 @@ const statusTag = (ready: boolean, working: boolean, readyText: string) => (
   </Tag>
 );
 
-export default function PluginsModal({ onClose }: Props) {
+export default function PluginsModal({ interfaceMode, onClose }: Props) {
   migrateLegacyGeminiKey();
   const initial = getProviderSettings();
   const [defaultProvider, setDefaultProvider] = useState(initial.defaultProvider);
@@ -37,6 +57,12 @@ export default function PluginsModal({ onClose }: Props) {
   const [apiKeys, setApiKeys] = useState<Record<string, string>>(() => Object.fromEntries(API_PROVIDERS.map(provider => [provider.id, getApiKey(provider.id)])));
   const [status, setStatus] = useState<IntegrationStatus | null>(null);
   const [statusError, setStatusError] = useState('');
+  const [externalPlugins, setExternalPlugins] = useState<ExternalPlugin[]>([]);
+  const [externalError, setExternalError] = useState('');
+  const [externalLoading, setExternalLoading] = useState(true);
+  const [developerMode, setDeveloperMode] = useState(false);
+  const [pluginAction, setPluginAction] = useState('');
+  const [healthResults, setHealthResults] = useState<Record<string, HealthResult>>({});
   const message = getMessageApi();
 
   const refresh = useCallback(async () => {
@@ -51,7 +77,24 @@ export default function PluginsModal({ onClose }: Props) {
     }
   }, []);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  const refreshExternal = useCallback(async () => {
+    setExternalLoading(true);
+    try {
+      const [collection, settings] = await Promise.all([
+        serviceRequest<PluginCollection>('/api/v1/plugins'),
+        serviceRequest<{ values: Record<string, unknown> }>('/api/v1/settings'),
+      ]);
+      setExternalPlugins(collection.plugins);
+      setDeveloperMode(settings.values['plugins.developerMode'] === true);
+      setExternalError('');
+    } catch (error) {
+      setExternalError(error instanceof Error ? error.message : 'Could not load external plugins');
+    } finally {
+      setExternalLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void refresh(); void refreshExternal(); }, [refresh, refreshExternal]);
   useEffect(() => {
     if (!status) return;
     const jobs = [status.marker.job, status.ocr?.job, status.embeddings?.job, ...AGENT_PROVIDERS.map(provider => status[provider.id]?.job)].filter(Boolean);
@@ -73,6 +116,69 @@ export default function PluginsModal({ onClose }: Props) {
     try { await start(path); }
     catch (error) { message.error((error as Error).message); }
   };
+
+  const installExternalPlugin = async () => {
+    if (!window.quizzerDesktop) return;
+    const path = await window.quizzerDesktop.selectPluginDirectory();
+    if (!path) return;
+    setPluginAction('install');
+    try {
+      const result = await serviceJson<{ plugin: ExternalPlugin }>('/api/v1/plugins/install', 'POST', { path });
+      message.success(`${result.plugin.name ?? result.plugin.id} installed`);
+      await refreshExternal();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Could not install plugin');
+    } finally {
+      setPluginAction('');
+    }
+  };
+
+  const runExternalAction = async (plugin: ExternalPlugin, action: 'enable' | 'disable' | 'health' | 'rollback') => {
+    setPluginAction(`${plugin.id}:${action}`);
+    try {
+      const result = await serviceJson<{ plugin?: ExternalPlugin; health?: HealthResult }>(
+        `/api/v1/plugins/${encodeURIComponent(plugin.id)}/${action}`,
+        'POST',
+      );
+      if (result.health) {
+        setHealthResults(current => ({ ...current, [plugin.id]: result.health! }));
+        if (result.health.ok) message.success(`${plugin.name ?? plugin.id} is healthy`);
+        else message.warning(result.health.error || `${plugin.name ?? plugin.id} failed its health check`);
+      } else {
+        message.success(action === 'rollback' ? `${plugin.name ?? plugin.id} rolled back and disabled` : `${plugin.name ?? plugin.id} ${action}d`);
+      }
+      await refreshExternal();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : `Could not ${action} plugin`);
+    } finally {
+      setPluginAction('');
+    }
+  };
+
+  const removeExternalPlugin = (plugin: ExternalPlugin) => Modal.confirm({
+    title: `Remove ${plugin.name ?? plugin.id}?`,
+    content: 'Quizzer will disable the plugin and move it to recoverable removed storage. Its files are not permanently deleted.',
+    okText: 'Remove plugin',
+    okButtonProps: { danger: true },
+    onOk: async () => {
+      setPluginAction(`${plugin.id}:remove`);
+      try {
+        await serviceRequest(`/api/v1/plugins/${encodeURIComponent(plugin.id)}?confirm=true`, { method: 'DELETE' });
+        message.success(`${plugin.name ?? plugin.id} removed`);
+        setHealthResults(current => {
+          const next = { ...current };
+          delete next[plugin.id];
+          return next;
+        });
+        await refreshExternal();
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : 'Could not remove plugin');
+        throw error;
+      } finally {
+        setPluginAction('');
+      }
+    },
+  });
 
   const save = () => {
     for (const provider of API_PROVIDERS) setApiKey(provider.id, apiKeys[provider.id]?.trim() ?? '');
@@ -98,7 +204,7 @@ export default function PluginsModal({ onClose }: Props) {
     : configuredProviderOptions[0]?.id;
 
   return (
-    <Modal open title={<Space><ApiOutlined /> Plugins & models</Space>} width={800} onCancel={onClose} onOk={save} okText="Save settings">
+    <Modal open title={<Space><ApiOutlined /> Plugins & models</Space>} width={900} onCancel={onClose} onOk={save} okText="Save settings">
       <Typography.Paragraph type="secondary">
         Connect signed-in CLI agents or enter API keys without editing terminal configuration. API keys live only in this browser tab.
       </Typography.Paragraph>
@@ -184,6 +290,72 @@ export default function PluginsModal({ onClose }: Props) {
             {!!apiKeys[provider.id]?.trim() && <Space><Switch checked={enabledProviders[provider.id]} onChange={value => setEnabledProviders(current => ({ ...current, [provider.id]: value }))} /><Typography.Text>Enabled</Typography.Text></Space>}
           </Space>
         </section>)}
+
+        <Divider orientation="left" plain>External plugins</Divider>
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+          External plugins run out of process with declared permissions and verified file hashes. Signed registry plugins are trusted normally; unsigned local plugins require Advanced Developer Mode.
+        </Typography.Paragraph>
+        {developerMode && <Alert type="warning" showIcon message="Advanced Developer Mode is active"
+          description="Unsigned local plugins can execute code. Review every capability, permission, and file hash before installation." />}
+        {externalError && <Alert type="error" showIcon message={externalError}
+          action={<Button size="small" icon={<ReloadOutlined />} onClick={() => void refreshExternal()}>Retry</Button>} />}
+        <Space wrap>
+          <Button icon={<FolderOpenOutlined />} loading={pluginAction === 'install'}
+            disabled={interfaceMode !== 'advanced' || !window.quizzerDesktop || Boolean(pluginAction)}
+            onClick={() => void installExternalPlugin()}>Install local plugin</Button>
+          <Button icon={<ReloadOutlined />} loading={externalLoading} onClick={() => void refreshExternal()}>Refresh</Button>
+        </Space>
+        {interfaceMode !== 'advanced' && <Typography.Text type="secondary">Switch to Advanced mode to install local plugins.</Typography.Text>}
+        {!window.quizzerDesktop && <Typography.Text type="secondary">Desktop directory selection is unavailable here. Install with <Typography.Text code>quizzer plugins install &lt;directory&gt;</Typography.Text>.</Typography.Text>}
+        {externalLoading && !externalPlugins.length ? <div className="plugin-loading"><Spin /></div> : !externalPlugins.length && !externalError ? (
+          <Alert type="info" showIcon message="No external plugins installed" description="Quizzer's built-in extraction, retrieval, and provider components remain available above." />
+        ) : externalPlugins.map(plugin => {
+          const busy = pluginAction.startsWith(`${plugin.id}:`);
+          const health = healthResults[plugin.id];
+          const permissions = plugin.permissions;
+          return <section className={`plugin-card${plugin.status !== 'installed' || !plugin.compatible ? ' plugin-card-warning' : ''}`} key={plugin.id}>
+            <div className="plugin-card-heading">
+              <div>
+                <Typography.Title level={5}>{plugin.name ?? plugin.id}</Typography.Title>
+                <Space size={[4, 4]} wrap>
+                  {plugin.version && <Tag>v{plugin.version}</Tag>}
+                  <Tag color={plugin.trust === 'signed' ? 'success' : 'warning'}>{plugin.trust === 'signed' ? 'Signed' : 'Unsigned local'}</Tag>
+                  <Tag color={plugin.compatible ? 'blue' : 'error'}>{plugin.compatible ? 'Compatible' : 'Incompatible'}</Tag>
+                  {plugin.capabilities?.map(capability => <Tag key={capability}>{capability}</Tag>)}
+                </Space>
+              </div>
+              <Tag color={plugin.status === 'installed' && plugin.enabled ? 'success' : plugin.status === 'broken' ? 'error' : 'warning'}>
+                {plugin.status === 'broken' ? 'Broken' : plugin.enabled ? 'Enabled' : plugin.status === 'blocked' ? 'Blocked' : 'Disabled'}
+              </Tag>
+            </div>
+            <Space direction="vertical" size="small" style={{ width: '100%' }}>
+              {(plugin.warning || plugin.error) && <Alert type={plugin.status === 'broken' ? 'error' : 'warning'} showIcon message={plugin.warning || plugin.error} />}
+              {plugin.resources && <Typography.Text type="secondary">
+                Estimated resources: {plugin.resources.memoryMB.toLocaleString()} MB memory · {plugin.resources.diskMB.toLocaleString()} MB disk
+                {!!plugin.resources.accelerators?.length && ` · ${plugin.resources.accelerators.join(', ')}`}
+              </Typography.Text>}
+              {permissions && <div className="plugin-permissions">
+                <Typography.Text strong>Declared permissions</Typography.Text>
+                <Space size={[4, 4]} wrap>
+                  {permissions.filesystem.map(value => <Tag key={`fs-${value}`}>Files: {value}</Tag>)}
+                  {permissions.network.map(value => <Tag color="gold" key={`net-${value}`}>Network: {value}</Tag>)}
+                  {permissions.secrets.map(value => <Tag color="purple" key={`secret-${value}`}>Secret: {value}</Tag>)}
+                  {permissions.subprocess && <Tag color="volcano">Subprocess</Tag>}
+                  {!permissions.filesystem.length && !permissions.network.length && !permissions.secrets.length && !permissions.subprocess && <Tag color="green">No elevated permissions</Tag>}
+                </Space>
+              </div>}
+              {health && <Alert showIcon icon={health.ok ? <CheckCircleOutlined /> : undefined} type={health.ok ? 'success' : 'error'}
+                message={health.ok ? `Healthy · ${health.durationMs} ms` : 'Health check failed'} description={health.error} />}
+              <Space wrap>
+                <Button disabled={Boolean(pluginAction)} loading={busy && pluginAction.endsWith(':health')} onClick={() => void runExternalAction(plugin, 'health')}>Health check</Button>
+                <Button disabled={Boolean(pluginAction) || !plugin.compatible || plugin.status === 'broken'} loading={busy && (pluginAction.endsWith(':enable') || pluginAction.endsWith(':disable'))}
+                  onClick={() => void runExternalAction(plugin, plugin.enabled ? 'disable' : 'enable')}>{plugin.enabled ? 'Disable' : 'Enable'}</Button>
+                <Button icon={<RollbackOutlined />} disabled={Boolean(pluginAction) || !plugin.rollbackAvailable} loading={busy && pluginAction.endsWith(':rollback')} onClick={() => void runExternalAction(plugin, 'rollback')}>Rollback</Button>
+                <Button danger icon={<DeleteOutlined />} disabled={Boolean(pluginAction)} loading={busy && pluginAction.endsWith(':remove')} onClick={() => removeExternalPlugin(plugin)}>Remove</Button>
+              </Space>
+            </Space>
+          </section>;
+        })}
 
         <Divider style={{ margin: '4px 0' }} />
         {!!configuredProviderOptions.length && <div>

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, mkdir, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -87,7 +87,9 @@ test('installs, blocks, enables, checks, upgrades, rolls back, and removes plugi
   const installed = await manager.install(first.pluginDirectory);
   assert.equal(installed.trust, 'unsigned-local');
   assert.equal(installed.enabled, true);
+  assert.equal(installed.rollbackAvailable, false);
   assert.match(installed.warning, /Unsigned local plugin/);
+  assert.deepEqual(await readdir(join(appDataDirectory, 'plugins', 'staging')), []);
 
   const lockedManager = new PluginManager({ appDataDirectory, developerMode: false });
   assert.equal((await lockedManager.list())[0].status, 'blocked');
@@ -99,7 +101,10 @@ test('installs, blocks, enables, checks, upgrades, rolls back, and removes plugi
   await manager.setEnabled(first.manifest.id, true);
 
   const second = await createPlugin('1.1.0', 'second');
-  assert.equal((await manager.install(second.pluginDirectory)).version, '1.1.0');
+  const upgraded = await manager.install(second.pluginDirectory);
+  assert.equal(upgraded.version, '1.1.0');
+  assert.equal(upgraded.rollbackAvailable, true);
+  assert.deepEqual(await readdir(join(appDataDirectory, 'plugins', 'staging')), []);
   assert.deepEqual(await manager.rollback(first.manifest.id), { id: first.manifest.id, version: '1.0.0', enabled: false });
   const removed = await manager.remove(first.manifest.id);
   assert.equal(removed.removed, true);
