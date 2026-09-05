@@ -74,6 +74,12 @@ export const SETTINGS_REGISTRY = Object.freeze([
     visibility: 'basic', resourceEffect: 'low', restartRequired: false, reindexRequired: false,
     environment: 'QUIZZER_CONTINUE_IN_BACKGROUND',
   },
+  {
+    key: 'plugins.developerMode', type: 'boolean', default: false,
+    title: 'Advanced Developer Mode', description: 'Allows unsigned local plugins and keeps a persistent security warning enabled.',
+    visibility: 'advanced', resourceEffect: 'none', restartRequired: false, reindexRequired: false,
+    environment: 'QUIZZER_PLUGIN_DEVELOPER_MODE',
+  },
 ]);
 
 const definitions = new Map(SETTINGS_REGISTRY.map(definition => [definition.key, definition]));
