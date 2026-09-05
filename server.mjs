@@ -13,6 +13,7 @@ import {
 } from './server/settings.mjs';
 import { PluginManager } from './plugin-sdk/manager.mjs';
 import { SparseDocumentIndex } from './server/sparse-index.mjs';
+import { materializeRuntimeAsset, readRuntimeText, runningAsSingleExecutable } from './server/runtime-assets.mjs';
 
 const port = Number(process.env.QUIZZER_SERVICE_PORT || 8787);
 const maxBodyBytes = 25 * 1024 * 1024;
@@ -23,10 +24,12 @@ const managedMarkerDirectory = join(appDataDirectory, '.quizzer-tools', 'marker'
 const managedMarkerExecutable = join(managedMarkerDirectory, process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'marker_single.exe' : 'marker_single');
 const managedOcrDirectory = join(appDataDirectory, '.quizzer-tools', 'ocr');
 const managedOcrPython = join(managedOcrDirectory, process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'python.exe' : 'python');
-const ocrScript = process.env.QUIZZER_OCR_SCRIPT || join(resourceDirectory, 'scripts', 'ocr_image.py');
 const serviceToken = await ensureServiceToken(appDataDirectory);
-const openApiDocument = await readFile(new URL('./openapi/quizzer-v1.yaml', import.meta.url), 'utf8');
-const pluginManifestSchema = JSON.parse(await readFile(new URL('./plugin-sdk/quizzer.plugin.schema.json', import.meta.url), 'utf8'));
+const ocrScript = process.env.QUIZZER_OCR_SCRIPT || (runningAsSingleExecutable
+  ? await materializeRuntimeAsset('scripts/ocr_image.py', join(appDataDirectory, 'runtime', 'ocr_image.py'))
+  : join(resourceDirectory, 'scripts', 'ocr_image.py'));
+const openApiDocument = await readRuntimeText('openapi/quizzer-v1.yaml', new URL('./openapi/quizzer-v1.yaml', import.meta.url));
+const pluginManifestSchema = JSON.parse(await readRuntimeText('plugin-sdk/quizzer.plugin.schema.json', new URL('./plugin-sdk/quizzer.plugin.schema.json', import.meta.url)));
 const builtInPlugins = Object.freeze([
   { id: 'quizzer.extract.basic', name: 'Basic PDF.js and text extraction', capabilities: ['extractor'], builtIn: true },
   { id: 'quizzer.extract.marker', name: 'Marker visual extraction', capabilities: ['extractor'], builtIn: true },

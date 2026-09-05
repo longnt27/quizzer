@@ -7,7 +7,7 @@ import { globalIgnores } from 'eslint/config'
 
 export default tseslint.config([
   // The independently deployable Sites project has its own oxlint configuration.
-  globalIgnores(['dist', 'landing/**']),
+  globalIgnores(['dist', 'out', 'landing/**']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

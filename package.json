@@ -24,6 +24,7 @@
     "preview": "vite preview",
     "package:desktop": "npm run build && node scripts/forge.mjs package",
     "make:desktop": "npm run build && node scripts/forge.mjs make",
+    "build:cli": "node scripts/build-cli-sea.mjs",
     "release:manifest": "node scripts/generate-release-manifest.mjs"
   },
   "dependencies": {
@@ -47,11 +48,13 @@
     "@electron-forge/maker-rpm": "^7.11.2",
     "@electron-forge/maker-squirrel": "^7.11.2",
     "@electron-forge/maker-zip": "^7.11.2",
+    "@electron/windows-sign": "^1.2.2",
     "@eslint/js": "^9.29.0",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.5.2",
     "electron": "^44.2.0",
+    "esbuild": "^0.25.12",
     "eslint": "^9.29.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",

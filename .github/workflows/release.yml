@@ -95,7 +95,7 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 26
           cache: npm
       - run: npm ci
       - name: Install Linux packaging tools
@@ -141,6 +141,8 @@ jobs:
           [IO.File]::WriteAllBytes('certificate.pfx', [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
           "WINDOWS_CERTIFICATE_FILE=$((Resolve-Path 'certificate.pfx').Path)" | Out-File -FilePath $env:GITHUB_ENV -Append
           "WINDOWS_CERTIFICATE_PASSWORD=$env:WINDOWS_CERTIFICATE_PASSWORD" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Build signed standalone CLI
+        run: npm run build:cli
       - name: Build signed desktop distributables
         run: npm run make:desktop
       - name: Normalize release artifacts

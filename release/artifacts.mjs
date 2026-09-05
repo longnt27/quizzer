@@ -11,7 +11,7 @@ const filesBelow = async directory => {
     : [join(directory, entry.name)]))).flat();
 };
 
-export const collectDesktopArtifacts = async ({ sourceDirectory, outputDirectory, platform, architecture, version }) => {
+export const collectReleaseArtifacts = async ({ sourceDirectory, cliPath, outputDirectory, platform, architecture, version }) => {
   if (!minimumOs[platform] || (architecture !== 'x64' && architecture !== 'arm64')) throw new Error('Unsupported release target');
   const candidates = (await filesBelow(sourceDirectory)).filter(path => formats.has(extname(path).toLowerCase()));
   if (!candidates.length) throw new Error(`No supported release artifacts found in ${sourceDirectory}`);
@@ -28,12 +28,28 @@ export const collectDesktopArtifacts = async ({ sourceDirectory, outputDirectory
     await copyFile(path, destination);
     artifacts.push({ path: destination, name, platform, architecture, format, minimumOs: minimumOs[platform] });
   }
+  if (cliPath) {
+    const name = `quizzer-cli-${version}-${platform}-${architecture}${platform === 'windows' ? '.exe' : ''}`;
+    const destination = join(outputDirectory, name);
+    await copyFile(cliPath, destination);
+    artifacts.push({
+      path: destination,
+      name,
+      platform,
+      architecture,
+      format: 'sea',
+      minimumOs: minimumOs[platform],
+      cli: true,
+    });
+  }
   const descriptorPath = join(outputDirectory, `artifacts-${platform}-${architecture}.json`);
   await writeFile(descriptorPath, `${JSON.stringify(artifacts, null, 2)}\n`);
   return { artifacts, descriptorPath };
 };
 
-export const mergeDesktopArtifacts = async ({ inputDirectory, outputDirectory }) => {
+export const collectDesktopArtifacts = collectReleaseArtifacts;
+
+export const mergeReleaseArtifacts = async ({ inputDirectory, outputDirectory }) => {
   const files = await filesBelow(inputDirectory);
   const descriptorPaths = files.filter(path => /^artifacts-(?:macos|windows|linux)-(?:x64|arm64)\.json$/.test(basename(path)));
   if (!descriptorPaths.length) throw new Error('No release artifact descriptors were downloaded');
@@ -54,3 +70,5 @@ export const mergeDesktopArtifacts = async ({ inputDirectory, outputDirectory })
   await writeFile(descriptorPath, `${JSON.stringify(merged, null, 2)}\n`);
   return { artifacts: merged, descriptorPath };
 };
+
+export const mergeDesktopArtifacts = mergeReleaseArtifacts;

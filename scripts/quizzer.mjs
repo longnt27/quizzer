@@ -11,6 +11,7 @@ import {
   loadResolvedSettings, readUserSettings, SETTINGS_REGISTRY, settingsPath, validateSettings, writeUserSettings,
 } from '../server/settings.mjs';
 import { SparseDocumentIndex } from '../server/sparse-index.mjs';
+import { readRuntimeText, runningAsSingleExecutable } from '../server/runtime-assets.mjs';
 
 const usage = `Quizzer CLI
 
@@ -62,7 +63,14 @@ const writeResult = (value, human) => {
 const fail = message => { throw new Error(message); };
 
 let storageModule;
+let embeddedSqliteReady;
+const ensureEmbeddedSqlite = async () => {
+  if (!runningAsSingleExecutable) return;
+  embeddedSqliteReady ??= import('./sea-better-sqlite3.mjs').then(module => module.initializeEmbeddedSqlite());
+  await embeddedSqliteReady;
+};
 const storage = async () => {
+  await ensureEmbeddedSqlite();
   storageModule ??= await import('../server/storage.mjs');
   return storageModule;
 };
@@ -356,13 +364,14 @@ const main = async () => {
   const command = parsed.positionals.shift();
   if (!command || command === 'help' || flag('help') === 'true') return process.stdout.write(usage);
   if (command === 'version') {
-    const packageJson = JSON.parse(await (await import('node:fs/promises')).readFile(new URL('../package.json', import.meta.url), 'utf8'));
+    const packageJson = JSON.parse(await readRuntimeText('package.json', new URL('../package.json', import.meta.url)));
     return process.stdout.write(`${packageJson.version}\n`);
   }
   if (command === 'serve') {
     const port = Number(flag('port', '8787'));
     if (!Number.isSafeInteger(port) || port < 1 || port > 65535) fail('--port must be a valid TCP port');
     process.env.QUIZZER_SERVICE_PORT = String(port);
+    await ensureEmbeddedSqlite();
     await import('../server.mjs');
     return;
   }

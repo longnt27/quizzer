@@ -20,6 +20,14 @@ const cli = async (...arguments_) => {
   return JSON.parse(stdout);
 };
 
+test('reports the package version without opening storage', async () => {
+  const packageMetadata = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  const { stdout } = await execute(process.execPath, ['scripts/quizzer.mjs', 'version'], {
+    cwd: new URL('..', import.meta.url), env: environment,
+  });
+  assert.equal(stdout.trim(), packageMetadata.version);
+});
+
 test.before(async () => {
   await writeFile(source, '# Terraform\n\nOnly ask about providers and state.\n');
   await mkdir(pluginDirectory);
