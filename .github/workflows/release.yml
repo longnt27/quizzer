@@ -143,6 +143,13 @@ jobs:
           "WINDOWS_CERTIFICATE_PASSWORD=$env:WINDOWS_CERTIFICATE_PASSWORD" | Out-File -FilePath $env:GITHUB_ENV -Append
       - name: Build signed standalone CLI
         run: npm run build:cli
+      - name: Notarize standalone CLI
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          ditto -c -k --keepParent out/cli/quizzer out/cli/quizzer-notarization.zip
+          xcrun notarytool submit out/cli/quizzer-notarization.zip --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+          rm out/cli/quizzer-notarization.zip
       - name: Build signed desktop distributables
         run: npm run make:desktop
       - name: Normalize release artifacts
@@ -185,19 +192,31 @@ jobs:
           QUIZZER_RELEASE_PRIVATE_KEY: ${{ secrets.QUIZZER_RELEASE_PRIVATE_KEY }}
           QUIZZER_RELEASE_PUBLIC_KEY_ID: ${{ vars.QUIZZER_RELEASE_PUBLIC_KEY_ID }}
         run: npm run release:manifest -- --version "$RELEASE_TAG" --channel "$RELEASE_CHANNEL" --tag "$RELEASE_TAG" --artifacts release-bundle/artifacts.json --output release-bundle/release-manifest.json
+      - name: Prepare verifying installers
+        env:
+          QUIZZER_RELEASE_PRIVATE_KEY: ${{ secrets.QUIZZER_RELEASE_PRIVATE_KEY }}
+        run: npm run release:installers -- --manifest release-bundle/release-manifest.json --output release-bundle
       - name: Attest release artifacts and manifest
         uses: actions/attest@v4
         with:
           subject-path: |
             release-bundle/quizzer-*
+            release-bundle/install.sh
+            release-bundle/install.ps1
             release-bundle/release-manifest.json
+            release-bundle/release-manifest.canonical.json
+            release-bundle/release-manifest.sig
             release-bundle/sbom.cdx.json
       - uses: actions/upload-artifact@v4
         with:
           name: signed-release-${{ env.RELEASE_TAG }}
           path: |
             release-bundle/quizzer-*
+            release-bundle/install.sh
+            release-bundle/install.ps1
             release-bundle/release-manifest.json
+            release-bundle/release-manifest.canonical.json
+            release-bundle/release-manifest.sig
             release-bundle/sbom.cdx.json
           if-no-files-found: error
       - name: Publish GitHub Release
@@ -208,4 +227,4 @@ jobs:
         run: |
           PRERELEASE=()
           if [ "$RELEASE_CHANNEL" = beta ]; then PRERELEASE=(--prerelease); fi
-          gh release create "$RELEASE_TAG" release-bundle/quizzer-* release-bundle/release-manifest.json release-bundle/sbom.cdx.json --verify-tag --generate-notes --title "Quizzer ${RELEASE_TAG#v}" "${PRERELEASE[@]}"
+          gh release create "$RELEASE_TAG" release-bundle/quizzer-* release-bundle/install.sh release-bundle/install.ps1 release-bundle/release-manifest.json release-bundle/release-manifest.canonical.json release-bundle/release-manifest.sig release-bundle/sbom.cdx.json --verify-tag --generate-notes --title "Quizzer ${RELEASE_TAG#v}" "${PRERELEASE[@]}"

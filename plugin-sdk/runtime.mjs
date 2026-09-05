@@ -1,7 +1,10 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { constants } from 'node:fs';
+import { access, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { delimiter, join } from 'node:path';
+import { runningAsSingleExecutable } from '../server/runtime-assets.mjs';
 
 const retainedEnvironment = ['PATH', 'SystemRoot', 'ComSpec', 'PATHEXT', 'TMP', 'TEMP', 'TMPDIR', 'LANG', 'LC_ALL'];
 
@@ -21,6 +24,26 @@ const pluginEnvironment = ({ manifest, temporaryDirectory, secrets }) => {
   return environment;
 };
 
+const availableExecutable = async path => {
+  if (!path) return false;
+  try { await access(path, constants.X_OK); return true; }
+  catch { return false; }
+};
+
+const javascriptRuntime = async () => {
+  if (!runningAsSingleExecutable) return process.execPath;
+  const candidates = [process.env.QUIZZER_NODE_RUNTIME];
+  if (process.platform === 'darwin') candidates.push(join(homedir(), 'Applications', 'Quizzer.app', 'Contents', 'MacOS', 'Quizzer'));
+  if (process.platform === 'linux') candidates.push(join(homedir(), '.local', 'share', 'quizzer', 'app', 'quizzer'));
+  if (process.platform === 'win32' && process.env.LOCALAPPDATA) {
+    candidates.push(join(process.env.LOCALAPPDATA, 'quizzer', 'quizzer.exe'), join(process.env.LOCALAPPDATA, 'quizzer', 'Quizzer.exe'));
+  }
+  const nodeName = process.platform === 'win32' ? 'node.exe' : 'node';
+  candidates.push(...String(process.env.PATH || '').split(delimiter).filter(Boolean).map(path => join(path, nodeName)));
+  for (const candidate of candidates) if (await availableExecutable(candidate)) return candidate;
+  throw new Error('JavaScript plugins require the Quizzer desktop app, QUIZZER_NODE_RUNTIME, or a Node.js executable on PATH');
+};
+
 export const invokePluginProcess = async ({
   appDataDirectory, directory, manifest, method, params = {}, configuration = {}, secrets = {}, signal,
   timeoutMs = 30_000,
@@ -33,7 +56,7 @@ export const invokePluginProcess = async ({
   const temporaryDirectory = await mkdtemp(join(temporaryRoot, `${manifest.id}-`));
   const entrypoint = join(directory, manifest.entrypoint);
   const javascript = /\.(?:c?js|mjs)$/i.test(entrypoint);
-  const command = javascript ? process.execPath : entrypoint;
+  const command = javascript ? await javascriptRuntime() : entrypoint;
   const arguments_ = javascript
     ? [`--max-old-space-size=${Math.max(16, manifest.resources.memoryMB)}`, entrypoint]
     : [];

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { randomUUID } from 'node:crypto';
-import { copyFile, mkdir } from 'node:fs/promises';
+import { createPublicKey, randomUUID, verify } from 'node:crypto';
+import { copyFile, mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ensureServiceToken } from '../server/auth.mjs';
 import { chunkDocument, importDocumentFile } from '../server/document-import.mjs';
@@ -12,6 +12,8 @@ import {
 } from '../server/settings.mjs';
 import { SparseDocumentIndex } from '../server/sparse-index.mjs';
 import { readRuntimeText, runningAsSingleExecutable } from '../server/runtime-assets.mjs';
+import { canonicalizeManifest } from '../release/manifest.mjs';
+import { validateReleaseManifest } from '../server/release-manifest.mjs';
 
 const usage = `Quizzer CLI
 
@@ -29,6 +31,7 @@ Usage:
   quizzer jobs list|show <id>|resume <id>|cancel <id> [--json]
   quizzer resume <job-id> [--json]
   quizzer backup create [--destination directory] [--json]
+  quizzer release verify --metadata <file> --signature <file> --public-key <file> [--json]
   quizzer version
 `;
 
@@ -360,6 +363,30 @@ const runBackup = async action => {
   writeResult({ directory, files: ['quizzer.sqlite', 'config.jsonc (when present)'] }, `Backup created at ${directory}`);
 };
 
+const runRelease = async action => {
+  if (action !== 'verify') fail('Use release verify');
+  const metadataPath = flag('metadata');
+  const signaturePath = flag('signature');
+  const publicKeyPath = flag('public-key');
+  if (!metadataPath || !signaturePath || !publicKeyPath) {
+    fail('release verify requires --metadata, --signature, and --public-key');
+  }
+  const [metadataBytes, signature, publicKeyPem] = await Promise.all([
+    readFile(metadataPath), readFile(signaturePath), readFile(publicKeyPath, 'utf8'),
+  ]);
+  const metadataText = metadataBytes.toString('utf8');
+  const metadata = JSON.parse(metadataText);
+  const signedManifest = { ...metadata, signature: signature.toString('base64url') };
+  const validation = validateReleaseManifest(signedManifest);
+  if (!validation.valid) fail(`Release metadata is invalid: ${validation.errors.join('; ')}`);
+  if (canonicalizeManifest(signedManifest) !== metadataText) fail('Release metadata is not canonical');
+  if (!verify(null, metadataBytes, createPublicKey(publicKeyPem), signature)) fail('Release signature is invalid');
+  return writeResult(
+    { valid: true, version: metadata.version, publicKeyId: metadata.publicKeyId, artifacts: metadata.artifacts.length },
+    `Verified Quizzer ${metadata.version} (${metadata.artifacts.length} artifacts)`,
+  );
+};
+
 const main = async () => {
   const command = parsed.positionals.shift();
   if (!command || command === 'help' || flag('help') === 'true') return process.stdout.write(usage);
@@ -388,6 +415,7 @@ const main = async () => {
   if (command === 'jobs') return runJobs(parsed.positionals.shift() || 'list');
   if (command === 'resume') return runJobs('resume', parsed.positionals.shift());
   if (command === 'backup') return runBackup(parsed.positionals.shift() || 'create');
+  if (command === 'release') return runRelease(parsed.positionals.shift() || 'verify');
   fail(`Unknown command: ${command}\n\n${usage}`);
 };
 

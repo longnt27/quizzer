@@ -1,0 +1,177 @@
+#!/bin/sh
+set -eu
+
+release_base_url='https://github.com/Somethings1/quizzer/releases/latest/download'
+metadata_name='release-manifest.canonical.json'
+signature_name='release-manifest.sig'
+
+fail() {
+  printf 'Quizzer installer: %s\n' "$1" >&2
+  exit 1
+}
+
+require_command() {
+  command -v "$1" >/dev/null 2>&1 || fail "$1 is required on this system"
+}
+
+download() {
+  curl --fail --location --silent --show-error --retry 3 --proto '=https' --tlsv1.2 "$1" --output "$2"
+}
+
+sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{ print $1 }'
+  else
+    shasum -a 256 "$1" | awk '{ print $1 }'
+  fi
+}
+
+verify_hash() {
+  expected_hash=$1
+  file_path=$2
+  actual_hash=$(sha256_file "$file_path")
+  [ "$actual_hash" = "$expected_hash" ] || fail "checksum verification failed for $(basename "$file_path")"
+}
+
+artifact_field() {
+  artifact_name=$1
+  field_name=$2
+  sed -n "s|.*\"name\":\"${artifact_name}\"[^}]*\"${field_name}\":\"\([^\"]*\)\".*|\1|p" "$metadata_path"
+}
+
+download_artifact() {
+  artifact_name=$1
+  destination=$2
+  artifact_hash=$(artifact_field "$artifact_name" sha256)
+  artifact_url=$(artifact_field "$artifact_name" url)
+  printf '%s' "$artifact_hash" | grep -Eq '^[a-f0-9]{64}$' || fail "release metadata has no valid checksum for $artifact_name"
+  case "$artifact_url" in
+    https://github.com/Somethings1/quizzer/releases/download/*/"$artifact_name") ;;
+    *) fail "release metadata contains an untrusted URL for $artifact_name" ;;
+  esac
+  download "$artifact_url" "$destination"
+  verify_hash "$artifact_hash" "$destination"
+}
+
+require_command curl
+require_command awk
+require_command grep
+require_command sed
+require_command mktemp
+
+kernel=$(uname -s)
+machine=$(uname -m)
+case "$kernel" in
+  Darwin) platform=macos ;;
+  Linux) platform=linux ;;
+  *) fail "unsupported operating system: $kernel" ;;
+esac
+case "$machine" in
+  x86_64|amd64) architecture=x64 ;;
+  arm64|aarch64) architecture=arm64 ;;
+  *) fail "unsupported architecture: $machine" ;;
+esac
+
+temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/quizzer-install.XXXXXX")
+trap 'rm -rf "$temporary_directory"' EXIT HUP INT TERM
+metadata_path="$temporary_directory/$metadata_name"
+signature_path="$temporary_directory/$signature_name"
+public_key_path="$temporary_directory/release-public-key.pem"
+
+cat > "$public_key_path" <<'QUIZZER_RELEASE_PUBLIC_KEY'
+__QUIZZER_RELEASE_PUBLIC_KEY_PEM__
+QUIZZER_RELEASE_PUBLIC_KEY
+
+printf 'Downloading signed Quizzer release metadata…\n'
+download "$release_base_url/$metadata_name" "$metadata_path"
+download "$release_base_url/$signature_name" "$signature_path"
+
+if [ "$platform" = linux ]; then
+  require_command openssl
+  openssl pkeyutl -verify -pubin -inkey "$public_key_path" -rawin -in "$metadata_path" -sigfile "$signature_path" >/dev/null 2>&1 \
+    || fail 'release metadata signature is invalid'
+fi
+
+version=$(sed -n 's/.*"version":"\([^"]*\)".*/\1/p' "$metadata_path")
+printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' \
+  || fail 'release metadata has an invalid version'
+
+cli_name="quizzer-cli-$version-$platform-$architecture"
+cli_download="$temporary_directory/$cli_name"
+download_artifact "$cli_name" "$cli_download"
+chmod 755 "$cli_download"
+
+if [ "$platform" = macos ]; then
+  require_command codesign
+  require_command spctl
+  codesign --verify --strict "$cli_download" >/dev/null 2>&1 || fail 'Quizzer CLI code signature is invalid'
+  spctl --assess --type execute "$cli_download" >/dev/null 2>&1 || fail 'Quizzer CLI is not trusted or notarized by macOS'
+fi
+
+"$cli_download" release verify --metadata "$metadata_path" --signature "$signature_path" --public-key "$public_key_path" >/dev/null \
+  || fail 'Quizzer CLI rejected the release signature'
+
+bin_directory="$HOME/.local/bin"
+mkdir -p "$bin_directory"
+install -m 755 "$cli_download" "$bin_directory/quizzer"
+
+path_line='export PATH="$HOME/.local/bin:$PATH"'
+case "${SHELL:-}" in
+  */zsh) profile_path="${ZDOTDIR:-$HOME}/.zprofile" ;;
+  *) profile_path="$HOME/.profile" ;;
+esac
+touch "$profile_path"
+grep -F "$path_line" "$profile_path" >/dev/null 2>&1 || printf '\n%s\n' "$path_line" >> "$profile_path"
+PATH="$bin_directory:$PATH"
+export PATH
+
+desktop_name="quizzer-$version-$platform-$architecture.zip"
+desktop_download="$temporary_directory/$desktop_name"
+download_artifact "$desktop_name" "$desktop_download"
+extract_directory="$temporary_directory/desktop"
+mkdir -p "$extract_directory"
+if command -v unzip >/dev/null 2>&1; then
+  unzip -q "$desktop_download" -d "$extract_directory"
+elif command -v bsdtar >/dev/null 2>&1; then
+  bsdtar -xf "$desktop_download" -C "$extract_directory"
+else
+  fail 'unzip or bsdtar is required to install the desktop application'
+fi
+
+timestamp=$(date +%Y%m%d%H%M%S)
+if [ "$platform" = macos ]; then
+  desktop_source=$(find "$extract_directory" -type d -name 'Quizzer.app' -prune -print | head -n 1)
+  [ -n "$desktop_source" ] || fail 'desktop archive does not contain Quizzer.app'
+  codesign --verify --deep --strict "$desktop_source" >/dev/null 2>&1 || fail 'Quizzer.app code signature is invalid'
+  spctl --assess --type execute "$desktop_source" >/dev/null 2>&1 || fail 'Quizzer.app is not trusted or notarized by macOS'
+  applications_directory="$HOME/Applications"
+  desktop_target="$applications_directory/Quizzer.app"
+  mkdir -p "$applications_directory"
+  [ ! -e "$desktop_target" ] || mv "$desktop_target" "$desktop_target.previous-$timestamp"
+  mv "$desktop_source" "$desktop_target"
+  open "$desktop_target"
+else
+  desktop_executable=$(find "$extract_directory" -type f -name quizzer -perm -u+x -print | head -n 1)
+  [ -n "$desktop_executable" ] || fail 'desktop archive does not contain the Quizzer executable'
+  desktop_source=$(dirname "$desktop_executable")
+  desktop_target="$HOME/.local/share/quizzer/app"
+  mkdir -p "$HOME/.local/share/quizzer" "$HOME/.local/share/applications"
+  [ ! -e "$desktop_target" ] || mv "$desktop_target" "$desktop_target.previous-$timestamp"
+  mv "$desktop_source" "$desktop_target"
+  installed_executable="$desktop_target/quizzer"
+  desktop_file="$HOME/.local/share/applications/dev.quizzer.app.desktop"
+  {
+    printf '%s\n' '[Desktop Entry]'
+    printf '%s\n' 'Type=Application'
+    printf '%s\n' 'Name=Quizzer'
+    printf 'Exec="%s"\n' "$installed_executable"
+    printf '%s\n' 'Terminal=false'
+    printf '%s\n' 'Categories=Education;'
+    printf '%s\n' 'StartupNotify=true'
+  } > "$desktop_file"
+  chmod 644 "$desktop_file"
+  nohup "$installed_executable" >/dev/null 2>&1 &
+fi
+
+printf '\nQuizzer %s is installed. Run `quizzer help` or open Quizzer from your applications.\n' "$version"
+printf 'Restart your shell if `quizzer` is not yet on PATH.\n'

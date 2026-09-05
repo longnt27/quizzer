@@ -8,6 +8,22 @@ The Quizzer 1.0 foundation now includes a resumable first-run walkthrough, Simpl
 
 Production installers remain a release gate: their stable URLs become active only after CI has produced, signed, notarized, and published every artifact in the versioned [release manifest schema](release/release-manifest.schema.json). Until then, download actions fall back to GitHub Releases rather than guessing an artifact URL.
 
+## Install Quizzer
+
+After a validated release is published, macOS and Linux users can install the desktop app and standalone CLI per-user with:
+
+```sh
+curl -fsSL https://github.com/Somethings1/quizzer/releases/latest/download/install.sh | sh
+```
+
+On Windows, run this in PowerShell:
+
+```powershell
+irm https://github.com/Somethings1/quizzer/releases/latest/download/install.ps1 | iex
+```
+
+These installers do not require Node.js, Python, or Git. They select the current x64 or arm64 artifacts, verify the canonical Ed25519 release metadata and SHA-256 checksum, require the platform signature on macOS and Windows, install `quizzer` on the user PATH, register the desktop application, and launch onboarding. Existing application directories are retained with a timestamped `.previous-*` name on Unix-like systems for rollback.
+
 ## Screenshots
 
 | Document library | Quiz creation |
@@ -81,7 +97,7 @@ PDF / Markdown / text
 
 The React application never starts shell commands directly. It calls a loopback-only Node service, which invokes provider adapters, owns the SQLite library, and keeps API credentials outside browser bundles. Each browser retains an IndexedDB cache so work remains usable during a short outage and synchronizes when the server returns.
 
-## Requirements
+## Source development requirements
 
 - Node.js 20 or newer
 - npm
@@ -117,6 +133,8 @@ npm run cli -- backup create
 
 Run `npm run cli -- help` for the complete command list. Configuration is resolved in this order: per-job override, CLI/environment override, user JSONC, hardware profile, then built-in defaults. `quizzer config path` prints the per-user configuration location. API keys and the private service token are never included in settings output or backups.
 
+Release builders use Node.js 26 or newer for `npm run build:cli`. The resulting signed single executable embeds the CLI, local service resources, and the platform-native SQLite addon; end users do not install Node.js.
+
 External plugins use the versioned [`quizzer.plugin.json`](plugin-sdk/quizzer.plugin.schema.json) contract. Quizzer verifies every declared file hash and any Ed25519 signature before an atomic install, then runs plugin JSON-RPC out of process with a scoped temporary directory, bounded output, timeout/cancellation, a minimal environment, and only explicitly granted secrets. Signed plugins require a trusted registry key. Unsigned local plugins stay blocked unless you deliberately enable Advanced Developer Mode:
 
 ```sh
@@ -151,7 +169,7 @@ Install the Codex CLI once, then select **Connect Codex** in **Plugins & models*
 
 ### Gemini API
 
-Enter the Gemini API key and default model in **Plugins & models**. The key is retained only in the current browser tab and sent to the loopback service for requests. No environment variable or terminal configuration is required.
+Enter the Gemini API key and default model in **Plugins & models**. Keys are session-only by default. In the desktop app, **Remember on this device** stores a key only after explicit confirmation using Electron's OS-backed encryption; Linux remembering remains unavailable when no secure keyring is present. No environment variable or terminal configuration is required.
 
 ### Claude and Antigravity agents
 
@@ -159,7 +177,7 @@ Select **Install Claude** or **Install Antigravity** if its CLI is missing, then
 
 ### API providers
 
-Gemini, Anthropic Claude, OpenAI, OpenRouter, and DeepSeek are configured the same way: enter a key and default model under **Plugins & models**, then select that provider while creating a test. Keys are retained only for the current browser tab. DeepSeek uses JSON mode plus Quizzer's runtime validation; the other adapters request schema-constrained output where supported.
+Gemini, Anthropic Claude, OpenAI, OpenRouter, and DeepSeek are configured the same way: enter a key and default model under **Plugins & models**, choose session-only or explicitly remember it in the desktop vault, then select that provider while creating a test. DeepSeek uses JSON mode plus Quizzer's runtime validation; the other adapters request schema-constrained output where supported.
 
 End users do not configure providers in a terminal. Provider installation, account connections, model selection, API credentials, quiz settings, and theme selection all live in the application UI.
 
@@ -246,7 +264,7 @@ Select **Install Ollama + all-minilm** under **Plugins & models** to enable loca
 - Original `Blob` and `File` values are encoded explicitly during synchronization, so the PDF itself is preserved rather than reduced to empty JSON.
 - Agent requests use the selected locally authenticated CLI.
 - API requests send selected extracted content—and figures for supported multimodal models—to the selected provider.
-- API keys pass through the loopback service only for the active request and remain in browser session storage; they are not written to IndexedDB or local storage.
+- API keys pass through the loopback service only for the active request. They remain in browser session storage unless the desktop user explicitly remembers them in the OS-protected credential vault; they are never written to IndexedDB, local storage, settings exports, backups, or diagnostics.
 - Deleting browser site data clears only that browser's cache; reopening Quizzer repopulates it from the server.
 - Deleting `.quizzer-data` deletes the shared server library. Keep backups of important data.
 
@@ -264,6 +282,7 @@ Do not upload confidential material unless the selected provider and your accoun
 | `npm run build` | Type-check and create the production browser bundle |
 | `npm run package:desktop` | Build an unpacked desktop application for the current platform |
 | `npm run make:desktop` | Build the current platform's configured installer/archive |
+| `npm run build:cli` | Build the signed standalone CLI with Node.js 26+ |
 | `npm run lint` | Run ESLint |
 | `npm test` | Run server storage tests |
 | `npm run preview` | Preview the browser bundle; start the service separately for generation |
@@ -274,7 +293,7 @@ The development service uses its internal loopback port automatically. Packagers
 
 ### Quizzer asks for an API key
 
-Enter the provider's key in **Plugins & models → API providers**. It is intentionally forgotten when the browser tab closes.
+Enter the provider's key in **Plugins & models → API providers**. Leave **Remember on this device** off for session-only use, or enable it in the desktop app to use OS-protected storage after confirmation.
 
 ### `spawn codex ENOENT`
 
@@ -286,7 +305,7 @@ Open **Generation queue**, select a configured replacement provider on the pause
 
 ### Generation was interrupted
 
-Keep or reopen Quizzer on the same browser origin. Network failures retry automatically after connectivity returns. Jobs that were active when the page closed are requeued from their latest verified batch when the application opens again. API keys remain session-only, so a restored job may pause for authentication if its browser session ended.
+Keep or reopen Quizzer on the same browser origin. Network failures retry automatically after connectivity returns. Jobs that were active when the page closed are requeued from their latest verified batch when the application opens again. A restored job pauses for authentication when its route used a session-only key that has expired.
 
 ### Semantic filtering is not active
 

@@ -1,0 +1,107 @@
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+$ReleaseBaseUrl = 'https://github.com/Somethings1/quizzer/releases/latest/download'
+$MetadataName = 'release-manifest.canonical.json'
+$SignatureName = 'release-manifest.sig'
+$TemporaryDirectory = Join-Path ([IO.Path]::GetTempPath()) ("quizzer-install-" + [Guid]::NewGuid().ToString('N'))
+
+function Fail([string] $Message) {
+  throw "Quizzer installer: $Message"
+}
+
+function Download-File([string] $Url, [string] $Destination) {
+  $Uri = [Uri] $Url
+  if ($Uri.Scheme -ne 'https') { Fail "Refusing a non-HTTPS download: $Url" }
+  Invoke-WebRequest -UseBasicParsing -Uri $Uri -OutFile $Destination
+}
+
+function Assert-Artifact([object] $Artifact, [string] $ExpectedName, [string] $Destination) {
+  if ($null -eq $Artifact -or $Artifact.Name -ne $ExpectedName) { Fail "Release metadata has no $ExpectedName artifact" }
+  $Uri = [Uri] $Artifact.Url
+  if ($Uri.Scheme -ne 'https' -or $Uri.Host -ne 'github.com' -or
+      -not $Uri.AbsolutePath.StartsWith('/Somethings1/quizzer/releases/download/') -or
+      -not $Uri.AbsolutePath.EndsWith("/$ExpectedName")) {
+    Fail "Release metadata contains an untrusted URL for $ExpectedName"
+  }
+  Download-File $Artifact.Url $Destination
+  $ActualHash = (Get-FileHash -Algorithm SHA256 -Path $Destination).Hash.ToLowerInvariant()
+  if ($ActualHash -ne $Artifact.Sha256) { Fail "Checksum verification failed for $ExpectedName" }
+}
+
+function Assert-Authenticode([string] $Path) {
+  $Signature = Get-AuthenticodeSignature -FilePath $Path
+  if ($Signature.Status -ne 'Valid' -or $null -eq $Signature.SignerCertificate) {
+    Fail "Authenticode verification failed for $(Split-Path -Leaf $Path): $($Signature.StatusMessage)"
+  }
+}
+
+New-Item -ItemType Directory -Path $TemporaryDirectory | Out-Null
+try {
+  $OsVersion = [Environment]::OSVersion.Version
+  if ($OsVersion.Major -lt 10) { Fail 'Windows 10 or Windows 11 is required' }
+  $ArchitectureValue = $env:PROCESSOR_ARCHITECTURE
+  if ($ArchitectureValue -eq 'ARM64') {
+    if ($OsVersion.Build -lt 22000) { Fail 'Windows 11 is required on arm64' }
+    $Architecture = 'arm64'
+  } elseif ($ArchitectureValue -eq 'AMD64') {
+    $Architecture = 'x64'
+  } else {
+    Fail "Unsupported architecture: $ArchitectureValue"
+  }
+
+  $MetadataPath = Join-Path $TemporaryDirectory $MetadataName
+  $SignaturePath = Join-Path $TemporaryDirectory $SignatureName
+  $PublicKeyPath = Join-Path $TemporaryDirectory 'release-public-key.pem'
+  Download-File "$ReleaseBaseUrl/$MetadataName" $MetadataPath
+  Download-File "$ReleaseBaseUrl/$SignatureName" $SignaturePath
+  @'
+__QUIZZER_RELEASE_PUBLIC_KEY_PEM__
+'@ | Set-Content -NoNewline -Encoding Ascii $PublicKeyPath
+
+  $Metadata = Get-Content -Raw -Path $MetadataPath | ConvertFrom-Json
+  if ($Metadata.schemaVersion -ne 1 -or $Metadata.signatureAlgorithm -ne 'ed25519') { Fail 'Release metadata has an unsupported format' }
+  if ($Metadata.version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') { Fail 'Release metadata has an invalid version' }
+
+  $CliName = "quizzer-cli-$($Metadata.version)-windows-$Architecture.exe"
+  $CliArtifact = @($Metadata.artifacts | Where-Object { $_.name -eq $CliName -and $_.cli -eq $true -and $_.format -eq 'sea' })
+  if ($CliArtifact.Count -ne 1) { Fail "Release metadata must contain exactly one $CliName artifact" }
+  $CliDownload = Join-Path $TemporaryDirectory $CliName
+  Assert-Artifact $CliArtifact[0] $CliName $CliDownload
+  Assert-Authenticode $CliDownload
+
+  & $CliDownload release verify --metadata $MetadataPath --signature $SignaturePath --public-key $PublicKeyPath --json | Out-Null
+  if ($LASTEXITCODE -ne 0) { Fail 'Quizzer CLI rejected the release signature' }
+
+  $DesktopName = "quizzer-$($Metadata.version)-windows-$Architecture.exe"
+  $DesktopArtifact = @($Metadata.artifacts | Where-Object { $_.name -eq $DesktopName -and $_.format -eq 'exe' -and $_.cli -ne $true })
+  if ($DesktopArtifact.Count -ne 1) { Fail "Release metadata must contain exactly one $DesktopName artifact" }
+  $DesktopDownload = Join-Path $TemporaryDirectory $DesktopName
+  Assert-Artifact $DesktopArtifact[0] $DesktopName $DesktopDownload
+  Assert-Authenticode $DesktopDownload
+
+  $BinDirectory = Join-Path $env:LOCALAPPDATA 'Quizzer\bin'
+  New-Item -ItemType Directory -Force -Path $BinDirectory | Out-Null
+  Copy-Item -Force $CliDownload (Join-Path $BinDirectory 'quizzer.exe')
+  $UserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+  $PathEntries = @($UserPath -split ';' | Where-Object { $_ })
+  if ($PathEntries -notcontains $BinDirectory) {
+    [Environment]::SetEnvironmentVariable('Path', (($PathEntries + $BinDirectory) -join ';'), 'User')
+  }
+  if (($env:Path -split ';') -notcontains $BinDirectory) { $env:Path = "$BinDirectory;$env:Path" }
+
+  $Process = Start-Process -FilePath $DesktopDownload -ArgumentList '--silent' -PassThru -Wait
+  if ($Process.ExitCode -ne 0) { Fail "Desktop installer exited with code $($Process.ExitCode)" }
+  $LaunchCandidates = @(
+    (Join-Path $env:LOCALAPPDATA 'quizzer\quizzer.exe'),
+    (Join-Path $env:LOCALAPPDATA 'quizzer\Quizzer.exe')
+  )
+  $InstalledApplication = $LaunchCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+  if ($InstalledApplication) { Start-Process -FilePath $InstalledApplication | Out-Null }
+
+  Write-Host "`nQuizzer $($Metadata.version) is installed. Run 'quizzer help' or open Quizzer from the Start menu."
+  Write-Host 'Open a new terminal if quizzer is not yet on PATH.'
+} finally {
+  Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $TemporaryDirectory
+}

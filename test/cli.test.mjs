@@ -1,20 +1,30 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import test from 'node:test';
+import { canonicalizeManifest } from '../release/manifest.mjs';
 
 const execute = promisify(execFile);
 const directory = await mkdtemp(join(tmpdir(), 'quizzer-cli-test-'));
 const source = join(directory, 'terraform.md');
 const backup = join(directory, 'backup');
 const pluginDirectory = join(directory, 'test-plugin');
-const environment = { ...process.env, QUIZZER_APP_DATA_DIR: join(directory, 'data') };
+const standaloneExecutable = process.env.QUIZZER_CLI_EXECUTABLE;
+const environment = {
+  ...process.env,
+  QUIZZER_APP_DATA_DIR: join(directory, 'data'),
+  ...(standaloneExecutable ? { QUIZZER_NODE_RUNTIME: process.execPath } : {}),
+};
+const invocation = arguments_ => standaloneExecutable
+  ? { command: standaloneExecutable, arguments: arguments_ }
+  : { command: process.execPath, arguments: ['scripts/quizzer.mjs', ...arguments_] };
 const cli = async (...arguments_) => {
-  const { stdout } = await execute(process.execPath, ['scripts/quizzer.mjs', ...arguments_, '--json'], {
+  const command = invocation([...arguments_, '--json']);
+  const { stdout } = await execute(command.command, command.arguments, {
     cwd: new URL('..', import.meta.url), env: environment,
   });
   return JSON.parse(stdout);
@@ -22,10 +32,44 @@ const cli = async (...arguments_) => {
 
 test('reports the package version without opening storage', async () => {
   const packageMetadata = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
-  const { stdout } = await execute(process.execPath, ['scripts/quizzer.mjs', 'version'], {
+  const command = invocation(['version']);
+  const { stdout } = await execute(command.command, command.arguments, {
     cwd: new URL('..', import.meta.url), env: environment,
   });
   assert.equal(stdout.trim(), packageMetadata.version);
+});
+
+test('verifies canonical release metadata and rejects tampering', async () => {
+  const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+  const manifest = {
+    schemaVersion: 1,
+    version: '1.0.0-beta.1',
+    channel: 'beta',
+    publishedAt: '2026-09-05T00:00:00.000Z',
+    signatureAlgorithm: 'ed25519',
+    publicKeyId: 'quizzer-release-test',
+    artifacts: [{
+      name: 'quizzer-cli-1.0.0-beta.1-linux-x64',
+      platform: 'linux', architecture: 'x64', format: 'sea', cli: true,
+      url: 'https://github.com/Somethings1/quizzer/releases/download/v1.0.0-beta.1/quizzer-cli-1.0.0-beta.1-linux-x64',
+      size: 10, sha256: 'a'.repeat(64), minimumOs: 'Current 64-bit Ubuntu or Fedora',
+    }],
+  };
+  const metadata = canonicalizeManifest(manifest);
+  const metadataPath = join(directory, 'release-metadata.json');
+  const signaturePath = join(directory, 'release-metadata.sig');
+  const publicKeyPath = join(directory, 'release-public.pem');
+  await writeFile(metadataPath, metadata);
+  await writeFile(signaturePath, sign(null, Buffer.from(metadata), privateKey));
+  await writeFile(publicKeyPath, publicKey.export({ format: 'pem', type: 'spki' }));
+  const result = await cli('release', 'verify', '--metadata', metadataPath, '--signature', signaturePath, '--public-key', publicKeyPath);
+  assert.equal(result.valid, true);
+  assert.equal(result.artifacts, 1);
+  await writeFile(metadataPath, metadata.replace('beta.1', 'beta.2'));
+  await assert.rejects(
+    cli('release', 'verify', '--metadata', metadataPath, '--signature', signaturePath, '--public-key', publicKeyPath),
+    /Release signature is invalid/,
+  );
 });
 
 test.before(async () => {
