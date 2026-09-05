@@ -1,6 +1,18 @@
 import { spawn } from 'node:child_process';
+import { join } from 'node:path';
+import { ensureServiceToken } from '../server/auth.mjs';
 
-const vite = spawn('npm', ['exec', '--', 'vite'], { stdio: 'inherit', env: process.env });
+const userDataDirectory = process.env.QUIZZER_USER_DATA_DIR || join(process.cwd(), '.quizzer-data', 'desktop');
+const serviceToken = await ensureServiceToken(userDataDirectory);
+const environment = {
+  ...process.env,
+  QUIZZER_USER_DATA_DIR: userDataDirectory,
+  QUIZZER_APP_DATA_DIR: userDataDirectory,
+  QUIZZER_API_TOKEN: serviceToken,
+  VITE_QUIZZER_API_TOKEN: serviceToken,
+};
+
+const vite = spawn('npm', ['exec', '--', 'vite'], { stdio: 'inherit', env: environment });
 let electron;
 
 const waitForRenderer = async () => {
@@ -24,7 +36,7 @@ try {
   await waitForRenderer();
   electron = spawn('npm', ['exec', '--', 'electron', '.'], {
     stdio: 'inherit',
-    env: { ...process.env, QUIZZER_RENDERER_URL: 'http://127.0.0.1:5173/' },
+    env: { ...environment, QUIZZER_RENDERER_URL: 'http://127.0.0.1:5173/' },
   });
   electron.on('exit', code => { stop('SIGTERM'); process.exit(typeof code === 'number' ? code : 0); });
 } catch (error) {

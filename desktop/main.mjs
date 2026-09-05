@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, nativeImage, net, protocol, shell, utilityProcess } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, Tray, nativeImage, net, protocol, shell, utilityProcess } from 'electron';
 import { existsSync } from 'node:fs';
 import { dirname, extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -23,6 +23,26 @@ const isAllowedExternalUrl = value => {
     const url = new URL(value);
     return url.protocol === 'https:' && !url.username && !url.password;
   } catch { return false; }
+};
+
+const isTrustedRenderer = event => {
+  try {
+    const rendererUrl = new URL(event.senderFrame.url);
+    return developmentUrl
+      ? rendererUrl.origin === new URL(developmentUrl).origin
+      : rendererUrl.protocol === 'quizzer:' && rendererUrl.hostname === 'app';
+  } catch { return false; }
+};
+
+const registerValidatedIpc = () => {
+  ipcMain.handle('plugins:select-directory', async event => {
+    if (!isTrustedRenderer(event)) throw new Error('Untrusted renderer');
+    const result = await dialog.showOpenDialog(window, {
+      title: 'Select a Quizzer plugin directory',
+      properties: ['openDirectory'],
+    });
+    return result.canceled ? undefined : result.filePaths[0];
+  });
 };
 
 const startService = async () => {
@@ -124,6 +144,7 @@ const createTray = () => {
 app.whenReady().then(async () => {
   await startService();
   if (!developmentUrl) void registerApplicationProtocol();
+  registerValidatedIpc();
   createWindow();
   createTray();
 }).catch(error => {
