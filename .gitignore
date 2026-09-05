@@ -12,6 +12,7 @@ node_modules
 .quizzer-data
 dist
 dist-ssr
+out
 *.local
 .env
 .env.*

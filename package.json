@@ -1,17 +1,25 @@
 {
   "name": "quizzer",
+  "productName": "Quizzer",
+  "description": "Local-first document-to-quiz desktop application and CLI.",
+  "author": "Quizzer contributors",
+  "license": "Apache-2.0",
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "main": "desktop/main.mjs",
   "scripts": {
     "dev": "node scripts/dev.mjs",
+    "dev:desktop": "node scripts/desktop-dev.mjs",
     "tailscale": "node scripts/tailscale.mjs",
     "dev:web": "vite",
     "service": "node server.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test": "node --test test/*.test.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "package:desktop": "npm run build && node scripts/forge.mjs package",
+    "make:desktop": "npm run build && node scripts/forge.mjs make"
   },
   "dependencies": {
     "@codemirror/lang-json": "^6.0.2",
@@ -34,10 +42,16 @@
     "uuid": "^11.1.0"
   },
   "devDependencies": {
+    "@electron-forge/cli": "^7.11.2",
+    "@electron-forge/maker-deb": "^7.11.2",
+    "@electron-forge/maker-rpm": "^7.11.2",
+    "@electron-forge/maker-squirrel": "^7.11.2",
+    "@electron-forge/maker-zip": "^7.11.2",
     "@eslint/js": "^9.29.0",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.5.2",
+    "electron": "^44.2.0",
     "eslint": "^9.29.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",

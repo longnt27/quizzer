@@ -1,0 +1,129 @@
+import { app, BrowserWindow, Menu, Tray, nativeImage, net, protocol, shell, utilityProcess } from 'electron';
+import { existsSync } from 'node:fs';
+import { dirname, extname, join, normalize, sep } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+protocol.registerSchemesAsPrivileged([{ scheme: 'quizzer', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
+
+if (process.env.QUIZZER_USER_DATA_DIR) app.setPath('userData', process.env.QUIZZER_USER_DATA_DIR);
+
+const sourceDirectory = dirname(fileURLToPath(import.meta.url));
+const projectDirectory = join(sourceDirectory, '..');
+const rendererDirectory = join(projectDirectory, 'dist');
+const developmentUrl = process.env.QUIZZER_RENDERER_URL;
+let service;
+let window;
+let tray;
+let quitting = false;
+
+const isAllowedExternalUrl = value => {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.username && !url.password;
+  } catch { return false; }
+};
+
+const startService = () => {
+  const userData = app.getPath('userData');
+  service = utilityProcess.fork(join(projectDirectory, 'server.mjs'), [], {
+    cwd: userData,
+    env: {
+      ...process.env,
+      QUIZZER_APP_DATA_DIR: userData,
+      QUIZZER_DATABASE_PATH: join(userData, 'data', 'quizzer.sqlite'),
+      QUIZZER_RESOURCE_DIR: app.isPackaged ? process.resourcesPath : projectDirectory,
+      QUIZZER_OCR_SCRIPT: app.isPackaged
+        ? join(process.resourcesPath, 'ocr_image.py')
+        : join(projectDirectory, 'scripts', 'ocr_image.py'),
+      QUIZZER_SERVICE_PORT: '8787',
+    },
+    stdio: 'inherit',
+    serviceName: 'Quizzer local service',
+  });
+  service.on('spawn', () => process.stdout.write('Quizzer local service started\n'));
+  service.on('exit', code => {
+    if (!quitting && code !== 0) process.stderr.write(`Quizzer local service stopped (${code})\n`);
+  });
+};
+
+const registerApplicationProtocol = () => protocol.handle('quizzer', request => {
+  const url = new URL(request.url);
+  if (url.hostname !== 'app') return new Response('Not found', { status: 404 });
+  if (url.pathname.startsWith('/api/')) {
+    return net.fetch(`http://127.0.0.1:8787${url.pathname}${url.search}`, {
+      method: request.method,
+      headers: request.headers,
+      body: request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body,
+      duplex: 'half',
+    });
+  }
+
+  let relativePath;
+  try { relativePath = decodeURIComponent(url.pathname === '/' ? 'index.html' : url.pathname.slice(1)); }
+  catch { return new Response('Invalid path', { status: 400 }); }
+  if (relativePath.includes('\0') || relativePath.includes('\\')) return new Response('Invalid path', { status: 400 });
+  const requestedPath = normalize(join(rendererDirectory, relativePath));
+  if (!requestedPath.startsWith(`${rendererDirectory}${sep}`) && requestedPath !== rendererDirectory) return new Response('Not found', { status: 404 });
+  const filePath = existsSync(requestedPath) && extname(requestedPath) ? requestedPath : join(rendererDirectory, 'index.html');
+  return net.fetch(pathToFileURL(filePath).toString());
+});
+
+const createWindow = () => {
+  window = new BrowserWindow({
+    title: 'Quizzer',
+    width: 1360,
+    height: 900,
+    minWidth: 900,
+    minHeight: 620,
+    backgroundColor: '#101214',
+    show: false,
+    webPreferences: {
+      preload: join(sourceDirectory, 'preload.mjs'),
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+    },
+  });
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    if (isAllowedExternalUrl(url)) void shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  window.webContents.on('will-navigate', (event, url) => {
+    const allowedOrigin = developmentUrl ? new URL(developmentUrl).origin : 'quizzer://app';
+    if (new URL(url).origin !== allowedOrigin) event.preventDefault();
+  });
+  window.on('close', event => {
+    if (quitting) return;
+    event.preventDefault();
+    window?.hide();
+  });
+  window.once('ready-to-show', () => window?.show());
+  void window.loadURL(developmentUrl || 'quizzer://app/');
+};
+
+const createTray = () => {
+  const icon = nativeImage.createFromPath(join(projectDirectory, 'public', 'quizzer.svg')).resize({ width: 18, height: 18 });
+  tray = new Tray(icon);
+  tray.setToolTip('Quizzer');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Show Quizzer', click: () => { window?.show(); window?.focus(); } },
+    { type: 'separator' },
+    { label: 'Quit Quizzer', click: () => { quitting = true; app.quit(); } },
+  ]));
+  tray.on('click', () => { window?.show(); window?.focus(); });
+};
+
+app.whenReady().then(() => {
+  startService();
+  if (!developmentUrl) void registerApplicationProtocol();
+  createWindow();
+  createTray();
+});
+
+app.on('activate', () => window ? window.show() : createWindow());
+app.on('before-quit', () => { quitting = true; service?.kill(); });
+app.on('window-all-closed', () => {
+  // The renderer currently owns active generation, so it remains alive in the tray.
+});

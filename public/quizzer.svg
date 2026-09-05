@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Quizzer">
+  <rect width="64" height="64" rx="16" fill="#0c172b"/>
+  <path d="M18 15h28a5 5 0 0 1 5 5v21a5 5 0 0 1-5 5H34l-9 7v-7h-7a5 5 0 0 1-5-5V20a5 5 0 0 1 5-5Z" fill="none" stroke="#57d2dc" stroke-width="4" stroke-linejoin="round"/>
+  <path d="m25 30 5 5 10-11" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

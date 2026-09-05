@@ -9,11 +9,13 @@ import { detectHardwareCapabilities } from './server/hardware-profile.mjs';
 const port = Number(process.env.QUIZZER_SERVICE_PORT || 8787);
 const maxBodyBytes = 25 * 1024 * 1024;
 const maxStorageBodyBytes = 250 * 1024 * 1024;
-const managedMarkerDirectory = join(process.cwd(), '.quizzer-tools', 'marker');
+const appDataDirectory = process.env.QUIZZER_APP_DATA_DIR || process.cwd();
+const resourceDirectory = process.env.QUIZZER_RESOURCE_DIR || process.cwd();
+const managedMarkerDirectory = join(appDataDirectory, '.quizzer-tools', 'marker');
 const managedMarkerExecutable = join(managedMarkerDirectory, process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'marker_single.exe' : 'marker_single');
-const managedOcrDirectory = join(process.cwd(), '.quizzer-tools', 'ocr');
+const managedOcrDirectory = join(appDataDirectory, '.quizzer-tools', 'ocr');
 const managedOcrPython = join(managedOcrDirectory, process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'python.exe' : 'python');
-const ocrScript = join(process.cwd(), 'scripts', 'ocr_image.py');
+const ocrScript = process.env.QUIZZER_OCR_SCRIPT || join(resourceDirectory, 'scripts', 'ocr_image.py');
 const windowsOllamaExecutable = process.env.LOCALAPPDATA
   ? join(process.env.LOCALAPPDATA, 'Programs', 'Ollama', 'ollama.exe')
   : 'ollama.exe';
@@ -699,7 +701,7 @@ createServer(async (request, response) => {
     return send(response, 200, { ok: true, storage: storageInfo(), providers: Object.fromEntries(Object.keys(providerRunners).map(provider => [provider, true])) });
   }
   if (request.method === 'GET' && request.url === '/api/system/capabilities') {
-    return send(response, 200, detectHardwareCapabilities(process.cwd()));
+    return send(response, 200, detectHardwareCapabilities(appDataDirectory));
   }
   if (request.method === 'POST' && request.url === '/api/storage/sync') {
     try { return send(response, 200, syncStorage(await readJson(request, maxStorageBodyBytes))); }
