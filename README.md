@@ -4,6 +4,10 @@ Quizzer is a local-first study application that turns a reusable document librar
 
 > **Project status:** active development. Local data and the generation pipeline are usable, but this project has not yet published a stable release or completed a security audit.
 
+The Quizzer 1.0 foundation now includes a resumable first-run walkthrough, Simple and Advanced creation modes, hardware-aware Lite/Balanced/Max recommendations, per-test learning instructions, source-span provenance, and a separately deployable product site. Existing libraries bypass forced onboarding and receive a dismissible upgrade summary instead.
+
+Production installers remain a release gate: their stable URLs become active only after CI has produced, signed, notarized, and published every artifact in the versioned [release manifest schema](release/release-manifest.schema.json). Until then, download actions fall back to GitHub Releases rather than guessing an artifact URL.
+
 ## Screenshots
 
 | Document library | Quiz creation |
