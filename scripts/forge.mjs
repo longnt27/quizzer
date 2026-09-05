@@ -12,7 +12,7 @@ const environment = { ...process.env };
 delete environment.CXXFLAGS;
 
 const forgeCli = fileURLToPath(new URL('../node_modules/@electron-forge/cli/dist/electron-forge.js', import.meta.url));
-const child = spawn(process.execPath, [forgeCli, command], {
+const child = spawn(process.execPath, [forgeCli, command, ...process.argv.slice(3)], {
   env: environment,
   stdio: 'inherit',
 });

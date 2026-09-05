@@ -24,11 +24,23 @@ export default {
       appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD,
       teamId: process.env.APPLE_TEAM_ID,
     } : undefined,
+    windowsSign: process.env.WINDOWS_CERTIFICATE_FILE ? {
+      certificateFile: process.env.WINDOWS_CERTIFICATE_FILE,
+      certificatePassword: process.env.WINDOWS_CERTIFICATE_PASSWORD,
+      description: 'Quizzer',
+    } : undefined,
   },
   rebuildConfig: {},
   makers: [
-    new MakerSquirrel({ name: 'quizzer', setupIcon: 'assets/icons/quizzer.ico' }),
-    new MakerZIP({}, ['darwin']),
+    new MakerSquirrel({
+      name: 'quizzer', setupIcon: 'assets/icons/quizzer.ico',
+      windowsSign: process.env.WINDOWS_CERTIFICATE_FILE ? {
+        certificateFile: process.env.WINDOWS_CERTIFICATE_FILE,
+        certificatePassword: process.env.WINDOWS_CERTIFICATE_PASSWORD,
+        description: 'Quizzer',
+      } : undefined,
+    }),
+    new MakerZIP({}, ['darwin', 'linux']),
     new MakerDeb({ options: { name: 'quizzer', productName: 'Quizzer', icon: 'assets/icons/quizzer.png', categories: ['Education'] } }),
     new MakerRpm({ options: { name: 'quizzer', productName: 'Quizzer', icon: 'assets/icons/quizzer.png', categories: ['Education'] } }),
   ],
