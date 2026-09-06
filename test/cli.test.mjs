@@ -198,8 +198,16 @@ test('imports, deduplicates, indexes, and lists a real document', async () => {
   assert.equal(retrieval.method, 'hybrid-rrf');
   assert.equal(retrieval.dense.status, 'ready');
   assert.equal(retrieval.reranking.component, 'builtin');
+  assert.equal(retrieval.planningTrace.mode, 'multi-query');
+  assert.ok(retrieval.planningTrace.variants.length >= 1);
+  assert.equal(retrieval.planningTrace.fallback, false);
   assert.equal(retrieval.results[0].documentId, first.document.id);
   assert.match(retrieval.results[0].sourceSpanId, new RegExp(`^${first.document.id}:span:`));
+  const humanRetrievalCommand = invocation(['retrieve', 'Terraform state', '--document', first.document.id]);
+  const humanRetrieval = await execute(humanRetrievalCommand.command, humanRetrievalCommand.arguments, {
+    cwd: new URL('..', import.meta.url), env: environment,
+  });
+  assert.match(humanRetrieval.stdout, /Query planning: multi-query · \d+ bounded variant/);
   const reextracted = await cli('documents', 'reextract', first.document.id);
   assert.equal(reextracted.document.parserVersion, 'utf8-1');
   assert.equal(reextracted.document.extractionHistory.length, 1);

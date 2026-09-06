@@ -83,6 +83,7 @@ Quizzer includes an in-app signed update workflow designed for safety and defens
 - Server-side SQLite storage with an offline IndexedDB cache
 - Original-file previews and document-scoped RAG chats with Markdown answers and source references
 - Always-on SQLite FTS5/BM25 retrieval with optional local LanceDB vector search and reciprocal-rank fusion
+- Hardware-aware, bounded query condensation/decomposition with optional explicitly local HyDE planning
 
 ## How it works
 
@@ -109,6 +110,12 @@ PDF / Markdown / text
 ```
 
 The React application never starts shell commands directly. It calls a loopback-only Node service, which invokes provider adapters, owns the SQLite library, and keeps API credentials outside browser bundles. The desktop process waits for that service before opening and restarts it with capped backoff after an unexpected exit. Each browser retains an IndexedDB cache so work remains usable during a short outage and synchronizes when the server returns.
+
+### Bounded query planning
+
+Retrieval planning is disabled in Lite, uses deterministic English/Vietnamese multi-query decomposition in Balanced, and permits HyDE in Max. Every query and hypothetical passage is normalized and length-bounded, and the number of variants is capped before sparse or dense work begins. HyDE can run only through an explicitly injected local callback; Quizzer never selects a remote or paid generation provider for retrieval planning. If that callback is absent, empty, or fails, retrieval records the reason and safely continues with deterministic multi-query search.
+
+All variant rankings are fused by stable source-span ID before reranking and maximal-marginal-relevance diversity. Quizzer then applies the requested result and token limits once and expands parent/neighbor context only for the selected spans. Retrieval preview and `quizzer retrieve` expose the selected planning mode, bounded variants, and any safe fallback.
 
 ## Source development requirements
 

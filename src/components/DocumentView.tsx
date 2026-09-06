@@ -31,6 +31,14 @@ interface RetrievalPreview {
   requestedMethod?: 'hybrid-rrf';
   dense?: { status: 'ready' | 'unavailable'; embeddingModel: string; candidates?: number; error?: string };
   indexingError?: string;
+  planningTrace?: {
+    mode: 'none' | 'multi-query' | 'hyde';
+    condensedQuery: string;
+    variants: string[];
+    fallback: boolean;
+    hyde: boolean;
+    reason?: string;
+  };
   reranking?: { status: 'disabled' | 'ready' | 'fallback'; component?: string; requestedComponent?: string; diversity?: string; issue?: string };
   confidence: 'low' | 'medium' | 'high';
   correctivePass: boolean;
@@ -234,7 +242,8 @@ export default function DocumentView({ documentId }: Props) {
           {retrieval && <Space direction="vertical" size="middle" style={{ width: '100%', marginTop: 16 }}>
             <Alert type={retrieval.confidence === 'low' ? 'warning' : 'info'} showIcon
               message={`${retrieval.confidence[0].toUpperCase() + retrieval.confidence.slice(1)} retrieval confidence`}
-              description={`${retrieval.results.length} passage${retrieval.results.length === 1 ? '' : 's'} · ${retrieval.method === 'hybrid-rrf' ? 'hybrid sparse + dense ranking' : 'sparse BM25 ranking'}${retrieval.reranking?.status !== 'disabled' ? ` · reranked by ${retrieval.reranking?.component}` : ''} · approximately ${retrieval.estimatedContextTokens.toLocaleString()} context tokens${retrieval.correctivePass ? ' · one corrective retrieval pass used' : ''}`} />
+              description={`${retrieval.results.length} passage${retrieval.results.length === 1 ? '' : 's'} · ${retrieval.method === 'hybrid-rrf' ? 'hybrid sparse + dense ranking' : 'sparse BM25 ranking'}${retrieval.planningTrace && retrieval.planningTrace.mode !== 'none' ? ` · ${retrieval.planningTrace.mode} plan with ${retrieval.planningTrace.variants.length} bounded variants` : ''}${retrieval.reranking?.status !== 'disabled' ? ` · reranked by ${retrieval.reranking?.component}` : ''} · approximately ${retrieval.estimatedContextTokens.toLocaleString()} context tokens${retrieval.correctivePass ? ' · one corrective retrieval pass used' : ''}`} />
+            {retrieval.planningTrace?.fallback && <Alert type="info" showIcon message="Query planning used a safe fallback" description={retrieval.planningTrace.reason} />}
             {retrieval.dense?.status === 'unavailable' && <Alert type="warning" showIcon message="Dense retrieval unavailable; showing sparse results" description={retrieval.dense.error || retrieval.indexingError} />}
             {retrieval.reranking?.status === 'fallback' && <Alert type="warning" showIcon message="Configured reranker unavailable; using built-in local reranking" description={retrieval.reranking.issue} />}
             {retrieval.refusal && <Alert type="warning" showIcon message={retrieval.refusal} />}

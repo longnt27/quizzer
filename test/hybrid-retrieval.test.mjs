@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildHybridRetrieval, reciprocalRankFusion } from '../server/hybrid-retrieval.mjs';
+import { buildHybridRetrieval, fuseHybridRankings, reciprocalRankFusion } from '../server/hybrid-retrieval.mjs';
 
 const sparseResult = (id, content = id.repeat(8)) => ({
   sourceSpanId: id, documentId: 'doc', documentName: 'Guide', documentVersionHash: 'version', chunkIndex: 0,
@@ -42,6 +42,25 @@ test('builds token-budgeted hybrid results with stable citations and channel met
   assert.ok(preview.results.some(result => result.sourceSpanId === 'dense-only'));
   assert.ok(!preview.results.some(result => result.sourceSpanId === 'noise'));
   assert.ok(!preview.results.some(result => result.sourceSpanId === 'sparse-only'));
+});
+
+test('fuses multiple query variants without duplicating stable source spans', () => {
+  const fused = fuseHybridRankings({
+    sparseRankings: [
+      [sparseResult('shared'), sparseResult('sparse-one')],
+      [sparseResult('sparse-two'), sparseResult('shared')],
+    ],
+    denseRankings: [
+      [denseResult('shared', 0.9), denseResult('dense-one', 0.8), denseResult('shared', 0.7)],
+      [denseResult('dense-two', 0.9)],
+    ],
+  });
+  assert.equal(fused.filter(result => result.sourceSpanId === 'shared').length, 1);
+  assert.equal(fused[0].sourceSpanId, 'shared');
+  assert.deepEqual(fused[0].retrievalChannels, ['sparse', 'dense']);
+  assert.equal(new Set(fused.map(result => result.sourceSpanId)).size, fused.length);
+  assert.throws(() => fuseHybridRankings({ sparseRankings: [], denseRankings: [] }), /sparse retrieval ranking/);
+  assert.throws(() => fuseHybridRankings({ sparseRankings: [[]], denseRankings: [{}] }), /rankings must be arrays/);
 });
 
 test('keeps a clear refusal when neither channel has sufficient evidence', () => {

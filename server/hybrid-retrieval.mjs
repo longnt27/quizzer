@@ -29,32 +29,47 @@ export const reciprocalRankFusion = (rankings, { k = RRF_K } = {}) => {
     || left.sourceSpanId.localeCompare(right.sourceSpanId));
 };
 
-const hybridResult = candidate => {
-  const [sparse, dense] = candidate.records;
-  const source = sparse ?? dense;
-  return {
-    ...source,
-    content: sparse?.content ?? dense.excerpt,
-    excerpt: sparse?.excerpt ?? dense.excerpt.slice(0, 480),
-    parentContent: sparse?.parentContent ?? dense.excerpt,
-    neighbors: sparse?.neighbors ?? [],
-    bm25: sparse?.bm25,
-    denseScore: dense?.score,
-    score: Number(candidate.score.toFixed(6)),
-    retrievalChannels: candidate.channels.map(channel => channel === 0 ? 'sparse' : 'dense'),
-  };
+export const fuseHybridRankings = ({ sparseRankings, denseRankings } = {}) => {
+  if (!Array.isArray(sparseRankings) || !sparseRankings.length || sparseRankings.some(ranking => !Array.isArray(ranking))) {
+    throw new Error('At least one sparse retrieval ranking is required');
+  }
+  if (!Array.isArray(denseRankings) || denseRankings.some(ranking => !Array.isArray(ranking))) {
+    throw new Error('Dense retrieval rankings must be arrays');
+  }
+  const eligibleDense = denseRankings.map(ranking => ranking.filter(
+    result => Number.isFinite(result?.score) && result.score >= 0.35,
+  ));
+  return reciprocalRankFusion([...sparseRankings, ...eligibleDense]).map(candidate => {
+    const sparseMatch = candidate.records.slice(0, sparseRankings.length).find(Boolean);
+    const denseMatch = candidate.records.slice(sparseRankings.length).find(Boolean);
+    const source = sparseMatch ?? denseMatch;
+    const content = sparseMatch?.content ?? denseMatch?.excerpt ?? '';
+    return {
+      ...source,
+      content,
+      excerpt: sparseMatch?.excerpt ?? content.slice(0, 480),
+      parentContent: sparseMatch?.parentContent ?? content,
+      neighbors: sparseMatch?.neighbors ?? [],
+      bm25: sparseMatch?.bm25,
+      denseScore: denseMatch?.score,
+      score: Number(candidate.score.toFixed(6)),
+      retrievalChannels: [...new Set(candidate.channels.map(
+        channel => channel < sparseRankings.length ? 'sparse' : 'dense',
+      ))],
+    };
+  });
 };
 
 export const buildHybridRetrieval = ({
-  sparse, denseResults, limit = 10, contextBudget = 4096,
+  sparse, denseResults, allSparseResults = [], allDenseResults = [], limit = 10, contextBudget = 4096, planningTrace,
 } = {}) => {
-  if (!sparse || !Array.isArray(sparse.results) || !Array.isArray(denseResults)) {
-    throw new Error('Sparse and dense retrieval results are required');
-  }
+  if (!sparse || !Array.isArray(sparse.results)) throw new Error('Sparse retrieval results are required');
   const boundedLimit = boundedInteger(limit, 10, 1, 50);
   const boundedBudget = boundedInteger(contextBudget, 4096, 256, 65_536);
-  const eligibleDense = denseResults.filter(result => Number.isFinite(result?.score) && result.score >= 0.35);
-  const fused = reciprocalRankFusion([sparse.results, eligibleDense]).map(hybridResult);
+  const sparseRankings = allSparseResults.length ? allSparseResults : [sparse.results];
+  const denseRankings = allDenseResults.length ? allDenseResults : [denseResults ?? []];
+  const fused = fuseHybridRankings({ sparseRankings, denseRankings });
+
   const results = [];
   let estimatedContextTokens = 0;
   for (const result of fused) {
@@ -79,7 +94,7 @@ export const buildHybridRetrieval = ({
     confidence,
     estimatedContextTokens,
     results,
+    ...(planningTrace ? { planningTrace } : {}),
     ...(confidence === 'low' ? { refusal } : {}),
   };
 };
-

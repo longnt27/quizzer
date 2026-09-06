@@ -987,6 +987,21 @@ components:
         results: { type: array, items: { $ref: '#/components/schemas/RetrievalResult' } }
         refusal: { type: string }
         indexingError: { type: string }
+        planningTrace:
+          type: object
+          additionalProperties: false
+          required: [mode, condensedQuery, variants, fallback, hyde]
+          properties:
+            mode: { type: string, enum: [none, multi-query, hyde] }
+            condensedQuery: { type: string, maxLength: 256 }
+            variants:
+              type: array
+              minItems: 1
+              maxItems: 5
+              items: { type: string, maxLength: 256 }
+            fallback: { type: boolean }
+            hyde: { type: boolean }
+            reason: { type: string, maxLength: 256 }
         reranking:
           type: object
           required: [status]
