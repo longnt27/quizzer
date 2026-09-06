@@ -30,7 +30,8 @@ test('release publishes separate application and landing SBOMs', async () => {
   const workflow = await readFile(workflowPath, 'utf8');
 
   assert.match(workflow, /name: Generate CycloneDX SBOM/);
-  assert.match(workflow, /name: Generate landing CycloneDX SBOM/);
+  assert.match(workflow, /name: Generate landing CycloneDX SBOM\n\s+working-directory: landing\n\s+run: npm sbom --sbom-format cyclonedx > landing-sbom\.cdx\.json/);
+  assert.match(workflow, /name: landing-metadata\n\s+path: landing\/landing-sbom\.cdx\.json/);
   assert.match(workflow, /landing-metadata\/landing-sbom\.cdx\.json/);
   assert.match(workflow, /release-bundle\/landing-sbom\.cdx\.json/);
   assert.match(workflow, /gh release create[^\n]+release-bundle\/landing-sbom\.cdx\.json/);
