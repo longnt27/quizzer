@@ -42,11 +42,39 @@ const fulfillGeneration = async (route: Route) => {
 };
 
 test('resumes real onboarding and finishes through durable quiz practice', async ({ page }) => {
+  let simulateQuota = false;
+  const quotaRequests: Array<{ provider: string; type: string; count: number }> = [];
   await page.route('**/api/integrations', route => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ codex: { installed: true, connected: true }, marker: { installed: false, job: { state: 'idle', message: '' } } }),
+    body: JSON.stringify({
+      codex: { installed: true, connected: true },
+      'claude-agent': { installed: true, connected: true },
+      marker: { installed: false, job: { state: 'idle', message: '' } },
+    }),
   }));
-  await page.route('**/api/generate', fulfillGeneration);
+  await page.route('**/api/generate', async route => {
+    if (simulateQuota) {
+      const body = route.request().postDataJSON() as {
+        provider?: string;
+        prompt?: string;
+        schema?: { properties?: { questions?: { items?: { properties?: { type?: { enum?: string[] } } } } } };
+      };
+      quotaRequests.push({
+        provider: body.provider ?? '',
+        type: body.schema?.properties?.questions?.items?.properties?.type?.enum?.[0] ?? '',
+        count: Number(/Create exactly (\d+) new/.exec(body.prompt ?? '')?.[1] ?? 0),
+      });
+      if (quotaRequests.length === 2) {
+        await route.fulfill({
+          status: 429,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'Quota exhausted for this route', code: 'provider_limit' }),
+        });
+        return;
+      }
+    }
+    await fulfillGeneration(route);
+  });
   await page.goto('/');
 
   await expect(page.getByRole('heading', { name: 'Learn from your own material' })).toBeVisible();
@@ -124,4 +152,32 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await page.getByRole('button', { name: 'Home' }).click();
   await expect(page.getByRole('heading', { name: 'Welcome to Quizzer' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Resume setup' })).toHaveCount(0);
+
+  simulateQuota = true;
+  await page.getByRole('button', { name: 'Create test' }).last().click();
+  await page.locator('.ant-modal input.ant-input').first().fill('Quota recovery quiz');
+  await page.getByText('coordination', { exact: true }).click();
+  await page.getByText('Balanced learning · 20 questions').click();
+  await page.getByText('Quick review · 10 questions').click();
+  await page.getByRole('button', { name: 'Queue combined test' }).click();
+
+  await page.getByRole('button', { name: /need attention/ }).click();
+  const recoveryJob = page.locator('.generation-job').filter({ hasText: 'Quota recovery quiz' });
+  await expect(recoveryJob.getByText('paused', { exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(recoveryJob.getByText('8/10', { exact: true })).toBeVisible();
+  await expect(recoveryJob.getByText('Quota exhausted for this route')).toBeVisible();
+  await expect(recoveryJob.getByText('Codex – Agent · failed · 8 saved')).toBeVisible();
+  await expect(recoveryJob.locator('.ant-select-selection-item')).toHaveText('Claude – Agent');
+  await recoveryJob.getByRole('button', { name: 'Continue' }).click();
+
+  await expect(recoveryJob.getByText('completed', { exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(recoveryJob.getByText('10/10', { exact: true })).toBeVisible();
+  await expect(recoveryJob.getByText('Claude – Agent · manually selected · 8 saved')).toBeVisible();
+  await expect(recoveryJob.getByText('Claude – Agent · completed · 10 saved')).toBeVisible();
+  expect(quotaRequests).toEqual([
+    { provider: 'codex', type: 'multiple-choice', count: 8 },
+    { provider: 'codex', type: 'fill-blank', count: 1 },
+    { provider: 'claude-agent', type: 'fill-blank', count: 1 },
+    { provider: 'claude-agent', type: 'reasoning', count: 1 },
+  ]);
 });
