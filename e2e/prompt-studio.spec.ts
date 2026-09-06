@@ -1,60 +1,61 @@
 import { test, expect } from '@playwright/test';
-import { bypassOnboarding } from './helpers';
-import * as fs from 'fs';
+import { dismissOnboarding, setInterfaceMode } from './helpers';
+import { readFileSync } from 'node:fs';
 
 test('Prompt Studio clone/edit/validate plus import/export', async ({ page }) => {
-  await bypassOnboarding(page);
+  await dismissOnboarding(page);
 
-  // Switch to Advanced mode to reveal Prompt Studio
-  await page.getByText('Switch to Advanced mode').click();
+  await setInterfaceMode(page, 'advanced');
   await page.getByRole('button', { name: 'Prompt Studio' }).click();
 
-  await expect(page.getByText('Prompt Studio')).toBeVisible();
+  const studio = page.locator('.ant-modal-content').filter({ hasText: 'Prompt Studio' });
+  await expect(studio.getByText('Prompt Studio', { exact: true })).toBeVisible();
 
-  // Initially built-in is read-only
   await expect(page.getByRole('button', { name: 'Save new version' })).toBeHidden();
-
-  // Clone selected
   await page.getByRole('button', { name: 'Clone selected' }).click();
-  
-  // Now it's editable
+  await expect(page.getByText('Editable prompt profile created')).toBeVisible();
+  await expect(studio.getByRole('button', { name: 'Quizzer balanced copy v1' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save new version' })).toBeVisible();
 
-  // Edit fields
-  await page.getByLabel('Prompt profile name').fill('My Custom Prompt');
+  const profileName = page.getByLabel('Prompt profile name');
+  await expect(profileName).toHaveValue('Quizzer balanced copy');
+  await profileName.fill('My Custom Prompt');
   await page.getByLabel('Prompt profile description').fill('For testing');
-  
-  // Validation: edit template to be invalid (empty or bad placeholder if validated?)
-  // Let's edit the Reasoning template
-  await page.getByRole('tab', { name: 'Reasoning' }).click();
-  await page.getByLabel('Reasoning prompt template').fill('Invalid template without placeholders');
-  
-  // It shouldn't let you save if there's an error (hasErrors is true)
-  // Let's see if there's an alert
-  // We'll just verify saving
-  await page.getByRole('tab', { name: 'Multiple Choice' }).click();
-  await page.getByLabel('Multiple Choice prompt template').fill('Test template with {{statement}}');
+
+  const generationTemplate = page.getByLabel('Generation prompt template');
+  const originalTemplate = await generationTemplate.inputValue();
+  await generationTemplate.fill('Invalid template without required placeholders');
+  await expect(page.getByText('Generation template needs attention')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save new version' })).toBeDisabled();
+
+  await generationTemplate.fill(`${originalTemplate}\nEmphasize concrete trade-offs.`);
+  await expect(page.getByText('Generation template needs attention')).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Save new version' })).toBeEnabled();
 
   await page.getByRole('button', { name: 'Save new version' }).click();
-  await expect(page.getByText('My Custom Prompt saved as version')).toBeVisible();
+  await expect(page.getByText('My Custom Prompt saved as version 2')).toBeVisible();
 
-  // Export profile
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export' }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(/\.quizzer-prompt\.json$/);
   const downloadPath = await download.path();
-  const content = fs.readFileSync(downloadPath, 'utf8');
+  expect(downloadPath).not.toBeNull();
+  const content = readFileSync(downloadPath!, 'utf8');
   expect(content).toContain('My Custom Prompt');
+  expect(content).toContain('Emphasize concrete trade-offs.');
 
-  // Import profile
-  await page.getByRole('button', { name: 'Delete' }).click();
+  const deleteProfile = studio.getByRole('button', { name: 'Delete' });
+  await expect(deleteProfile).toBeVisible();
+  await deleteProfile.click();
   await page.getByRole('button', { name: 'Delete profile' }).click();
+  await expect(page.getByText('Prompt profile deleted')).toBeVisible();
 
   const fileChooserPromise = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Import JSON' }).click();
   const fileChooser = await fileChooserPromise;
-  await fileChooser.setFiles(downloadPath);
+  await fileChooser.setFiles(downloadPath!);
 
   await expect(page.getByText('My Custom Prompt imported')).toBeVisible();
+  await expect(page.getByLabel('Prompt profile name')).toHaveValue('My Custom Prompt');
 });

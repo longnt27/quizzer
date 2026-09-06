@@ -1,31 +1,37 @@
 import { test, expect } from '@playwright/test';
-import { bypassOnboarding } from './helpers';
+import { dismissOnboarding, setInterfaceMode } from './helpers';
 
 test('immediate reversible Simple/Advanced disclosure with stored data retained', async ({ page }) => {
-  await bypassOnboarding(page);
+  await dismissOnboarding(page);
+  await setInterfaceMode(page, 'simple');
 
-  // Assert starting in Simple mode
-  await expect(page.getByText('Switch to Advanced mode')).toBeVisible();
+  const advancedToggle = page.getByRole('button', { name: 'Switch to Advanced mode' });
+  await expect(advancedToggle).toBeVisible();
+  await advancedToggle.click();
 
-  // Test that Advanced disclosure appears immediately
-  await page.getByText('Switch to Advanced mode').click();
-  await expect(page.getByText('Switch to Simple mode')).toBeVisible();
-  
-  // Verify Advanced mode brings new capabilities (Prompt Studio)
-  await expect(page.getByRole('button', { name: 'Prompt Studio' })).toBeVisible();
+  const simpleToggle = page.getByRole('button', { name: 'Switch to Simple mode' });
+  const studioButton = page.getByRole('button', { name: 'Prompt Studio' });
+  await expect(simpleToggle).toBeVisible();
+  await expect(studioButton).toBeVisible();
 
-  // Reload page to verify state is retained
+  await studioButton.click();
+  await page.getByRole('button', { name: 'Clone selected' }).click();
+  await page.getByLabel('Prompt profile name').fill('Mode-safe profile');
+  await page.getByRole('button', { name: 'Save new version' }).click();
+  await expect(page.getByText('Mode-safe profile saved as version 2')).toBeVisible();
+  await page.locator('.ant-modal-content').filter({ hasText: 'Prompt Studio' })
+    .getByRole('button', { name: 'Close', exact: true }).last().click();
+
+  await simpleToggle.click();
+  await expect(advancedToggle).toBeVisible();
+  await expect(studioButton).toBeHidden();
+
   await page.reload();
-  await expect(page.getByText('Switch to Simple mode')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Prompt Studio' })).toBeVisible();
+  await dismissOnboarding(page, false);
+  await expect(advancedToggle).toBeVisible();
+  await expect(studioButton).toBeHidden();
 
-  // Reversible
-  await page.getByText('Switch to Simple mode').click();
-  await expect(page.getByText('Switch to Advanced mode')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Prompt Studio' })).toBeHidden();
-
-  // Reload page to verify state is retained in Simple mode
-  await page.reload();
-  await expect(page.getByText('Switch to Advanced mode')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Prompt Studio' })).toBeHidden();
+  await advancedToggle.click();
+  await studioButton.click();
+  await expect(page.getByRole('button', { name: 'Mode-safe profile' })).toBeVisible();
 });

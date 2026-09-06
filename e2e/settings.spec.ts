@@ -1,31 +1,30 @@
 import { test, expect } from '@playwright/test';
-import { bypassOnboarding } from './helpers';
+import { dismissOnboarding, setInterfaceMode } from './helpers';
 
 test('Settings search/reset and keyboard accessibility', async ({ page }) => {
-  await bypassOnboarding(page);
+  await dismissOnboarding(page);
 
-  // Keyboard accessibility: Open settings with shortcut
-  await page.keyboard.press('Meta+,');
-  await expect(page.getByText('Settings', { exact: true }).first()).toBeVisible();
+  await setInterfaceMode(page, 'advanced');
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+,' : 'Control+,');
+  const dialog = page.locator('.ant-modal-content').filter({ hasText: 'Settings' });
+  await expect(dialog.getByText('Settings', { exact: true })).toBeVisible();
 
-  // Settings search
-  await page.getByPlaceholder('Search settings...').fill('Another');
-  await expect(page.getByText('Another Setting')).toBeVisible();
-  // 'Test Setting' should be filtered out
-  await expect(page.getByText('Test Setting')).toBeHidden();
+  const search = dialog.getByLabel('Search settings');
+  await search.fill('Generation concurrency');
+  const concurrency = dialog.getByRole('spinbutton', { name: 'Generation concurrency' });
+  await expect(concurrency).toBeVisible();
+  await expect(dialog.getByText('Hardware profile', { exact: true })).toBeHidden();
 
-  // Change a setting
-  // Depending on how boolean is rendered, we can click it
-  await page.getByPlaceholder('Search settings...').fill(''); // Clear search
-  
-  // We can't actually change the setting easily without knowing if it's a toggle, but search/reset is what matters
-  
-  // Reset to defaults
-  const resetBtn = page.getByRole('button', { name: 'Reset to defaults' });
-  if (await resetBtn.isVisible()) {
-    await resetBtn.click();
-    await page.getByRole('button', { name: 'Reset' }).click(); // confirm dialog maybe?
-    // Wait for success message
-    await expect(page.getByText('Settings saved')).toBeVisible();
-  }
+  await concurrency.fill('7');
+  await expect(dialog.getByRole('button', { name: 'Save changes' })).toBeEnabled();
+  await dialog.getByRole('button', { name: 'Reset to selected profile' }).click();
+  await expect(concurrency).toHaveValue('1');
+
+  await dialog.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByText('Settings saved')).toBeVisible();
+  await expect(dialog).toBeHidden();
+
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+,' : 'Control+,');
+  await dialog.getByLabel('Search settings').fill('Generation concurrency');
+  await expect(dialog.getByRole('spinbutton', { name: 'Generation concurrency' })).toHaveValue('1');
 });

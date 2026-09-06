@@ -1,26 +1,31 @@
 import { test, expect } from '@playwright/test';
-import { bypassOnboarding } from './helpers';
+import { dismissOnboarding } from './helpers';
 
 test.use({ viewport: { width: 375, height: 667 } });
 
 test('mobile-width workflow', async ({ page }) => {
-  await bypassOnboarding(page);
+  await dismissOnboarding(page);
 
-  // Assert that mobile header is visible
   await expect(page.getByRole('button', { name: 'Open navigation' })).toBeVisible();
-  
-  // Assert sidebar is hidden
-  const sidebar = page.locator('.app-shell > aside'); // desktop sidebar
-  await expect(sidebar).toBeHidden();
+  await expect(page.locator('.desktop-sidebar')).toBeHidden();
 
-  // Open drawer
   await page.getByRole('button', { name: 'Open navigation' }).click();
-  
-  // Now sidebar inside drawer should be visible
-  await expect(page.getByRole('button', { name: 'Settings' }).first()).toBeVisible();
+  const drawer = page.locator('.ant-drawer-content:not(.onboarding-drawer)');
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByRole('button', { name: 'Settings' })).toBeVisible();
 
-  // Try creating a test from mobile
-  await page.getByRole('button', { name: 'Create test' }).first().click();
-  await expect(page.getByText('Create tests from documents')).toBeVisible(); // modal title?
-  // We just verify the modal opens
+  await drawer.getByRole('button', { name: 'Create test' }).click();
+  const dialog = page.locator('.ant-modal-content').filter({ hasText: 'Create tests from documents' });
+  await expect(dialog.getByText('Create tests from documents')).toBeVisible();
+  const bounds = await dialog.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(375);
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+
+  await page.getByRole('button', { name: 'Open navigation' }).click();
+  await drawer.getByRole('tab', { name: 'Documents' }).click();
+  await drawer.getByRole('button', { name: 'Add documents' }).click();
+  const addDocuments = page.locator('.ant-modal-content').filter({ hasText: 'Add documents' });
+  await expect(addDocuments.getByText('Add documents', { exact: true })).toBeVisible();
 });
