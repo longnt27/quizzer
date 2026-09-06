@@ -137,10 +137,27 @@ jobs:
         env:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          EXPECTED_WINDOWS_CERTIFICATE_SHA256: ${{ vars.QUIZZER_WINDOWS_CERTIFICATE_SHA256 }}
         run: |
           if (-not $env:WINDOWS_CERTIFICATE) { throw 'WINDOWS_CERTIFICATE is required' }
           if (-not $env:WINDOWS_CERTIFICATE_PASSWORD) { throw 'WINDOWS_CERTIFICATE_PASSWORD is required' }
+          if ($env:EXPECTED_WINDOWS_CERTIFICATE_SHA256 -notmatch '^[A-Fa-f0-9]{64}$') { throw 'QUIZZER_WINDOWS_CERTIFICATE_SHA256 is required' }
           [IO.File]::WriteAllBytes('certificate.pfx', [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $Certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new(
+            (Resolve-Path 'certificate.pfx').Path,
+            $env:WINDOWS_CERTIFICATE_PASSWORD,
+            [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet
+          )
+          $Hasher = [Security.Cryptography.SHA256]::Create()
+          try {
+            $ActualCertificateSha256 = [BitConverter]::ToString($Hasher.ComputeHash($Certificate.RawData)).Replace('-', '')
+          } finally {
+            $Hasher.Dispose()
+            $Certificate.Dispose()
+          }
+          if ($ActualCertificateSha256 -ne $env:EXPECTED_WINDOWS_CERTIFICATE_SHA256.ToUpperInvariant()) {
+            throw 'QUIZZER_WINDOWS_CERTIFICATE_SHA256 does not match WINDOWS_CERTIFICATE'
+          }
           "WINDOWS_CERTIFICATE_FILE=$((Resolve-Path 'certificate.pfx').Path)" | Out-File -FilePath $env:GITHUB_ENV -Append
           "WINDOWS_CERTIFICATE_PASSWORD=$env:WINDOWS_CERTIFICATE_PASSWORD" | Out-File -FilePath $env:GITHUB_ENV -Append
       - name: Build signed standalone CLI
@@ -199,6 +216,8 @@ jobs:
       - name: Prepare verifying installers
         env:
           QUIZZER_RELEASE_PRIVATE_KEY: ${{ secrets.QUIZZER_RELEASE_PRIVATE_KEY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          QUIZZER_WINDOWS_CERTIFICATE_SHA256: ${{ vars.QUIZZER_WINDOWS_CERTIFICATE_SHA256 }}
         run: npm run release:installers -- --manifest release-bundle/release-manifest.json --output release-bundle
       - name: Attest release artifacts and manifest
         uses: actions/attest@v4

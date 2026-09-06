@@ -2,6 +2,7 @@
 set -eu
 
 release_base_url='__QUIZZER_RELEASE_BASE_URL__'
+expected_apple_team_id='__QUIZZER_APPLE_TEAM_ID__'
 metadata_name='release-manifest.canonical.json'
 signature_name='release-manifest.sig'
 
@@ -105,6 +106,8 @@ if [ "$platform" = macos ]; then
   require_command codesign
   require_command spctl
   codesign --verify --strict "$cli_download" >/dev/null 2>&1 || fail 'Quizzer CLI code signature is invalid'
+  cli_team_id=$(codesign -dv --verbose=4 "$cli_download" 2>&1 | sed -n 's/^TeamIdentifier=//p')
+  [ "$cli_team_id" = "$expected_apple_team_id" ] || fail 'Quizzer CLI was not signed by the expected Apple team'
   spctl --assess --type execute "$cli_download" >/dev/null 2>&1 || fail 'Quizzer CLI is not trusted or notarized by macOS'
 fi
 
@@ -143,6 +146,8 @@ if [ "$platform" = macos ]; then
   desktop_source=$(find "$extract_directory" -type d -name 'Quizzer.app' -prune -print | head -n 1)
   [ -n "$desktop_source" ] || fail 'desktop archive does not contain Quizzer.app'
   codesign --verify --deep --strict "$desktop_source" >/dev/null 2>&1 || fail 'Quizzer.app code signature is invalid'
+  app_team_id=$(codesign -dv --verbose=4 "$desktop_source" 2>&1 | sed -n 's/^TeamIdentifier=//p')
+  [ "$app_team_id" = "$expected_apple_team_id" ] || fail 'Quizzer.app was not signed by the expected Apple team'
   spctl --assess --type execute "$desktop_source" >/dev/null 2>&1 || fail 'Quizzer.app is not trusted or notarized by macOS'
   applications_directory="$HOME/Applications"
   desktop_target="$applications_directory/Quizzer.app"

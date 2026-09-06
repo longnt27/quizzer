@@ -22,7 +22,7 @@ On Windows, run this in PowerShell:
 irm https://github.com/Somethings1/quizzer/releases/latest/download/install.ps1 | iex
 ```
 
-These installers do not require Node.js, Python, or Git. They select the current x64 or arm64 artifacts, verify the canonical Ed25519 release metadata and SHA-256 checksum, require the platform signature on macOS and Windows, install `quizzer` on the user PATH, register the desktop application, and launch onboarding. Existing application directories are retained with a timestamped `.previous-*` name on Unix-like systems for rollback.
+These installers do not require Node.js, Python, or Git. They select the current x64 or arm64 artifacts, verify the canonical Ed25519 release metadata and SHA-256 checksum, require Quizzer's pinned Apple Team ID or Windows signing-certificate SHA-256 before executing a downloaded verifier, install `quizzer` on the user PATH, register the desktop application, and launch onboarding. Existing application directories are retained with a timestamped `.previous-*` name on Unix-like systems for rollback.
 
 ## Screenshots
 

@@ -8,11 +8,16 @@ import { validateReleaseManifest } from '../server/release-manifest.mjs';
 
 const publicKeyPlaceholder = '__QUIZZER_RELEASE_PUBLIC_KEY_PEM__';
 const releaseBaseUrlPlaceholder = '__QUIZZER_RELEASE_BASE_URL__';
+const appleTeamIdPlaceholder = '__QUIZZER_APPLE_TEAM_ID__';
+const windowsCertificateSha256Placeholder = '__QUIZZER_WINDOWS_CERTIFICATE_SHA256__';
 
-const renderTemplate = (template, publicKeyPem, releaseBaseUrl) => {
-  if (template.split(publicKeyPlaceholder).length !== 2) throw new Error('Installer template must contain the release public key placeholder exactly once');
-  if (template.split(releaseBaseUrlPlaceholder).length !== 2) throw new Error('Installer template must contain the release base URL placeholder exactly once');
-  return template.replace(publicKeyPlaceholder, publicKeyPem.trim()).replace(releaseBaseUrlPlaceholder, releaseBaseUrl);
+const renderTemplate = (template, replacements) => {
+  let rendered = template;
+  for (const [placeholder, { label, value }] of replacements) {
+    if (rendered.split(placeholder).length !== 2) throw new Error(`Installer template must contain the ${label} placeholder exactly once`);
+    rendered = rendered.replace(placeholder, value);
+  }
+  return rendered;
 };
 
 const releaseBaseUrlFor = manifest => {
@@ -30,7 +35,18 @@ export const prepareReleaseInstallers = async ({
   outputDirectory,
   shellTemplatePath,
   powershellTemplatePath,
+  appleTeamId,
+  windowsCertificateSha256,
 }) => {
+  if (typeof appleTeamId !== 'string' || !/^[A-Z0-9]{10}$/.test(appleTeamId)) {
+    throw new Error('APPLE_TEAM_ID must contain the 10-character signing team identifier');
+  }
+  const normalizedWindowsCertificateSha256 = typeof windowsCertificateSha256 === 'string'
+    ? windowsCertificateSha256.replaceAll(/\s/g, '').toUpperCase()
+    : '';
+  if (!/^[A-F0-9]{64}$/.test(normalizedWindowsCertificateSha256)) {
+    throw new Error('QUIZZER_WINDOWS_CERTIFICATE_SHA256 must contain the signing certificate SHA-256 fingerprint');
+  }
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
   const validation = validateReleaseManifest(manifest);
   if (!validation.valid) throw new Error(`Release manifest is invalid: ${validation.errors.join('; ')}`);
@@ -54,8 +70,16 @@ export const prepareReleaseInstallers = async ({
   await Promise.all([
     writeFile(paths.metadata, canonicalMetadata, { mode: 0o644 }),
     writeFile(paths.signature, signature, { mode: 0o644 }),
-    writeFile(paths.shell, renderTemplate(shellTemplate, publicKeyPem, releaseBaseUrl), { mode: 0o755 }),
-    writeFile(paths.powershell, renderTemplate(powershellTemplate, publicKeyPem, releaseBaseUrl), { mode: 0o644 }),
+    writeFile(paths.shell, renderTemplate(shellTemplate, [
+      [publicKeyPlaceholder, { label: 'release public key', value: publicKeyPem.trim() }],
+      [releaseBaseUrlPlaceholder, { label: 'release base URL', value: releaseBaseUrl }],
+      [appleTeamIdPlaceholder, { label: 'Apple Team ID', value: appleTeamId }],
+    ]), { mode: 0o755 }),
+    writeFile(paths.powershell, renderTemplate(powershellTemplate, [
+      [publicKeyPlaceholder, { label: 'release public key', value: publicKeyPem.trim() }],
+      [releaseBaseUrlPlaceholder, { label: 'release base URL', value: releaseBaseUrl }],
+      [windowsCertificateSha256Placeholder, { label: 'Windows certificate SHA-256', value: normalizedWindowsCertificateSha256 }],
+    ]), { mode: 0o644 }),
   ]);
   await chmod(paths.shell, 0o755);
   return { ...paths, publicKeyPem };

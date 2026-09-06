@@ -13,5 +13,7 @@ const result = await prepareReleaseInstallers({
   outputDirectory,
   shellTemplatePath: resolve(projectDirectory, 'installers', 'install.sh.in'),
   powershellTemplatePath: resolve(projectDirectory, 'installers', 'install.ps1.in'),
+  appleTeamId: flag('apple-team-id') || process.env.APPLE_TEAM_ID,
+  windowsCertificateSha256: flag('windows-certificate-sha256') || process.env.QUIZZER_WINDOWS_CERTIFICATE_SHA256,
 });
 process.stdout.write(`Prepared signed metadata and installers -> ${result.shell}, ${result.powershell}\n`);

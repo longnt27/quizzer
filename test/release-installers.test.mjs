@@ -40,6 +40,8 @@ test('renders installers with the signing key and exact verifiable release metad
       outputDirectory,
       shellTemplatePath: new URL('../installers/install.sh.in', import.meta.url),
       powershellTemplatePath: new URL('../installers/install.ps1.in', import.meta.url),
+      appleTeamId: 'ABCDE12345',
+      windowsCertificateSha256: 'ab '.repeat(31) + 'ab',
     });
 
     const metadata = await readFile(result.metadata);
@@ -52,10 +54,18 @@ test('renders installers with the signing key and exact verifiable release metad
     assert.doesNotMatch(powershell, /__QUIZZER_RELEASE_PUBLIC_KEY_PEM__/);
     assert.doesNotMatch(shell, /__QUIZZER_RELEASE_BASE_URL__/);
     assert.doesNotMatch(powershell, /__QUIZZER_RELEASE_BASE_URL__/);
+    assert.doesNotMatch(shell, /__QUIZZER_APPLE_TEAM_ID__/);
+    assert.doesNotMatch(powershell, /__QUIZZER_WINDOWS_CERTIFICATE_SHA256__/);
     assert.match(shell, /BEGIN PUBLIC KEY/);
     assert.match(powershell, /BEGIN PUBLIC KEY/);
     assert.match(shell, /releases\/download\/v1\.0\.0-beta\.1/);
     assert.match(powershell, /releases\/download\/v1\.0\.0-beta\.1/);
+    assert.match(shell, /expected_apple_team_id='ABCDE12345'/);
+    assert.match(shell, /TeamIdentifier/);
+    assert.match(powershell, /ExpectedCertificateSha256 = 'ABAB/);
+    assert.match(powershell, /SignerCertificate\.RawData/);
+    assert.ok(shell.indexOf('cli_team_id=') < shell.indexOf('"$cli_download" release verify'));
+    assert.ok(powershell.indexOf('Assert-Authenticode $CliDownload') < powershell.indexOf('& $CliDownload release verify'));
     assert.equal((await stat(result.shell)).mode & 0o777, 0o755);
     await execute('sh', ['-n', result.shell]);
     if (process.platform === 'linux') {
@@ -74,7 +84,26 @@ test('renders installers with the signing key and exact verifiable release metad
       outputDirectory: join(directory, 'rejected'),
       shellTemplatePath: new URL('../installers/install.sh.in', import.meta.url),
       powershellTemplatePath: new URL('../installers/install.ps1.in', import.meta.url),
+      appleTeamId: 'ABCDE12345',
+      windowsCertificateSha256: 'A'.repeat(64),
     }), /not signed by the supplied release key/);
+
+    for (const pins of [
+      { appleTeamId: '', windowsCertificateSha256: 'A'.repeat(64), error: /APPLE_TEAM_ID/ },
+      { appleTeamId: 'lowercase1', windowsCertificateSha256: 'A'.repeat(64), error: /APPLE_TEAM_ID/ },
+      { appleTeamId: 'ABCDE12345', windowsCertificateSha256: '', error: /CERTIFICATE_SHA256/ },
+      { appleTeamId: 'ABCDE12345', windowsCertificateSha256: 'A'.repeat(40), error: /CERTIFICATE_SHA256/ },
+    ]) {
+      await assert.rejects(prepareReleaseInstallers({
+        manifestPath,
+        privateKeyBase64,
+        outputDirectory: join(directory, 'invalid-pins'),
+        shellTemplatePath: new URL('../installers/install.sh.in', import.meta.url),
+        powershellTemplatePath: new URL('../installers/install.ps1.in', import.meta.url),
+        appleTeamId: pins.appleTeamId,
+        windowsCertificateSha256: pins.windowsCertificateSha256,
+      }), pins.error);
+    }
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

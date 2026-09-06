@@ -3,6 +3,7 @@ $ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $ReleaseBaseUrl = '__QUIZZER_RELEASE_BASE_URL__'
+$ExpectedCertificateSha256 = '__QUIZZER_WINDOWS_CERTIFICATE_SHA256__'
 $MetadataName = 'release-manifest.canonical.json'
 $SignatureName = 'release-manifest.sig'
 $TemporaryDirectory = Join-Path ([IO.Path]::GetTempPath()) ("quizzer-install-" + [Guid]::NewGuid().ToString('N'))
@@ -34,6 +35,15 @@ function Assert-Authenticode([string] $Path) {
   $Signature = Get-AuthenticodeSignature -FilePath $Path
   if ($Signature.Status -ne 'Valid' -or $null -eq $Signature.SignerCertificate) {
     Fail "Authenticode verification failed for $(Split-Path -Leaf $Path): $($Signature.StatusMessage)"
+  }
+  $Hasher = [Security.Cryptography.SHA256]::Create()
+  try {
+    $ActualCertificateSha256 = [BitConverter]::ToString($Hasher.ComputeHash($Signature.SignerCertificate.RawData)).Replace('-', '')
+  } finally {
+    $Hasher.Dispose()
+  }
+  if ($ActualCertificateSha256 -ne $ExpectedCertificateSha256) {
+    Fail "Authenticode signer did not match Quizzer for $(Split-Path -Leaf $Path)"
   }
 }
 
