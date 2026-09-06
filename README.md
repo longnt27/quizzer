@@ -339,17 +339,17 @@ The generation pipeline reached its bounded retry limit after rejecting malforme
 
 ## Roadmap
 
-- Provider capability discovery and custom endpoint adapters
+- Capability-negotiated provider routes and custom OpenAI-compatible endpoints
 - Provider-specific concurrency and cost limits
-- Question/source citations in the review interface
 - Document re-extraction and converter version tracking
-- Full automated unit, integration, and browser test suites
-- Production packaging for the local service and static application
+- Rebuildable dense indexes, hybrid retrieval, and cross-encoder reranking
+- Managed local generation through llama.cpp or Ollama
+- Full browser, accessibility, installer, update, and rollback validation across the supported platform matrix
 
 ## Security
 
-Please do not publish suspected vulnerabilities in a public issue. Contact the repository owner privately with reproduction steps and affected versions. The local service binds to loopback only and provider inputs are treated as untrusted, but the project has not yet undergone an independent security review.
+Please do not publish suspected vulnerabilities in a public issue. Follow the private reporting instructions and supported-version policy in [SECURITY.md](SECURITY.md). The local service binds to loopback only, authenticates privileged endpoints, and treats provider inputs as untrusted, but the project has not yet undergone an independent security review.
 
 ## License
 
-This repository currently contains no license file. No permission to redistribute or modify the project should be assumed until the owner adds an explicit license. Optional dependencies, including Marker and its model weights, have their own license terms.
+Quizzer is licensed under the [Apache License 2.0](LICENSE). Distribution must retain the included [NOTICE](NOTICE). Third-party dependencies, optional tools such as Marker, and downloaded model weights remain subject to their own license terms; release builds publish a dependency SBOM.
