@@ -2,6 +2,8 @@ import { MakerDeb } from '@electron-forge/maker-deb';
 import { MakerRpm } from '@electron-forge/maker-rpm';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
+import { MakerDMG } from '@electron-forge/maker-dmg';
+import { MakerPKG } from '@electron-forge/maker-pkg';
 import { flipFuses, FuseVersion, FuseV1Options } from '@electron/fuses';
 import { join, resolve } from 'node:path';
 
@@ -81,6 +83,10 @@ export default {
       } : undefined,
     }),
     new MakerZIP({}, ['darwin', 'linux']),
+    new MakerDMG({ format: 'ULFO' }, ['darwin']),
+    new MakerPKG({
+      identity: process.env.APPLE_INSTALLER_IDENTITY || process.env.APPLE_IDENTITY,
+    }, ['darwin']),
     new MakerDeb({ options: { name: 'quizzer', productName: 'Quizzer', icon: 'assets/icons/quizzer.png', categories: ['Education'] } }),
     new MakerRpm({ options: { name: 'quizzer', productName: 'Quizzer', icon: 'assets/icons/quizzer.png', categories: ['Education'] } }),
   ],

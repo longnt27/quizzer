@@ -87,6 +87,7 @@ export const scanProjectLicenses = async projectDirectory => {
   const packages = [];
   for (const [lockPackagePath, metadata] of Object.entries(lock.packages)) {
     if (!lockPackagePath) continue;
+    if (metadata.dev) continue;
     const name = packageNameFrom(lockPackagePath);
     const license = typeof metadata.license === 'string'
       ? metadata.license

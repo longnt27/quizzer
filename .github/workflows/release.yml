@@ -218,6 +218,21 @@ jobs:
           codesign -dv --verbose=4 out/cli/quizzer 2>&1 | grep -F "TeamIdentifier=$APPLE_TEAM_ID"
           codesign -dv --verbose=4 "$APP_PATH" 2>&1 | grep -F "TeamIdentifier=$APPLE_TEAM_ID"
           spctl --assess --type execute --verbose=4 "$APP_PATH"
+          
+          DMG_PATH="$(find out/make -type f -name '*.dmg' -print -quit)"
+          if [ -n "$DMG_PATH" ]; then
+            codesign --verify --strict --verbose=2 "$DMG_PATH"
+            spctl -a -t open --context context:primary-signature -v "$DMG_PATH"
+          else
+            echo "Error: DMG artifact not found" >&2; exit 1
+          fi
+          
+          PKG_PATH="$(find out/make -type f -name '*.pkg' -print -quit)"
+          if [ -n "$PKG_PATH" ]; then
+            pkgutil --check-signature "$PKG_PATH"
+          else
+            echo "Error: PKG artifact not found" >&2; exit 1
+          fi
       - name: Verify Windows signatures
         if: matrix.platform == 'windows'
         shell: pwsh
