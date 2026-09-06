@@ -58,6 +58,7 @@ const server = spawn(process.execPath, ['server.mjs'], {
     QUIZZER_DATABASE_PATH: join(directory, 'quizzer.sqlite'),
     QUIZZER_API_TOKEN: token,
     QUIZZER_SERVICE_PORT: '0',
+    QUIZZER_DISABLE_SERVICE_GENERATION: '1',
     OLLAMA_HOST: ollamaHost,
   },
   stdio: ['ignore', 'pipe', 'pipe'],

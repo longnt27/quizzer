@@ -29,6 +29,8 @@ const environment = {
   QUIZZER_SERVICE_PORT: String(servicePort),
   QUIZZER_API_TOKEN: serviceToken,
   VITE_QUIZZER_API_TOKEN: serviceToken,
+  QUIZZER_DISABLE_SERVICE_GENERATION: '1',
+  VITE_QUIZZER_RENDERER_WORKER: '1',
 };
 const children = [
   spawn(process.execPath, ['server.mjs'], { stdio: 'inherit', env: environment }),

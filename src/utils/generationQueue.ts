@@ -9,6 +9,7 @@ import type { ProviderAttempt, ProviderRoute } from '../types';
 import { serviceJson } from './serviceApi';
 
 const workerId = uuidv4();
+const rendererWorkerEnabled = import.meta.env.VITE_QUIZZER_RENDERER_WORKER === '1';
 const active = new Map<string, AbortController>();
 let pumping = false;
 type WorkerJobPatch = Partial<Pick<StoredGenerationJob,
@@ -200,6 +201,7 @@ const processJob = async (job: StoredGenerationJob) => {
 };
 
 export const pumpGenerationQueue = async () => {
+  if (!rendererWorkerEnabled) return;
   if (pumping) return;
   pumping = true;
   try {

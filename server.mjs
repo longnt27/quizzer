@@ -21,11 +21,12 @@ import { denseIndexPathFor, sparseIndexPathFor } from './server/paths.mjs';
 import { createBackup, listBackups, verifyBackup } from './server/backup.mjs';
 import { cancelIndexJob, createIndexJob, recoverIndexJob, resumeIndexJob, runIndexJob } from './server/index-jobs.mjs';
 import { reextractDocument } from './server/document-import.mjs';
-import { providerConcurrencyLimits, publicProviderPolicies } from './server/provider-policy.mjs';
+import { PROVIDER_POLICIES, providerConcurrencyLimits, publicProviderPolicies } from './server/provider-policy.mjs';
 import { embedTextsWithOllama } from './server/embeddings.mjs';
 import { RetrievalIndex } from './server/retrieval-index.mjs';
 import { bindRequestCancellation } from './server/request-lifetime.mjs';
 import { ProviderCredentialStore } from './server/provider-credentials.mjs';
+import { GenerationJobWorker } from './server/generation-worker.mjs';
 
 const configuredPortValue = process.env.QUIZZER_SERVICE_PORT ?? '8787';
 const configuredPort = Number(configuredPortValue);
@@ -757,6 +758,9 @@ const normalizeProviderError = error => {
   if (/not logged in|unauthorized|authentication|api key|sign[ -]?in|login required/i.test(message)) {
     return new ProviderError(message, 401, 'provider_auth');
   }
+  if (error?.code === 'ENOENT' || /command not found|executable.*not found|is not installed/i.test(message)) {
+    return new ProviderError(message, 503, 'provider_unavailable');
+  }
   return error;
 };
 
@@ -856,6 +860,64 @@ const providerRunners = {
     label: 'DeepSeek', endpoint: 'https://api.deepseek.com/chat/completions', defaultModel: 'deepseek-chat', jsonSchema: false, supportsImages: false,
   }),
 };
+
+const generationWorkerId = `service-${randomUUID()}`;
+const generationWorker = process.env.QUIZZER_DISABLE_SERVICE_GENERATION === '1' ? undefined : new GenerationJobWorker({
+  claim: async () => {
+    const settings = await loadResolvedSettings(appDataDirectory);
+    return claimGenerationJob({
+      workerId: generationWorkerId,
+      leaseMs: 45_000,
+      providerConcurrency: providerConcurrencyLimits(settings.values),
+    })?.data;
+  },
+  getConcurrency: async () => (await loadResolvedSettings(appDataDirectory)).values['generation.concurrency'],
+  update: (job, patch) => updateGenerationJobWithLease(job.id, {
+    workerId: job.workerId, leaseId: job.leaseId, patch,
+  }).data,
+  renew: job => renewGenerationJobLease(job.id, {
+    workerId: job.workerId, leaseId: job.leaseId, leaseMs: 45_000,
+  }).data,
+  complete: (job, completion) => completeGenerationJob(job.id, {
+    workerId: job.workerId, leaseId: job.leaseId, ...completion,
+  }).job.data,
+  getJob: id => getRecord('generationJobs', id)?.data,
+  loadDocuments: ids => ids.map(id => {
+    const record = getRecord('documents', id);
+    return record ? { id: record.id, ...record.data } : undefined;
+  }).filter(Boolean),
+  ensureIndexed: documents => {
+    for (const document of documents) retrievalIndex.indexSparseDocument({ id: document.id, data: document });
+  },
+  retrieve: options => retrievalIndex.retrieve(options),
+  embed: async (texts, signal) => {
+    const settings = await loadResolvedSettings(appDataDirectory);
+    return embedTextsWithOllama(texts, { model: settings.values['embeddings.model'], signal });
+  },
+  loadImage: async image => {
+    if (typeof image?.data === 'string' && image.data) return `data:${image.mimeType};base64,${image.data}`;
+    if (!image?.object?.sha256) return undefined;
+    const data = await objectStore.readBuffer(image.object.sha256);
+    return `data:${image.mimeType || image.object.type || 'image/png'};base64,${data.toString('base64')}`;
+  },
+  requestProvider: async (request, signal) => {
+    const runner = providerRunners[request.provider];
+    if (!runner) throw new Error('Unsupported provider');
+    try {
+      return await runner({
+        ...request,
+        apiKey: PROVIDER_POLICIES[request.provider]?.billing === 'usage-based'
+          ? providerCredentials.get(request.provider)
+          : undefined,
+      }, signal);
+    } catch (error) {
+      throw normalizeProviderError(error);
+    }
+  },
+  onError: (id, error) => process.stderr.write(
+    `Generation worker ${id} failed: ${error instanceof Error ? error.message : String(error)}\n`,
+  ),
+});
 
 const walkFiles = async directory => {
   const result = [];
@@ -1260,6 +1322,7 @@ const handleVersionedApi = async (request, response, url) => {
     if (request.method === 'POST' && url.pathname === '/api/v1/jobs') {
       const body = await readJson(request);
       const jobs = createGenerationJobs(body?.jobs).map(publicRecord);
+      generationWorker?.poke();
       send(response, 201, { jobs });
       return true;
     }
@@ -1306,6 +1369,8 @@ const handleVersionedApi = async (request, response, url) => {
         ? await readJson(request)
         : {};
       const job = controlGenerationJob(id, jobActionMatch[2], body);
+      if (jobActionMatch[2] === 'cancel') generationWorker?.cancel(id);
+      else generationWorker?.poke();
       send(response, 200, { job: publicRecord(job) });
       return true;
     }
@@ -1474,4 +1539,5 @@ serviceServer.listen(configuredPort, '127.0.0.1', () => {
   const port = typeof address === 'object' && address ? address.port : configuredPort;
   process.parentPort?.postMessage?.({ type: 'quizzer-service-ready', port });
   process.stdout.write(`Quizzer service listening on http://127.0.0.1:${port}\n`);
+  generationWorker?.start();
 });
