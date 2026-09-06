@@ -23,6 +23,7 @@
     "test": "node --test test/*.test.mjs",
     "test:coverage": "node scripts/test-coverage.mjs",
     "eval:rag": "node scripts/evaluate-rag.mjs",
+    "license:check": "node scripts/check-licenses.mjs",
     "preview": "vite preview",
     "package:desktop": "npm run build && node scripts/forge.mjs package",
     "make:desktop": "npm run build && node scripts/forge.mjs make",
