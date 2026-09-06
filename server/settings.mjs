@@ -70,6 +70,12 @@ const baseSettings = [
     environment: 'QUIZZER_EMBEDDINGS',
   },
   {
+    key: 'embeddings.model', type: 'string', default: 'all-minilm',
+    title: 'Embedding model', description: 'Ollama model used to build and query the rebuildable dense index.',
+    visibility: 'advanced', resourceEffect: 'high', restartRequired: false, reindexRequired: true,
+    environment: 'QUIZZER_EMBEDDING_MODEL',
+  },
+  {
     key: 'jobs.continueInBackground', type: 'boolean', default: true,
     title: 'Continue in background', description: 'Keeps active work running when the desktop window closes.',
     visibility: 'basic', resourceEffect: 'low', restartRequired: false, reindexRequired: false,
@@ -107,6 +113,7 @@ export const HARDWARE_PROFILE_SETTINGS = Object.freeze({
     'extraction.marker': false,
     'extraction.ocr': false,
     'embeddings.enabled': false,
+    'embeddings.model': 'all-minilm',
   }),
   balanced: Object.freeze({
     'hardware.profile': 'balanced',
@@ -118,6 +125,7 @@ export const HARDWARE_PROFILE_SETTINGS = Object.freeze({
     'extraction.marker': false,
     'extraction.ocr': true,
     'embeddings.enabled': true,
+    'embeddings.model': 'all-minilm',
   }),
   max: Object.freeze({
     'hardware.profile': 'max',
@@ -129,6 +137,7 @@ export const HARDWARE_PROFILE_SETTINGS = Object.freeze({
     'extraction.marker': true,
     'extraction.ocr': true,
     'embeddings.enabled': true,
+    'embeddings.model': 'all-minilm',
   }),
 });
 

@@ -14,14 +14,15 @@ import {
   HARDWARE_PROFILE_SETTINGS, loadResolvedSettings, readUserSettings, SETTINGS_REGISTRY, SETTINGS_SCHEMA, settingsPath, validateSettings, writeUserSettings,
 } from './server/settings.mjs';
 import { PluginManager } from './plugin-sdk/manager.mjs';
-import { SparseDocumentIndex } from './server/sparse-index.mjs';
 import { materializeRuntimeAsset, readRuntimeText, runningAsSingleExecutable } from './server/runtime-assets.mjs';
 import { collectStoredObjectReferences, materializeDocumentImages, materializeSerializedObjects, ObjectStore } from './server/object-store.mjs';
-import { sparseIndexPathFor } from './server/paths.mjs';
+import { denseIndexPathFor, sparseIndexPathFor } from './server/paths.mjs';
 import { createBackup, listBackups, verifyBackup } from './server/backup.mjs';
 import { cancelIndexJob, createIndexJob, recoverIndexJob, resumeIndexJob, runIndexJob } from './server/index-jobs.mjs';
 import { reextractDocument } from './server/document-import.mjs';
 import { providerConcurrencyLimits, publicProviderPolicies } from './server/provider-policy.mjs';
+import { embedTextsWithOllama } from './server/embeddings.mjs';
+import { RetrievalIndex } from './server/retrieval-index.mjs';
 
 const configuredPortValue = process.env.QUIZZER_SERVICE_PORT ?? '8787';
 const configuredPort = Number(configuredPortValue);
@@ -71,7 +72,14 @@ await pruneUnreferencedObjects();
 setInterval(() => void pruneUnreferencedObjects().catch(error => {
   process.stderr.write(`Object cleanup failed: ${error instanceof Error ? error.message : String(error)}\n`);
 }), 6 * 60 * 60 * 1000).unref();
-const sparseIndex = new SparseDocumentIndex(process.env.QUIZZER_SPARSE_INDEX_PATH || sparseIndexPathFor(appDataDirectory));
+const retrievalIndex = new RetrievalIndex({
+  sparsePath: process.env.QUIZZER_SPARSE_INDEX_PATH || sparseIndexPathFor(appDataDirectory),
+  densePath: process.env.QUIZZER_DENSE_INDEX_PATH || denseIndexPathFor(appDataDirectory),
+  loadSettings: () => loadResolvedSettings(appDataDirectory),
+  onDenseIssue: (issue, record) => process.stderr.write(
+    `Dense indexing unavailable for ${record.id}; sparse retrieval remains ready: ${issue.message}\n`,
+  ),
+});
 const activeIndexExecutions = new Map();
 const loadIndexJob = id => getRecord('indexJobs', id)?.data;
 const saveIndexJob = job => putRecord('indexJobs', job.id, job).data;
@@ -87,13 +95,18 @@ const executeIndexJob = id => {
     load: loadIndexJob,
     save: saveIndexJob,
     getDocument: documentId => getRecord('documents', documentId),
-    indexDocument: (record, options) => sparseIndex.indexDocument(record, options),
+    indexDocument: (record, options) => retrievalIndex.indexDocument(record, options),
     updateDocument: (record, result) => {
-      if (!result.reused) putRecord('documents', record.id, {
+      if (!result.reused || (result.dense?.status === 'ready' && !result.dense.reused)) putRecord('documents', record.id, {
         ...record.data,
         indexedAt: Date.now(),
-        indexVersion: 2,
+        indexVersion: 3,
         documentVersionHash: result.versionHash,
+        denseIndex: result.dense?.status === 'ready' ? {
+          model: result.dense.embeddingModel,
+          dimension: result.dense.dimension,
+          versionHash: result.dense.versionHash,
+        } : record.data.denseIndex,
       });
     },
     yieldControl: () => new Promise(resolve => setImmediate(resolve)),
@@ -1063,7 +1076,7 @@ const handleVersionedApi = async (request, response, url) => {
       return true;
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/index/status') {
-      send(response, 200, sparseIndex.status());
+      send(response, 200, await retrievalIndex.status());
       return true;
     }
     if (request.method === 'POST' && url.pathname === '/api/v1/index') {
@@ -1086,7 +1099,7 @@ const handleVersionedApi = async (request, response, url) => {
       send(response, body.wait === false ? 202 : 200, {
         job: publicRecord(jobRecord),
         indexed: jobRecord.data.results,
-        status: sparseIndex.status(),
+        status: await retrievalIndex.status(),
       });
       return true;
     }
@@ -1126,18 +1139,30 @@ const handleVersionedApi = async (request, response, url) => {
       const body = await readJson(request);
       if (typeof body?.query !== 'string' || !body.query.trim()) throw new Error('A retrieval query is required');
       const selected = selectIndexDocuments(body.documentIds);
-      const retrievalIndexKey = `retrieval.${createHash('sha256').update(selected.map(retrievalDocumentFingerprint).join('|')).digest('hex')}`;
+      const configuration = await retrievalIndex.configuration();
+      const settings = configuration.settings;
+      const indexConfiguration = JSON.stringify({
+        embeddings: configuration.embeddings,
+        embeddingModel: configuration.embeddingModel,
+      });
+      const retrievalIndexKey = `retrieval.${createHash('sha256').update(`${selected.map(retrievalDocumentFingerprint).join('|')}|${indexConfiguration}`).digest('hex')}`;
       const indexJob = prepareIndexJob({ records: selected, idempotencyKey: retrievalIndexKey });
-      if (indexJob.data.status !== 'completed') await executeIndexJob(indexJob.id);
-      const settings = await loadResolvedSettings(appDataDirectory);
-      send(response, 200, sparseIndex.retrieve({
+      let indexingError;
+      if (indexJob.data.status !== 'completed') {
+        try { await executeIndexJob(indexJob.id); }
+        catch (error) { indexingError = error instanceof Error ? error.message : String(error); }
+      }
+      if (indexingError) for (const record of selected) retrievalIndex.indexSparseDocument(record);
+      const retrievalOptions = {
         query: body.query,
         documentIds: body.documentIds ?? [],
         tags: body.tags ?? [],
         limit: body.limit,
         contextBudget: body.contextBudget ?? settings.values['retrieval.contextBudget'],
         includeNeighbors: body.includeNeighbors !== false,
-      }));
+      };
+      const result = await retrievalIndex.retrieve(retrievalOptions);
+      send(response, 200, indexingError ? { ...result, indexingError } : result);
       return true;
     }
     const reextractDocumentMatch = /^\/api\/v1\/documents\/([^/]+)\/reextract$/.exec(url.pathname);
@@ -1150,7 +1175,7 @@ const handleVersionedApi = async (request, response, url) => {
       }
       const extracted = await reextractDocument(existing.data, { objectStore });
       const saved = putRecord('documents', id, extracted);
-      sparseIndex.removeDocument(id);
+      await retrievalIndex.removeDocument(id);
       const indexJob = prepareIndexJob({ records: [saved], force: true });
       await executeIndexJob(indexJob.id);
       send(response, 200, {
@@ -1172,7 +1197,7 @@ const handleVersionedApi = async (request, response, url) => {
         return true;
       }
       deleteRecord('documents', id);
-      sparseIndex.removeDocument(id);
+      await retrievalIndex.removeDocument(id);
       send(response, 200, { ok: true });
       return true;
     }
@@ -1282,7 +1307,7 @@ const serviceServer = createServer(async (request, response) => {
         result.migration = finalizeLegacyMigration(body.migration.id);
       }
       for (const change of body?.changes ?? []) {
-        if (change.collection === 'documents' && change.deleted === true && typeof change.id === 'string') sparseIndex.removeDocument(change.id);
+        if (change.collection === 'documents' && change.deleted === true && typeof change.id === 'string') await retrievalIndex.removeDocument(change.id);
       }
       return send(response, 200, result);
     }
@@ -1335,21 +1360,10 @@ const serviceServer = createServer(async (request, response) => {
   if (request.method === 'POST' && request.url === '/api/embed') {
     try {
       const { texts } = await readJson(request);
-      if (!Array.isArray(texts) || !texts.length || texts.length > 250 || texts.some(text => typeof text !== 'string')) {
-        throw new Error('texts must be an array of 1-250 strings');
-      }
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 3_000);
-      try {
-        const ollamaHost = process.env.OLLAMA_HOST || 'http://127.0.0.1:11434';
-        const embeddingResponse = await fetch(`${ollamaHost.replace(/\/$/, '')}/api/embed`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal,
-          body: JSON.stringify({ model: process.env.QUIZZER_EMBEDDING_MODEL || 'all-minilm', input: texts }),
-        });
-        const payload = await embeddingResponse.json();
-        if (!embeddingResponse.ok || !Array.isArray(payload.embeddings)) throw new Error('Local embedding model is unavailable');
-        return send(response, 200, { embeddings: payload.embeddings });
-      } finally { clearTimeout(timer); }
+      const settings = await loadResolvedSettings(appDataDirectory);
+      return send(response, 200, {
+        embeddings: await embedTextsWithOllama(texts, { model: settings.values['embeddings.model'] }),
+      });
     } catch (error) {
       return send(response, 503, { error: error instanceof Error ? error.message : 'Embedding failed' });
     }

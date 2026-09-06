@@ -5,12 +5,12 @@ import { join } from 'node:path';
 import { ensureServiceToken } from '../server/auth.mjs';
 import { importDocumentFile, reextractDocument } from '../server/document-import.mjs';
 import { detectHardwareCapabilities } from '../server/hardware-profile.mjs';
-import { databasePathFor, defaultAppDataDirectory, sparseIndexPathFor } from '../server/paths.mjs';
+import { databasePathFor, defaultAppDataDirectory, denseIndexPathFor, sparseIndexPathFor } from '../server/paths.mjs';
 import { PluginManager } from '../plugin-sdk/manager.mjs';
 import {
   loadResolvedSettings, readUserSettings, SETTINGS_REGISTRY, settingsPath, validateSettings, writeUserSettings,
 } from '../server/settings.mjs';
-import { SparseDocumentIndex } from '../server/sparse-index.mjs';
+import { RetrievalIndex } from '../server/retrieval-index.mjs';
 import { readRuntimeText, runningAsSingleExecutable } from '../server/runtime-assets.mjs';
 import { canonicalizeManifest } from '../release/manifest.mjs';
 import { validateReleaseManifest } from '../server/release-manifest.mjs';
@@ -64,6 +64,13 @@ process.env.QUIZZER_APP_DATA_DIR = appDataDirectory;
 process.env.QUIZZER_DATABASE_PATH ||= databasePathFor(appDataDirectory);
 const objectStore = new ObjectStore(appDataDirectory);
 const sparseIndexPath = process.env.QUIZZER_SPARSE_INDEX_PATH || sparseIndexPathFor(appDataDirectory);
+const denseIndexPath = process.env.QUIZZER_DENSE_INDEX_PATH || denseIndexPathFor(appDataDirectory);
+const createRetrievalIndex = () => new RetrievalIndex({
+  sparsePath: sparseIndexPath,
+  densePath: denseIndexPath,
+  loadSettings: () => loadResolvedSettings(appDataDirectory),
+  onDenseIssue: issue => process.stderr.write(`Dense indexing unavailable; sparse retrieval remains ready: ${issue.message}\n`),
+});
 
 const flag = (name, fallback) => parsed.flags.get(name)?.at(-1) ?? fallback;
 const flags = name => parsed.flags.get(name) ?? [];
@@ -153,6 +160,7 @@ const runDoctor = async () => {
     appDataDirectory,
     databasePath: process.env.QUIZZER_DATABASE_PATH,
     sparseIndexPath,
+    denseIndexPath,
     service,
     hardware,
     settings: { profile: settings.profile, values: settings.values },
@@ -161,6 +169,7 @@ const runDoctor = async () => {
     `App data: ${report.appDataDirectory}`,
     `Database: ${report.databasePath}`,
     `Sparse index: ${report.sparseIndexPath}`,
+    `Dense index: ${report.denseIndexPath}`,
     `Service: ${service.reachable ? 'ready' : 'not running'}`,
     `Hardware: ${hardware.architecture}, ${hardware.cpuCores} cores, ${hardware.memoryGB} GB RAM`,
     `Recommended profile: ${hardware.recommendedProfile}`,
@@ -235,6 +244,9 @@ const runDocuments = async action => {
   if (action === 'reextract') {
     const extracted = await reextractDocument(record.data, { objectStore });
     const saved = database.putRecord('documents', id, extracted);
+    const index = createRetrievalIndex();
+    try { await index.removeDocument(id); }
+    finally { await index.close(); }
     const indexJob = createIndexJob({ documentIds: [id], force: true });
     database.putRecord('indexJobs', indexJob.id, indexJob);
     await executeStoredIndexJob(database, indexJob);
@@ -247,16 +259,16 @@ const runDocuments = async action => {
   if (action === 'remove') {
     if (flag('yes') !== 'true') fail('documents remove requires --yes');
     database.deleteRecord('documents', id);
-    const index = new SparseDocumentIndex(sparseIndexPath);
-    try { index.removeDocument(id); }
-    finally { index.close(); }
+    const index = createRetrievalIndex();
+    try { await index.removeDocument(id); }
+    finally { await index.close(); }
     return writeResult({ removed: id }, `Removed ${record.data.name}`);
   }
   fail('Use documents list, show, import, reextract, or remove');
 };
 
 const executeStoredIndexJob = async (database, job) => {
-  const index = new SparseDocumentIndex(sparseIndexPath);
+  const index = createRetrievalIndex();
   try {
     return await runIndexJob(job, {
       load: id => database.getRecord('indexJobs', id)?.data,
@@ -264,17 +276,22 @@ const executeStoredIndexJob = async (database, job) => {
       getDocument: id => database.getRecord('documents', id),
       indexDocument: (record, options) => index.indexDocument(record, options),
       updateDocument: (record, result) => {
-        if (!result.reused) database.putRecord('documents', record.id, {
+        if (!result.reused || (result.dense?.status === 'ready' && !result.dense.reused)) database.putRecord('documents', record.id, {
           ...record.data,
           indexedAt: Date.now(),
-          indexVersion: 2,
+          indexVersion: 3,
           documentVersionHash: result.versionHash,
+          denseIndex: result.dense?.status === 'ready' ? {
+            model: result.dense.embeddingModel,
+            dimension: result.dense.dimension,
+            versionHash: result.dense.versionHash,
+          } : record.data.denseIndex,
         });
       },
       yieldControl: () => new Promise(resolve => setImmediate(resolve)),
     });
   } finally {
-    index.close();
+    await index.close();
   }
 };
 
@@ -325,22 +342,28 @@ const runRetrieve = async () => {
     ? documentIds.map(id => database.getRecord('documents', id)).filter(Boolean)
     : database.listRecords('documents');
   if (!selected.length) fail('No matching documents are available for retrieval');
-  const index = new SparseDocumentIndex(sparseIndexPath);
+  const index = createRetrievalIndex();
   try {
-    for (const record of selected) index.indexDocument(record);
-    const settings = await loadResolvedSettings(appDataDirectory);
-    const retrieval = index.retrieve({
+    let indexingError;
+    for (const record of selected) {
+      if (indexingError) index.indexSparseDocument(record);
+      else {
+        try { await index.indexDocument(record); }
+        catch (error) { indexingError = error instanceof Error ? error.message : String(error); }
+      }
+    }
+    const retrieval = await index.retrieve({
       query,
       documentIds,
       tags: flags('tag'),
       limit: Number(flag('limit', '10')),
-      contextBudget: settings.values['retrieval.contextBudget'],
     });
+    if (indexingError) retrieval.indexingError = indexingError;
     writeResult(retrieval, retrieval.results.length
       ? retrieval.results.map(result => `${result.documentName}${result.page ? ` p.${result.page}` : ''}  ${result.sourceSpanId}\n${result.excerpt}`).join('\n\n')
       : retrieval.refusal);
   } finally {
-    index.close();
+    await index.close();
   }
 };
 

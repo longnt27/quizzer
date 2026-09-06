@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -15,10 +16,30 @@ const backup = join(directory, 'backup');
 const pluginDirectory = join(directory, 'test-plugin');
 const standaloneExecutable = process.env.QUIZZER_CLI_EXECUTABLE;
 const appDataDirectory = join(directory, 'data');
+const embeddingServer = createServer((request, response) => {
+  let body = '';
+  request.setEncoding('utf8');
+  request.on('data', chunk => { body += chunk; });
+  request.on('end', () => {
+    const input = JSON.parse(body).input;
+    const embeddings = input.map(text => {
+      const normalized = text.toLocaleLowerCase();
+      return [normalized.includes('terraform') ? 1 : 0, normalized.includes('state') ? 1 : 0, normalized.includes('provider') ? 1 : 0];
+    });
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({ embeddings }));
+  });
+});
+await new Promise((resolve, reject) => {
+  embeddingServer.once('error', reject);
+  embeddingServer.listen(0, '127.0.0.1', resolve);
+});
+const embeddingAddress = embeddingServer.address();
 const environment = {
   ...process.env,
   QUIZZER_APP_DATA_DIR: appDataDirectory,
   QUIZZER_DATABASE_PATH: join(appDataDirectory, 'data', 'quizzer.sqlite'),
+  OLLAMA_HOST: `http://127.0.0.1:${embeddingAddress.port}`,
   ...(standaloneExecutable ? { QUIZZER_NODE_RUNTIME: process.execPath } : {}),
 };
 const invocation = arguments_ => standaloneExecutable
@@ -110,7 +131,10 @@ for await (const line of createInterface({ input: process.stdin })) {
     files: [{ path: 'plugin.mjs', sha256: createHash('sha256').update(pluginSource).digest('hex') }],
   }));
 });
-test.after(async () => rm(directory, { recursive: true, force: true }));
+test.after(async () => {
+  await new Promise(resolve => embeddingServer.close(resolve));
+  await rm(directory, { recursive: true, force: true });
+});
 
 test('edits typed configuration and reports resolved values', async () => {
   const set = await cli('config', 'set', 'hardware.profile', 'balanced');
@@ -136,6 +160,7 @@ test('imports, deduplicates, indexes, and lists a real document', async () => {
   assert.equal(indexed.job.status, 'completed');
   assert.deepEqual(indexed.job.completedDocumentIds, [first.document.id]);
   assert.equal(indexed.indexed[0].id, first.document.id);
+  assert.equal(indexed.indexed[0].dense.status, 'ready');
   const jobs = await cli('jobs', 'list');
   assert.ok(jobs.jobs.some(job => job.id === indexed.job.id && job.kind === 'index'));
   const shown = await cli('jobs', 'show', indexed.job.id);
@@ -156,9 +181,12 @@ test('imports, deduplicates, indexes, and lists a real document', async () => {
   assert.deepEqual(recovered.job.completedDocumentIds, [first.document.id]);
   assert.ok(recovered.job.recoveredAt > interruptedJob.startedAt);
   assert.ok((await stat(join(environment.QUIZZER_APP_DATA_DIR, 'indexes', 'sparse.sqlite'))).size > 0);
+  assert.ok((await readdir(join(environment.QUIZZER_APP_DATA_DIR, 'indexes', 'dense.lance'))).length > 0);
   const listed = await cli('documents', 'list');
   assert.equal(listed.documents.length, 1);
   const retrieval = await cli('retrieve', 'Terraform state', '--document', first.document.id);
+  assert.equal(retrieval.method, 'hybrid-rrf');
+  assert.equal(retrieval.dense.status, 'ready');
   assert.equal(retrieval.results[0].documentId, first.document.id);
   assert.match(retrieval.results[0].sourceSpanId, new RegExp(`^${first.document.id}:span:`));
   const reextracted = await cli('documents', 'reextract', first.document.id);

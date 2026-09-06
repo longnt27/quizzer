@@ -11,6 +11,7 @@ import { useConfiguredProviders } from '../utils/useConfiguredProviders';
 interface IndexHealth {
   documentCount: number;
   chunkCount: number;
+  dense?: { enabled: boolean; status: 'disabled' | 'not-built' | 'ready' | 'unavailable'; chunkCount: number; activeChunkCount?: number; embeddingModel: string };
 }
 
 interface PluginHealth {
@@ -69,7 +70,7 @@ export default function HomePage({ profile, onAddDocument, onAddTest, onOpenGene
   const pluginProblems = systemHealth.plugins?.plugins.filter(plugin => !plugin.compatible || plugin.status !== 'installed').length ?? 0;
   const healthRows = [
     { label: 'Local service', detail: systemHealth.error ? 'Unavailable' : 'Authenticated and ready', status: systemHealth.error ? 'error' as const : 'success' as const, icon: <SafetyCertificateOutlined /> },
-    { label: 'Retrieval index', detail: `${systemHealth.index?.documentCount ?? 0}/${data?.documents ?? 0} documents · ${systemHealth.index?.chunkCount ?? 0} spans`, status: systemHealth.index?.documentCount === (data?.documents ?? 0) ? 'success' as const : 'warning' as const, icon: <DatabaseOutlined /> },
+    { label: 'Retrieval index', detail: `${systemHealth.index?.documentCount ?? 0}/${data?.documents ?? 0} documents · ${systemHealth.index?.chunkCount ?? 0} sparse spans${systemHealth.index?.dense?.enabled ? ` · ${systemHealth.index.dense.activeChunkCount ?? 0} dense` : ''}`, status: systemHealth.index?.documentCount === (data?.documents ?? 0) && systemHealth.index?.dense?.status !== 'unavailable' ? 'success' as const : 'warning' as const, icon: <DatabaseOutlined /> },
     { label: 'AI routes', detail: configured.loading ? 'Checking providers…' : `${configured.providers.length} route${configured.providers.length === 1 ? '' : 's'} available`, status: configured.providers.length ? 'success' as const : 'warning' as const, icon: <ApiOutlined /> },
     { label: 'Plugins', detail: pluginProblems ? `${pluginProblems} need attention` : `${systemHealth.plugins?.builtIn.length ?? 0} built in · ${systemHealth.plugins?.plugins.length ?? 0} external`, status: pluginProblems ? 'error' as const : 'success' as const, icon: <RocketOutlined /> },
   ];

@@ -106,6 +106,7 @@ export interface StoredDocument {
   indexedAt?: number;
   indexVersion?: number;
   documentVersionHash?: string;
+  denseIndex?: { model: string; dimension: number; versionHash: string };
   pageCount?: number;
   originalFile?: Blob | StoredObjectReference;
   images?: StoredDocumentImage[];

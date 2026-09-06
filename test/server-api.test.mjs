@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { createServer } from 'node:http';
 import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,6 +9,26 @@ import test from 'node:test';
 
 const directory = await mkdtemp(join(tmpdir(), 'quizzer-api-test-'));
 const token = 'quizzer-test-token-0123456789abcdef';
+const embeddingServer = createServer((request, response) => {
+  let body = '';
+  request.setEncoding('utf8');
+  request.on('data', chunk => { body += chunk; });
+  request.on('end', () => {
+    const input = JSON.parse(body).input;
+    const embeddings = input.map(text => {
+      const normalized = text.toLocaleLowerCase();
+      return [normalized.includes('terraform') ? 1 : 0, normalized.includes('state') ? 1 : 0, normalized.includes('locking') ? 1 : 0];
+    });
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({ embeddings }));
+  });
+});
+await new Promise((resolve, reject) => {
+  embeddingServer.once('error', reject);
+  embeddingServer.listen(0, '127.0.0.1', resolve);
+});
+const embeddingAddress = embeddingServer.address();
+const ollamaHost = `http://127.0.0.1:${embeddingAddress.port}`;
 let origin;
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 let serverStdout = '';
@@ -21,6 +42,7 @@ const server = spawn(process.execPath, ['server.mjs'], {
     QUIZZER_DATABASE_PATH: join(directory, 'quizzer.sqlite'),
     QUIZZER_API_TOKEN: token,
     QUIZZER_SERVICE_PORT: '0',
+    OLLAMA_HOST: ollamaHost,
   },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
@@ -65,6 +87,7 @@ await waitForServer();
 test.after(async () => {
   server.kill('SIGTERM');
   await new Promise(resolve => server.once('exit', resolve));
+  await new Promise(resolve => embeddingServer.close(resolve));
   await rm(directory, { recursive: true, force: true });
 });
 
@@ -91,6 +114,7 @@ test('exposes settings schema, precedence, and validated updates', async () => {
   const schema = await (await authorized('/api/v1/settings/schema')).json();
   assert.equal(schema.schema.additionalProperties, false);
   assert.ok(schema.registry.some(item => item.key === 'retrieval.mode'));
+  assert.ok(schema.registry.some(item => item.key === 'embeddings.model'));
   assert.equal(schema.profiles.balanced['generation.concurrency'], 3);
 
   const updated = await authorized('/api/v1/settings', {
@@ -195,6 +219,9 @@ test('provides onboarding, document, job, and event operations', async () => {
   assert.deepEqual(indexResult.job.completedDocumentIds, ['doc-1']);
   assert.equal(indexResult.status.documentCount, 1);
   assert.match(indexResult.status.databasePath, /indexes[/\\]sparse\.sqlite$/);
+  assert.equal(indexResult.status.dense.status, 'ready');
+  assert.equal(indexResult.status.dense.embeddingModel, 'all-minilm');
+  assert.equal(indexResult.status.dense.chunkCount, 1);
   const repeatedIndex = await authorized('/api/v1/index', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ documentIds: ['doc-1'], idempotencyKey: 'api-index-doc-1' }),
@@ -211,8 +238,11 @@ test('provides onboarding, document, job, and event operations', async () => {
   });
   const evidence = await retrieval.json();
   assert.equal(evidence.confidence, 'high');
+  assert.equal(evidence.method, 'hybrid-rrf');
+  assert.equal(evidence.dense.status, 'ready');
   assert.equal(evidence.results[0].documentId, 'doc-1');
   assert.match(evidence.results[0].sourceSpanId, /^doc-1:span:/);
+  assert.deepEqual(evidence.results[0].retrievalChannels, ['sparse', 'dense']);
 
   const reextractedResponse = await authorized('/api/v1/documents/doc-1/reextract', { method: 'POST' });
   assert.equal(reextractedResponse.status, 200);

@@ -12,6 +12,7 @@ interface Props { documentId: string; }
 
 interface IndexStatus {
   documents: Array<{ id: string; versionHash: string; chunks: number; indexedAt: number }>;
+  dense?: { enabled: boolean; status: 'disabled' | 'not-built' | 'ready' | 'unavailable'; chunkCount: number; embeddingModel: string; issue?: { message: string } };
 }
 
 interface RetrievalResult {
@@ -26,6 +27,10 @@ interface RetrievalResult {
 }
 
 interface RetrievalPreview {
+  method: 'sparse-bm25' | 'hybrid-rrf';
+  requestedMethod?: 'hybrid-rrf';
+  dense?: { status: 'ready' | 'unavailable'; embeddingModel: string; candidates?: number; error?: string };
+  indexingError?: string;
   confidence: 'low' | 'medium' | 'high';
   correctivePass: boolean;
   estimatedContextTokens: number;
@@ -189,6 +194,12 @@ export default function DocumentView({ documentId }: Props) {
         Extracted {new Date(document.extractedAt).toLocaleString()} · schema v{document.extractionSchemaVersion ?? 0}
         {document.extractionHistory?.length ? ` · ${document.extractionHistory.length} prior extraction${document.extractionHistory.length === 1 ? '' : 's'} retained` : ''}
       </Typography.Paragraph>}
+      {indexStatus?.dense?.enabled && <Alert style={{ marginBottom: 16 }} showIcon
+        type={indexStatus.dense.status === 'unavailable' ? 'warning' : 'info'}
+        message={indexStatus.dense.status === 'ready'
+          ? `Dense retrieval ready · ${indexStatus.dense.embeddingModel}`
+          : indexStatus.dense.status === 'unavailable' ? 'Dense retrieval is unavailable; sparse search remains ready' : 'Dense retrieval will be built during indexing'}
+        description={indexStatus.dense.issue?.message} />}
       <Card size="small" title="Tags" style={{ marginBottom: 20 }}>
         <Space.Compact style={{ width: '100%' }}>
           <Input value={tagText} onChange={event => setTagText(event.target.value)} placeholder="lecture, networking, exam-1" />
@@ -222,7 +233,8 @@ export default function DocumentView({ documentId }: Props) {
           {retrieval && <Space direction="vertical" size="middle" style={{ width: '100%', marginTop: 16 }}>
             <Alert type={retrieval.confidence === 'low' ? 'warning' : 'info'} showIcon
               message={`${retrieval.confidence[0].toUpperCase() + retrieval.confidence.slice(1)} retrieval confidence`}
-              description={`${retrieval.results.length} passage${retrieval.results.length === 1 ? '' : 's'} · approximately ${retrieval.estimatedContextTokens.toLocaleString()} context tokens${retrieval.correctivePass ? ' · one corrective retrieval pass used' : ''}`} />
+              description={`${retrieval.results.length} passage${retrieval.results.length === 1 ? '' : 's'} · ${retrieval.method === 'hybrid-rrf' ? 'hybrid sparse + dense ranking' : 'sparse BM25 ranking'} · approximately ${retrieval.estimatedContextTokens.toLocaleString()} context tokens${retrieval.correctivePass ? ' · one corrective retrieval pass used' : ''}`} />
+            {retrieval.dense?.status === 'unavailable' && <Alert type="warning" showIcon message="Dense retrieval unavailable; showing sparse results" description={retrieval.dense.error || retrieval.indexingError} />}
             {retrieval.refusal && <Alert type="warning" showIcon message={retrieval.refusal} />}
             <List dataSource={retrieval.results} locale={{ emptyText: <Empty description="No indexed evidence found" /> }} renderItem={(result, position) => <List.Item>
               <Card size="small" className="retrieval-result" title={<Space wrap><Tag color="blue">#{position + 1}</Tag><Typography.Text>{result.breadcrumb || result.documentName}</Typography.Text></Space>}

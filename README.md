@@ -70,6 +70,7 @@ These installers do not require Node.js, Python, or Git. They select the current
 - Fresh AI-generated practice for concepts missed on the latest attempt
 - Server-side SQLite storage with an offline IndexedDB cache
 - Original-file previews and document-scoped RAG chats with Markdown answers and source references
+- Always-on SQLite FTS5/BM25 retrieval with optional local LanceDB vector search and reciprocal-rank fusion
 
 ## How it works
 
@@ -250,7 +251,7 @@ Quizzer continuously saves the active test or practice session locally and to SQ
 
 ## Server database and IndexedDB migration
 
-Quizzer stores authoritative metadata, extracted text, tests, attempts, generation and indexing jobs, and unfinished sessions in `data/quizzer.sqlite` under the native application-data directory. Indexing checkpoints after each document, automatically recovers a `running` job when the service restarts, and never repeats already committed documents. Original uploaded files and extracted figures are verified by SHA-256 and deduplicated in `objects/sha256`; SQLite stores only immutable references to them. Rebuildable FTS5/BM25 data lives separately in `indexes/sparse.sqlite`, so it is never confused with source data or copied into backups. Unreferenced uploads are retained for 24 hours to protect in-flight sync, then reclaimed during periodic service cleanup. SQLite write-ahead logging protects concurrent browser writes, while an ordered change log propagates updates and deletions between machines.
+Quizzer stores authoritative metadata, extracted text, tests, attempts, generation and indexing jobs, and unfinished sessions in `data/quizzer.sqlite` under the native application-data directory. Indexing checkpoints after each document, automatically recovers a `running` job when the service restarts, and never repeats already committed documents. Original uploaded files and extracted figures are verified by SHA-256 and deduplicated in `objects/sha256`; SQLite stores only immutable references to them. Rebuildable FTS5/BM25 data lives separately in `indexes/sparse.sqlite`; Balanced and Max profiles can add model-versioned LanceDB vectors under `indexes/dense.lance`. Neither derived index is confused with source data or copied into backups. If Ollama or the configured embedding model is unavailable, the durable job remains resumable and retrieval clearly falls back to sparse evidence. Unreferenced uploads are retained for 24 hours to protect in-flight sync, then reclaimed during periodic service cleanup. SQLite write-ahead logging protects concurrent browser writes, while an ordered change log propagates updates and deletions between machines.
 
 Each document records its extraction schema, converter version, extraction time, and extracted-content hash. **Re-extract original** (or `quizzer documents reextract <id>`) reads the SHA-256-verified original from object storage, retains up to 20 prior extraction revisions, invalidates stale derived metadata, and rebuilds retrieval through a durable indexing job.
 
@@ -350,7 +351,7 @@ The generation pipeline reached its bounded retry limit after rejecting malforme
 
 - Capability-negotiated provider routes and custom OpenAI-compatible endpoints
 - Provider-reported usage accounting and configurable per-job cost ceilings
-- Rebuildable dense indexes, hybrid retrieval, and cross-encoder reranking
+- Cross-encoder reranking plus multi-query and HyDE retrieval
 - Managed local generation through llama.cpp or Ollama
 - Full browser, accessibility, installer, update, and rollback validation across the supported platform matrix
 

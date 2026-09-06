@@ -376,17 +376,17 @@ paths:
   /index/status:
     get:
       operationId: getIndexStatus
-      summary: Inspect the durable sparse index
+      summary: Inspect the durable sparse and rebuildable dense indexes
       responses:
         '200':
-          description: Sparse index status
+          description: Sparse and dense index status
           content:
             application/json:
               schema: { $ref: '#/components/schemas/IndexStatus' }
   /index:
     post:
       operationId: indexDocuments
-      summary: Start a durable, resumable SQLite FTS5 indexing job
+      summary: Start a durable, resumable sparse and configured dense indexing job
       requestBody:
         required: true
         content:
@@ -448,7 +448,7 @@ paths:
   /retrieval/preview:
     post:
       operationId: previewRetrieval
-      summary: Preview scoped BM25 retrieval with stable source citations
+      summary: Preview scoped sparse or hybrid retrieval with stable source citations
       requestBody:
         required: true
         content:
@@ -803,7 +803,7 @@ components:
         unreferencedBytes: { type: integer, minimum: 0 }
     IndexStatus:
       type: object
-      required: [version, engine, databasePath, documentCount, chunkCount, documents]
+      required: [version, engine, databasePath, documentCount, chunkCount, documents, dense]
       properties:
         version: { type: integer, const: 1 }
         engine: { type: string, const: sqlite-fts5-bm25 }
@@ -811,6 +811,22 @@ components:
         documentCount: { type: integer, minimum: 0 }
         chunkCount: { type: integer, minimum: 0 }
         documents: { type: array, items: { type: object } }
+        dense:
+          type: object
+          required: [version, engine, databasePath, enabled, embeddingModel, status, tableCount, chunkCount, tables]
+          properties:
+            version: { type: integer, const: 1 }
+            engine: { type: string, const: lancedb }
+            databasePath: { type: string }
+            enabled: { type: boolean }
+            embeddingModel: { type: string }
+            status: { type: string, enum: [disabled, not-built, ready, unavailable] }
+            tableCount: { type: integer, minimum: 0 }
+            chunkCount: { type: integer, minimum: 0 }
+            activeTableCount: { type: integer, minimum: 0 }
+            activeChunkCount: { type: integer, minimum: 0 }
+            tables: { type: array, items: { type: object } }
+            issue: { type: object }
     IndexJob:
       type: object
       required: [id, kind, status, documentIds, remainingDocumentIds, completedDocumentIds, results, force, createdAt, updatedAt]
@@ -832,7 +848,7 @@ components:
         error: { type: string }
     RetrievalResult:
       type: object
-      required: [sourceSpanId, documentId, documentName, documentVersionHash, chunkIndex, parentId, content, excerpt, score, bm25, neighbors, parentContent]
+      required: [sourceSpanId, documentId, documentName, documentVersionHash, chunkIndex, parentId, content, excerpt, score, neighbors, parentContent]
       properties:
         sourceSpanId: { type: string }
         documentId: { type: string }
@@ -846,6 +862,10 @@ components:
         excerpt: { type: string }
         score: { type: number }
         bm25: { type: number }
+        denseScore: { type: number }
+        retrievalChannels:
+          type: array
+          items: { type: string, enum: [sparse, dense] }
         neighbors: { type: array, items: { type: object } }
         parentContent: { type: string }
     RetrievalPreview:
@@ -853,12 +873,22 @@ components:
       required: [query, method, correctivePass, confidence, estimatedContextTokens, results]
       properties:
         query: { type: string }
-        method: { type: string, const: sparse-bm25 }
+        method: { type: string, enum: [sparse-bm25, hybrid-rrf] }
+        requestedMethod: { type: string, const: hybrid-rrf }
         correctivePass: { type: boolean }
         confidence: { type: string, enum: [low, medium, high] }
         estimatedContextTokens: { type: integer, minimum: 0 }
         results: { type: array, items: { $ref: '#/components/schemas/RetrievalResult' } }
         refusal: { type: string }
+        indexingError: { type: string }
+        dense:
+          type: object
+          required: [status, embeddingModel]
+          properties:
+            status: { type: string, enum: [ready, unavailable] }
+            embeddingModel: { type: string }
+            candidates: { type: integer, minimum: 0 }
+            error: { type: string }
     GenerationJob:
       type: object
       required: [id, testId, name, status, documentIds, options, questions, createdAt, updatedAt]
