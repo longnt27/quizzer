@@ -200,6 +200,48 @@ test('channel selection persists in userData atomically and survives restart', a
   }
 });
 
+test('verified staged update is recovered and remains applicable after restart', async () => {
+  const env = await setupTestEnv('1.2.0');
+  try {
+    const updater = new DesktopUpdater({
+      userDataDir: env.directory,
+      currentVersion: '1.0.0',
+      platform: 'macos',
+      architecture: 'arm64',
+      trustedKeys: { 'quizzer-release-test': env.keyPair.publicKey },
+      fetch: async url => {
+        if (url.endsWith('release-manifest.json')) {
+          return { ok: true, text: async () => JSON.stringify(env.signed) };
+        }
+        return { ok: true, arrayBuffer: async () => env.content };
+      },
+    });
+
+    await updater.checkForUpdates();
+    await updater.downloadUpdate();
+
+    const restarted = new DesktopUpdater({
+      userDataDir: env.directory,
+      currentVersion: '1.0.0',
+      platform: 'macos',
+      architecture: 'arm64',
+      trustedKeys: { 'quizzer-release-test': env.keyPair.publicKey },
+    });
+    const recoveredStatus = await restarted.getStatus();
+
+    assert.equal(recoveredStatus.state, 'downloaded');
+    assert.equal(recoveredStatus.updateInfo?.version, '1.2.0');
+    assert.equal(recoveredStatus.downloadProgress?.percent, 100);
+    assert.equal(recoveredStatus.stagedArtifactName, 'quizzer-1.2.0-macos-arm64.zip');
+
+    const applyResult = await restarted.applyUpdate();
+    assert.equal(applyResult.handoffPending, true);
+    assert.equal(applyResult.status.state, 'installer-handoff-pending');
+  } finally {
+    await rm(env.directory, { recursive: true, force: true });
+  }
+});
+
 test('discardUpdate clears staging files and resets state to idle', async () => {
   const env = await setupTestEnv('1.2.0');
   try {
@@ -229,4 +271,3 @@ test('discardUpdate clears staging files and resets state to idle', async () => 
     await rm(env.directory, { recursive: true, force: true });
   }
 });
-

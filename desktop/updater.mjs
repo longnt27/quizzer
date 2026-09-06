@@ -1,8 +1,8 @@
 import { createHash, createPublicKey, KeyObject } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { copyFile, mkdir, open, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
-import { canonicalizeManifest, verifyReleaseManifestSignature } from '../release/manifest.mjs';
+import { createReadStream, readFileSync } from 'node:fs';
+import { lstat, mkdir, open, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { verifyReleaseManifestSignature } from '../release/manifest.mjs';
 import { isValidArtifactName, MAX_DESKTOP_PACKAGE_SIZE, validateReleaseManifest } from '../server/release-manifest.mjs';
 
 export const SUPPORTED_CHANNELS = Object.freeze(['stable', 'beta']);
@@ -187,6 +187,130 @@ export const selectTargetArtifact = (artifacts, { platform = process.platform, a
   return candidates[0];
 };
 
+export const selectStagedArtifact = (artifacts, selectedArtifactName, { platform = process.platform, architecture = process.arch } = {}) => {
+  if (!isValidArtifactName(selectedArtifactName)) {
+    throw new Error(`Invalid selected staged artifact name: "${selectedArtifactName}"`);
+  }
+
+  const targetPlatform = detectPlatform(platform);
+  const targetArch = detectArch(architecture);
+  const matches = Array.isArray(artifacts)
+    ? artifacts.filter(artifact =>
+        artifact &&
+        typeof artifact === 'object' &&
+        artifact.name === selectedArtifactName &&
+        artifact.platform === targetPlatform &&
+        artifact.architecture === targetArch &&
+        !artifact.cli,
+      )
+    : [];
+
+  if (matches.length !== 1) {
+    throw new Error(
+      `Selected staged artifact must match exactly one signed desktop artifact for ${targetPlatform}/${targetArch}`,
+    );
+  }
+
+  return matches[0];
+};
+
+const readBoundedLocalText = async (filePath, maxBytes, label) => {
+  const fileInfo = await lstat(filePath);
+  if (!fileInfo.isFile() || fileInfo.isSymbolicLink()) {
+    throw new Error(`${label} must be a regular file`);
+  }
+  if (fileInfo.size > maxBytes) {
+    throw new Error(`${label} exceeded maximum size (${fileInfo.size} > ${maxBytes})`);
+  }
+
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let bytesRead = 0;
+    const stream = createReadStream(filePath);
+
+    stream.on('data', chunk => {
+      bytesRead += chunk.length;
+      if (bytesRead > maxBytes) {
+        stream.destroy(new Error(`${label} exceeded maximum size of ${maxBytes} bytes`));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    stream.on('error', reject);
+    stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+  });
+};
+
+const verifyStagedArtifactFile = async (filePath, artifact) => {
+  let fileInfo;
+  try {
+    fileInfo = await lstat(filePath);
+  } catch (error) {
+    throw new Error(`Staged artifact file not found: ${error.message}`);
+  }
+
+  if (!fileInfo.isFile() || fileInfo.isSymbolicLink()) {
+    throw new Error('Staged artifact must be a regular file and cannot be a symbolic link');
+  }
+  if (fileInfo.size !== artifact.size) {
+    throw new Error(`Staged artifact file size tampered: expected ${artifact.size}, found ${fileInfo.size}`);
+  }
+
+  const hasher = createHash('sha256');
+  let bytesRead = 0;
+  await new Promise((resolve, reject) => {
+    const stream = createReadStream(filePath);
+    stream.on('data', chunk => {
+      bytesRead += chunk.length;
+      if (bytesRead > artifact.size) {
+        stream.destroy(new Error(`Staged artifact exceeded signed size: ${bytesRead} > ${artifact.size}`));
+        return;
+      }
+      hasher.update(chunk);
+    });
+    stream.on('error', reject);
+    stream.on('end', resolve);
+  });
+
+  if (bytesRead !== artifact.size) {
+    throw new Error(`Staged artifact file size tampered: expected ${artifact.size}, found ${bytesRead}`);
+  }
+  const actualSha = hasher.digest('hex');
+  if (actualSha !== artifact.sha256) {
+    throw new Error(`Staged artifact checksum tampered: expected ${artifact.sha256}, found ${actualSha}`);
+  }
+};
+
+const parseStagedMetadata = content => {
+  let stagedData;
+  try {
+    stagedData = JSON.parse(content);
+  } catch (error) {
+    throw new Error(`Invalid staged update metadata JSON: ${error.message}`);
+  }
+
+  if (!stagedData || typeof stagedData !== 'object' || Array.isArray(stagedData)) {
+    throw new Error('Staged update metadata must be an object');
+  }
+
+  const allowedKeys = new Set(['stagedAt', 'manifest', 'selectedArtifactName']);
+  const unexpectedKeys = Object.keys(stagedData).filter(key => !allowedKeys.has(key));
+  if (unexpectedKeys.length) {
+    throw new Error(`Staged update metadata contains unknown fields: ${unexpectedKeys.join(', ')}`);
+  }
+  if (typeof stagedData.stagedAt !== 'string' || Number.isNaN(Date.parse(stagedData.stagedAt))) {
+    throw new Error('Staged update metadata has an invalid stagedAt timestamp');
+  }
+  if (!stagedData.manifest || typeof stagedData.manifest !== 'object' || Array.isArray(stagedData.manifest)) {
+    throw new Error('Staged update metadata is missing its signed manifest');
+  }
+  if (!isValidArtifactName(stagedData.selectedArtifactName)) {
+    throw new Error('Staged update metadata has an invalid selectedArtifactName');
+  }
+
+  return stagedData;
+};
+
 export const normalizePublicKey = value => {
   if (!value) return null;
   if (value instanceof KeyObject) {
@@ -254,6 +378,7 @@ export class DesktopUpdater {
     this.stagedArtifactName = null;
     this.rawVerifiedManifest = null;
     this.lastError = null;
+    this.stagedRecoveryAttempted = false;
   }
 
   loadPersistedChannelSync(fallbackOptionChannel) {
@@ -284,13 +409,7 @@ export class DesktopUpdater {
   }
 
   resolvePublicKey(publicKeyId) {
-    if (this.trustedKeys.has(publicKeyId)) {
-      return this.trustedKeys.get(publicKeyId);
-    }
-    if (this.trustedKeys.has('default') && this.trustedKeys.size === 1) {
-      return this.trustedKeys.get('default');
-    }
-    return null;
+    return this.trustedKeys.get(publicKeyId) || null;
   }
 
   getKeyStatus() {
@@ -327,7 +446,68 @@ export class DesktopUpdater {
     return { available: false };
   }
 
+  async loadStagedPackage() {
+    if (!this.userDataDir) {
+      throw new Error('User data directory not configured');
+    }
+
+    const stagingDir = join(this.userDataDir, 'updates', 'staging');
+    const stagedMetadataPath = join(stagingDir, 'staged-update.json');
+    const metadataText = await readBoundedLocalText(
+      stagedMetadataPath,
+      MAX_METADATA_BYTES,
+      'Staged update metadata',
+    );
+    const stagedData = parseStagedMetadata(metadataText);
+    const manifest = await this.verifyManifest(stagedData.manifest);
+    const artifact = selectStagedArtifact(manifest.artifacts, stagedData.selectedArtifactName, {
+      platform: this.platform,
+      architecture: this.architecture,
+    });
+
+    const artifactPath = join(stagingDir, artifact.name);
+    if (dirname(artifactPath) !== stagingDir) {
+      throw new Error('Derived artifact path escapes staging directory');
+    }
+    await verifyStagedArtifactFile(artifactPath, artifact);
+
+    return { artifact, manifest };
+  }
+
+  restoreStagedPackage({ artifact, manifest }) {
+    this.state = 'downloaded';
+    this.rawVerifiedManifest = manifest;
+    this.stagedArtifactName = artifact.name;
+    this.updateInfo = {
+      version: manifest.version,
+      channel: manifest.channel,
+      publishedAt: manifest.publishedAt,
+      publicKeyId: manifest.publicKeyId,
+      artifact,
+    };
+    this.downloadProgress = {
+      bytesDownloaded: artifact.size,
+      totalBytes: artifact.size,
+      percent: 100,
+    };
+    this.lastError = null;
+  }
+
+  async recoverStagedUpdate() {
+    if (this.stagedRecoveryAttempted || this.state !== 'idle' || !this.userDataDir) return;
+    this.stagedRecoveryAttempted = true;
+
+    try {
+      this.restoreStagedPackage(await this.loadStagedPackage());
+    } catch (error) {
+      if (error?.code === 'ENOENT') return;
+      this.state = 'error';
+      this.lastError = `Failed to recover staged update: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+
   async getStatus() {
+    await this.recoverStagedUpdate();
     const keyStatus = this.getKeyStatus();
 
     return {
@@ -632,66 +812,24 @@ export class DesktopUpdater {
   }
 
   async applyUpdate(options = {}) {
-    if (this.state !== 'downloaded' && !this.stagedArtifactName) {
-      throw new Error('No verified update is ready to apply');
-    }
-
-    this.state = 'applying';
-    this.lastError = null;
-
     try {
       if (!this.userDataDir) {
         throw new Error('User data directory not configured');
       }
 
-      const stagingDir = join(this.userDataDir, 'updates', 'staging');
-      const stagedManifestPath = join(stagingDir, 'staged-update.json');
-      let stagedData;
+      let stagedPackage;
       try {
-        const content = await readFile(stagedManifestPath, 'utf8');
-        stagedData = JSON.parse(content);
-      } catch (err) {
-        throw new Error(`Failed to read staged update manifest: ${err.message}`);
+        stagedPackage = await this.loadStagedPackage();
+      } catch (error) {
+        if (error?.code === 'ENOENT') {
+          throw new Error('No verified update is ready to apply');
+        }
+        throw error;
       }
 
-      const manifestToVerify = stagedData.manifest || stagedData;
-      const reverifiedManifest = await this.verifyManifest(manifestToVerify);
-
-      const targetArtifact = selectTargetArtifact(reverifiedManifest.artifacts, {
-        platform: this.platform,
-        architecture: this.architecture,
-        preferredFormat: options.preferredFormat,
-      });
-
-      if (!targetArtifact) {
-        throw new Error(`No matching host artifact for ${this.platform}/${this.architecture} in reverified manifest`);
-      }
-
-      if (!isValidArtifactName(targetArtifact.name)) {
-        throw new Error(`Invalid artifact name in reverified manifest: "${targetArtifact.name}"`);
-      }
-
-      const safeArtifactPath = join(stagingDir, targetArtifact.name);
-      if (dirname(safeArtifactPath) !== stagingDir) {
-        throw new Error('Derived artifact path escapes staging directory');
-      }
-
-      let fileStat;
-      try {
-        fileStat = await stat(safeArtifactPath);
-      } catch (err) {
-        throw new Error(`Staged artifact file not found: ${err.message}`);
-      }
-
-      if (fileStat.size !== targetArtifact.size) {
-        throw new Error(`Staged artifact file size tampered: expected ${targetArtifact.size}, found ${fileStat.size}`);
-      }
-
-      const actualFileBytes = await readFile(safeArtifactPath);
-      const actualSha = createHash('sha256').update(actualFileBytes).digest('hex');
-      if (actualSha !== targetArtifact.sha256) {
-        throw new Error(`Staged artifact checksum tampered: expected ${targetArtifact.sha256}, found ${actualSha}`);
-      }
+      this.restoreStagedPackage(stagedPackage);
+      this.state = 'applying';
+      const { artifact: targetArtifact } = stagedPackage;
 
       this.state = 'installer-handoff-pending';
       this.stagedArtifactName = targetArtifact.name;
@@ -734,6 +872,7 @@ export class DesktopUpdater {
     this.stagedArtifactName = null;
     this.rawVerifiedManifest = null;
     this.lastError = null;
+    this.stagedRecoveryAttempted = true;
 
     return {
       discarded: true,

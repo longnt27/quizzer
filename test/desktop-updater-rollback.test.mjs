@@ -35,7 +35,7 @@ const setupRollbackEnv = async () => {
     }],
   };
   const signed = signReleaseManifest(unsigned, privateKeyFromBase64(encodedPrivateKey));
-  return { directory, keyPair, signed, content, sha256 };
+  return { directory, encodedPrivateKey, keyPair, signed, content, sha256 };
 };
 
 test('apply reverifies signed manifest, never returns applied true, and marks installer handoff pending', async () => {
@@ -104,7 +104,7 @@ test('apply reverifies Ed25519 signature on staged-update.json and rejects tampe
   }
 });
 
-test('apply rejects path-substitution in staged-update.json and derives path safely', async () => {
+test('apply rejects unsigned path-substitution fields in staged-update.json', async () => {
   const env = await setupRollbackEnv();
   try {
     const updater = new DesktopUpdater({
@@ -131,11 +131,56 @@ test('apply rejects path-substitution in staged-update.json and derives path saf
     stagedData.sha256 = 'abc';
     await writeFile(stagedMetaPath, JSON.stringify(stagedData, null, 2));
 
-    // Updater must derive path from the reverified manifest artifact name, ignoring stagedPath
+    await assert.rejects(
+      updater.applyUpdate(),
+      /metadata contains unknown fields: stagedPath, sha256/,
+    );
+  } finally {
+    await rm(env.directory, { recursive: true, force: true });
+  }
+});
+
+test('apply uses the exact signed artifact selected during download', async () => {
+  const env = await setupRollbackEnv();
+  try {
+    const dmgContent = Buffer.from('Quizzer signed DMG package selected explicitly');
+    const dmgArtifact = {
+      name: 'quizzer-1.2.0-macos-arm64.dmg',
+      platform: 'macos',
+      architecture: 'arm64',
+      format: 'dmg',
+      url: 'https://github.com/Somethings1/quizzer/releases/download/v1.2.0/quizzer-1.2.0-macos-arm64.dmg',
+      size: dmgContent.length,
+      sha256: createHash('sha256').update(dmgContent).digest('hex'),
+      minimumOs: 'macOS 13',
+    };
+    const signed = signReleaseManifest({
+      ...env.signed,
+      signature: '',
+      artifacts: [...env.signed.artifacts, dmgArtifact],
+    }, privateKeyFromBase64(env.encodedPrivateKey));
+
+    const updater = new DesktopUpdater({
+      userDataDir: env.directory,
+      currentVersion: '1.0.0',
+      platform: 'macos',
+      architecture: 'arm64',
+      trustedKeys: { 'quizzer-release-test': env.keyPair.publicKey },
+      fetch: async url => {
+        if (url.endsWith('release-manifest.json')) {
+          return { ok: true, text: async () => JSON.stringify(signed) };
+        }
+        return { ok: true, arrayBuffer: async () => url.endsWith('.dmg') ? dmgContent : env.content };
+      },
+    });
+
+    const checkStatus = await updater.checkForUpdates({ preferredFormat: 'dmg' });
+    assert.equal(checkStatus.updateInfo?.artifact.format, 'dmg');
+    await updater.downloadUpdate();
     const result = await updater.applyUpdate();
-    assert.equal(result.applied, false);
+
     assert.equal(result.handoffPending, true);
-    assert.equal(result.status.state, 'installer-handoff-pending');
+    assert.equal(result.status.stagedArtifactName, dmgArtifact.name);
   } finally {
     await rm(env.directory, { recursive: true, force: true });
   }
