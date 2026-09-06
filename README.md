@@ -126,12 +126,13 @@ The same SQLite library and typed settings registry are available through the de
 npm run cli -- doctor
 npm run cli -- config list
 npm run cli -- documents import ./notes.pdf --tags infrastructure,terraform
+npm run cli -- index --all --idempotency-key first-library-index
 npm run cli -- test create --document DOCUMENT_ID --questions 20 --instruction "Terraform coding questions only"
 npm run cli -- jobs list
 npm run cli -- backup create
 ```
 
-Run `npm run cli -- help` for the complete command list. Configuration is resolved in this order: per-job override, CLI/environment override, user JSONC, hardware profile, then built-in defaults. `quizzer config path` prints the per-user configuration location. API keys and the private service token are never included in settings output or backups.
+Run `npm run cli -- help` for the complete command list. Document indexing creates the same durable, per-document checkpoints used by the desktop service; `quizzer jobs list` shows both indexing and generation work, and `quizzer resume JOB_ID` finishes only an interrupted job's remaining documents. Reusing an indexing idempotency key safely returns the original job, while `--force` explicitly rebuilds unchanged documents. Configuration is resolved in this order: per-job override, CLI/environment override, user JSONC, hardware profile, then built-in defaults. `quizzer config path` prints the per-user configuration location. API keys and the private service token are never included in settings output or backups.
 
 Release builders use Node.js 26 or newer for `npm run build:cli`. The resulting signed single executable embeds the CLI, local service resources, and the platform-native SQLite addon; end users do not install Node.js.
 
@@ -247,7 +248,7 @@ Quizzer continuously saves the active test or practice session locally and to SQ
 
 ## Server database and IndexedDB migration
 
-Quizzer stores authoritative metadata, extracted text, tests, attempts, generation jobs, and unfinished sessions in `data/quizzer.sqlite` under the native application-data directory. Original uploaded files and extracted figures are verified by SHA-256 and deduplicated in `objects/sha256`; SQLite stores only immutable references to them. Rebuildable FTS5/BM25 data lives separately in `indexes/sparse.sqlite`, so it is never confused with source data or copied into backups. Unreferenced uploads are retained for 24 hours to protect in-flight sync, then reclaimed during periodic service cleanup. SQLite write-ahead logging protects concurrent browser writes, while an ordered change log propagates updates and deletions between machines.
+Quizzer stores authoritative metadata, extracted text, tests, attempts, generation and indexing jobs, and unfinished sessions in `data/quizzer.sqlite` under the native application-data directory. Indexing checkpoints after each document, automatically recovers a `running` job when the service restarts, and never repeats already committed documents. Original uploaded files and extracted figures are verified by SHA-256 and deduplicated in `objects/sha256`; SQLite stores only immutable references to them. Rebuildable FTS5/BM25 data lives separately in `indexes/sparse.sqlite`, so it is never confused with source data or copied into backups. Unreferenced uploads are retained for 24 hours to protect in-flight sync, then reclaimed during periodic service cleanup. SQLite write-ahead logging protects concurrent browser writes, while an ordered change log propagates updates and deletions between machines.
 
 To migrate the existing Zen Browser library, start this updated version and open Quizzer once in the same Zen profile and at the exact same URL previously used. IndexedDB is isolated by browser profile and URL origin, so this one visit is required for the page to read the old `QuizDB` database. Before accepting the first batch, the service creates and hashes a timestamped SQLite backup under the application-data `backups/migrations` directory. Each imported record is receipted with SHA-256 in the same transaction as its batch; Quizzer verifies the final record count, aggregate hash, and SQLite presence before the browser marks the import complete. The sidebar then changes from **Syncing library** to **Saved on server**. You can open the same Quizzer URL from another machine after that; it downloads the server library automatically.
 

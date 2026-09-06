@@ -3,7 +3,7 @@ import { createPublicKey, randomUUID, verify } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ensureServiceToken } from '../server/auth.mjs';
-import { chunkDocument, importDocumentFile } from '../server/document-import.mjs';
+import { importDocumentFile } from '../server/document-import.mjs';
 import { detectHardwareCapabilities } from '../server/hardware-profile.mjs';
 import { databasePathFor, defaultAppDataDirectory, sparseIndexPathFor } from '../server/paths.mjs';
 import { PluginManager } from '../plugin-sdk/manager.mjs';
@@ -16,6 +16,7 @@ import { canonicalizeManifest } from '../release/manifest.mjs';
 import { validateReleaseManifest } from '../server/release-manifest.mjs';
 import { ObjectStore } from '../server/object-store.mjs';
 import { createBackup, restoreBackup, verifyBackup } from '../server/backup.mjs';
+import { cancelIndexJob, createIndexJob, recoverIndexJob, resumeIndexJob, runIndexJob } from '../server/index-jobs.mjs';
 
 const usage = `Quizzer CLI
 
@@ -26,7 +27,7 @@ Usage:
   quizzer plugins list|install <directory>|enable <id>|disable <id>|health <id>|rollback <id>
                   |remove <id> --yes [--json]
   quizzer documents list|show <id>|import <file> [--tags a,b]|remove <id> --yes [--json]
-  quizzer index <document-id>|--all [--json]
+  quizzer index <document-id>|--all [--force] [--idempotency-key key] [--json]
   quizzer retrieve <query> [--document <id>] [--tag <tag>] [--limit 10] [--json]
   quizzer test create --document <id> [--document <id>] [--name name] [--questions 20]
                       [--instruction text] [--provider provider] [--model model] [--json]
@@ -43,7 +44,7 @@ Usage:
 const parseArguments = arguments_ => {
   const positionals = [];
   const flags = new Map();
-  const booleanFlags = new Set(['all', 'help', 'json', 'yes']);
+  const booleanFlags = new Set(['all', 'force', 'help', 'json', 'yes']);
   for (let index = 0; index < arguments_.length; index += 1) {
     const argument = arguments_[index];
     if (!argument.startsWith('--')) { positionals.push(argument); continue; }
@@ -242,25 +243,65 @@ const runDocuments = async action => {
   fail('Use documents list, show, import, or remove');
 };
 
+const executeStoredIndexJob = async (database, job) => {
+  const index = new SparseDocumentIndex(sparseIndexPath);
+  try {
+    return await runIndexJob(job, {
+      load: id => database.getRecord('indexJobs', id)?.data,
+      save: next => database.putRecord('indexJobs', next.id, next).data,
+      getDocument: id => database.getRecord('documents', id),
+      indexDocument: (record, options) => index.indexDocument(record, options),
+      updateDocument: (record, result) => {
+        if (!result.reused) database.putRecord('documents', record.id, {
+          ...record.data,
+          indexedAt: Date.now(),
+          indexVersion: 2,
+          documentVersionHash: result.versionHash,
+        });
+      },
+      yieldControl: () => new Promise(resolve => setImmediate(resolve)),
+    });
+  } finally {
+    index.close();
+  }
+};
+
+const writeIndexJob = job => writeResult(
+  { job, indexed: job.results },
+  job.status === 'completed'
+    ? job.results.map(item => `${item.name}: ${item.chunks} chunks${item.reused ? ' (unchanged)' : ''}`).join('\n')
+    : `Index job ${job.id} is ${job.status}`,
+);
+
 const runIndex = async () => {
   const database = await storage();
   const selected = flag('all') === 'true'
     ? database.listRecords('documents')
     : [database.getRecord('documents', parsed.positionals.shift())].filter(Boolean);
   if (!selected.length) fail('No matching documents to index');
-  const indexed = [];
-  const index = new SparseDocumentIndex(sparseIndexPath);
-  try {
-    for (const record of selected) {
-      const chunks = chunkDocument(record.id, record.data.content);
-      const data = { ...record.data, chunks, indexedAt: Date.now(), indexVersion: 2 };
-      database.putRecord('documents', record.id, data);
-      indexed.push(index.indexDocument({ ...record, data }, { force: true }));
+  const documentIds = selected.map(record => record.id);
+  const idempotencyKey = flag('idempotency-key');
+  const force = flag('force') === 'true';
+  const existing = idempotencyKey
+    ? database.listRecords('indexJobs').find(record => record.data.idempotencyKey === idempotencyKey)
+    : undefined;
+  let job;
+  if (existing) {
+    if (existing.data.force !== force || JSON.stringify(existing.data.documentIds) !== JSON.stringify(documentIds)) {
+      fail('Index idempotency key was already used with a different request');
     }
-  } finally {
-    index.close();
+    const recovered = recoverIndexJob(existing.data);
+    job = ['failed', 'cancelled'].includes(recovered.status) ? resumeIndexJob(recovered) : recovered;
+  } else {
+    job = createIndexJob({ documentIds, force, idempotencyKey });
   }
-  writeResult({ indexed }, indexed.map(item => `${item.name}: ${item.chunks} chunks`).join('\n'));
+  database.putRecord('indexJobs', job.id, job);
+  if (job.status === 'completed') return writeIndexJob(job);
+  try {
+    return writeIndexJob(await executeStoredIndexJob(database, job));
+  } catch (error) {
+    throw new Error(`${error instanceof Error ? error.message : String(error)}. Resume with: quizzer resume ${job.id}`);
+  }
 };
 
 const runRetrieve = async () => {
@@ -341,15 +382,40 @@ const runTestCreate = async () => {
 const runJobs = async (action, explicitId) => {
   const database = await storage();
   if (action === 'list') {
-    const jobs = database.listRecords('generationJobs').map(record => record.data);
-    return writeResult({ jobs }, jobs.length ? jobs.map(job => `${job.id}  ${job.status}  ${job.name}`).join('\n') : 'No jobs');
+    const jobs = [
+      ...database.listRecords('generationJobs').map(record => ({ ...record.data, kind: 'generation' })),
+      ...database.listRecords('indexJobs').map(record => record.data),
+    ].sort((left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0));
+    return writeResult({ jobs }, jobs.length ? jobs.map(job => `${job.id}  ${job.status}  ${job.kind === 'index' ? `Index ${job.documentIds.length} document(s)` : job.name}`).join('\n') : 'No jobs');
   }
   const id = explicitId || parsed.positionals.shift();
   if (!id) fail(`jobs ${action} requires a job id`);
-  const record = database.getRecord('generationJobs', id);
+  const generationRecord = database.getRecord('generationJobs', id);
+  const indexRecord = generationRecord ? undefined : database.getRecord('indexJobs', id);
+  const record = generationRecord ?? indexRecord;
   if (!record) fail(`Job not found: ${id}`);
-  if (action === 'show') return writeResult({ job: record.data }, `${record.data.name}\nStatus: ${record.data.status}\nAccepted: ${record.data.questions?.length ?? 0}`);
+  if (action === 'show') return writeResult(
+    { job: record.data },
+    indexRecord
+      ? `Index ${record.data.documentIds.length} document(s)\nStatus: ${record.data.status}\nCompleted: ${record.data.completedDocumentIds.length}`
+      : `${record.data.name}\nStatus: ${record.data.status}\nAccepted: ${record.data.questions?.length ?? 0}`,
+  );
   if (action !== 'resume' && action !== 'cancel') fail('Use jobs list, show, resume, or cancel');
+  if (indexRecord) {
+    if (action === 'cancel') {
+      const job = cancelIndexJob(indexRecord.data);
+      database.putRecord('indexJobs', id, job);
+      return writeResult({ job }, `Cancelled index job ${id}`);
+    }
+    const recovered = recoverIndexJob(indexRecord.data);
+    const resumable = recovered.status === 'queued' ? recovered : resumeIndexJob(recovered);
+    database.putRecord('indexJobs', id, resumable);
+    try {
+      return writeIndexJob(await executeStoredIndexJob(database, resumable));
+    } catch (error) {
+      throw new Error(`${error instanceof Error ? error.message : String(error)}. Resume with: quizzer resume ${id}`);
+    }
+  }
   const job = database.controlGenerationJob(id, action, action === 'resume' ? { resetRounds: false } : {}).data;
   writeResult({ job }, `${action === 'resume' ? 'Queued' : 'Cancelled'} ${job.name}`);
 };

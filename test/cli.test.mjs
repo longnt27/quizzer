@@ -14,9 +14,11 @@ const source = join(directory, 'terraform.md');
 const backup = join(directory, 'backup');
 const pluginDirectory = join(directory, 'test-plugin');
 const standaloneExecutable = process.env.QUIZZER_CLI_EXECUTABLE;
+const appDataDirectory = join(directory, 'data');
 const environment = {
   ...process.env,
-  QUIZZER_APP_DATA_DIR: join(directory, 'data'),
+  QUIZZER_APP_DATA_DIR: appDataDirectory,
+  QUIZZER_DATABASE_PATH: join(appDataDirectory, 'data', 'quizzer.sqlite'),
   ...(standaloneExecutable ? { QUIZZER_NODE_RUNTIME: process.execPath } : {}),
 };
 const invocation = arguments_ => standaloneExecutable
@@ -28,6 +30,15 @@ const cli = async (...arguments_) => {
     cwd: new URL('..', import.meta.url), env: environment,
   });
   return JSON.parse(stdout);
+};
+const seedStorageRecord = async (collection, id, data) => {
+  const sourceCode = `
+    const storage = await import('./server/storage.mjs');
+    storage.putRecord(${JSON.stringify(collection)}, ${JSON.stringify(id)}, ${JSON.stringify(data)});
+  `;
+  await execute(process.execPath, ['--input-type=module', '--eval', sourceCode], {
+    cwd: new URL('..', import.meta.url), env: environment,
+  });
 };
 
 test('reports the package version without opening storage', async () => {
@@ -121,7 +132,29 @@ test('imports, deduplicates, indexes, and lists a real document', async () => {
   assert.equal(duplicate.imported, false);
   assert.equal(duplicate.duplicateOf, first.document.id);
   const indexed = await cli('index', '--all');
+  assert.equal(indexed.job.kind, 'index');
+  assert.equal(indexed.job.status, 'completed');
+  assert.deepEqual(indexed.job.completedDocumentIds, [first.document.id]);
   assert.equal(indexed.indexed[0].id, first.document.id);
+  const jobs = await cli('jobs', 'list');
+  assert.ok(jobs.jobs.some(job => job.id === indexed.job.id && job.kind === 'index'));
+  const shown = await cli('jobs', 'show', indexed.job.id);
+  assert.equal(shown.job.status, 'completed');
+  const firstReplay = await cli('index', '--all', '--idempotency-key', 'cli-index-replay-0001');
+  const secondReplay = await cli('index', '--all', '--idempotency-key', 'cli-index-replay-0001');
+  assert.equal(secondReplay.job.id, firstReplay.job.id);
+  assert.equal(secondReplay.job.status, 'completed');
+
+  const interruptedJob = {
+    id: 'cli-interrupted-index', kind: 'index', status: 'running', documentIds: [first.document.id],
+    remainingDocumentIds: [first.document.id], completedDocumentIds: [], results: [], force: false,
+    createdAt: 1, updatedAt: 2, startedAt: 2,
+  };
+  await seedStorageRecord('indexJobs', interruptedJob.id, interruptedJob);
+  const recovered = await cli('resume', interruptedJob.id);
+  assert.equal(recovered.job.status, 'completed');
+  assert.deepEqual(recovered.job.completedDocumentIds, [first.document.id]);
+  assert.ok(recovered.job.recoveredAt > interruptedJob.startedAt);
   assert.ok((await stat(join(environment.QUIZZER_APP_DATA_DIR, 'indexes', 'sparse.sqlite'))).size > 0);
   const listed = await cli('documents', 'list');
   assert.equal(listed.documents.length, 1);
