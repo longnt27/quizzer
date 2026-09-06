@@ -86,3 +86,57 @@ test('reports every malformed release and artifact field', () => {
     assert.ok(validateReleaseManifest({ ...manifest, artifacts: [{ ...manifest.artifacts[0], url }] }).errors.some(error => error.includes('GitHub Release URL')));
   }
 });
+
+test('hardens artifact names against separators, dot paths, traversal, controls, and length', () => {
+  const badNames = [
+    '../traversal.zip',
+    'dir/sub.zip',
+    'dir\\sub.zip',
+    '.dotfile.zip',
+    'ends-with-dot.',
+    'has..dotdot.zip',
+    'null\0byte.zip',
+    'control\x1fname.zip',
+    'space in name.zip',
+    'a'.repeat(129),
+    '',
+  ];
+
+  for (const name of badNames) {
+    const res = validateReleaseManifest({
+      ...manifest,
+      artifacts: [{ ...manifest.artifacts[0], name }],
+    });
+    assert.equal(res.valid, false, `Expected invalid for artifact name: "${name}"`);
+    assert.ok(res.errors.some(e => e.includes('.name is invalid')), `Expected name error for: "${name}"`);
+  }
+
+  // Valid names
+  for (const name of [
+    'quizzer-1.0.0-macos-arm64.zip',
+    'quizzer-1.0.0-beta.1-windows-x64.exe',
+    'quizzer_2.0.deb',
+    'app-arm64.tar.gz',
+  ]) {
+    const res = validateReleaseManifest({
+      ...manifest,
+      artifacts: [{ ...manifest.artifacts[0], name }],
+    });
+    assert.equal(res.valid, true, `Expected valid for artifact name: "${name}"`);
+  }
+});
+
+test('bounds artifact size to defensible desktop package maximum', () => {
+  // Exceeds 1 GiB
+  const oversized = validateReleaseManifest({
+    ...manifest,
+    artifacts: [{ ...manifest.artifacts[0], size: 1024 * 1024 * 1024 + 1 }],
+  });
+  assert.equal(oversized.valid, false);
+  assert.ok(oversized.errors.some(e => e.includes('size must be a positive integer not exceeding')));
+
+  // Zero and negative sizes
+  assert.equal(validateReleaseManifest({ ...manifest, artifacts: [{ ...manifest.artifacts[0], size: 0 }] }).valid, false);
+  assert.equal(validateReleaseManifest({ ...manifest, artifacts: [{ ...manifest.artifacts[0], size: -500 }] }).valid, false);
+});
+
