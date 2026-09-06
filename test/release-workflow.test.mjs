@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import test from 'node:test';
+
+const workflowPath = new URL('../.github/workflows/release.yml', import.meta.url);
+
+const ordered = (source, first, second) => {
+  const firstIndex = source.indexOf(first);
+  const secondIndex = source.indexOf(second);
+  assert.notEqual(firstIndex, -1, `missing release step: ${first}`);
+  assert.notEqual(secondIndex, -1, `missing release step: ${second}`);
+  assert.ok(firstIndex < secondIndex, `${first} must run before ${second}`);
+};
+
+test('release verifies packaged signatures before collecting artifacts', async () => {
+  const workflow = await readFile(workflowPath, 'utf8');
+
+  ordered(workflow, 'Build signed desktop distributables', 'Verify Apple signatures and notarization');
+  ordered(workflow, 'Build signed desktop distributables', 'Verify Windows signatures');
+  ordered(workflow, 'Verify Apple signatures and notarization', 'Normalize release artifacts');
+  ordered(workflow, 'Verify Windows signatures', 'Normalize release artifacts');
+  assert.match(workflow, /codesign --verify --strict --verbose=2 out\/cli\/quizzer/);
+  assert.match(workflow, /spctl --assess --type execute --verbose=4/);
+  assert.match(workflow, /TeamIdentifier=\$APPLE_TEAM_ID/);
+  assert.match(workflow, /Get-AuthenticodeSignature -FilePath \$Target/);
+  assert.match(workflow, /EXPECTED_WINDOWS_CERTIFICATE_SHA256\.ToUpperInvariant\(\)/);
+});
+
+test('release publishes separate application and landing SBOMs', async () => {
+  const workflow = await readFile(workflowPath, 'utf8');
+
+  assert.match(workflow, /name: Generate CycloneDX SBOM/);
+  assert.match(workflow, /name: Generate landing CycloneDX SBOM/);
+  assert.match(workflow, /landing-metadata\/landing-sbom\.cdx\.json/);
+  assert.match(workflow, /release-bundle\/landing-sbom\.cdx\.json/);
+  assert.match(workflow, /gh release create[^\n]+release-bundle\/landing-sbom\.cdx\.json/);
+});

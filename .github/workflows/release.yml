@@ -56,6 +56,13 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
+      - name: Generate landing CycloneDX SBOM
+        run: npm sbom --sbom-format cyclonedx > landing-sbom.cdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: landing-metadata
+          path: landing/landing-sbom.cdx.json
+          if-no-files-found: error
       - name: Generate CycloneDX SBOM
         run: npm sbom --sbom-format cyclonedx > sbom.cdx.json
       - uses: actions/upload-artifact@v4
@@ -198,6 +205,50 @@ jobs:
         run: npm run make:desktop
       - name: Verify packaged Electron fuses
         run: npm run verify:desktop-fuses
+      - name: Verify Apple signatures and notarization
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find out -type d -name Quizzer.app -prune -print -quit)"
+          test -n "$APP_PATH"
+          codesign --verify --strict --verbose=2 out/cli/quizzer
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          codesign -dv --verbose=4 out/cli/quizzer 2>&1 | grep -F "TeamIdentifier=$APPLE_TEAM_ID"
+          codesign -dv --verbose=4 "$APP_PATH" 2>&1 | grep -F "TeamIdentifier=$APPLE_TEAM_ID"
+          spctl --assess --type execute --verbose=4 "$APP_PATH"
+      - name: Verify Windows signatures
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        env:
+          EXPECTED_WINDOWS_CERTIFICATE_SHA256: ${{ vars.QUIZZER_WINDOWS_CERTIFICATE_SHA256 }}
+        run: |
+          $CliPath = (Resolve-Path 'out/cli/quizzer.exe').Path
+          $DesktopPath = Get-ChildItem -Path out -Recurse -File -Filter 'quizzer.exe' |
+            Where-Object { $_.FullName -ne $CliPath } |
+            Select-Object -First 1 -ExpandProperty FullName
+          $InstallerPaths = @(Get-ChildItem -Path 'out/make' -Recurse -File -Filter '*.exe' |
+            Select-Object -ExpandProperty FullName)
+          if (-not $DesktopPath) { throw 'Packaged Quizzer desktop executable was not found' }
+          if ($InstallerPaths.Count -eq 0) { throw 'Quizzer Windows installer was not found' }
+          $Targets = @($CliPath, $DesktopPath) + $InstallerPaths
+          foreach ($Target in $Targets) {
+            $Signature = Get-AuthenticodeSignature -FilePath $Target
+            if ($Signature.Status -ne 'Valid' -or -not $Signature.SignerCertificate) {
+              throw "Invalid Authenticode signature for $Target`: $($Signature.Status)"
+            }
+            $Hasher = [Security.Cryptography.SHA256]::Create()
+            try {
+              $SignerSha256 = [BitConverter]::ToString(
+                $Hasher.ComputeHash($Signature.SignerCertificate.RawData)
+              ).Replace('-', '')
+            } finally {
+              $Hasher.Dispose()
+            }
+            if ($SignerSha256 -ne $env:EXPECTED_WINDOWS_CERTIFICATE_SHA256.ToUpperInvariant()) {
+              throw "Unexpected signing certificate for $Target"
+            }
+          }
       - name: Normalize release artifacts
         run: node scripts/collect-release-artifacts.mjs --platform ${{ matrix.platform }} --architecture ${{ matrix.architecture }}
       - name: Attest build provenance
@@ -230,9 +281,11 @@ jobs:
           path: downloaded-artifacts
       - name: Merge matrix artifacts
         run: node scripts/merge-release-artifacts.mjs --input downloaded-artifacts --output release-bundle
-      - name: Add SBOM
+      - name: Add SBOMs
         shell: bash
-        run: cp downloaded-artifacts/release-metadata/sbom.cdx.json release-bundle/sbom.cdx.json
+        run: |
+          cp downloaded-artifacts/release-metadata/sbom.cdx.json release-bundle/sbom.cdx.json
+          cp downloaded-artifacts/landing-metadata/landing-sbom.cdx.json release-bundle/landing-sbom.cdx.json
       - name: Sign release manifest
         env:
           QUIZZER_RELEASE_PRIVATE_KEY: ${{ secrets.QUIZZER_RELEASE_PRIVATE_KEY }}
@@ -255,6 +308,7 @@ jobs:
             release-bundle/release-manifest.canonical.json
             release-bundle/release-manifest.sig
             release-bundle/sbom.cdx.json
+            release-bundle/landing-sbom.cdx.json
       - uses: actions/upload-artifact@v4
         with:
           name: signed-release-${{ env.RELEASE_TAG }}
@@ -266,6 +320,7 @@ jobs:
             release-bundle/release-manifest.canonical.json
             release-bundle/release-manifest.sig
             release-bundle/sbom.cdx.json
+            release-bundle/landing-sbom.cdx.json
           if-no-files-found: error
       - name: Publish GitHub Release
         if: github.event_name == 'workflow_dispatch' && inputs.publish
@@ -275,4 +330,4 @@ jobs:
         run: |
           PRERELEASE=()
           if [ "$RELEASE_CHANNEL" = beta ]; then PRERELEASE=(--prerelease); fi
-          gh release create "$RELEASE_TAG" release-bundle/quizzer-* release-bundle/install.sh release-bundle/install.ps1 release-bundle/release-manifest.json release-bundle/release-manifest.canonical.json release-bundle/release-manifest.sig release-bundle/sbom.cdx.json --verify-tag --generate-notes --title "Quizzer ${RELEASE_TAG#v}" "${PRERELEASE[@]}"
+          gh release create "$RELEASE_TAG" release-bundle/quizzer-* release-bundle/install.sh release-bundle/install.ps1 release-bundle/release-manifest.json release-bundle/release-manifest.canonical.json release-bundle/release-manifest.sig release-bundle/sbom.cdx.json release-bundle/landing-sbom.cdx.json --verify-tag --generate-notes --title "Quizzer ${RELEASE_TAG#v}" "${PRERELEASE[@]}"
