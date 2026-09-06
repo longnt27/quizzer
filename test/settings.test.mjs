@@ -6,6 +6,7 @@ import test from 'node:test';
 import {
   loadResolvedSettings, readUserSettings, resolveSettings, SETTINGS_SCHEMA, validateSettings, writeUserSettings,
 } from '../server/settings.mjs';
+import { providerConcurrencyLimits, publicProviderPolicies } from '../server/provider-policy.mjs';
 
 const directory = await mkdtemp(join(tmpdir(), 'quizzer-settings-test-'));
 test.after(async () => rm(directory, { recursive: true, force: true }));
@@ -14,7 +15,7 @@ test('resolves profile, user, environment, CLI, and job settings in order', () =
   const resolved = resolveSettings({
     profile: 'lite',
     user: { 'generation.concurrency': 2, 'retrieval.contextBudget': 5000 },
-    environment: { QUIZZER_HARDWARE_PROFILE: 'balanced', QUIZZER_GENERATION_CONCURRENCY: '4' },
+    environment: { QUIZZER_HARDWARE_PROFILE: 'balanced', QUIZZER_GENERATION_CONCURRENCY: '4', QUIZZER_OPENAI_MAX_CONCURRENCY: '4' },
     cli: { 'generation.concurrency': 5 },
     job: { 'generation.concurrency': 6 },
   });
@@ -23,11 +24,18 @@ test('resolves profile, user, environment, CLI, and job settings in order', () =
   assert.equal(resolved.values['retrieval.contextBudget'], 5000);
   assert.equal(resolved.values['generation.concurrency'], 6);
   assert.equal(resolved.sources['generation.concurrency'], 'job');
+  assert.equal(resolved.values['providers.openai.maxConcurrency'], 4);
+  assert.equal(resolved.sources['providers.openai.maxConcurrency'], 'environment');
+  assert.equal(providerConcurrencyLimits(resolved.values).openai, 4);
+  assert.deepEqual(publicProviderPolicies(resolved.values).openai, {
+    billing: 'usage-based', privacy: 'remote-api', maxConcurrency: 4,
+  });
 });
 
 test('validates types, ranges, unknown settings, and secret-like keys', () => {
   assert.deepEqual(validateSettings({ 'extraction.ocr': true }), { 'extraction.ocr': true });
   assert.throws(() => validateSettings({ 'generation.concurrency': 99 }), /from 1 to 10/);
+  assert.throws(() => validateSettings({ 'providers.codex.maxConcurrency': 0 }), /from 1 to 10/);
   assert.throws(() => validateSettings({ 'unknown.value': true }), /Unknown setting/);
   assert.throws(() => validateSettings({ 'provider.apiKey': 'secret' }), /Secrets cannot be stored/);
   assert.equal(SETTINGS_SCHEMA.additionalProperties, false);

@@ -21,6 +21,7 @@ import { sparseIndexPathFor } from './server/paths.mjs';
 import { createBackup, listBackups, verifyBackup } from './server/backup.mjs';
 import { cancelIndexJob, createIndexJob, recoverIndexJob, resumeIndexJob, runIndexJob } from './server/index-jobs.mjs';
 import { reextractDocument } from './server/document-import.mjs';
+import { providerConcurrencyLimits, publicProviderPolicies } from './server/provider-policy.mjs';
 
 const configuredPortValue = process.env.QUIZZER_SERVICE_PORT ?? '8787';
 const configuredPort = Number(configuredPortValue);
@@ -933,10 +934,12 @@ const handleVersionedApi = async (request, response, url) => {
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/capabilities') {
       const hardware = detectHardwareCapabilities(appDataDirectory);
+      const settings = await loadResolvedSettings(appDataDirectory);
       send(response, 200, {
         apiVersion: 1,
         hardware,
         providers: Object.keys(providerRunners),
+        providerPolicies: publicProviderPolicies(settings.values),
         operations: ['settings', 'onboarding', 'migrations', 'backups', 'plugins', 'objects', 'documents', 'indexing', 'retrieval', 'jobs', 'events'],
       });
       return true;
@@ -1178,7 +1181,12 @@ const handleVersionedApi = async (request, response, url) => {
     }
     if (request.method === 'POST' && url.pathname === '/api/v1/jobs/claim') {
       const body = await readJson(request);
-      const job = claimGenerationJob({ workerId: body?.workerId, leaseMs: body?.leaseMs });
+      const settings = await loadResolvedSettings(appDataDirectory);
+      const job = claimGenerationJob({
+        workerId: body?.workerId,
+        leaseMs: body?.leaseMs,
+        providerConcurrency: providerConcurrencyLimits(settings.values),
+      });
       send(response, 200, { job: job ? publicRecord(job) : undefined });
       return true;
     }

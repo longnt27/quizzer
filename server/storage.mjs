@@ -310,14 +310,26 @@ const requireActiveGenerationLease = (existing, { workerId, leaseId, now }) => {
   }
 };
 
-const claimGenerationJobTransaction = database.transaction((workerId, leaseMs, now) => {
-  const candidates = recordsInCollection.all('generationJobs').map(decodeRecord).filter(record => {
+const claimGenerationJobTransaction = database.transaction((workerId, leaseMs, now, providerConcurrency, defaultProviderConcurrency) => {
+  const records = recordsInCollection.all('generationJobs').map(decodeRecord);
+  const activeByProvider = new Map();
+  for (const record of records) {
+    const job = record.data;
+    if (job.status !== 'running' || !Number.isFinite(job.leaseExpiresAt) || job.leaseExpiresAt <= now) continue;
+    const provider = typeof job.options?.provider === 'string' ? job.options.provider : 'unknown';
+    activeByProvider.set(provider, (activeByProvider.get(provider) ?? 0) + 1);
+  }
+  const candidates = records.filter(record => {
     const job = record.data;
     return job.status === 'queued'
       || (job.status === 'waiting' && (job.nextAttemptAt ?? 0) <= now)
       || (job.status === 'running' && (!Number.isFinite(job.leaseExpiresAt) || job.leaseExpiresAt <= now));
   }).sort((left, right) => (left.data.createdAt ?? 0) - (right.data.createdAt ?? 0));
-  const selected = candidates[0];
+  const selected = candidates.find(record => {
+    const provider = typeof record.data.options?.provider === 'string' ? record.data.options.provider : 'unknown';
+    const limit = Object.hasOwn(providerConcurrency, provider) ? providerConcurrency[provider] : defaultProviderConcurrency;
+    return (activeByProvider.get(provider) ?? 0) < limit;
+  });
   if (!selected) return undefined;
   const data = {
     ...selected.data,
@@ -333,10 +345,23 @@ const claimGenerationJobTransaction = database.transaction((workerId, leaseMs, n
   return putRecord('generationJobs', selected.id, data);
 });
 
-export const claimGenerationJob = ({ workerId, leaseMs = 45_000, now = Date.now() } = {}) => {
+export const claimGenerationJob = ({
+  workerId, leaseMs = 45_000, now = Date.now(), providerConcurrency = {}, defaultProviderConcurrency = 1,
+} = {}) => {
   validateWorker(workerId, leaseMs);
   validateLeaseTime(now);
-  return claimGenerationJobTransaction(workerId, leaseMs, now);
+  if (!providerConcurrency || typeof providerConcurrency !== 'object' || Array.isArray(providerConcurrency)) {
+    throw new Error('Provider concurrency limits must be an object');
+  }
+  if (!Number.isSafeInteger(defaultProviderConcurrency) || defaultProviderConcurrency < 1 || defaultProviderConcurrency > 10) {
+    throw new Error('Default provider concurrency must be an integer from 1 to 10');
+  }
+  for (const [provider, limit] of Object.entries(providerConcurrency)) {
+    if (!provider || !Number.isSafeInteger(limit) || limit < 1 || limit > 10) {
+      throw new Error('Provider concurrency limits must be integers from 1 to 10');
+    }
+  }
+  return claimGenerationJobTransaction(workerId, leaseMs, now, providerConcurrency, defaultProviderConcurrency);
 };
 
 export const renewGenerationJobLease = (id, { workerId, leaseId, leaseMs = 45_000, now = Date.now() } = {}) => {

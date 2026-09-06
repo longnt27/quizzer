@@ -170,6 +170,28 @@ test('claims one generation worker at a time and recovers expired leases', () =>
   assert.equal(repeated.job.revision, completion.job.revision);
 });
 
+test('enforces provider concurrency without blocking other queued routes', () => {
+  const jobs = [
+    ['provider-openai-one', 'openai', 30],
+    ['provider-openai-two', 'openai', 31],
+    ['provider-codex-one', 'codex', 32],
+  ];
+  for (const [id, provider, createdAt] of jobs) putRecord('generationJobs', id, {
+    id, testId: `${id}-test`, name: id, status: 'queued', createdAt, updatedAt: createdAt,
+    documentIds: [], options: { provider }, questions: [], rejected: 0, rounds: {},
+  });
+  const limits = { openai: 1, codex: 1 };
+  const first = claimGenerationJob({ workerId: 'provider-worker-one', leaseMs: 10_000, now: 1_000, providerConcurrency: limits });
+  assert.equal(first.id, 'provider-openai-one');
+  const second = claimGenerationJob({ workerId: 'provider-worker-two', leaseMs: 10_000, now: 1_001, providerConcurrency: limits });
+  assert.equal(second.id, 'provider-codex-one');
+  assert.equal(claimGenerationJob({ workerId: 'provider-worker-three', leaseMs: 10_000, now: 1_002, providerConcurrency: limits }), undefined);
+  assert.throws(() => claimGenerationJob({
+    workerId: 'provider-worker-four', now: 1_003, providerConcurrency: { openai: 0 },
+  }), /integers from 1 to 10/);
+  for (const [id] of jobs) controlGenerationJob(id, 'cancel', {}, 1_100);
+});
+
 test('shares validated resume and cancel transitions across service clients', () => {
   putRecord('generationJobs', 'control-job', {
     id: 'control-job', testId: 'control-test', name: 'Controlled test', status: 'paused',

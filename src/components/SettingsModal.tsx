@@ -53,6 +53,7 @@ const sectionLabels: Record<string, string> = {
   embeddings: 'Embeddings',
   jobs: 'Background work',
   plugins: 'Plugin development',
+  providers: 'Provider limits',
 };
 
 const sourceLabel = (source: string) => source.startsWith('profile:')

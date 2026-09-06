@@ -78,6 +78,9 @@ test('requires authentication for every sensitive service endpoint', async () =>
   assert.equal((await fetch(`${origin}/api/health`)).status, 200);
   assert.equal((await authorized('/api/system/capabilities')).status, 200);
   assert.equal((await authorized('/api/v1/health')).status, 200);
+  const capabilities = await (await authorized('/api/v1/capabilities')).json();
+  assert.equal(capabilities.providerPolicies.codex.maxConcurrency, 1);
+  assert.equal(capabilities.providerPolicies.openai.billing, 'usage-based');
   const contract = await authorized('/api/v1/openapi.yaml');
   assert.equal(contract.status, 200);
   assert.match(contract.headers.get('content-type'), /application\/yaml/);

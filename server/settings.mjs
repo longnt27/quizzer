@@ -1,7 +1,8 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { PROVIDER_POLICIES, providerConcurrencySettingKey } from './provider-policy.mjs';
 
-export const SETTINGS_REGISTRY = Object.freeze([
+const baseSettings = [
   {
     key: 'interface.mode', type: 'string', enum: ['simple', 'advanced'], default: 'simple',
     title: 'Interface mode', description: 'Controls how many creation and settings controls are disclosed.',
@@ -80,7 +81,17 @@ export const SETTINGS_REGISTRY = Object.freeze([
     visibility: 'advanced', resourceEffect: 'none', restartRequired: false, reindexRequired: false,
     environment: 'QUIZZER_PLUGIN_DEVELOPER_MODE',
   },
-]);
+];
+
+const providerConcurrencySettings = Object.entries(PROVIDER_POLICIES).map(([provider, policy]) => ({
+  key: providerConcurrencySettingKey(provider), type: 'integer', minimum: 1, maximum: 10, default: policy.defaultConcurrency,
+  title: `${policy.label} concurrency`,
+  description: `Maximum simultaneous generation jobs using ${policy.label}. This cap applies across every connected Quizzer window.`,
+  visibility: 'advanced', resourceEffect: 'medium', restartRequired: false, reindexRequired: false,
+  environment: `QUIZZER_${provider.replaceAll('-', '_').toUpperCase()}_MAX_CONCURRENCY`,
+}));
+
+export const SETTINGS_REGISTRY = Object.freeze([...baseSettings, ...providerConcurrencySettings]);
 
 const definitions = new Map(SETTINGS_REGISTRY.map(definition => [definition.key, definition]));
 const secretName = /(api.?key|password|secret|token|credential)/i;

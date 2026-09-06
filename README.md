@@ -236,6 +236,8 @@ Open **Activity** from the sidebar or the floating activity indicator to inspect
 
 After every request and validated round, Quizzer checkpoints progress, accepted questions, retry counters, and provider settings through the local service. The service accepts updates only from the renderer holding the renewable 45-second lease, preventing an expired tab from overwriting a resumed job. Creating the final test and completing its job is one idempotent SQLite transaction. A dropped connection moves the job into a waiting state and retries automatically when connectivity returns. Reloading or closing the page stops active computation; after the abandoned lease expires, any connected Quizzer window can resume from the latest checkpoint without restarting accepted batches from zero.
 
+The global generation concurrency setting is additionally bounded by a separate cap for each provider. These provider caps live in the typed settings registry and are enforced transactionally by the local service across all connected Quizzer windows; a saturated route no longer blocks eligible work queued for another provider. Agent routes default to one active process, while API routes use conservative, editable limits.
+
 If a provider runs out of quota, loses authentication, or becomes unavailable, generation pauses and offers another provider. Already accepted questions remain in memory, the replacement provider requests only the missing slots, and duplicate detection compares its output against the full accepted set. Switching providers does not consume a validation retry round.
 
 Fill-in-the-blank generation explicitly explores canonical terms, abbreviations, symbols, conjunctions, and concise equivalent wording. Grading ignores capitalization, punctuation, and repeated spaces; it also recognizes omitted repeated qualifiers in compound answers, so `id+version` can match `document_id + document_version` while still requiring both concepts. Coding questions ask for a practical solution based on the source and include an example implementation plus correctness criteria. In test mode, reasoning and coding references stay hidden until review and answers are graded by the configured LLM in sequential batches of at most 10. In practice mode, the learner reveals the reference answer, compares the essential points, and records a self-assessment.
@@ -347,7 +349,7 @@ The generation pipeline reached its bounded retry limit after rejecting malforme
 ## Roadmap
 
 - Capability-negotiated provider routes and custom OpenAI-compatible endpoints
-- Provider-specific concurrency and cost limits
+- Provider-reported usage accounting and configurable per-job cost ceilings
 - Rebuildable dense indexes, hybrid retrieval, and cross-encoder reranking
 - Managed local generation through llama.cpp or Ollama
 - Full browser, accessibility, installer, update, and rollback validation across the supported platform matrix

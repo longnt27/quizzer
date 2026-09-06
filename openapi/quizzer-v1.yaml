@@ -32,11 +32,20 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [apiVersion, hardware, providers, operations]
+                required: [apiVersion, hardware, providers, providerPolicies, operations]
                 properties:
                   apiVersion: { type: integer, const: 1 }
                   hardware: { $ref: '#/components/schemas/HardwareCapabilities' }
                   providers: { type: array, items: { type: string } }
+                  providerPolicies:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      required: [billing, privacy, maxConcurrency]
+                      properties:
+                        billing: { type: string, enum: [account, usage-based] }
+                        privacy: { type: string, enum: [signed-in-agent, remote-api] }
+                        maxConcurrency: { type: integer, minimum: 1, maximum: 10 }
                   operations: { type: array, items: { type: string } }
         '401':
           $ref: '#/components/responses/Unauthorized'
