@@ -78,7 +78,6 @@ export interface UpdaterStatus {
 
 export interface CheckUpdateOptions {
   channel?: UpdateChannel;
-  repository?: string;
   preferredFormat?: string;
   force?: boolean;
 }

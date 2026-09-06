@@ -3,42 +3,11 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { isTrustedRendererUrl } from '../desktop/security.mjs';
 
-// Helper simulating IPC validation handler
-export const validateUpdaterCheckOptions = options => {
-  if (options === undefined) return {};
-  if (typeof options !== 'object' || options === null || Array.isArray(options)) {
-    throw new Error('Invalid options for updater:check');
-  }
-  const validated = {};
-  if (options.channel !== undefined) {
-    if (options.channel !== 'stable' && options.channel !== 'beta') {
-      throw new Error('Channel must be stable or beta');
-    }
-    validated.channel = options.channel;
-  }
-  if (options.repository !== undefined) {
-    if (typeof options.repository !== 'string' || !/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(options.repository)) {
-      throw new Error('Invalid GitHub repository format');
-    }
-    validated.repository = options.repository;
-  }
-  return validated;
-};
-
-export const validateUpdaterApplyOptions = options => {
-  if (options === undefined) return {};
-  if (typeof options !== 'object' || options === null || Array.isArray(options)) {
-    throw new Error('Invalid options for updater:apply');
-  }
-  const validated = {};
-  if (options.restart !== undefined) {
-    if (typeof options.restart !== 'boolean') {
-      throw new Error('restart must be a boolean');
-    }
-    validated.restart = options.restart;
-  }
-  return validated;
-};
+import {
+  validateUpdaterApplyOptions,
+  validateUpdaterChannel,
+  validateUpdaterCheckOptions,
+} from '../desktop/updater-ipc.mjs';
 
 test('renderer origin verification rejects untrusted origins from accessing updater IPC', () => {
   assert.equal(isTrustedRendererUrl('quizzer://app/'), true);
@@ -51,34 +20,48 @@ test('renderer origin verification rejects untrusted origins from accessing upda
   assert.equal(isTrustedRendererUrl('file:///etc/passwd'), false);
 });
 
-test('updater IPC check handler validates channel and repository options', () => {
+test('updater IPC check handler validates channel and rejects unknown options or repository', () => {
   // Valid options
   assert.deepEqual(validateUpdaterCheckOptions(), {});
   assert.deepEqual(validateUpdaterCheckOptions({ channel: 'stable' }), { channel: 'stable' });
   assert.deepEqual(validateUpdaterCheckOptions({ channel: 'beta' }), { channel: 'beta' });
   assert.deepEqual(
-    validateUpdaterCheckOptions({ channel: 'beta', repository: 'owner/repo' }),
-    { channel: 'beta', repository: 'owner/repo' },
+    validateUpdaterCheckOptions({ channel: 'beta', preferredFormat: 'zip', force: true }),
+    { channel: 'beta', preferredFormat: 'zip', force: true },
   );
 
-  // Invalid options
+  // Rejection of repository and manifestUrl (renderer must never control repository or URL)
+  assert.throws(() => validateUpdaterCheckOptions({ repository: 'owner/repo' }), /Unknown option "repository" for updater:check/);
+  assert.throws(() => validateUpdaterCheckOptions({ manifestUrl: 'https://evil.com/manifest.json' }), /Unknown option "manifestUrl" for updater:check/);
+  assert.throws(() => validateUpdaterCheckOptions({ extra: 'value' }), /Unknown option "extra" for updater:check/);
+
+  // Invalid option types
   assert.throws(() => validateUpdaterCheckOptions('invalid'), /Invalid options for updater:check/);
   assert.throws(() => validateUpdaterCheckOptions([1, 2, 3]), /Invalid options for updater:check/);
+  assert.throws(() => validateUpdaterCheckOptions(null), /Invalid options for updater:check/);
   assert.throws(() => validateUpdaterCheckOptions({ channel: 'nightly' }), /Channel must be stable or beta/);
   assert.throws(() => validateUpdaterCheckOptions({ channel: 123 }), /Channel must be stable or beta/);
-  assert.throws(() => validateUpdaterCheckOptions({ repository: 'invalid repo with spaces' }), /Invalid GitHub repository format/);
-  assert.throws(() => validateUpdaterCheckOptions({ repository: '../escaped/repo' }), /Invalid GitHub repository format/);
-  assert.throws(() => validateUpdaterCheckOptions({ repository: 'https://evil.com/owner/repo' }), /Invalid GitHub repository format/);
+  assert.throws(() => validateUpdaterCheckOptions({ preferredFormat: '' }), /preferredFormat must be a non-empty string/);
+  assert.throws(() => validateUpdaterCheckOptions({ force: 'yes' }), /force must be a boolean/);
 });
 
-test('updater IPC apply handler strictly validates restart boolean parameter', () => {
+test('updater IPC channel validator validates channel', () => {
+  assert.equal(validateUpdaterChannel('stable'), 'stable');
+  assert.equal(validateUpdaterChannel('beta'), 'beta');
+  assert.throws(() => validateUpdaterChannel('nightly'), /Channel must be stable or beta/);
+  assert.throws(() => validateUpdaterChannel(null), /Channel must be stable or beta/);
+});
+
+test('updater IPC apply handler strictly validates restart boolean parameter and rejects unknown options', () => {
   assert.deepEqual(validateUpdaterApplyOptions(), {});
   assert.deepEqual(validateUpdaterApplyOptions({ restart: true }), { restart: true });
   assert.deepEqual(validateUpdaterApplyOptions({ restart: false }), { restart: false });
 
   assert.throws(() => validateUpdaterApplyOptions('true'), /Invalid options for updater:apply/);
+  assert.throws(() => validateUpdaterApplyOptions(null), /Invalid options for updater:apply/);
   assert.throws(() => validateUpdaterApplyOptions({ restart: 'true' }), /restart must be a boolean/);
   assert.throws(() => validateUpdaterApplyOptions({ restart: 1 }), /restart must be a boolean/);
+  assert.throws(() => validateUpdaterApplyOptions({ unknownKey: true }), /Unknown option "unknownKey" for updater:apply/);
 });
 
 test('preload script exports only frozen, context-isolated updater surface', async () => {

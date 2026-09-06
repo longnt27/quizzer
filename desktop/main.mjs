@@ -8,6 +8,7 @@ import { isAllowedExternalUrl, isTrustedRendererUrl } from './security.mjs';
 import { serviceRestartDelay, waitForServiceReady } from './service-process.mjs';
 import { protectedBackgroundFallback, summarizeBackgroundState } from './background-policy.mjs';
 import { DesktopUpdater } from './updater.mjs';
+import { validateUpdaterCheckOptions, validateUpdaterApplyOptions } from './updater-ipc.mjs';
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'quizzer', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
 
@@ -87,22 +88,7 @@ const registerValidatedIpc = () => {
   });
   ipcMain.handle('updater:check', async (event, options) => {
     if (!isTrustedRenderer(event)) throw new Error('Untrusted renderer');
-    if (options !== undefined && (typeof options !== 'object' || options === null || Array.isArray(options))) {
-      throw new Error('Invalid options for updater:check');
-    }
-    const validated = {};
-    if (options?.channel !== undefined) {
-      if (options.channel !== 'stable' && options.channel !== 'beta') {
-        throw new Error('Channel must be stable or beta');
-      }
-      validated.channel = options.channel;
-    }
-    if (options?.repository !== undefined) {
-      if (typeof options.repository !== 'string' || !/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(options.repository)) {
-        throw new Error('Invalid GitHub repository format');
-      }
-      validated.repository = options.repository;
-    }
+    const validated = validateUpdaterCheckOptions(options);
     return desktopUpdater?.checkForUpdates(validated);
   });
   ipcMain.handle('updater:download', async event => {
@@ -111,14 +97,7 @@ const registerValidatedIpc = () => {
   });
   ipcMain.handle('updater:apply', async (event, options) => {
     if (!isTrustedRenderer(event)) throw new Error('Untrusted renderer');
-    if (options !== undefined && (typeof options !== 'object' || options === null || Array.isArray(options))) {
-      throw new Error('Invalid options for updater:apply');
-    }
-    const validated = {};
-    if (options?.restart !== undefined) {
-      if (typeof options.restart !== 'boolean') throw new Error('restart must be a boolean');
-      validated.restart = options.restart;
-    }
+    const validated = validateUpdaterApplyOptions(options);
     return desktopUpdater?.applyUpdate(validated);
   });
   ipcMain.handle('updater:rollback', async event => {
