@@ -9,6 +9,7 @@ import {
   BUILT_IN_PROMPT_PROFILE, promptTemplateErrors, renderGenerationPrompt, renderTemplate, validatePromptProfile,
 } from '../utils/promptProfiles';
 import { getMessageApi } from '../utils/messageProvider';
+import { getModalApi } from '../utils/modalProvider';
 
 interface Props { onClose: () => void; }
 
@@ -120,7 +121,7 @@ export default function PromptStudio({ onClose }: Props) {
 
   const remove = () => {
     if (selected.builtIn) return;
-    Modal.confirm({
+    getModalApi().confirm({
       title: `Delete ${selected.name}?`,
       content: 'Existing tests and queued jobs keep their immutable prompt snapshot. This editable profile will be removed from future test creation.',
       okText: 'Delete profile',

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Button, Card, Descriptions, Divider, Modal, Progress, Radio, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Descriptions, Divider, Progress, Radio, Space, Tag, Typography } from 'antd';
 import {
   CheckCircleOutlined,
   CloudDownloadOutlined,
@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons';
 import type { UpdateChannel, UpdaterStatus } from '../types/updater';
 import { getMessageApi } from '../utils/messageProvider';
+import { getModalApi } from '../utils/modalProvider';
 
 const formatBytes = (bytes?: number) => {
   if (bytes === undefined || bytes === null || isNaN(bytes)) return '0 B';
@@ -107,7 +108,7 @@ export default function UpdaterStatusView() {
   };
 
   const handleDiscard = () => {
-    Modal.confirm({
+    getModalApi().confirm({
       title: 'Discard staged update?',
       icon: <ExclamationCircleOutlined />,
       content: 'This will remove the downloaded update package and staging metadata from private storage.',
