@@ -5,9 +5,9 @@ const PROVIDER_SETTINGS_KEY = 'quizzer.providerSettings';
 const API_KEY_PREFIX = 'quizzer.apiKey.';
 let rememberedApiKeys: Partial<Record<GenerationProvider, string>> = {};
 
-export type ProviderKind = 'agent' | 'api';
+export type ProviderKind = 'agent' | 'api' | 'plugin';
 export type AgentProvider = 'codex' | 'claude-agent' | 'antigravity-agent';
-export type ApiProvider = Exclude<GenerationProvider, AgentProvider>;
+export type ApiProvider = Exclude<GenerationProvider, AgentProvider | 'plugin'>;
 
 export interface ProviderDefinition {
   id: GenerationProvider;
@@ -19,6 +19,7 @@ export interface ProviderDefinition {
 }
 
 export const PROVIDERS: readonly ProviderDefinition[] = [
+  { id: 'plugin', label: 'Local generator – Plugin', kind: 'plugin', description: 'Runs an installed generator plugin out of process on this device.', defaultModel: '' },
   { id: 'codex', label: 'Codex – Agent', kind: 'agent', description: 'Uses the Codex CLI and your ChatGPT sign-in.', defaultModel: '' },
   { id: 'claude-agent', label: 'Claude – Agent', kind: 'agent', description: 'Uses the Claude Code CLI and its signed-in account.', defaultModel: '' },
   { id: 'antigravity-agent', label: 'Antigravity – Agent', kind: 'agent', description: 'Uses the Antigravity CLI and its signed-in account.', defaultModel: '' },
@@ -38,7 +39,7 @@ export const getProviderRoute = (provider: GenerationProvider, model?: string, a
   return {
     provider,
     model: model?.trim() || undefined,
-    privacy: definition.kind === 'agent' ? 'signed-in-agent' : 'remote-api',
+    privacy: definition.kind === 'plugin' ? 'local' : definition.kind === 'agent' ? 'signed-in-agent' : 'remote-api',
     paid: definition.kind === 'api',
     approved,
   };

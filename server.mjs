@@ -27,6 +27,7 @@ import { RetrievalIndex } from './server/retrieval-index.mjs';
 import { bindRequestCancellation } from './server/request-lifetime.mjs';
 import { ProviderCredentialStore } from './server/provider-credentials.mjs';
 import { GenerationJobWorker } from './server/generation-worker.mjs';
+import { runGeneratorPlugin } from './server/plugin-generation.mjs';
 
 const configuredPortValue = process.env.QUIZZER_SERVICE_PORT ?? '8787';
 const configuredPort = Number(configuredPortValue);
@@ -847,6 +848,7 @@ const runAnthropic = async ({ prompt, schema, model, images = [], apiKey }, sign
 };
 
 const providerRunners = {
+  plugin: (body, signal) => runGeneratorPlugin(body, signal, { loadManager: getPluginManager }),
   codex: runCodex,
   'claude-agent': runClaudeAgent,
   'antigravity-agent': runAntigravityAgent,

@@ -188,7 +188,7 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
               placeholder="Pause for approval when the primary route fails"
               options={configured.providers.filter(item => item.id !== provider).map(item => ({
                 value: item.id,
-                label: `${item.label} · ${item.kind === 'api' ? 'remote API / may incur cost' : 'signed-in agent'}`,
+                label: `${item.label} · ${item.kind === 'api' ? 'remote API / may incur cost' : item.kind === 'plugin' ? 'local plugin' : 'signed-in agent'}`,
               }))} />
             <Typography.Paragraph type="secondary" style={{ margin: '6px 0 0' }}>
               Selecting a route pre-approves sending only unfinished source batches to it. Routes run in the order shown; unselected routes always require approval.

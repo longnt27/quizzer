@@ -180,6 +180,7 @@ export class PluginManager {
       secrets: options.secrets,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
+      files: options.files,
     });
   }
 

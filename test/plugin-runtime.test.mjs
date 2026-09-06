@@ -12,6 +12,8 @@ const appDataDirectory = join(directory, 'data');
 const sourceRoot = join(directory, 'sources');
 const pluginSource = `
 import { createInterface } from 'node:readline';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
 for await (const line of lines) {
   const request = JSON.parse(line);
@@ -38,6 +40,8 @@ for await (const line of lines) {
         params: request.params,
         configuration: request.context.configuration,
         temporaryDirectory: request.context.temporaryDirectory,
+        scopedFiles: request.context.scopedFiles,
+        scopedContents: await Promise.all(request.context.scopedFiles.map(file => readFile(join(request.context.temporaryDirectory, file.path), 'utf8'))),
         allowedSecret: process.env.TEST_PLUGIN_KEY,
         hiddenSecret: process.env.UNDECLARED_PLUGIN_KEY,
         retainedPath: Boolean(process.env.PATH),
@@ -84,6 +88,7 @@ test('runs JSON-RPC with scoped files, explicit secrets, limits, and cancellatio
     params: { value: 42 },
     configuration: { mode: 'test' },
     secrets: { TEST_PLUGIN_KEY: 'allowed', UNDECLARED_PLUGIN_KEY: 'hidden' },
+    files: [{ path: 'sources/context.txt', data: 'bounded source context' }],
   });
   assert.deepEqual(invocation.result.params, { value: 42 });
   assert.deepEqual(invocation.result.configuration, { mode: 'test' });
@@ -91,6 +96,8 @@ test('runs JSON-RPC with scoped files, explicit secrets, limits, and cancellatio
   assert.equal(invocation.result.hiddenSecret, undefined);
   assert.equal(invocation.result.retainedPath, true);
   assert.equal(invocation.result.hiddenNodeOptions, undefined);
+  assert.deepEqual(invocation.result.scopedFiles, [{ path: join('sources', 'context.txt'), size: 22 }]);
+  assert.deepEqual(invocation.result.scopedContents, ['bounded source context']);
   await assert.rejects(stat(invocation.result.temporaryDirectory), /ENOENT/);
 
   const controller = new AbortController();
@@ -132,6 +139,12 @@ test('rejects invalid plugin invocation inputs before spawning', async () => {
   await assert.rejects(invokePluginProcess({ ...common, method: '' }), /method is required/);
   await assert.rejects(invokePluginProcess({ ...common, method: 'plugin.echo', params: [] }), /parameters must be an object/);
   await assert.rejects(invokePluginProcess({ ...common, method: 'plugin.echo', configuration: null }), /configuration must be an object/);
+  await assert.rejects(invokePluginProcess({ ...common, method: 'plugin.echo', files: {} }), /array of at most 30/);
+  await assert.rejects(invokePluginProcess({ ...common, method: 'plugin.echo', files: [{ path: '../escape', data: 'x' }] }), /Unsafe plugin path/);
+  await assert.rejects(invokePluginProcess({
+    ...common, method: 'plugin.echo', files: [{ path: 'source.txt', data: 'x' }],
+    manifest: { ...manifest, permissions: { ...manifest.permissions, filesystem: [] } },
+  }), /declare scoped-temp permission/);
 });
 
 test('installs, blocks, enables, checks, upgrades, rolls back, and removes plugins', async () => {

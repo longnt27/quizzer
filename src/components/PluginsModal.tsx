@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Divider, Input, Modal, Select, Space, Spin, Switch, Tag, Typography } from 'antd';
 import { ApiOutlined, CheckCircleOutlined, CloudDownloadOutlined, DeleteOutlined, FolderOpenOutlined, LoginOutlined, ReloadOutlined, RollbackOutlined } from '@ant-design/icons';
 import type { GenerationProvider, InterfaceMode } from '../types';
@@ -73,6 +73,8 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const [saving, setSaving] = useState(false);
   const [healthResults, setHealthResults] = useState<Record<string, HealthResult>>({});
   const message = getMessageApi();
+  const generatorPlugins = useMemo(() => externalPlugins.filter(plugin => plugin.status === 'installed' && plugin.enabled
+    && plugin.compatible && plugin.capabilities?.includes('generator')), [externalPlugins]);
 
   const refresh = useCallback(async () => {
     try {
@@ -104,6 +106,11 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   }, []);
 
   useEffect(() => { void refresh(); void refreshExternal(); }, [refresh, refreshExternal]);
+  useEffect(() => {
+    if (!generatorPlugins.length) return;
+    setModels(current => generatorPlugins.some(plugin => plugin.id === current.plugin)
+      ? current : { ...current, plugin: generatorPlugins[0].id });
+  }, [generatorPlugins]);
   useEffect(() => {
     if (!window.quizzerDesktop) return;
     let active = true;
@@ -205,7 +212,9 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const save = async () => {
     const available = PROVIDERS.filter(provider => enabledProviders[provider.id] && (provider.kind === 'api'
       ? Boolean(apiKeys[provider.id]?.trim())
-      : Boolean(status?.[provider.id as AgentProvider]?.connected)));
+      : provider.kind === 'plugin'
+        ? generatorPlugins.some(plugin => plugin.id === models.plugin)
+        : Boolean(status?.[provider.id as AgentProvider]?.connected)));
     const selectedProvider = available.some(provider => provider.id === defaultProvider) ? defaultProvider : available[0]?.id ?? defaultProvider;
     setSaving(true);
     try {
@@ -237,7 +246,9 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const embeddingsWorking = status?.embeddings?.job.state === 'working';
   const configuredProviderOptions = PROVIDERS.filter(provider => enabledProviders[provider.id] && (provider.kind === 'api'
     ? Boolean(apiKeys[provider.id]?.trim())
-    : Boolean(status?.[provider.id as AgentProvider]?.connected)));
+    : provider.kind === 'plugin'
+      ? generatorPlugins.some(plugin => plugin.id === models.plugin)
+      : Boolean(status?.[provider.id as AgentProvider]?.connected)));
   const visibleDefaultProvider = configuredProviderOptions.some(provider => provider.id === defaultProvider)
     ? defaultProvider
     : configuredProviderOptions[0]?.id;
@@ -356,6 +367,18 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
         <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
           External plugins run out of process with declared permissions and verified file hashes. Signed registry plugins are trusted normally; unsigned local plugins require Advanced Developer Mode.
         </Typography.Paragraph>
+        {!!generatorPlugins.length && <section className="plugin-card">
+          <div className="plugin-card-heading">
+            <div><Typography.Title level={5}>Local generation route</Typography.Title><Typography.Text type="secondary">Select the installed generator used by the local Plugin provider.</Typography.Text></div>
+            {statusTag(Boolean(models.plugin), false, 'Ready')}
+          </div>
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <Select value={models.plugin || undefined} onChange={value => setModels(current => ({ ...current, plugin: value }))}
+              aria-label="Default local generator plugin" style={{ width: '100%' }}
+              options={generatorPlugins.map(plugin => ({ value: plugin.id, label: `${plugin.name ?? plugin.id} · ${plugin.id}` }))} />
+            <Space><Switch checked={enabledProviders.plugin} onChange={value => setEnabledProviders(current => ({ ...current, plugin: value }))} /><Typography.Text>Expose as a generation provider</Typography.Text></Space>
+          </Space>
+        </section>}
         {developerMode && <Alert type="warning" showIcon message="Advanced Developer Mode is active"
           description="Unsigned local plugins can execute code. Review every capability, permission, and file hash before installation." />}
         {externalError && <Alert type="error" showIcon message={externalError}

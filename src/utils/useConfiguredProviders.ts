@@ -9,6 +9,10 @@ interface IntegrationStatus {
   'antigravity-agent'?: { connected?: boolean };
 }
 
+interface PluginCollection {
+  plugins?: Array<{ id: string; status?: string; enabled?: boolean; compatible?: boolean; capabilities?: string[] }>;
+}
+
 const localApiProviders = () => PROVIDERS.filter(provider => provider.kind === 'api' && Boolean(getApiKey(provider.id).trim()));
 
 export const useConfiguredProviders = () => {
@@ -29,6 +33,13 @@ export const useConfiguredProviders = () => {
           }
         }
       } catch { /* API providers remain usable if the status check is temporarily unavailable. */ }
+      try {
+        const response = await serviceFetch('/api/v1/plugins');
+        const collection = await response.json() as PluginCollection;
+        const selected = settings.models.plugin;
+        if (response.ok && collection.plugins?.some(plugin => plugin.id === selected && plugin.status === 'installed'
+          && plugin.enabled && plugin.compatible && plugin.capabilities?.includes('generator'))) available.add('plugin');
+      } catch { /* Other configured routes remain available if plugin discovery fails. */ }
       if (active) {
         setProviders(PROVIDERS.filter(provider => available.has(provider.id) && settings.enabledProviders[provider.id]) as ProviderDefinition[]);
         setLoading(false);

@@ -1,10 +1,11 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
-import { access, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { runningAsSingleExecutable } from '../server/runtime-assets.mjs';
+import { validatePluginPath } from './manifest.mjs';
 
 const retainedEnvironment = ['PATH', 'SystemRoot', 'ComSpec', 'PATHEXT', 'TMP', 'TEMP', 'TMPDIR', 'LANG', 'LC_ALL'];
 
@@ -44,9 +45,38 @@ const javascriptRuntime = async () => {
   throw new Error('JavaScript plugins require the Quizzer desktop app, QUIZZER_NODE_RUNTIME, or a Node.js executable on PATH');
 };
 
+const materializeScopedFiles = async (temporaryDirectory, manifest, files) => {
+  if (!Array.isArray(files) || files.length > 30) throw new Error('Plugin scoped files must be an array of at most 30 items');
+  if (files.length && !manifest.permissions.filesystem.includes('scoped-temp')) {
+    throw new Error(`Plugin ${manifest.id} must declare scoped-temp permission to receive files`);
+  }
+  let totalBytes = 0;
+  const seen = new Set();
+  const prepared = [];
+  for (const file of files) {
+    if (!file || typeof file !== 'object' || Array.isArray(file)) throw new Error('Plugin scoped file is invalid');
+    const path = validatePluginPath(file.path);
+    if (seen.has(path)) throw new Error(`Duplicate plugin scoped file: ${path}`);
+    seen.add(path);
+    if (!(typeof file.data === 'string' || Buffer.isBuffer(file.data) || ArrayBuffer.isView(file.data))) {
+      throw new Error(`Plugin scoped file data is invalid: ${path}`);
+    }
+    const data = Buffer.isBuffer(file.data) ? file.data
+      : typeof file.data === 'string' ? Buffer.from(file.data) : Buffer.from(file.data.buffer, file.data.byteOffset, file.data.byteLength);
+    if (data.length > 20 * 1024 * 1024) throw new Error(`Plugin scoped file exceeds 20 MB: ${path}`);
+    totalBytes += data.length;
+    if (totalBytes > 100 * 1024 * 1024) throw new Error('Plugin scoped files exceed the 100 MB invocation limit');
+    const destination = join(temporaryDirectory, path);
+    await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
+    await writeFile(destination, data, { mode: 0o600, flag: 'wx' });
+    prepared.push({ path, size: data.length });
+  }
+  return prepared;
+};
+
 export const invokePluginProcess = async ({
   appDataDirectory, directory, manifest, method, params = {}, configuration = {}, secrets = {}, signal,
-  timeoutMs = 30_000,
+  timeoutMs = 30_000, files = [],
 }) => {
   if (typeof method !== 'string' || !method.trim()) throw new Error('Plugin method is required');
   if (!params || typeof params !== 'object' || Array.isArray(params)) throw new Error('Plugin parameters must be an object');
@@ -64,6 +94,7 @@ export const invokePluginProcess = async ({
   const startedAt = Date.now();
   let child;
   try {
+    const scopedFiles = await materializeScopedFiles(temporaryDirectory, manifest, files);
     return await new Promise((resolve, reject) => {
       let settled = false;
       let stdout = '';
@@ -126,7 +157,7 @@ export const invokePluginProcess = async ({
       });
       child.stdin.end(`${JSON.stringify({
         jsonrpc: '2.0', id: requestId, method, params,
-        context: { temporaryDirectory, configuration, protocolVersion: manifest.protocolVersion },
+        context: { temporaryDirectory, scopedFiles, configuration, protocolVersion: manifest.protocolVersion },
       })}\n`);
     });
   } finally {

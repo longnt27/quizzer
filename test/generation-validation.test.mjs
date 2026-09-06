@@ -31,6 +31,15 @@ test('validates complete generation snapshots and provider policy metadata', () 
     provider: 'openai', privacy: 'local', paid: false, approved: true,
   }), /privacy and cost policy/);
   assert.throws(() => validateGenerationOptions({ ...value, provider: 'unknown' }), /Unsupported generation provider/);
+  const pluginOptions = {
+    ...value,
+    provider: 'plugin', model: 'dev.quizzer.local-generator',
+    routeChain: [{ provider: 'plugin', model: 'dev.quizzer.local-generator', privacy: 'local', paid: false, approved: true }],
+  };
+  assert.equal(validateGenerationOptions(pluginOptions), pluginOptions);
+  assert.equal(validateProviderRoute(pluginOptions.routeChain[0]), pluginOptions.routeChain[0]);
+  assert.throws(() => validateGenerationOptions({ ...pluginOptions, model: undefined, routeChain: undefined }), /requires an installed generator plugin id/);
+  assert.throws(() => validateProviderRoute({ ...pluginOptions.routeChain[0], model: undefined }), /routes require an installed generator plugin id/);
   assert.throws(() => validateGenerationOptions({
     ...value, questionCounts: { multipleChoice: 1, fillBlank: 0, reasoning: 0, coding: 0 },
   }), /sum to questionCount/);

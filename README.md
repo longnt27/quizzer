@@ -150,6 +150,8 @@ Developer Mode keeps an unsigned-plugin warning on each installed plugin. Turnin
 
 Reranker plugins declare the `reranker` capability and implement `rag.rerank`. Quizzer supplies the query plus bounded candidate text and stable source-span IDs; the plugin returns `{ "ranking": [{ "sourceSpanId": "…", "score": 0.9 }] }`. Set `retrieval.rerankerPlugin` to the installed plugin ID. Missing, disabled, incompatible, timed-out, or malformed rerankers fall back to Quizzer's local rank/lexical/dense signals, followed by maximal-marginal-relevance diversity selection.
 
+Generator plugins declare the `generator` capability and implement `generation.generate`. Select the installed plugin under **Plugins & models**; Quizzer then treats its plugin ID as the local route's model. Each invocation receives the bounded prompt and output schema plus image references under `params`, and receives source images only as short-lived, read-only-by-convention files inside its scoped temporary directory. The plugin returns `{ "output": "<quiz JSON>" }`. Quizzer validates that JSON through the same schema, grounding, instruction, duplicate, and coverage gates used for every other provider, removes the temporary files after the process exits, and can fail over from an unavailable plugin without discarding accepted questions.
+
 ### Tailscale access
 
 On macOS, double-click `start-tailscale.command` in Finder. On Windows, double-click `start-tailscale.cmd`. The cross-platform launcher detects the active Tailscale address, installs npm dependencies when needed, and prints the private URL to open from another device on the same tailnet. Keep its window open while using Quizzer and press Control-C to stop it.
