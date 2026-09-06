@@ -2,17 +2,19 @@ import { DenseDocumentIndex } from './dense-index.mjs';
 import { embedTextsWithOllama } from './embeddings.mjs';
 import { buildHybridRetrieval } from './hybrid-retrieval.mjs';
 import { SparseDocumentIndex } from './sparse-index.mjs';
+import { rerankRetrieval } from './reranking.mjs';
 
 const errorMessage = error => error instanceof Error ? error.message : String(error);
 
 export class RetrievalIndex {
-  constructor({ sparsePath, densePath, loadSettings, embed = embedTextsWithOllama, onDenseIssue = () => {} }) {
+  constructor({ sparsePath, densePath, loadSettings, embed = embedTextsWithOllama, invokeReranker, onDenseIssue = () => {} }) {
     if (typeof loadSettings !== 'function') throw new Error('Retrieval index requires a settings loader');
     if (typeof embed !== 'function') throw new Error('Retrieval index requires an embedding provider');
     this.sparse = new SparseDocumentIndex(sparsePath);
     this.dense = new DenseDocumentIndex(densePath);
     this.loadSettings = loadSettings;
     this.embed = embed;
+    this.invokeReranker = invokeReranker;
     this.onDenseIssue = onDenseIssue;
     this.denseUsed = false;
   }
@@ -89,32 +91,43 @@ export class RetrievalIndex {
       contextBudget: options.contextBudget ?? settings.values['retrieval.contextBudget'],
     };
     const sparse = this.sparse.retrieve(retrievalOptions);
-    if (retrievalMode !== 'hybrid' || !embeddings) return sparse;
-    try {
-      this.denseUsed = true;
-      const [vector] = await this.embed([options.query], { model: embeddingModel, signal: options.signal });
-      const normalizedTags = (retrievalOptions.tags ?? []).map(tag => tag.toLocaleLowerCase());
-      const dense = (await this.dense.retrieve({
-        vector,
-        embeddingModel,
-        documentIds: retrievalOptions.documentIds,
-        limit: Math.min(100, Math.max(10, (Number(retrievalOptions.limit) || 10) * 4)),
-      })).filter(result => normalizedTags.every(tag => result.tags.map(value => String(value).toLocaleLowerCase()).includes(tag)));
-      this.denseIssue = undefined;
-      return {
-        ...buildHybridRetrieval({
-          sparse, denseResults: dense, limit: retrievalOptions.limit, contextBudget: retrievalOptions.contextBudget,
-        }),
-        dense: { status: 'ready', embeddingModel, candidates: dense.length },
-      };
-    } catch (error) {
-      this.denseIssue = { model: embeddingModel, message: errorMessage(error), occurredAt: Date.now() };
-      return {
-        ...sparse,
-        requestedMethod: 'hybrid-rrf',
-        dense: { status: 'unavailable', embeddingModel, error: this.denseIssue.message },
-      };
+    let preview = sparse;
+    if (retrievalMode === 'hybrid' && embeddings) {
+      try {
+        this.denseUsed = true;
+        const [vector] = await this.embed([options.query], { model: embeddingModel, signal: options.signal });
+        const normalizedTags = (retrievalOptions.tags ?? []).map(tag => tag.toLocaleLowerCase());
+        const dense = (await this.dense.retrieve({
+          vector,
+          embeddingModel,
+          documentIds: retrievalOptions.documentIds,
+          limit: Math.min(100, Math.max(10, (Number(retrievalOptions.limit) || 10) * 4)),
+        })).filter(result => normalizedTags.every(tag => result.tags.map(value => String(value).toLocaleLowerCase()).includes(tag)));
+        this.denseIssue = undefined;
+        preview = {
+          ...buildHybridRetrieval({
+            sparse, denseResults: dense, limit: retrievalOptions.limit, contextBudget: retrievalOptions.contextBudget,
+          }),
+          dense: { status: 'ready', embeddingModel, candidates: dense.length },
+        };
+      } catch (error) {
+        this.denseIssue = { model: embeddingModel, message: errorMessage(error), occurredAt: Date.now() };
+        preview = {
+          ...sparse,
+          requestedMethod: 'hybrid-rrf',
+          dense: { status: 'unavailable', embeddingModel, error: this.denseIssue.message },
+        };
+      }
     }
+    const reranked = await rerankRetrieval({
+      query: options.query,
+      results: preview.results,
+      enabled: settings.values['retrieval.rerank'],
+      component: settings.values['retrieval.rerankerPlugin'],
+      invokePlugin: this.invokeReranker,
+      signal: options.signal,
+    });
+    return { ...preview, results: reranked.results, reranking: reranked.metadata };
   }
 
   async removeDocument(id) {

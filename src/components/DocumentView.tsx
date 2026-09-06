@@ -31,6 +31,7 @@ interface RetrievalPreview {
   requestedMethod?: 'hybrid-rrf';
   dense?: { status: 'ready' | 'unavailable'; embeddingModel: string; candidates?: number; error?: string };
   indexingError?: string;
+  reranking?: { status: 'disabled' | 'ready' | 'fallback'; component?: string; requestedComponent?: string; diversity?: string; issue?: string };
   confidence: 'low' | 'medium' | 'high';
   correctivePass: boolean;
   estimatedContextTokens: number;
@@ -233,8 +234,9 @@ export default function DocumentView({ documentId }: Props) {
           {retrieval && <Space direction="vertical" size="middle" style={{ width: '100%', marginTop: 16 }}>
             <Alert type={retrieval.confidence === 'low' ? 'warning' : 'info'} showIcon
               message={`${retrieval.confidence[0].toUpperCase() + retrieval.confidence.slice(1)} retrieval confidence`}
-              description={`${retrieval.results.length} passage${retrieval.results.length === 1 ? '' : 's'} · ${retrieval.method === 'hybrid-rrf' ? 'hybrid sparse + dense ranking' : 'sparse BM25 ranking'} · approximately ${retrieval.estimatedContextTokens.toLocaleString()} context tokens${retrieval.correctivePass ? ' · one corrective retrieval pass used' : ''}`} />
+              description={`${retrieval.results.length} passage${retrieval.results.length === 1 ? '' : 's'} · ${retrieval.method === 'hybrid-rrf' ? 'hybrid sparse + dense ranking' : 'sparse BM25 ranking'}${retrieval.reranking?.status !== 'disabled' ? ` · reranked by ${retrieval.reranking?.component}` : ''} · approximately ${retrieval.estimatedContextTokens.toLocaleString()} context tokens${retrieval.correctivePass ? ' · one corrective retrieval pass used' : ''}`} />
             {retrieval.dense?.status === 'unavailable' && <Alert type="warning" showIcon message="Dense retrieval unavailable; showing sparse results" description={retrieval.dense.error || retrieval.indexingError} />}
+            {retrieval.reranking?.status === 'fallback' && <Alert type="warning" showIcon message="Configured reranker unavailable; using built-in local reranking" description={retrieval.reranking.issue} />}
             {retrieval.refusal && <Alert type="warning" showIcon message={retrieval.refusal} />}
             <List dataSource={retrieval.results} locale={{ emptyText: <Empty description="No indexed evidence found" /> }} renderItem={(result, position) => <List.Item>
               <Card size="small" className="retrieval-result" title={<Space wrap><Tag color="blue">#{position + 1}</Tag><Typography.Text>{result.breadcrumb || result.documentName}</Typography.Text></Space>}

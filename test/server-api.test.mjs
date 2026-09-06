@@ -115,6 +115,7 @@ test('exposes settings schema, precedence, and validated updates', async () => {
   assert.equal(schema.schema.additionalProperties, false);
   assert.ok(schema.registry.some(item => item.key === 'retrieval.mode'));
   assert.ok(schema.registry.some(item => item.key === 'embeddings.model'));
+  assert.ok(schema.registry.some(item => item.key === 'retrieval.rerankerPlugin'));
   assert.equal(schema.profiles.balanced['generation.concurrency'], 3);
 
   const updated = await authorized('/api/v1/settings', {
@@ -240,6 +241,8 @@ test('provides onboarding, document, job, and event operations', async () => {
   assert.equal(evidence.confidence, 'high');
   assert.equal(evidence.method, 'hybrid-rrf');
   assert.equal(evidence.dense.status, 'ready');
+  assert.equal(evidence.reranking.component, 'builtin');
+  assert.equal(evidence.reranking.diversity, 'maximal-marginal-relevance');
   assert.equal(evidence.results[0].documentId, 'doc-1');
   assert.match(evidence.results[0].sourceSpanId, /^doc-1:span:/);
   assert.deepEqual(evidence.results[0].retrievalChannels, ['sparse', 'dense']);

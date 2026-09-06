@@ -6,7 +6,10 @@ import test from 'node:test';
 import { RetrievalIndex } from '../server/retrieval-index.mjs';
 
 const directory = await mkdtemp(join(tmpdir(), 'quizzer-retrieval-index-test-'));
-let settings = { 'embeddings.enabled': false, 'embeddings.model': 'mini-v1', 'retrieval.mode': 'sparse', 'retrieval.contextBudget': 4096 };
+let settings = {
+  'embeddings.enabled': false, 'embeddings.model': 'mini-v1', 'retrieval.mode': 'sparse',
+  'retrieval.contextBudget': 4096, 'retrieval.rerank': false, 'retrieval.rerankerPlugin': 'builtin',
+};
 let embeddingFailure = true;
 const issues = [];
 const vectorFor = text => [text.toLowerCase().includes('terraform') ? 1 : 0, text.toLowerCase().includes('state') ? 1 : 0];
@@ -35,7 +38,7 @@ test('keeps sparse retrieval available while dense work remains retryable', asyn
   assert.equal(sparseOnly.dense.status, 'disabled');
   assert.equal((await index.status()).dense.status, 'disabled');
 
-  settings = { ...settings, 'embeddings.enabled': true, 'retrieval.mode': 'hybrid' };
+  settings = { ...settings, 'embeddings.enabled': true, 'retrieval.mode': 'hybrid', 'retrieval.rerank': true };
   await assert.rejects(index.indexDocument(record), /Sparse indexing completed.*mock model is offline/);
   assert.equal(issues.length, 1);
   const unavailable = await index.status();
@@ -46,6 +49,7 @@ test('keeps sparse retrieval available while dense work remains retryable', asyn
   assert.equal(fallback.method, 'sparse-bm25');
   assert.equal(fallback.requestedMethod, 'hybrid-rrf');
   assert.equal(fallback.dense.status, 'unavailable');
+  assert.equal(fallback.reranking.status, 'ready');
   assert.equal(fallback.results[0].documentId, record.id);
 });
 
@@ -59,6 +63,7 @@ test('recovers the dense index when the configured model becomes available', asy
 
   const hybrid = await index.retrieve({ query: 'Terraform state', documentIds: [record.id] });
   assert.equal(hybrid.method, 'hybrid-rrf');
+  assert.equal(hybrid.reranking.diversity, 'maximal-marginal-relevance');
   assert.deepEqual(hybrid.results[0].retrievalChannels, ['sparse', 'dense']);
 
   settings = { ...settings, 'embeddings.model': 'mini-v2' };

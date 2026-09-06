@@ -863,6 +863,7 @@ components:
         score: { type: number }
         bm25: { type: number }
         denseScore: { type: number }
+        rerankScore: { type: number }
         retrievalChannels:
           type: array
           items: { type: string, enum: [sparse, dense] }
@@ -881,6 +882,15 @@ components:
         results: { type: array, items: { $ref: '#/components/schemas/RetrievalResult' } }
         refusal: { type: string }
         indexingError: { type: string }
+        reranking:
+          type: object
+          required: [status]
+          properties:
+            status: { type: string, enum: [disabled, ready, fallback] }
+            component: { type: string }
+            requestedComponent: { type: string }
+            diversity: { type: string, const: maximal-marginal-relevance }
+            issue: { type: string }
         dense:
           type: object
           required: [status, embeddingModel]

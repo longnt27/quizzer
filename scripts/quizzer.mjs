@@ -69,6 +69,18 @@ const createRetrievalIndex = () => new RetrievalIndex({
   sparsePath: sparseIndexPath,
   densePath: denseIndexPath,
   loadSettings: () => loadResolvedSettings(appDataDirectory),
+  invokeReranker: async (id, params, options) => {
+    const settings = await loadResolvedSettings(appDataDirectory);
+    const manager = new PluginManager({
+      appDataDirectory,
+      developerMode: settings.values['plugins.developerMode'],
+    });
+    const plugin = (await manager.list()).find(item => item.id === id);
+    if (!plugin || plugin.status !== 'installed' || !plugin.enabled || !plugin.compatible || !plugin.capabilities?.includes('reranker')) {
+      throw new Error(`Reranker plugin ${id} is not installed, enabled, and compatible`);
+    }
+    return (await manager.invoke(id, 'rag.rerank', params, options)).result;
+  },
   onDenseIssue: issue => process.stderr.write(`Dense indexing unavailable; sparse retrieval remains ready: ${issue.message}\n`),
 });
 

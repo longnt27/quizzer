@@ -111,7 +111,10 @@ test.before(async () => {
 import { createInterface } from 'node:readline';
 for await (const line of createInterface({ input: process.stdin })) {
   const request = JSON.parse(line);
-  process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { status: 'ready' } }) + '\\n');
+  const result = request.method === 'rag.rerank'
+    ? { ranking: request.params.candidates.map((candidate, index) => ({ sourceSpanId: candidate.sourceSpanId, score: 1 - index / 10 })).reverse() }
+    : { status: 'ready' };
+  process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }) + '\\n');
 }
 `;
   await writeFile(join(pluginDirectory, 'plugin.mjs'), pluginSource);
@@ -122,7 +125,7 @@ for await (const line of createInterface({ input: process.stdin })) {
     version: '1.0.0',
     protocolVersion: 1,
     entrypoint: 'plugin.mjs',
-    capabilities: ['generator'],
+    capabilities: ['generator', 'reranker'],
     platforms: [{ os: process.platform, architectures: [process.arch] }],
     resources: { memoryMB: 32, diskMB: 1 },
     configuration: { type: 'object' },
@@ -187,6 +190,7 @@ test('imports, deduplicates, indexes, and lists a real document', async () => {
   const retrieval = await cli('retrieve', 'Terraform state', '--document', first.document.id);
   assert.equal(retrieval.method, 'hybrid-rrf');
   assert.equal(retrieval.dense.status, 'ready');
+  assert.equal(retrieval.reranking.component, 'builtin');
   assert.equal(retrieval.results[0].documentId, first.document.id);
   assert.match(retrieval.results[0].sourceSpanId, new RegExp(`^${first.document.id}:span:`));
   const reextracted = await cli('documents', 'reextract', first.document.id);
@@ -221,6 +225,12 @@ test('manages unsigned local plugins only after explicit developer opt-in', asyn
   assert.equal((await cli('plugins', 'health', installed.plugin.id)).health.ok, true);
   assert.equal((await cli('plugins', 'disable', installed.plugin.id)).plugin.enabled, false);
   assert.equal((await cli('plugins', 'enable', installed.plugin.id)).plugin.enabled, true);
+  await cli('config', 'set', 'retrieval.rerankerPlugin', installed.plugin.id);
+  const documents = await cli('documents', 'list');
+  const reranked = await cli('retrieve', 'Terraform state', '--document', documents.documents[0].id);
+  assert.equal(reranked.reranking.status, 'ready');
+  assert.equal(reranked.reranking.component, installed.plugin.id);
+  await cli('config', 'set', 'retrieval.rerankerPlugin', 'builtin');
   const removed = await cli('plugins', 'remove', installed.plugin.id, '--yes');
   assert.equal(removed.removed, true);
 });

@@ -76,6 +76,14 @@ const retrievalIndex = new RetrievalIndex({
   sparsePath: process.env.QUIZZER_SPARSE_INDEX_PATH || sparseIndexPathFor(appDataDirectory),
   densePath: process.env.QUIZZER_DENSE_INDEX_PATH || denseIndexPathFor(appDataDirectory),
   loadSettings: () => loadResolvedSettings(appDataDirectory),
+  invokeReranker: async (id, params, options) => {
+    const manager = await getPluginManager();
+    const plugin = (await manager.list()).find(item => item.id === id);
+    if (!plugin || plugin.status !== 'installed' || !plugin.enabled || !plugin.compatible || !plugin.capabilities?.includes('reranker')) {
+      throw new Error(`Reranker plugin ${id} is not installed, enabled, and compatible`);
+    }
+    return (await manager.invoke(id, 'rag.rerank', params, options)).result;
+  },
   onDenseIssue: (issue, record) => process.stderr.write(
     `Dense indexing unavailable for ${record.id}; sparse retrieval remains ready: ${issue.message}\n`,
   ),

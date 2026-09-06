@@ -22,6 +22,7 @@ test('resolves profile, user, environment, CLI, and job settings in order', () =
   assert.equal(resolved.profile, 'balanced');
   assert.equal(resolved.values['retrieval.mode'], 'hybrid');
   assert.equal(resolved.values['embeddings.model'], 'all-minilm');
+  assert.equal(resolved.values['retrieval.rerankerPlugin'], 'builtin');
   assert.equal(resolved.values['retrieval.contextBudget'], 5000);
   assert.equal(resolved.values['generation.concurrency'], 6);
   assert.equal(resolved.sources['generation.concurrency'], 'job');
