@@ -286,6 +286,7 @@ Do not upload confidential material unless the selected provider and your accoun
 | `npm run build` | Type-check and create the production browser bundle |
 | `npm run package:desktop` | Build an unpacked desktop application for the current platform |
 | `npm run make:desktop` | Build the current platform's configured installer/archive |
+| `npm run verify:desktop-fuses` | Verify every configured fuse in the current packaged desktop executable |
 | `npm run build:cli` | Build the signed standalone CLI with Node.js 26+ |
 | `npm run lint` | Run ESLint |
 | `npm test` | Run unit and service integration tests |
@@ -296,7 +297,7 @@ Do not upload confidential material unless the selected provider and your accoun
 
 Source development uses loopback port 8787 so Vite can proxy API requests. The packaged desktop app asks the operating system for an unused ephemeral loopback port, waits for an authenticated utility-process ready message, and only then opens the renderer; set `QUIZZER_DESKTOP_SERVICE_PORT` only for a managed desktop deployment that requires a fixed port.
 
-Release packages keep application code in an ASAR archive and lock Electron's production fuses. Run-as-Node, `NODE_OPTIONS`, command-line inspection, alternate V8 snapshots, and elevated `file:` protocol behavior are disabled; embedded ASAR integrity validation, ASAR-only loading, and cookie encryption are enabled. `npm run package:desktop` applies these settings after copying the application and before code signing.
+Release packages keep application code in an ASAR archive and lock Electron's production fuses. Run-as-Node, `NODE_OPTIONS`, command-line inspection, alternate V8 snapshots, and elevated `file:` protocol behavior are disabled; embedded ASAR integrity validation, ASAR-only loading, cookie encryption, and WebAssembly trap handlers are enabled. Packaging requires an explicit value for every fuse known to the build library, applies the policy before code signing, and verifies the emitted executable in the release matrix.
 
 ## Troubleshooting
 

@@ -154,6 +154,8 @@ jobs:
           rm out/cli/quizzer-notarization.zip
       - name: Build signed desktop distributables
         run: npm run make:desktop
+      - name: Verify packaged Electron fuses
+        run: npm run verify:desktop-fuses
       - name: Normalize release artifacts
         run: node scripts/collect-release-artifacts.mjs --platform ${{ matrix.platform }} --architecture ${{ matrix.architecture }}
       - name: Attest build provenance

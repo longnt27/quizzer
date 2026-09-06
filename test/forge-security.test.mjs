@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { FuseVersion, FuseV1Options } from '@electron/fuses';
-import forgeConfig from '../forge.config.mjs';
+import forgeConfig, { electronExecutableForBuild, electronFuseConfig } from '../forge.config.mjs';
 
 test('packages application code in an ASAR archive', () => {
   assert.deepEqual(forgeConfig.packagerConfig.asar, {
@@ -11,11 +11,10 @@ test('packages application code in an ASAR archive', () => {
 });
 
 test('locks security-sensitive Electron fuses in packaged builds', () => {
-  const fusePlugin = forgeConfig.plugins.find(plugin => plugin.name === 'fuses');
-  assert.ok(fusePlugin, 'Electron Forge must include the fuses plugin');
-
-  assert.deepEqual(fusePlugin.fusesConfig, {
+  assert.equal(typeof forgeConfig.hooks.packageAfterCopy, 'function');
+  assert.deepEqual(electronFuseConfig, {
     version: FuseVersion.V1,
+    strictlyRequireAllFuses: true,
     [FuseV1Options.RunAsNode]: false,
     [FuseV1Options.EnableCookieEncryption]: true,
     [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
@@ -24,5 +23,9 @@ test('locks security-sensitive Electron fuses in packaged builds', () => {
     [FuseV1Options.OnlyLoadAppFromAsar]: true,
     [FuseV1Options.LoadBrowserProcessSpecificV8Snapshot]: false,
     [FuseV1Options.GrantFileProtocolExtraPrivileges]: false,
+    [FuseV1Options.WasmTrapHandlers]: true,
   });
+  assert.match(electronExecutableForBuild('/tmp/Quizzer.app/Contents/Resources/app', 'darwin'), /Quizzer\.app\/Contents\/MacOS\/Electron$/);
+  assert.match(electronExecutableForBuild('/tmp/quizzer/resources/app', 'win32'), /quizzer[\\/]electron\.exe$/);
+  assert.match(electronExecutableForBuild('/tmp/quizzer/resources/app', 'linux'), /quizzer[\\/]electron$/);
 });

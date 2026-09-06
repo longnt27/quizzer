@@ -2,8 +2,28 @@ import { MakerDeb } from '@electron-forge/maker-deb';
 import { MakerRpm } from '@electron-forge/maker-rpm';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
-import { FusesPlugin } from '@electron-forge/plugin-fuses';
-import { FuseVersion, FuseV1Options } from '@electron/fuses';
+import { flipFuses, FuseVersion, FuseV1Options } from '@electron/fuses';
+import { join, resolve } from 'node:path';
+
+export const electronFuseConfig = Object.freeze({
+  version: FuseVersion.V1,
+  strictlyRequireAllFuses: true,
+  [FuseV1Options.RunAsNode]: false,
+  [FuseV1Options.EnableCookieEncryption]: true,
+  [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
+  [FuseV1Options.EnableNodeCliInspectArguments]: false,
+  [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
+  [FuseV1Options.OnlyLoadAppFromAsar]: true,
+  [FuseV1Options.LoadBrowserProcessSpecificV8Snapshot]: false,
+  [FuseV1Options.GrantFileProtocolExtraPrivileges]: false,
+  [FuseV1Options.WasmTrapHandlers]: true,
+});
+
+export const electronExecutableForBuild = (buildPath, platform) => {
+  const basePath = resolve(buildPath, '../..');
+  if (platform === 'darwin' || platform === 'mas') return join(basePath, 'MacOS', 'Electron');
+  return join(basePath, platform === 'win32' ? 'electron.exe' : 'electron');
+};
 
 const platformIcon = process.platform === 'darwin'
   ? 'assets/icons/quizzer.icns'
@@ -42,6 +62,15 @@ export default {
     } : undefined,
   },
   rebuildConfig: {},
+  hooks: {
+    packageAfterCopy: async (forgeConfig, buildPath, _electronVersion, platform, arch) => {
+      const signedByForge = Boolean(forgeConfig.packagerConfig.osxSign);
+      await flipFuses(electronExecutableForBuild(buildPath, platform), {
+        ...electronFuseConfig,
+        resetAdHocDarwinSignature: platform === 'darwin' && arch === 'arm64' && !signedByForge,
+      });
+    },
+  },
   makers: [
     new MakerSquirrel({
       name: 'quizzer', setupIcon: 'assets/icons/quizzer.ico',
@@ -54,18 +83,5 @@ export default {
     new MakerZIP({}, ['darwin', 'linux']),
     new MakerDeb({ options: { name: 'quizzer', productName: 'Quizzer', icon: 'assets/icons/quizzer.png', categories: ['Education'] } }),
     new MakerRpm({ options: { name: 'quizzer', productName: 'Quizzer', icon: 'assets/icons/quizzer.png', categories: ['Education'] } }),
-  ],
-  plugins: [
-    new FusesPlugin({
-      version: FuseVersion.V1,
-      [FuseV1Options.RunAsNode]: false,
-      [FuseV1Options.EnableCookieEncryption]: true,
-      [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
-      [FuseV1Options.EnableNodeCliInspectArguments]: false,
-      [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
-      [FuseV1Options.OnlyLoadAppFromAsar]: true,
-      [FuseV1Options.LoadBrowserProcessSpecificV8Snapshot]: false,
-      [FuseV1Options.GrantFileProtocolExtraPrivileges]: false,
-    }),
   ],
 };
