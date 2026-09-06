@@ -6,6 +6,7 @@ import { ensureServiceToken } from '../server/auth.mjs';
 import { CredentialVault } from './credential-vault.mjs';
 import { isAllowedExternalUrl, isTrustedRendererUrl } from './security.mjs';
 import { serviceRestartDelay, waitForServiceReady } from './service-process.mjs';
+import { protectedBackgroundFallback, summarizeBackgroundState } from './background-policy.mjs';
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'quizzer', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
 
@@ -27,6 +28,8 @@ let serviceRecoveryEnabled = false;
 let serviceRestartAttempt = 0;
 let serviceRestartTimer;
 let serviceStableTimer;
+let trayRefreshTimer;
+let closeDecisionPending = false;
 
 const isTrustedRenderer = event => {
   return isTrustedRendererUrl(event.senderFrame.url, developmentUrl);
@@ -148,6 +151,54 @@ const registerApplicationProtocol = () => protocol.handle('quizzer', request => 
   return net.fetch(pathToFileURL(filePath).toString());
 });
 
+const serviceJson = async path => {
+  if (!servicePort || !serviceToken) throw new Error('Local service is unavailable');
+  const response = await net.fetch(`http://127.0.0.1:${servicePort}${path}`, {
+    headers: { Authorization: `Bearer ${serviceToken}` },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `Local service returned ${response.status}`);
+  return payload;
+};
+
+const loadBackgroundState = async () => {
+  try {
+    const [settings, generation, indexing] = await Promise.all([
+      serviceJson('/api/v1/settings'),
+      serviceJson('/api/v1/jobs'),
+      serviceJson('/api/v1/index/jobs'),
+    ]);
+    return summarizeBackgroundState({
+      settings: settings.values,
+      generationJobs: generation.jobs,
+      indexJobs: indexing.jobs,
+    });
+  } catch {
+    return protectedBackgroundFallback;
+  }
+};
+
+const quitApplication = () => {
+  quitting = true;
+  app.quit();
+};
+
+const updateTray = state => {
+  if (!tray || tray.isDestroyed()) return;
+  const workLabel = state.activeJobCount
+    ? `${state.activeJobCount} active job${state.activeJobCount === 1 ? '' : 's'}${state.runningJobs ? ` · ${state.runningJobs} running` : ''}`
+    : state.serviceUnavailable ? 'Protecting background work · service reconnecting' : 'No active jobs';
+  tray.setToolTip(state.activeJobCount ? `Quizzer · ${workLabel}` : 'Quizzer');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Show Quizzer', click: () => { window?.show(); window?.focus(); } },
+    { label: workLabel, enabled: false },
+    { type: 'separator' },
+    { label: 'Quit Quizzer', click: quitApplication },
+  ]));
+};
+
+const refreshTray = async () => updateTray(await loadBackgroundState());
+
 const createWindow = () => {
   window = new BrowserWindow({
     title: 'Quizzer',
@@ -179,7 +230,13 @@ const createWindow = () => {
   window.on('close', event => {
     if (quitting) return;
     event.preventDefault();
-    window?.hide();
+    if (closeDecisionPending) return;
+    closeDecisionPending = true;
+    void loadBackgroundState().then(state => {
+      if (quitting) return;
+      if (state.continueInBackground) window?.hide();
+      else quitApplication();
+    }).finally(() => { closeDecisionPending = false; });
   });
   window.once('ready-to-show', () => window?.show());
   void window.loadURL(developmentUrl || 'quizzer://app/');
@@ -188,13 +245,10 @@ const createWindow = () => {
 const createTray = () => {
   const icon = nativeImage.createFromPath(join(projectDirectory, 'public', 'quizzer.svg')).resize({ width: 18, height: 18 });
   tray = new Tray(icon);
-  tray.setToolTip('Quizzer');
-  tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Show Quizzer', click: () => { window?.show(); window?.focus(); } },
-    { type: 'separator' },
-    { label: 'Quit Quizzer', click: () => { quitting = true; app.quit(); } },
-  ]));
+  updateTray(protectedBackgroundFallback);
   tray.on('click', () => { window?.show(); window?.focus(); });
+  void refreshTray();
+  trayRefreshTimer = setInterval(() => void refreshTray(), 5_000);
 };
 
 app.whenReady().then(async () => {
@@ -217,6 +271,7 @@ app.on('before-quit', () => {
   quitting = true;
   clearTimeout(serviceRestartTimer);
   clearTimeout(serviceStableTimer);
+  clearInterval(trayRefreshTimer);
   service?.kill();
 });
 app.on('window-all-closed', () => {
