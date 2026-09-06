@@ -305,6 +305,8 @@ Do not upload confidential material unless the selected provider and your accoun
 | `npm run license:check` | Verify application and landing dependency licenses against the release policy |
 | `npm run preview` | Preview the browser bundle; start the service separately for generation |
 
+Run `cd landing && npm run test:e2e` for the Chromium landing-page gate. It verifies platform-specific installers, clipboard actions, signed-manifest trust and fallback, the client-only demo, mobile overflow, keyboard controls, and social metadata. CI installs its isolated browser runtime automatically.
+
 Source development uses loopback port 8787 so Vite can proxy API requests. The packaged desktop app asks the operating system for an unused ephemeral loopback port, waits for an authenticated utility-process ready message, and only then opens the renderer; set `QUIZZER_DESKTOP_SERVICE_PORT` only for a managed desktop deployment that requires a fixed port.
 
 Release packages keep application code in an ASAR archive and lock Electron's production fuses. Run-as-Node, `NODE_OPTIONS`, command-line inspection, alternate V8 snapshots, and elevated `file:` protocol behavior are disabled; embedded ASAR integrity validation, ASAR-only loading, cookie encryption, and WebAssembly trap handlers are enabled. Packaging requires an explicit value for every fuse known to the build library, applies the policy before code signing, and verifies the emitted executable in the release matrix.

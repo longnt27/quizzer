@@ -62,6 +62,29 @@ jobs:
           path: sbom.cdx.json
           if-no-files-found: error
 
+  landing:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: landing
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: landing/package-lock.json
+      - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm run lint
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
   desktop:
     needs: verify
     strategy:
@@ -186,7 +209,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: [verify, desktop]
+    needs: [verify, landing, desktop]
     runs-on: ubuntu-24.04
     environment: release
     permissions:

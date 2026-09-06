@@ -128,6 +128,10 @@ button, a { -webkit-tap-highlight-color: transparent; }
 
 footer { padding: 36px max(24px, calc((100vw - 1160px) / 2)); display: flex; align-items: center; gap: 22px; color: #a8b6ca; background: #07111f; }.brand-mark { flex: 0 0 auto; } footer p { flex: 1; margin: 0; } footer nav { display: flex; gap: 22px; font-size: 13px; } footer a:hover { color: #fff; }
 
+.hero-copy, .product-frame, .download-panel, .install-list, .install-list article, .command-row { min-width: 0; }
+.install-list { grid-template-columns: minmax(0, 1fr); }
+.checksum { max-width: 100%; }
+
 @media (max-width: 980px) {
   .hero { grid-template-columns: 1fr; padding-top: 130px; }
   .product-frame { width: min(760px, 100%); }
