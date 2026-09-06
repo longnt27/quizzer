@@ -13,6 +13,8 @@ node_modules
 dist
 dist-ssr
 out
+playwright-report
+test-results
 *.local
 .env
 .env.*
