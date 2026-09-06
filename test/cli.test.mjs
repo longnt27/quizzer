@@ -203,6 +203,17 @@ test('imports, deduplicates, indexes, and lists a real document', async () => {
 
 test('queues and controls a durable test generation job', async () => {
   const documents = await cli('documents', 'list');
+  await assert.rejects(cli(
+    'test', 'create', '--document', documents.documents[0].id, '--provider', 'openai', '--model', 'gpt-5-mini',
+  ), /--approve-paid/);
+  const paidCreated = await cli(
+    'test', 'create', '--document', documents.documents[0].id, '--name', 'Approved remote quiz',
+    '--questions', '2', '--provider', 'openai', '--model', 'gpt-5-mini', '--approve-paid',
+  );
+  assert.equal(paidCreated.job.options.routeChain[0].paid, true);
+  assert.equal(paidCreated.job.options.routeChain[0].approved, true);
+  await cli('jobs', 'cancel', paidCreated.job.id);
+
   const created = await cli(
     'test', 'create', '--document', documents.documents[0].id, '--name', 'Terraform fundamentals',
     '--questions', '5', '--instruction', 'Coding questions about Terraform only', '--provider', 'codex',
@@ -213,8 +224,27 @@ test('queues and controls a durable test generation job', async () => {
   assert.equal(created.job.options.customInstruction, 'Coding questions about Terraform only');
   const cancelled = await cli('jobs', 'cancel', created.job.id);
   assert.equal(cancelled.job.status, 'cancelled');
-  const resumed = await cli('resume', created.job.id);
+  const resumed = await cli('resume', created.job.id, '--provider', 'claude-agent');
   assert.equal(resumed.job.status, 'queued');
+  assert.equal(resumed.job.options.provider, 'claude-agent');
+  assert.equal(resumed.job.options.customInstruction, 'Coding questions about Terraform only');
+  assert.equal(resumed.job.options.routeChain.length, 2);
+  assert.equal(resumed.job.providerAttempts[0].outcome, 'manually-selected');
+  assert.equal(resumed.job.providerAttempts[0].accepted, 0);
+
+  await cli('jobs', 'cancel', created.job.id);
+  await assert.rejects(cli('resume', created.job.id, '--model', 'gpt-5-mini'), /--model requires --provider/);
+  await assert.rejects(cli(
+    'resume', created.job.id, '--provider', 'openai', '--model', 'gpt-5-mini',
+  ), /--approve-paid/);
+  const paidResume = await cli(
+    'resume', created.job.id, '--provider', 'openai', '--model', 'gpt-5-mini', '--approve-paid',
+  );
+  assert.equal(paidResume.job.options.provider, 'openai');
+  assert.equal(paidResume.job.options.routeChain.length, 3);
+  assert.equal(paidResume.job.providerAttempts.length, 2);
+  assert.equal(paidResume.job.providerAttempts[1].model, 'gpt-5-mini');
+  await cli('jobs', 'cancel', created.job.id);
 });
 
 test('manages unsigned local plugins only after explicit developer opt-in', async () => {

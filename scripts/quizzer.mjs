@@ -17,6 +17,7 @@ import { validateReleaseManifest } from '../server/release-manifest.mjs';
 import { ObjectStore } from '../server/object-store.mjs';
 import { createBackup, restoreBackup, verifyBackup } from '../server/backup.mjs';
 import { cancelIndexJob, createIndexJob, recoverIndexJob, resumeIndexJob, runIndexJob } from '../server/index-jobs.mjs';
+import { PROVIDER_POLICIES } from '../server/provider-policy.mjs';
 
 const usage = `Quizzer CLI
 
@@ -30,9 +31,10 @@ Usage:
   quizzer index <document-id>|--all [--force] [--idempotency-key key] [--json]
   quizzer retrieve <query> [--document <id>] [--tag <tag>] [--limit 10] [--json]
   quizzer test create --document <id> [--document <id>] [--name name] [--questions 20]
-                      [--instruction text] [--provider provider] [--model model] [--json]
-  quizzer jobs list|show <id>|resume <id>|cancel <id> [--json]
-  quizzer resume <job-id> [--json]
+                      [--instruction text] [--provider provider] [--model model] [--approve-paid] [--json]
+  quizzer jobs list|show <id>|cancel <id> [--json]
+  quizzer jobs resume <id> [--provider provider] [--model model] [--approve-paid] [--json]
+  quizzer resume <job-id> [--provider provider] [--model model] [--approve-paid] [--json]
   quizzer migrations list [--json]
   quizzer backup create [--destination directory] [--json]
   quizzer backup verify <directory> [--json]
@@ -44,7 +46,7 @@ Usage:
 const parseArguments = arguments_ => {
   const positionals = [];
   const flags = new Map();
-  const booleanFlags = new Set(['all', 'force', 'help', 'json', 'yes']);
+  const booleanFlags = new Set(['all', 'approve-paid', 'force', 'help', 'json', 'yes']);
   for (let index = 0; index < arguments_.length; index += 1) {
     const argument = arguments_[index];
     if (!argument.startsWith('--')) { positionals.push(argument); continue; }
@@ -91,6 +93,12 @@ const writeResult = (value, human) => {
   else process.stdout.write(`${human}\n`);
 };
 const fail = message => { throw new Error(message); };
+const providerPolicy = provider => PROVIDER_POLICIES[provider] ?? fail(`Unsupported provider: ${provider}`);
+const requirePaidApproval = (provider, policy) => {
+  if (policy.billing === 'usage-based' && flag('approve-paid') !== 'true') {
+    fail(`${provider} is a usage-based remote API route. Re-run with --approve-paid to confirm possible charges and provider data handling.`);
+  }
+};
 
 let storageModule;
 let embeddedSqliteReady;
@@ -388,14 +396,14 @@ const runTestCreate = async () => {
   if (!Number.isSafeInteger(questionCount) || questionCount < 1 || questionCount > 200) fail('--questions must be an integer from 1 to 200');
   const settings = await loadResolvedSettings(appDataDirectory);
   const provider = flag('provider', settings.values['generation.defaultProvider']);
-  const supportedProviders = ['codex', 'claude-agent', 'antigravity-agent', 'gemini', 'anthropic', 'openai', 'openrouter', 'deepseek'];
-  if (!supportedProviders.includes(provider)) fail(`Unsupported provider: ${provider}`);
+  const policy = providerPolicy(provider);
+  requirePaidApproval(provider, policy);
   const now = Date.now();
   const jobId = randomUUID();
   const name = flag('name', `Quiz ${new Date(now).toLocaleDateString()}`);
   const model = flag('model', undefined);
   const customInstruction = flag('instruction', undefined);
-  const privacy = provider === 'codex' || provider.endsWith('-agent') ? 'signed-in-agent' : 'remote-api';
+  const privacy = policy.privacy;
   const job = {
     id: jobId,
     testId: randomUUID(),
@@ -463,7 +471,68 @@ const runJobs = async (action, explicitId) => {
       throw new Error(`${error instanceof Error ? error.message : String(error)}. Resume with: quizzer resume ${id}`);
     }
   }
-  const job = database.controlGenerationJob(id, action, action === 'resume' ? { resetRounds: false } : {}).data;
+  let changes = {};
+  if (action === 'resume') {
+    const selectedProvider = flag('provider');
+    const requestedModel = flag('model');
+    if (requestedModel && !selectedProvider) fail('--model requires --provider when resuming a generation job');
+    if (selectedProvider) {
+      const policy = providerPolicy(selectedProvider);
+      requirePaidApproval(selectedProvider, policy);
+      const selectedModel = requestedModel ?? (selectedProvider === generationRecord.data.options.provider
+        ? generationRecord.data.options.model
+        : undefined);
+      const selectedRoute = {
+        provider: selectedProvider,
+        ...(selectedModel ? { model: selectedModel } : {}),
+        privacy: policy.privacy,
+        paid: policy.billing === 'usage-based',
+        approved: true,
+      };
+      const existingRoutes = generationRecord.data.options.routeChain;
+      if (existingRoutes?.length) {
+        const existingIndex = existingRoutes.findIndex(route => route.provider === selectedRoute.provider
+          && (route.model ?? undefined) === (selectedRoute.model ?? undefined));
+        const routeChain = existingIndex >= 0
+          ? existingRoutes.map((route, index) => index === existingIndex ? { ...route, approved: true } : route)
+          : [...existingRoutes, selectedRoute];
+        const activeRouteIndex = existingIndex >= 0 ? existingIndex : routeChain.length - 1;
+        const options = {
+          ...generationRecord.data.options,
+          provider: selectedProvider,
+          model: selectedModel,
+          routeChain,
+        };
+        const providerAttempts = [...(generationRecord.data.providerAttempts ?? []), {
+          provider: selectedProvider,
+          ...(selectedModel ? { model: selectedModel } : {}),
+          routeIndex: activeRouteIndex,
+          at: Date.now(),
+          accepted: generationRecord.data.questions?.length ?? 0,
+          outcome: 'manually-selected',
+        }];
+        changes = { options, activeRouteIndex, providerAttempts, resetRounds: false };
+      } else {
+        changes = {
+          options: { ...generationRecord.data.options, provider: selectedProvider, model: selectedModel },
+          activeRouteIndex: 0,
+          providerAttempts: [...(generationRecord.data.providerAttempts ?? []), {
+            provider: selectedProvider,
+            ...(selectedModel ? { model: selectedModel } : {}),
+            routeIndex: 0,
+            at: Date.now(),
+            accepted: generationRecord.data.questions?.length ?? 0,
+            outcome: 'manually-selected',
+          }],
+          resetRounds: false,
+        };
+      }
+    } else {
+      if (flag('approve-paid') === 'true') fail('--approve-paid requires --provider when resuming a generation job');
+      changes = { resetRounds: false };
+    }
+  }
+  const job = database.controlGenerationJob(id, action, changes).data;
   writeResult({ job }, `${action === 'resume' ? 'Queued' : 'Cancelled'} ${job.name}`);
 };
 

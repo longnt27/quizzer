@@ -130,10 +130,11 @@ npm run cli -- documents import ./notes.pdf --tags infrastructure,terraform
 npm run cli -- index --all --idempotency-key first-library-index
 npm run cli -- test create --document DOCUMENT_ID --questions 20 --instruction "Terraform coding questions only"
 npm run cli -- jobs list
+npm run cli -- resume JOB_ID --provider claude-agent
 npm run cli -- backup create
 ```
 
-Run `npm run cli -- help` for the complete command list. Document indexing creates the same durable, per-document checkpoints used by the desktop service; `quizzer jobs list` shows both indexing and generation work, and `quizzer resume JOB_ID` finishes only an interrupted job's remaining documents. Reusing an indexing idempotency key safely returns the original job, while `--force` explicitly rebuilds unchanged documents. Configuration is resolved in this order: per-job override, CLI/environment override, user JSONC, hardware profile, then built-in defaults. `quizzer config path` prints the per-user configuration location. API keys and the private service token are never included in settings output or backups.
+Run `npm run cli -- help` for the complete command list. Document indexing creates the same durable, per-document checkpoints used by the desktop service; `quizzer jobs list` shows both indexing and generation work, and `quizzer resume JOB_ID` finishes only an interrupted job's remaining documents. Add `--provider` and optional `--model` to select a replacement generation route without changing its saved question plan, learning instruction, prompts, or RAG settings. Usage-based API routes require `--approve-paid` for both creation and resumption, making the possible charge and provider data handling an explicit CLI action. Reusing an indexing idempotency key safely returns the original job, while `--force` explicitly rebuilds unchanged documents. Configuration is resolved in this order: per-job override, CLI/environment override, user JSONC, hardware profile, then built-in defaults. `quizzer config path` prints the per-user configuration location. API keys and the private service token are never included in settings output or backups.
 
 Release builders use Node.js 26 or newer for `npm run build:cli`. The resulting signed single executable embeds the CLI, local service resources, and the platform-native SQLite addon; end users do not install Node.js.
 
@@ -325,6 +326,8 @@ Install Codex CLI and ensure `codex` is available on `PATH` for the process star
 ### An agent reaches its usage limit
 
 Open **Activity**, select a configured replacement provider on the paused job, and choose **Continue**. Accepted questions are preserved. If the replacement uses an API key you have not entered, open **Plugins & models** directly from the job first.
+
+From the CLI, use `quizzer resume JOB_ID --provider claude-agent`, or select a usage-based route with `quizzer resume JOB_ID --provider openai --model gpt-5-mini --approve-paid`. The route choice is appended to the job audit history and only unfinished questions are generated.
 
 ### Generation was interrupted
 
