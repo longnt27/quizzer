@@ -21,6 +21,7 @@ test('stores, verifies, deduplicates, and lists content-addressed objects', asyn
   assert.equal(second.sha256, digest);
   assert.equal(isStoredObjectReference(second), true);
   assert.deepEqual(await readFile(store.pathFor(digest)), data);
+  assert.deepEqual(await store.readBuffer(digest), data);
   assert.deepEqual((await store.list()).map(item => item.sha256), [digest]);
 });
 

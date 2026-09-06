@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { access, mkdir, open, readdir, rename, rm, stat, utimes } from 'node:fs/promises';
+import { access, mkdir, open, readFile, readdir, rename, rm, stat, utimes } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
@@ -109,6 +109,12 @@ export class ObjectStore {
 
   createReadStream(sha256) {
     return createReadStream(this.pathFor(sha256));
+  }
+
+  async readBuffer(sha256) {
+    const details = await this.stat(sha256);
+    if (details.size > this.maxObjectBytes) throw new Error(`Object exceeds the ${this.maxObjectBytes}-byte limit`);
+    return readFile(this.pathFor(sha256));
   }
 
   async list() {

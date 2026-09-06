@@ -97,10 +97,26 @@ export interface StoredDocument {
   size: number;
   tags: string[];
   content: string;
+  contentHash?: string;
+  parserVersion?: string;
+  extractionSchemaVersion?: number;
+  extractedAt?: number;
+  extractionContentHash?: string;
+  extractionHistory?: StoredExtractionRevision[];
+  indexedAt?: number;
+  indexVersion?: number;
+  documentVersionHash?: string;
   pageCount?: number;
   originalFile?: Blob | StoredObjectReference;
   images?: StoredDocumentImage[];
   chunks?: StoredDocumentChunk[];
+}
+
+export interface StoredExtractionRevision {
+  parserVersion: string;
+  extractionSchemaVersion: number;
+  extractedAt: number;
+  extractionContentHash: string;
 }
 
 export interface StoredObjectReference {
@@ -132,6 +148,7 @@ export interface StoredDocumentChunk {
   page?: number;
   start: number;
   end: number;
+  textHash?: string;
 }
 
 export interface StoredCoveragePlan {

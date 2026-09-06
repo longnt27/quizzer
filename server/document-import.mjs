@@ -1,6 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import { basename, extname, resolve } from 'node:path';
+import { isStoredObjectReference } from './object-store.mjs';
+
+export const DOCUMENT_EXTRACTION_SCHEMA_VERSION = 1;
+export const PDFJS_PARSER_VERSION = 'pdfjs-5.3.31';
+export const UTF8_PARSER_VERSION = 'utf8-1';
 
 const textExtensions = new Map([
   ['.txt', 'text/plain'], ['.md', 'text/markdown'], ['.markdown', 'text/markdown'],
@@ -23,7 +28,33 @@ const extractPdf = async data => {
   } finally {
     await document.destroy();
   }
-  return { content: pages.join('\n\n'), pageCount: pages.length, parserVersion: 'pdfjs-5' };
+  return { content: pages.join('\n\n'), pageCount: pages.length, parserVersion: PDFJS_PARSER_VERSION, extractor: 'pdfjs' };
+};
+
+const sourceType = (name, mimeType) => {
+  const extension = extname(name).toLowerCase();
+  if (mimeType === 'application/pdf' || extension === '.pdf') return { extension: '.pdf', mimeType: 'application/pdf', isPdf: true };
+  const resolvedMimeType = textExtensions.get(extension) || (typeof mimeType === 'string' && mimeType.startsWith('text/') ? mimeType : undefined);
+  if (!resolvedMimeType) throw new Error(`Unsupported document type: ${extension || mimeType || 'unknown'}`);
+  return { extension, mimeType: resolvedMimeType, isPdf: false };
+};
+
+export const extractDocumentBuffer = async (data, { name = 'document', mimeType, now = Date.now } = {}) => {
+  if (!Buffer.isBuffer(data) && !(data instanceof Uint8Array)) throw new Error('Document data must be binary');
+  const source = sourceType(name, mimeType);
+  const extracted = source.isPdf
+    ? await extractPdf(Buffer.from(data))
+    : { content: Buffer.from(data).toString('utf8'), parserVersion: UTF8_PARSER_VERSION, extractor: 'utf8' };
+  if (!extracted.content.trim()) throw new Error('The document contains no extractable text');
+  const extractedAt = now();
+  if (!Number.isSafeInteger(extractedAt) || extractedAt < 0) throw new Error('Invalid extraction time');
+  return {
+    ...extracted,
+    mimeType: source.mimeType,
+    extractionSchemaVersion: DOCUMENT_EXTRACTION_SCHEMA_VERSION,
+    extractedAt,
+    extractionContentHash: sha256(extracted.content),
+  };
 };
 
 export const chunkDocument = (documentId, content, targetCharacters = 2200) => {
@@ -70,41 +101,75 @@ const pageForOffset = (content, offset) => {
   return page || undefined;
 };
 
-export const importDocumentFile = async (path, { tags = [], objectStore } = {}) => {
+export const importDocumentFile = async (path, { tags = [], objectStore, now = Date.now } = {}) => {
   const absolutePath = resolve(path);
   const details = await stat(absolutePath);
   if (!details.isFile()) throw new Error('Document path must refer to a file');
   if (details.size > 250 * 1024 * 1024) throw new Error('Documents larger than 250 MB must be imported from the desktop app');
   const data = await readFile(absolutePath);
-  const extension = extname(absolutePath).toLowerCase();
-  const isPdf = extension === '.pdf';
-  if (!isPdf && !textExtensions.has(extension)) throw new Error(`Unsupported document type: ${extension || 'unknown'}`);
-  const extracted = isPdf
-    ? await extractPdf(data)
-    : { content: data.toString('utf8'), parserVersion: 'utf8-1' };
-  if (!extracted.content.trim()) throw new Error('The document contains no extractable text');
+  const extracted = await extractDocumentBuffer(data, { name: absolutePath, now });
   const id = randomUUID();
   const originalMetadata = {
-    type: isPdf ? 'application/pdf' : textExtensions.get(extension),
+    type: extracted.mimeType,
     name: basename(absolutePath),
     lastModified: Math.round(details.mtimeMs),
   };
   return {
     id,
     name: basename(absolutePath),
-    createdAt: Date.now(),
-    mimeType: isPdf ? 'application/pdf' : textExtensions.get(extension),
+    createdAt: extracted.extractedAt,
+    mimeType: extracted.mimeType,
     size: details.size,
     tags: [...new Set(tags.map(tag => tag.trim()).filter(Boolean))],
     content: extracted.content,
     pageCount: extracted.pageCount,
     contentHash: sha256(data),
     parserVersion: extracted.parserVersion,
+    extractionSchemaVersion: extracted.extractionSchemaVersion,
+    extractedAt: extracted.extractedAt,
+    extractionContentHash: extracted.extractionContentHash,
     chunks: chunkDocument(id, extracted.content),
     originalFile: objectStore ? await objectStore.putBuffer(data, originalMetadata) : {
       __quizzerBlob: true,
       ...originalMetadata,
       data: `data:${originalMetadata.type};base64,${data.toString('base64')}`,
     },
+  };
+};
+
+const extractionRevision = document => ({
+  parserVersion: document.parserVersion || 'unknown',
+  extractionSchemaVersion: document.extractionSchemaVersion ?? 0,
+  extractedAt: document.extractedAt ?? document.createdAt,
+  extractionContentHash: document.extractionContentHash || sha256(document.content || ''),
+});
+
+export const reextractDocument = async (document, { objectStore, now = Date.now } = {}) => {
+  if (!document || typeof document !== 'object' || typeof document.id !== 'string') throw new Error('A stored document is required');
+  if (!objectStore || typeof objectStore.readBuffer !== 'function') throw new Error('Re-extraction requires object storage');
+  if (!isStoredObjectReference(document.originalFile)) throw new Error('The verified original file is unavailable for re-extraction');
+  const data = await objectStore.readBuffer(document.originalFile.sha256);
+  const sourceHash = sha256(data);
+  if (sourceHash !== document.originalFile.sha256 || (document.contentHash && sourceHash !== document.contentHash)) {
+    throw new Error('The stored original does not match the document content hash');
+  }
+  const extracted = await extractDocumentBuffer(data, { name: document.name, mimeType: document.mimeType, now });
+  const history = [...(Array.isArray(document.extractionHistory) ? document.extractionHistory : []), extractionRevision(document)].slice(-20);
+  return {
+    ...document,
+    content: extracted.content,
+    contentHash: sourceHash,
+    mimeType: extracted.mimeType,
+    pageCount: extracted.pageCount,
+    parserVersion: extracted.parserVersion,
+    extractionSchemaVersion: extracted.extractionSchemaVersion,
+    extractedAt: extracted.extractedAt,
+    extractionContentHash: extracted.extractionContentHash,
+    extractionHistory: history,
+    chunks: chunkDocument(document.id, extracted.content),
+    images: undefined,
+    indexedAt: undefined,
+    indexVersion: undefined,
+    documentVersionHash: undefined,
   };
 };

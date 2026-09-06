@@ -63,6 +63,7 @@ export default function DocumentView({ documentId }: Props) {
   const [askOpen, setAskOpen] = useState(false);
   const [indexStatus, setIndexStatus] = useState<IndexStatus>();
   const [indexing, setIndexing] = useState(false);
+  const [reextracting, setReextracting] = useState(false);
   const [retrievalQuery, setRetrievalQuery] = useState('');
   const [retrieving, setRetrieving] = useState(false);
   const [retrieval, setRetrieval] = useState<RetrievalPreview>();
@@ -128,6 +129,23 @@ export default function DocumentView({ documentId }: Props) {
     }
   };
 
+  const reextract = async () => {
+    setReextracting(true);
+    try {
+      await syncNow();
+      const response = await serviceJson<{ document: StoredDocument }>(`/api/v1/documents/${encodeURIComponent(document.id)}/reextract`, 'POST', {});
+      await syncNow();
+      setDocument(await db.documents.get(document.id) ?? response.document);
+      setIndexStatus(await serviceRequest<IndexStatus>('/api/v1/index/status'));
+      setRetrieval(undefined);
+      message.success(`Re-extracted with ${response.document.parserVersion ?? 'the current converter'} and rebuilt the index`);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Could not re-extract document');
+    } finally {
+      setReextracting(false);
+    }
+  };
+
   const previewRetrieval = async () => {
     if (!retrievalQuery.trim()) return;
     setRetrieving(true);
@@ -159,12 +177,18 @@ export default function DocumentView({ documentId }: Props) {
         {document.pageCount && <Tag>{document.pageCount} pages</Tag>}
         {document.tags.map(tag => <Tag color="blue" key={tag}>{tag}</Tag>)}
         {!!document.images?.length && <Tag color="purple">{document.images.length} extracted images</Tag>}
+        {document.parserVersion && <Tag color="cyan">Extractor · {document.parserVersion}</Tag>}
         {indexed ? <Tag color="green">Indexed · {indexed.chunks} spans</Tag> : <Tag>Not indexed</Tag>}
       </Space>
       <Space wrap style={{ marginBottom: 20 }}>
         <Button type="primary" icon={<RobotOutlined />} onClick={() => setAskOpen(true)}>Ask AI about this document</Button>
         <Button icon={indexed ? <ReloadOutlined /> : <DatabaseOutlined />} loading={indexing} onClick={() => void indexDocument()}>{indexed ? 'Reindex document' : 'Index for retrieval'}</Button>
+        <Button icon={<ReloadOutlined />} loading={reextracting} disabled={!document.originalFile} onClick={() => void reextract()}>Re-extract original</Button>
       </Space>
+      {document.extractedAt && <Typography.Paragraph type="secondary">
+        Extracted {new Date(document.extractedAt).toLocaleString()} · schema v{document.extractionSchemaVersion ?? 0}
+        {document.extractionHistory?.length ? ` · ${document.extractionHistory.length} prior extraction${document.extractionHistory.length === 1 ? '' : 's'} retained` : ''}
+      </Typography.Paragraph>}
       <Card size="small" title="Tags" style={{ marginBottom: 20 }}>
         <Space.Compact style={{ width: '100%' }}>
           <Input value={tagText} onChange={event => setTagText(event.target.value)} placeholder="lecture, networking, exam-1" />

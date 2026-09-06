@@ -161,6 +161,12 @@ test('imports, deduplicates, indexes, and lists a real document', async () => {
   const retrieval = await cli('retrieve', 'Terraform state', '--document', first.document.id);
   assert.equal(retrieval.results[0].documentId, first.document.id);
   assert.match(retrieval.results[0].sourceSpanId, new RegExp(`^${first.document.id}:span:`));
+  const reextracted = await cli('documents', 'reextract', first.document.id);
+  assert.equal(reextracted.document.parserVersion, 'utf8-1');
+  assert.equal(reextracted.document.extractionHistory.length, 1);
+  assert.equal(reextracted.document.originalFile.sha256, first.document.contentHash);
+  assert.equal(reextracted.job.kind, 'index');
+  assert.equal(reextracted.job.status, 'completed');
 });
 
 test('queues and controls a durable test generation job', async () => {

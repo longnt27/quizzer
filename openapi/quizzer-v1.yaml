@@ -345,6 +345,25 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/Okay' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /documents/{documentId}/reextract:
+    parameters:
+      - $ref: '#/components/parameters/DocumentId'
+    post:
+      operationId: reextractDocument
+      summary: Re-extract a verified original and rebuild its retrieval index
+      responses:
+        '200':
+          description: Updated document provenance and completed durable indexing job
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [document, job]
+                properties:
+                  document: { $ref: '#/components/schemas/Document' }
+                  job: { $ref: '#/components/schemas/IndexJob' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /index/status:
     get:
       operationId: getIndexStatus
@@ -720,6 +739,38 @@ components:
         tags: { type: array, items: { type: string } }
         chunkCount: { type: integer, minimum: 0 }
         pageCount: { type: integer, minimum: 1 }
+        parserVersion: { type: string }
+        extractionSchemaVersion: { type: integer, minimum: 1 }
+        extractedAt: { type: integer, minimum: 0 }
+    ExtractionRevision:
+      type: object
+      required: [parserVersion, extractionSchemaVersion, extractedAt, extractionContentHash]
+      properties:
+        parserVersion: { type: string }
+        extractionSchemaVersion: { type: integer, minimum: 0 }
+        extractedAt: { type: integer, minimum: 0 }
+        extractionContentHash: { type: string, pattern: '^[a-f0-9]{64}$' }
+    Document:
+      type: object
+      required: [id, name, createdAt, mimeType, size, tags, content, contentHash, parserVersion, extractionSchemaVersion, extractedAt, extractionContentHash]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        createdAt: { type: integer, minimum: 0 }
+        mimeType: { type: string }
+        size: { type: integer, minimum: 0 }
+        tags: { type: array, items: { type: string } }
+        content: { type: string }
+        contentHash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        parserVersion: { type: string }
+        extractionSchemaVersion: { type: integer, minimum: 1 }
+        extractedAt: { type: integer, minimum: 0 }
+        extractionContentHash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        extractionHistory:
+          type: array
+          maxItems: 20
+          items: { $ref: '#/components/schemas/ExtractionRevision' }
+        originalFile: { $ref: '#/components/schemas/StoredObjectReference' }
     StoredObjectReference:
       type: object
       required: [__quizzerObject, algorithm, sha256, size]

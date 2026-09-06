@@ -18,7 +18,8 @@ interface PendingDocument {
   status: 'extracting' | 'ready' | 'error';
   stage?: string;
   error?: string;
-  extracted?: Pick<StoredDocument, 'content' | 'pageCount' | 'images'>;
+  extracted?: Pick<StoredDocument,
+    'content' | 'pageCount' | 'images' | 'parserVersion' | 'extractionSchemaVersion' | 'extractedAt' | 'extractionContentHash'>;
 }
 
 interface Props {
@@ -27,6 +28,11 @@ interface Props {
 }
 
 const parseTags = (value: string) => value.split(',').map(tag => tag.trim()).filter(Boolean);
+const hashBytes = async (value: BufferSource) => {
+  const digest = await crypto.subtle.digest('SHA-256', value);
+  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+};
+const hashText = (value: string) => hashBytes(new TextEncoder().encode(value));
 
 export default function AddDocumentModal({ onClose, onCreated }: Props) {
   const toolSettings = getProviderSettings().enabledTools;
@@ -42,9 +48,9 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
     update(id, { status: 'extracting', stage: 'Reading document…', error: undefined, extracted: undefined });
     try {
       const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-      let extracted: Pick<StoredDocument, 'content' | 'pageCount' | 'images'> = isPdf
-        ? await extractPdf(file)
-        : { content: await file.text(), pageCount: undefined };
+      let extracted: Pick<StoredDocument, 'content' | 'pageCount' | 'images' | 'parserVersion'> = isPdf
+        ? { ...await extractPdf(file), parserVersion: 'pdfjs-5.3.31' }
+        : { content: await file.text(), pageCount: undefined, parserVersion: 'utf8-1' };
       if (isPdf && mode === 'automatic' && toolSettings.marker) {
         update(id, { stage: 'Extracting layout and images with Marker…' });
         try {
@@ -62,7 +68,16 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
         } catch { /* Marker is optional; retain the basic extraction. */ }
       }
       if (!extracted.content.trim()) throw new Error('No readable text was found in this document.');
-      update(id, { status: 'ready', stage: undefined, extracted });
+      update(id, {
+        status: 'ready', stage: undefined,
+        extracted: {
+          ...extracted,
+          parserVersion: extracted.parserVersion || (isPdf ? 'pdfjs-5.3.31' : 'utf8-1'),
+          extractionSchemaVersion: 1,
+          extractedAt: Date.now(),
+          extractionContentHash: await hashText(extracted.content),
+        },
+      });
     } catch (error) {
       update(id, { status: 'error', stage: undefined, error: (error as Error).message });
     }
@@ -89,6 +104,7 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
     setSaving(true);
     try {
       for (const item of ready) {
+        const contentHash = await hashBytes(await item.file.arrayBuffer());
         await db.documents.put({
           id: item.id,
           name: item.name.trim() || item.file.name,
@@ -97,6 +113,11 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
           size: item.file.size,
           tags: item.tags,
           content: item.extracted!.content,
+          contentHash,
+          parserVersion: item.extracted!.parserVersion,
+          extractionSchemaVersion: item.extracted!.extractionSchemaVersion,
+          extractedAt: item.extracted!.extractedAt,
+          extractionContentHash: item.extracted!.extractionContentHash,
           pageCount: item.extracted!.pageCount,
           originalFile: item.file,
           images: item.extracted!.images,

@@ -20,6 +20,7 @@ import { collectStoredObjectReferences, materializeDocumentImages, materializeSe
 import { sparseIndexPathFor } from './server/paths.mjs';
 import { createBackup, listBackups, verifyBackup } from './server/backup.mjs';
 import { cancelIndexJob, createIndexJob, recoverIndexJob, resumeIndexJob, runIndexJob } from './server/index-jobs.mjs';
+import { reextractDocument } from './server/document-import.mjs';
 
 const configuredPortValue = process.env.QUIZZER_SERVICE_PORT ?? '8787';
 const configuredPort = Number(configuredPortValue);
@@ -211,6 +212,9 @@ const documentSummary = record => ({
   tags: record.data.tags ?? [],
   pageCount: record.data.pageCount,
   chunkCount: Array.isArray(record.data.chunks) ? record.data.chunks.length : 0,
+  parserVersion: record.data.parserVersion,
+  extractionSchemaVersion: record.data.extractionSchemaVersion,
+  extractedAt: record.data.extractedAt,
 });
 
 const updateUserSettings = async body => {
@@ -904,7 +908,7 @@ const runMarker = async ({ name, data, ocrEnabled = false }) => {
         ocrText: cleanMarkdownContext(ocrText) || undefined,
       };
     });
-    return { content: markdown, images };
+    return { content: markdown, images, parserVersion: 'marker-managed-1' };
   } finally {
     await rm(work, { recursive: true, force: true });
   }
@@ -1130,6 +1134,25 @@ const handleVersionedApi = async (request, response, url) => {
         contextBudget: body.contextBudget ?? settings.values['retrieval.contextBudget'],
         includeNeighbors: body.includeNeighbors !== false,
       }));
+      return true;
+    }
+    const reextractDocumentMatch = /^\/api\/v1\/documents\/([^/]+)\/reextract$/.exec(url.pathname);
+    if (reextractDocumentMatch && request.method === 'POST') {
+      const id = decodeURIComponent(reextractDocumentMatch[1]);
+      const existing = getRecord('documents', id);
+      if (!existing) {
+        send(response, 404, { error: 'Document not found' });
+        return true;
+      }
+      const extracted = await reextractDocument(existing.data, { objectStore });
+      const saved = putRecord('documents', id, extracted);
+      sparseIndex.removeDocument(id);
+      const indexJob = prepareIndexJob({ records: [saved], force: true });
+      await executeIndexJob(indexJob.id);
+      send(response, 200, {
+        document: publicRecord(getRecord('documents', id)),
+        job: publicRecord(getRecord('indexJobs', indexJob.id)),
+      });
       return true;
     }
     const documentMatch = /^\/api\/v1\/documents\/([^/]+)$/.exec(url.pathname);

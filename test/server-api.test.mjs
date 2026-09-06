@@ -211,6 +211,17 @@ test('provides onboarding, document, job, and event operations', async () => {
   assert.equal(evidence.results[0].documentId, 'doc-1');
   assert.match(evidence.results[0].sourceSpanId, /^doc-1:span:/);
 
+  const reextractedResponse = await authorized('/api/v1/documents/doc-1/reextract', { method: 'POST' });
+  assert.equal(reextractedResponse.status, 200);
+  const reextracted = await reextractedResponse.json();
+  assert.equal(reextracted.document.content, '# Terraform');
+  assert.equal(reextracted.document.parserVersion, 'utf8-1');
+  assert.equal(reextracted.document.extractionSchemaVersion, 1);
+  assert.equal(reextracted.document.extractionHistory.length, 1);
+  assert.equal(reextracted.document.images, undefined);
+  assert.equal(reextracted.job.status, 'completed');
+  assert.equal(reextracted.job.force, true);
+
   const resumed = await authorized('/api/v1/jobs/job-1/resume', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ options: { provider: 'codex', questionCount: 1 }, activeRouteIndex: 0, resetRounds: true }),

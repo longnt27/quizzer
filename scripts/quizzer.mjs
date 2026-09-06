@@ -3,7 +3,7 @@ import { createPublicKey, randomUUID, verify } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ensureServiceToken } from '../server/auth.mjs';
-import { importDocumentFile } from '../server/document-import.mjs';
+import { importDocumentFile, reextractDocument } from '../server/document-import.mjs';
 import { detectHardwareCapabilities } from '../server/hardware-profile.mjs';
 import { databasePathFor, defaultAppDataDirectory, sparseIndexPathFor } from '../server/paths.mjs';
 import { PluginManager } from '../plugin-sdk/manager.mjs';
@@ -26,7 +26,7 @@ Usage:
   quizzer config list|get <key>|set <key> <value>|unset <key>|path [--json]
   quizzer plugins list|install <directory>|enable <id>|disable <id>|health <id>|rollback <id>
                   |remove <id> --yes [--json]
-  quizzer documents list|show <id>|import <file> [--tags a,b]|remove <id> --yes [--json]
+  quizzer documents list|show <id>|import <file> [--tags a,b]|reextract <id>|remove <id> --yes [--json]
   quizzer index <document-id>|--all [--force] [--idempotency-key key] [--json]
   quizzer retrieve <query> [--document <id>] [--tag <tag>] [--limit 10] [--json]
   quizzer test create --document <id> [--document <id>] [--name name] [--questions 20]
@@ -232,6 +232,18 @@ const runDocuments = async action => {
     const document = { ...record.data, originalFile: undefined };
     return writeResult({ document }, `${document.name}\n${document.mimeType} · ${document.size} bytes · ${document.chunks?.length ?? 0} chunks\n\n${document.content.slice(0, 800)}`);
   }
+  if (action === 'reextract') {
+    const extracted = await reextractDocument(record.data, { objectStore });
+    const saved = database.putRecord('documents', id, extracted);
+    const indexJob = createIndexJob({ documentIds: [id], force: true });
+    database.putRecord('indexJobs', indexJob.id, indexJob);
+    await executeStoredIndexJob(database, indexJob);
+    const document = database.getRecord('documents', id).data;
+    return writeResult(
+      { document, job: database.getRecord('indexJobs', indexJob.id).data },
+      `Re-extracted ${saved.data.name} with ${document.parserVersion} and rebuilt ${document.chunks.length} indexed spans`,
+    );
+  }
   if (action === 'remove') {
     if (flag('yes') !== 'true') fail('documents remove requires --yes');
     database.deleteRecord('documents', id);
@@ -240,7 +252,7 @@ const runDocuments = async action => {
     finally { index.close(); }
     return writeResult({ removed: id }, `Removed ${record.data.name}`);
   }
-  fail('Use documents list, show, import, or remove');
+  fail('Use documents list, show, import, reextract, or remove');
 };
 
 const executeStoredIndexJob = async (database, job) => {
