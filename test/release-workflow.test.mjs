@@ -16,12 +16,23 @@ test('release verifies packaged signatures before collecting artifacts', async (
   const workflow = await readFile(workflowPath, 'utf8');
 
   ordered(workflow, 'Build signed desktop distributables', 'Verify Apple signatures and notarization');
+  ordered(workflow, 'Build signed desktop distributables', 'Notarize macOS distributables');
+  ordered(workflow, 'Notarize macOS distributables', 'Verify Apple signatures and notarization');
   ordered(workflow, 'Build signed desktop distributables', 'Verify Windows signatures');
   ordered(workflow, 'Verify Apple signatures and notarization', 'Normalize release artifacts');
   ordered(workflow, 'Verify Windows signatures', 'Normalize release artifacts');
   assert.match(workflow, /codesign --verify --strict --verbose=2 out\/cli\/quizzer/);
   assert.match(workflow, /spctl --assess --type execute --verbose=4/);
   assert.match(workflow, /TeamIdentifier=\$APPLE_TEAM_ID/);
+  assert.match(workflow, /MACOS_INSTALLER_CERTIFICATE: \$\{\{ secrets\.MACOS_INSTALLER_CERTIFICATE \}\}/);
+  assert.match(workflow, /APPLE_INSTALLER_IDENTITY=\$APPLE_INSTALLER_IDENTITY_SECRET/);
+  assert.match(workflow, /notarytool submit "\$DMG_PATH"/);
+  assert.match(workflow, /notarytool submit "\$PKG_PATH"/);
+  assert.match(workflow, /stapler validate "\$DMG_PATH"/);
+  assert.match(workflow, /stapler validate "\$PKG_PATH"/);
+  assert.match(workflow, /pkgutil --check-signature "\$PKG_PATH"/);
+  assert.match(workflow, /grep -F "\$APPLE_INSTALLER_IDENTITY"/);
+  assert.match(workflow, /Expected exactly one \$\{extension\} artifact/);
   assert.match(workflow, /Get-AuthenticodeSignature -FilePath \$Target/);
   assert.match(workflow, /EXPECTED_WINDOWS_CERTIFICATE_SHA256\.ToUpperInvariant\(\)/);
 });
