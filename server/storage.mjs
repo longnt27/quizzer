@@ -4,7 +4,7 @@ import { createReadStream, mkdirSync } from 'node:fs';
 import { chmod, mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
-const collections = new Set(['tests', 'documents', 'generationJobs', 'testDrafts', 'profiles', 'promptProfiles']);
+const collections = new Set(['tests', 'documents', 'generationJobs', 'indexJobs', 'testDrafts', 'profiles', 'promptProfiles']);
 const databasePath = process.env.QUIZZER_DATABASE_PATH
   || join(process.env.QUIZZER_APP_DATA_DIR || process.cwd(), '.quizzer-data', 'quizzer.sqlite');
 

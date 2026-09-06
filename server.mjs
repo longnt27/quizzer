@@ -19,6 +19,7 @@ import { materializeRuntimeAsset, readRuntimeText, runningAsSingleExecutable } f
 import { collectStoredObjectReferences, materializeDocumentImages, materializeSerializedObjects, ObjectStore } from './server/object-store.mjs';
 import { sparseIndexPathFor } from './server/paths.mjs';
 import { createBackup, listBackups, verifyBackup } from './server/backup.mjs';
+import { cancelIndexJob, createIndexJob, recoverIndexJob, resumeIndexJob, runIndexJob } from './server/index-jobs.mjs';
 
 const configuredPortValue = process.env.QUIZZER_SERVICE_PORT ?? '8787';
 const configuredPort = Number(configuredPortValue);
@@ -69,6 +70,85 @@ setInterval(() => void pruneUnreferencedObjects().catch(error => {
   process.stderr.write(`Object cleanup failed: ${error instanceof Error ? error.message : String(error)}\n`);
 }), 6 * 60 * 60 * 1000).unref();
 const sparseIndex = new SparseDocumentIndex(process.env.QUIZZER_SPARSE_INDEX_PATH || sparseIndexPathFor(appDataDirectory));
+const activeIndexExecutions = new Map();
+const loadIndexJob = id => getRecord('indexJobs', id)?.data;
+const saveIndexJob = job => putRecord('indexJobs', job.id, job).data;
+const reportIndexFailure = (id, error) => {
+  process.stderr.write(`Index job ${id} failed: ${error instanceof Error ? error.message : String(error)}\n`);
+};
+const executeIndexJob = id => {
+  const active = activeIndexExecutions.get(id);
+  if (active) return active;
+  const job = loadIndexJob(id);
+  if (!job) return Promise.reject(new Error('Index job not found'));
+  const execution = runIndexJob(job, {
+    load: loadIndexJob,
+    save: saveIndexJob,
+    getDocument: documentId => getRecord('documents', documentId),
+    indexDocument: (record, options) => sparseIndex.indexDocument(record, options),
+    updateDocument: (record, result) => {
+      if (!result.reused) putRecord('documents', record.id, {
+        ...record.data,
+        indexedAt: Date.now(),
+        indexVersion: 2,
+        documentVersionHash: result.versionHash,
+      });
+    },
+    yieldControl: () => new Promise(resolve => setImmediate(resolve)),
+  }).finally(() => activeIndexExecutions.delete(id));
+  activeIndexExecutions.set(id, execution);
+  return execution;
+};
+
+const selectIndexDocuments = documentIds => {
+  if (documentIds !== undefined && (!Array.isArray(documentIds) || documentIds.some(id => typeof id !== 'string'))) {
+    throw new Error('documentIds must be an array of ids');
+  }
+  const ids = documentIds?.length ? [...new Set(documentIds)] : listRecords('documents').map(record => record.id);
+  const selected = ids.map(id => getRecord('documents', id));
+  const missing = ids.filter((_id, index) => !selected[index]);
+  if (missing.length) throw new Error(`Documents not found: ${missing.join(', ')}`);
+  if (!selected.length) throw new Error('No matching documents to index');
+  return selected;
+};
+
+const prepareIndexJob = ({ records, force = false, idempotencyKey }) => {
+  const documentIds = records.map(record => record.id);
+  const existing = idempotencyKey
+    ? listRecords('indexJobs').find(record => record.data.idempotencyKey === idempotencyKey)
+    : undefined;
+  if (existing) {
+    if (existing.data.force !== force || JSON.stringify(existing.data.documentIds) !== JSON.stringify(documentIds)) {
+      throw new Error('Index idempotency key was already used with a different request');
+    }
+    if (existing.data.status === 'failed' || existing.data.status === 'cancelled') {
+      return putRecord('indexJobs', existing.id, resumeIndexJob(existing.data));
+    }
+    return existing;
+  }
+  const job = createIndexJob({ documentIds, force, idempotencyKey });
+  return putRecord('indexJobs', job.id, job);
+};
+
+const retrievalDocumentFingerprint = record => createHash('sha256').update(JSON.stringify({
+  id: record.id,
+  contentHash: record.data.contentHash || createHash('sha256').update(record.data.content).digest('hex'),
+  parserVersion: record.data.parserVersion || 'unknown',
+  length: record.data.content.length,
+})).digest('hex');
+
+setImmediate(() => {
+  for (const record of listRecords('indexJobs')) {
+    if (record.data.status !== 'queued' && record.data.status !== 'running') continue;
+    try {
+      const recovered = recoverIndexJob(record.data);
+      if (recovered !== record.data) saveIndexJob(recovered);
+      void executeIndexJob(record.id).catch(error => reportIndexFailure(record.id, error));
+    } catch (error) {
+      reportIndexFailure(record.id, error);
+    }
+  }
+});
 const windowsOllamaExecutable = process.env.LOCALAPPDATA
   ? join(process.env.LOCALAPPDATA, 'Programs', 'Ollama', 'ollama.exe')
   : 'ollama.exe';
@@ -980,37 +1060,67 @@ const handleVersionedApi = async (request, response, url) => {
     }
     if (request.method === 'POST' && url.pathname === '/api/v1/index') {
       const body = await readJson(request);
-      const documentIds = body?.documentIds;
-      if (documentIds !== undefined && (!Array.isArray(documentIds) || documentIds.some(id => typeof id !== 'string'))) {
-        throw new Error('documentIds must be an array of ids');
-      }
-      const selected = documentIds?.length
-        ? documentIds.map(id => getRecord('documents', id)).filter(Boolean)
-        : listRecords('documents');
-      if (!selected.length) throw new Error('No matching documents to index');
-      const indexed = selected.map(record => {
-        const result = sparseIndex.indexDocument(record, { force: body?.force === true });
-        if (!result.reused) putRecord('documents', record.id, {
-          ...record.data,
-          indexedAt: Date.now(),
-          indexVersion: 2,
-          documentVersionHash: result.versionHash,
-        });
-        return result;
+      if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('Index request must be an object');
+      if (body.force !== undefined && typeof body.force !== 'boolean') throw new Error('force must be a boolean');
+      if (body.wait !== undefined && typeof body.wait !== 'boolean') throw new Error('wait must be a boolean');
+      const selected = selectIndexDocuments(body.documentIds);
+      let jobRecord = prepareIndexJob({
+        records: selected,
+        force: body.force ?? false,
+        idempotencyKey: body.idempotencyKey,
       });
-      send(response, 200, { indexed, status: sparseIndex.status() });
+      if (jobRecord.data.status !== 'completed') {
+        const execution = executeIndexJob(jobRecord.id);
+        if (body.wait !== false) await execution;
+        else void execution.catch(error => reportIndexFailure(jobRecord.id, error));
+        jobRecord = getRecord('indexJobs', jobRecord.id);
+      }
+      send(response, body.wait === false ? 202 : 200, {
+        job: publicRecord(jobRecord),
+        indexed: jobRecord.data.results,
+        status: sparseIndex.status(),
+      });
+      return true;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/v1/index/jobs') {
+      send(response, 200, { jobs: listRecords('indexJobs').map(publicRecord) });
+      return true;
+    }
+    const indexJobActionMatch = /^\/api\/v1\/index\/jobs\/([^/]+)\/(resume|cancel)$/.exec(url.pathname);
+    if (indexJobActionMatch && request.method === 'POST') {
+      const id = decodeURIComponent(indexJobActionMatch[1]);
+      let existing = getRecord('indexJobs', id);
+      if (!existing) {
+        send(response, 404, { error: 'Index job not found' });
+        return true;
+      }
+      if (indexJobActionMatch[2] === 'cancel') {
+        existing = putRecord('indexJobs', id, cancelIndexJob(existing.data));
+        send(response, 200, { job: publicRecord(existing) });
+        return true;
+      }
+      const active = activeIndexExecutions.get(id);
+      if (active) await active.catch(() => {});
+      existing = getRecord('indexJobs', id);
+      const resumed = putRecord('indexJobs', id, resumeIndexJob(existing.data));
+      const execution = executeIndexJob(id);
+      void execution.catch(error => reportIndexFailure(id, error));
+      send(response, 202, { job: publicRecord(resumed) });
+      return true;
+    }
+    const indexJobMatch = /^\/api\/v1\/index\/jobs\/([^/]+)$/.exec(url.pathname);
+    if (indexJobMatch && request.method === 'GET') {
+      const record = getRecord('indexJobs', decodeURIComponent(indexJobMatch[1]));
+      send(response, record ? 200 : 404, record ? { job: publicRecord(record) } : { error: 'Index job not found' });
       return true;
     }
     if (request.method === 'POST' && url.pathname === '/api/v1/retrieval/preview') {
       const body = await readJson(request);
       if (typeof body?.query !== 'string' || !body.query.trim()) throw new Error('A retrieval query is required');
-      if (body.documentIds !== undefined && (!Array.isArray(body.documentIds) || body.documentIds.some(id => typeof id !== 'string'))) {
-        throw new Error('documentIds must be an array of ids');
-      }
-      const selected = body.documentIds?.length
-        ? body.documentIds.map(id => getRecord('documents', id)).filter(Boolean)
-        : listRecords('documents');
-      for (const record of selected) sparseIndex.indexDocument(record);
+      const selected = selectIndexDocuments(body.documentIds);
+      const retrievalIndexKey = `retrieval.${createHash('sha256').update(selected.map(retrievalDocumentFingerprint).join('|')).digest('hex')}`;
+      const indexJob = prepareIndexJob({ records: selected, idempotencyKey: retrievalIndexKey });
+      if (indexJob.data.status !== 'completed') await executeIndexJob(indexJob.id);
       const settings = await loadResolvedSettings(appDataDirectory);
       send(response, 200, sparseIndex.retrieve({
         query: body.query,

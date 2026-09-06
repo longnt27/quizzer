@@ -50,6 +50,16 @@ const waitForServer = async () => {
   throw new Error(`Test service did not start within 10 seconds:\n${serverStdout}${serverStderr}`);
 };
 
+const waitForIndexJob = async (id, expectedStatus) => {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const response = await authorized(`/api/v1/index/jobs/${encodeURIComponent(id)}`);
+    const payload = await response.json();
+    if (payload.job?.status === expectedStatus) return payload.job;
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  throw new Error(`Index job ${id} did not reach ${expectedStatus}`);
+};
+
 await waitForServer();
 
 test.after(async () => {
@@ -174,11 +184,24 @@ test('provides onboarding, document, job, and event operations', async () => {
   assert.equal(await figure.text(), 'state diagram');
 
   const indexed = await authorized('/api/v1/index', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ documentIds: ['doc-1'] }),
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ documentIds: ['doc-1'], idempotencyKey: 'api-index-doc-1' }),
   });
   const indexResult = await indexed.json();
+  assert.equal(indexResult.job.status, 'completed');
+  assert.deepEqual(indexResult.job.completedDocumentIds, ['doc-1']);
   assert.equal(indexResult.status.documentCount, 1);
   assert.match(indexResult.status.databasePath, /indexes[/\\]sparse\.sqlite$/);
+  const repeatedIndex = await authorized('/api/v1/index', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ documentIds: ['doc-1'], idempotencyKey: 'api-index-doc-1' }),
+  });
+  const repeatedIndexResult = await repeatedIndex.json();
+  assert.equal(repeatedIndexResult.job.id, indexResult.job.id);
+  assert.equal(repeatedIndexResult.job.revision, indexResult.job.revision);
+  assert.equal((await authorized(`/api/v1/index/jobs/${indexResult.job.id}/cancel`, { method: 'POST' })).status, 400);
+  const listedIndexJobs = await (await authorized('/api/v1/index/jobs')).json();
+  assert.ok(listedIndexJobs.jobs.some(job => job.id === indexResult.job.id));
   const retrieval = await authorized('/api/v1/retrieval/preview', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query: 'remote state locking', documentIds: ['doc-1'], limit: 3 }),
@@ -244,6 +267,40 @@ test('provides onboarding, document, job, and event operations', async () => {
   const firstEvent = new TextDecoder().decode((await reader.read()).value);
   assert.match(firstEvent, /event: ready/);
   await reader.cancel();
+});
+
+test('persists failed asynchronous indexing and resumes from its checkpoint', async () => {
+  const created = await authorized('/api/storage/sync', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ changes: [{
+      collection: 'documents', id: 'repair-doc',
+      data: { id: 'repair-doc', name: 'Repair.md', createdAt: 2, mimeType: 'text/markdown', size: 0, tags: [], content: '' },
+    }] }),
+  });
+  assert.equal(created.status, 200);
+  const started = await authorized('/api/v1/index', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ documentIds: ['repair-doc'], wait: false, idempotencyKey: 'repair-index-0001' }),
+  });
+  assert.equal(started.status, 202);
+  const startedJob = (await started.json()).job;
+  const failed = await waitForIndexJob(startedJob.id, 'failed');
+  assert.match(failed.error, /no indexable text/);
+  assert.deepEqual(failed.remainingDocumentIds, ['repair-doc']);
+
+  const repaired = await authorized('/api/storage/sync', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ changes: [{
+      collection: 'documents', id: 'repair-doc',
+      data: { id: 'repair-doc', name: 'Repair.md', createdAt: 2, mimeType: 'text/markdown', size: 20, tags: [], content: '# Repaired\n\nDurable indexing resumes safely.' },
+    }] }),
+  });
+  assert.equal(repaired.status, 200);
+  const resumed = await authorized(`/api/v1/index/jobs/${startedJob.id}/resume`, { method: 'POST' });
+  assert.equal(resumed.status, 202);
+  const completed = await waitForIndexJob(startedJob.id, 'completed');
+  assert.deepEqual(completed.completedDocumentIds, ['repair-doc']);
+  assert.deepEqual(completed.remainingDocumentIds, []);
 });
 
 test('creates, lists, and verifies complete service-managed backups', async () => {

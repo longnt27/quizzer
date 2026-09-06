@@ -98,6 +98,20 @@ test('synchronizes versioned prompt profiles', () => {
   assert.deepEqual(getRecord('promptProfiles', promptProfile.id).data, promptProfile);
 });
 
+test('synchronizes durable index job checkpoints', () => {
+  const indexJob = {
+    id: 'index-sync-job', kind: 'index', status: 'running', documentIds: ['legacy-doc'],
+    remainingDocumentIds: [], completedDocumentIds: ['legacy-doc'], results: [], force: false,
+    createdAt: 50, updatedAt: 60,
+  };
+  const result = syncStorage({
+    cursor: 5,
+    changes: [{ collection: 'indexJobs', id: indexJob.id, data: indexJob }],
+  });
+  assert.equal(result.cursor, 6);
+  assert.deepEqual(getRecord('indexJobs', indexJob.id).data, indexJob);
+});
+
 test('supports record-level reads, writes, and change subscriptions', () => {
   const events = [];
   const unsubscribe = subscribeStorageChanges(changes => events.push(...changes));

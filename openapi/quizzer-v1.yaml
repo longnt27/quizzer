@@ -358,7 +358,7 @@ paths:
   /index:
     post:
       operationId: indexDocuments
-      summary: Incrementally index selected or all documents with SQLite FTS5
+      summary: Start a durable, resumable SQLite FTS5 indexing job
       requestBody:
         required: true
         content:
@@ -368,9 +368,55 @@ paths:
               properties:
                 documentIds: { type: array, items: { type: string } }
                 force: { type: boolean, default: false }
+                idempotencyKey: { type: string, pattern: '^[A-Za-z0-9._-]{8,100}$' }
+                wait: { type: boolean, default: true }
       responses:
-        '200': { description: Documents indexed }
+        '200': { description: Documents indexed and the completed durable job }
+        '202': { description: Durable indexing job accepted and running asynchronously }
         '400': { $ref: '#/components/responses/InvalidRequest' }
+  /index/jobs:
+    get:
+      operationId: listIndexJobs
+      summary: List durable indexing jobs and per-document checkpoints
+      responses:
+        '200':
+          description: Indexing jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [jobs]
+                properties:
+                  jobs: { type: array, items: { $ref: '#/components/schemas/IndexJob' } }
+  /index/jobs/{jobId}:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    get:
+      operationId: getIndexJob
+      summary: Read one indexing job and its durable checkpoints
+      responses:
+        '200': { description: Indexing job }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /index/jobs/{jobId}/resume:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    post:
+      operationId: resumeIndexJob
+      summary: Resume only unfinished documents in a failed or cancelled indexing job
+      responses:
+        '202': { description: Indexing job queued for resumption }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /index/jobs/{jobId}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    post:
+      operationId: cancelIndexJob
+      summary: Cancel indexing at the next per-document checkpoint
+      responses:
+        '200': { description: Indexing job cancelled }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /retrieval/preview:
     post:
       operationId: previewRetrieval
@@ -705,6 +751,25 @@ components:
         documentCount: { type: integer, minimum: 0 }
         chunkCount: { type: integer, minimum: 0 }
         documents: { type: array, items: { type: object } }
+    IndexJob:
+      type: object
+      required: [id, kind, status, documentIds, remainingDocumentIds, completedDocumentIds, results, force, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        kind: { type: string, const: index }
+        status: { type: string, enum: [queued, running, completed, failed, cancelled] }
+        documentIds: { type: array, items: { type: string } }
+        remainingDocumentIds: { type: array, items: { type: string } }
+        completedDocumentIds: { type: array, items: { type: string } }
+        results: { type: array, items: { type: object } }
+        force: { type: boolean }
+        idempotencyKey: { type: string }
+        createdAt: { type: integer }
+        updatedAt: { type: integer }
+        startedAt: { type: integer }
+        recoveredAt: { type: integer }
+        finishedAt: { type: integer }
+        error: { type: string }
     RetrievalResult:
       type: object
       required: [sourceSpanId, documentId, documentName, documentVersionHash, chunkIndex, parentId, content, excerpt, score, bm25, neighbors, parentContent]

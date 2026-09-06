@@ -33,7 +33,7 @@ type OutgoingChange = {
 };
 type MigrationSession = { id: string; expectedRecords: number; expectedHash: string };
 
-const collections: SyncCollection[] = ['tests', 'documents', 'generationJobs', 'testDrafts', 'profiles', 'promptProfiles'];
+const collections: SyncCollection[] = ['tests', 'documents', 'generationJobs', 'indexJobs', 'testDrafts', 'profiles', 'promptProfiles'];
 const listeners = new Set<() => void>();
 let snapshot: ServerSyncSnapshot = {
   status: 'starting', phase: 'idle', percent: 0, completed: 0, total: 0, pending: 0,

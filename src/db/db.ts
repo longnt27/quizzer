@@ -42,6 +42,33 @@ export interface StoredGenerationJob {
   completionId?: string;
 }
 
+export type IndexJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+export interface StoredIndexJob {
+  id: string;
+  kind: 'index';
+  status: IndexJobStatus;
+  documentIds: string[];
+  remainingDocumentIds: string[];
+  completedDocumentIds: string[];
+  results: Array<{
+    id?: string;
+    documentId?: string;
+    name?: string;
+    versionHash: string;
+    chunks: number;
+    reused: boolean;
+  }>;
+  force: boolean;
+  idempotencyKey?: string;
+  createdAt: number;
+  updatedAt: number;
+  startedAt?: number;
+  recoveredAt?: number;
+  finishedAt?: number;
+  error?: string;
+}
+
 export interface StoredTest {
   id: string;
   name: string;
@@ -136,7 +163,7 @@ export interface StoredTestDraft {
 
 export type StoredPromptProfile = PromptProfile & { builtIn?: false };
 
-export type SyncCollection = 'tests' | 'documents' | 'generationJobs' | 'testDrafts' | 'profiles' | 'promptProfiles';
+export type SyncCollection = 'tests' | 'documents' | 'generationJobs' | 'indexJobs' | 'testDrafts' | 'profiles' | 'promptProfiles';
 
 export interface StoredSyncChange {
   key: string;
@@ -171,6 +198,7 @@ class QuizDB extends Dexie {
   tests: Dexie.Table<StoredTest, string>;
   documents: Dexie.Table<StoredDocument, string>;
   generationJobs: Dexie.Table<StoredGenerationJob, string>;
+  indexJobs: Dexie.Table<StoredIndexJob, string>;
   testDrafts: Dexie.Table<StoredTestDraft, string>;
   syncChanges: Dexie.Table<StoredSyncChange, string>;
   syncState: Dexie.Table<StoredSyncState, string>;
@@ -224,9 +252,21 @@ class QuizDB extends Dexie {
       profiles: 'id, updatedAt',
       promptProfiles: 'id, name, updatedAt',
     });
+    this.version(8).stores({
+      tests: 'id, name, createdAt, *documentIds',
+      documents: 'id, name, createdAt, *tags',
+      generationJobs: 'id, status, createdAt, updatedAt, *documentIds',
+      indexJobs: 'id, status, createdAt, updatedAt, *documentIds',
+      testDrafts: 'testId, updatedAt',
+      syncChanges: 'key, collection, id, changedAt',
+      syncState: 'id',
+      profiles: 'id, updatedAt',
+      promptProfiles: 'id, name, updatedAt',
+    });
     this.tests = this.table('tests');
     this.documents = this.table('documents');
     this.generationJobs = this.table('generationJobs');
+    this.indexJobs = this.table('indexJobs');
     this.testDrafts = this.table('testDrafts');
     this.syncChanges = this.table('syncChanges');
     this.syncState = this.table('syncState');
