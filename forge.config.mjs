@@ -83,10 +83,15 @@ export default {
       } : undefined,
     }),
     new MakerZIP({}, ['darwin', 'linux']),
-    new MakerDMG({ format: 'ULFO' }, ['darwin']),
-    new MakerPKG({
-      identity: process.env.APPLE_INSTALLER_IDENTITY || process.env.APPLE_IDENTITY,
+    new MakerDMG({
+      format: 'ULFO',
+      additionalDMGOptions: process.env.APPLE_IDENTITY ? {
+        'code-sign': { 'signing-identity': process.env.APPLE_IDENTITY },
+      } : undefined,
     }, ['darwin']),
+    ...(process.env.APPLE_INSTALLER_IDENTITY ? [new MakerPKG({
+      identity: process.env.APPLE_INSTALLER_IDENTITY,
+    }, ['darwin'])] : []),
     new MakerDeb({ options: { name: 'quizzer', productName: 'Quizzer', icon: 'assets/icons/quizzer.png', categories: ['Education'] } }),
     new MakerRpm({ options: { name: 'quizzer', productName: 'Quizzer', icon: 'assets/icons/quizzer.png', categories: ['Education'] } }),
   ],

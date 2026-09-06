@@ -61,3 +61,22 @@ test('reads legacy package license arrays when lock metadata omits SPDX fields',
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('keeps build dependencies in the audit and normalizes reviewed legacy metadata', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'quizzer-build-license-test-'));
+  try {
+    await writeFile(join(directory, 'package-lock.json'), JSON.stringify({
+      packages: {
+        'node_modules/color-convert': { version: '0.5.3', dev: true },
+        'node_modules/stream-buffers': { version: '2.2.0', license: 'Unlicense', dev: true },
+        'node_modules/unorm': { version: '1.6.0', license: 'MIT or GPL-2.0', dev: true },
+      },
+    }));
+    const result = await scanProjectLicenses(directory);
+    assert.equal(result.packages, 3);
+    assert.deepEqual(result.licenses, { MIT: 2, Unlicense: 1 });
+    assert.deepEqual(result.violations, []);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});

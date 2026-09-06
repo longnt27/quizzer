@@ -15,10 +15,14 @@ export const ALLOWED_LICENSE_IDS = Object.freeze(new Set([
   'MIT',
   'MPL-2.0',
   'Python-2.0',
+  'Unlicense',
   'WTFPL',
 ]));
 
-const reviewedPlatformBinaryLicense = packageName => {
+const reviewedDependencyLicense = (packageName, version, declaredLicense) => {
+  if (packageName === 'unorm' && version === '1.6.0' && declaredLicense === 'MIT or GPL-2.0') return 'MIT';
+  if (declaredLicense) return declaredLicense;
+  if (packageName === 'color-convert' && version === '0.5.3') return 'MIT';
   if (packageName.startsWith('@rollup/rollup-')) return 'MIT';
   if (packageName.startsWith('@napi-rs/canvas-')) return 'MIT';
   return undefined;
@@ -87,11 +91,11 @@ export const scanProjectLicenses = async projectDirectory => {
   const packages = [];
   for (const [lockPackagePath, metadata] of Object.entries(lock.packages)) {
     if (!lockPackagePath) continue;
-    if (metadata.dev) continue;
     const name = packageNameFrom(lockPackagePath);
-    const license = typeof metadata.license === 'string'
+    const declaredLicense = typeof metadata.license === 'string'
       ? metadata.license
-      : await installedLicense(projectDirectory, lockPackagePath) ?? reviewedPlatformBinaryLicense(name);
+      : await installedLicense(projectDirectory, lockPackagePath);
+    const license = reviewedDependencyLicense(name, metadata.version, declaredLicense);
     packages.push({ name, version: metadata.version, license, optional: metadata.optional === true });
   }
   return auditPackageLicenses(packages);

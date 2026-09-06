@@ -143,24 +143,34 @@ jobs:
         env:
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_INSTALLER_CERTIFICATE: ${{ secrets.MACOS_INSTALLER_CERTIFICATE }}
+          MACOS_INSTALLER_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_INSTALLER_CERTIFICATE_PASSWORD }}
           APPLE_IDENTITY_SECRET: ${{ secrets.APPLE_IDENTITY }}
+          APPLE_INSTALLER_IDENTITY_SECRET: ${{ secrets.APPLE_INSTALLER_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           : "${MACOS_CERTIFICATE:?MACOS_CERTIFICATE is required}"
           : "${MACOS_CERTIFICATE_PASSWORD:?MACOS_CERTIFICATE_PASSWORD is required}"
+          : "${MACOS_INSTALLER_CERTIFICATE:?MACOS_INSTALLER_CERTIFICATE is required}"
+          : "${MACOS_INSTALLER_CERTIFICATE_PASSWORD:?MACOS_INSTALLER_CERTIFICATE_PASSWORD is required}"
           : "${APPLE_IDENTITY_SECRET:?APPLE_IDENTITY is required}"
+          : "${APPLE_INSTALLER_IDENTITY_SECRET:?APPLE_INSTALLER_IDENTITY is required}"
           : "${APPLE_ID:?APPLE_ID is required}"
           : "${APPLE_APP_SPECIFIC_PASSWORD:?APPLE_APP_SPECIFIC_PASSWORD is required}"
           : "${APPLE_TEAM_ID:?APPLE_TEAM_ID is required}"
           node -e "require('node:fs').writeFileSync('certificate.p12', Buffer.from(process.env.MACOS_CERTIFICATE, 'base64'))"
+          node -e "require('node:fs').writeFileSync('installer-certificate.p12', Buffer.from(process.env.MACOS_INSTALLER_CERTIFICATE, 'base64'))"
           security create-keychain -p actions build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p actions build.keychain
           security import certificate.p12 -k build.keychain -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security import installer-certificate.p12 -k build.keychain -P "$MACOS_INSTALLER_CERTIFICATE_PASSWORD" -T /usr/bin/productbuild -T /usr/bin/productsign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions build.keychain
+          rm certificate.p12 installer-certificate.p12
           echo "APPLE_IDENTITY=$APPLE_IDENTITY_SECRET" >> "$GITHUB_ENV"
+          echo "APPLE_INSTALLER_IDENTITY=$APPLE_INSTALLER_IDENTITY_SECRET" >> "$GITHUB_ENV"
           echo "APPLE_ID=$APPLE_ID" >> "$GITHUB_ENV"
           echo "APPLE_APP_SPECIFIC_PASSWORD=$APPLE_APP_SPECIFIC_PASSWORD" >> "$GITHUB_ENV"
           echo "APPLE_TEAM_ID=$APPLE_TEAM_ID" >> "$GITHUB_ENV"
@@ -204,6 +214,29 @@ jobs:
           rm out/cli/quizzer-notarization.zip
       - name: Build signed desktop distributables
         run: npm run make:desktop
+      - name: Notarize macOS distributables
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          require_single_artifact() {
+            local extension="$1"
+            local count
+            count="$(find out/make -type f -name "*.${extension}" | wc -l | tr -d '[:space:]')"
+            if [ "$count" -ne 1 ]; then
+              echo "Expected exactly one ${extension} artifact, found ${count}" >&2
+              return 1
+            fi
+            find out/make -type f -name "*.${extension}" -print -quit
+          }
+          DMG_PATH="$(require_single_artifact dmg)"
+          PKG_PATH="$(require_single_artifact pkg)"
+          xcrun notarytool submit "$DMG_PATH" --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+          xcrun stapler staple "$DMG_PATH"
+          xcrun stapler validate "$DMG_PATH"
+          xcrun notarytool submit "$PKG_PATH" --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+          xcrun stapler staple "$PKG_PATH"
+          xcrun stapler validate "$PKG_PATH"
       - name: Verify packaged Electron fuses
         run: npm run verify:desktop-fuses
       - name: Verify Apple signatures and notarization
@@ -211,6 +244,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          require_single_artifact() {
+            local extension="$1"
+            local count
+            count="$(find out/make -type f -name "*.${extension}" | wc -l | tr -d '[:space:]')"
+            if [ "$count" -ne 1 ]; then
+              echo "Expected exactly one ${extension} artifact, found ${count}" >&2
+              return 1
+            fi
+            find out/make -type f -name "*.${extension}" -print -quit
+          }
           APP_PATH="$(find out -type d -name Quizzer.app -prune -print -quit)"
           test -n "$APP_PATH"
           codesign --verify --strict --verbose=2 out/cli/quizzer
@@ -218,21 +261,20 @@ jobs:
           codesign -dv --verbose=4 out/cli/quizzer 2>&1 | grep -F "TeamIdentifier=$APPLE_TEAM_ID"
           codesign -dv --verbose=4 "$APP_PATH" 2>&1 | grep -F "TeamIdentifier=$APPLE_TEAM_ID"
           spctl --assess --type execute --verbose=4 "$APP_PATH"
-          
-          DMG_PATH="$(find out/make -type f -name '*.dmg' -print -quit)"
-          if [ -n "$DMG_PATH" ]; then
-            codesign --verify --strict --verbose=2 "$DMG_PATH"
-            spctl -a -t open --context context:primary-signature -v "$DMG_PATH"
-          else
-            echo "Error: DMG artifact not found" >&2; exit 1
-          fi
-          
-          PKG_PATH="$(find out/make -type f -name '*.pkg' -print -quit)"
-          if [ -n "$PKG_PATH" ]; then
-            pkgutil --check-signature "$PKG_PATH"
-          else
-            echo "Error: PKG artifact not found" >&2; exit 1
-          fi
+
+          DMG_PATH="$(require_single_artifact dmg)"
+          codesign --verify --strict --verbose=2 "$DMG_PATH"
+          codesign -dv --verbose=4 "$DMG_PATH" 2>&1 | grep -F "TeamIdentifier=$APPLE_TEAM_ID"
+          xcrun stapler validate "$DMG_PATH"
+          spctl --assess --type open --context context:primary-signature --verbose=4 "$DMG_PATH"
+
+          PKG_PATH="$(require_single_artifact pkg)"
+          PKG_SIGNATURE="$(pkgutil --check-signature "$PKG_PATH" 2>&1)"
+          printf '%s\n' "$PKG_SIGNATURE"
+          printf '%s\n' "$PKG_SIGNATURE" | grep -F "$APPLE_INSTALLER_IDENTITY"
+          printf '%s\n' "$PKG_SIGNATURE" | grep -F "($APPLE_TEAM_ID)"
+          xcrun stapler validate "$PKG_PATH"
+          spctl --assess --type install --verbose=4 "$PKG_PATH"
       - name: Verify Windows signatures
         if: matrix.platform == 'windows'
         shell: pwsh
