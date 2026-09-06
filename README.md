@@ -160,6 +160,10 @@ npm run cli -- plugins health dev.example.my-plugin
 
 Developer Mode keeps an unsigned-plugin warning on each installed plugin. Turning it off blocks those plugins again. Updates retain a rollback copy; removals are moved into recoverable plugin storage rather than erased immediately.
 
+Extractor plugins declare the `extractor` capability plus `scoped-temp` and `document-read` permissions, then implement `document.extract`. Quizzer copies one source into the invocation’s private temporary directory and supplies `{ "document": { "path", "name", "mimeType", "size" } }`. The plugin returns bounded extracted text, optional page count/parser detail, and up to 30 PNG, JPEG, or WebP images as base64. Quizzer validates the entire envelope, records `plugin:<id>@<version>` provenance, moves accepted images into content-addressed storage, and deletes the temporary source after the process exits. Select the component with `extraction.extractorPlugin` or under **Plugins & models**.
+
+OCR plugins declare the `ocr` capability with the same file permissions and implement `document.ocr`. Each invocation receives one bounded image reference and returns `{ "text": "recognized labels" }`. Set `extraction.ocrPlugin` to the installed plugin ID and enable `extraction.ocr`; OCR text is attached to the extracted image before it can enter retrieval or a provider prompt. Cancellation, malformed output, unavailable components, and size violations stop that extraction without replacing the last durable document revision.
+
 Reranker plugins declare the `reranker` capability and implement `rag.rerank`. Quizzer supplies the query plus bounded candidate text and stable source-span IDs; the plugin returns `{ "ranking": [{ "sourceSpanId": "…", "score": 0.9 }] }`. Set `retrieval.rerankerPlugin` to the installed plugin ID. Missing, disabled, incompatible, timed-out, or malformed rerankers fall back to Quizzer's local rank/lexical/dense signals, followed by maximal-marginal-relevance diversity selection.
 
 Generator plugins declare the `generator` capability and implement `generation.generate`. Select the installed plugin under **Plugins & models**; Quizzer then treats its plugin ID as the local route's model. Each invocation receives the bounded prompt and output schema plus image references under `params`, and receives source images only as short-lived, read-only-by-convention files inside its scoped temporary directory. The plugin returns `{ "output": "<quiz JSON>" }`. Quizzer validates that JSON through the same schema, grounding, instruction, duplicate, and coverage gates used for every other provider, removes the temporary files after the process exits, and can fail over from an unavailable plugin without discarding accepted questions.
@@ -206,7 +210,7 @@ End users do not configure providers in a terminal. Provider installation, accou
 
 Quizzer offers two upload modes:
 
-- **Automatic:** attempts Marker and falls back to browser-based PDF text extraction.
+- **Automatic:** uses the configured extractor plugin, or attempts Marker and falls back to browser-based PDF/text extraction when the built-in component is selected.
 - **Basic:** uses PDF.js text extraction only.
 
 Select **Install Marker** in **Plugins & models** for better preservation of document structure. Quizzer creates a private Python environment under `.quizzer-tools/marker` and downloads Marker there. Installation can take several minutes and requires an internet connection and substantial disk space.

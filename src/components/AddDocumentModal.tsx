@@ -38,7 +38,7 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
   const toolSettings = getProviderSettings().enabledTools;
   const [files, setFiles] = useState<PendingDocument[]>([]);
   const [saving, setSaving] = useState(false);
-  const [converter, setConverter] = useState<'automatic' | 'basic'>(toolSettings.marker ? 'automatic' : 'basic');
+  const [converter, setConverter] = useState<'automatic' | 'basic'>('automatic');
   const message = getMessageApi();
 
   const update = (id: string, changes: Partial<PendingDocument>) =>
@@ -51,8 +51,8 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
       let extracted: Pick<StoredDocument, 'content' | 'pageCount' | 'images' | 'parserVersion'> = isPdf
         ? { ...await extractPdf(file), parserVersion: 'pdfjs-5.3.31' }
         : { content: await file.text(), pageCount: undefined, parserVersion: 'utf8-1' };
-      if (isPdf && mode === 'automatic' && toolSettings.marker) {
-        update(id, { stage: 'Extracting layout and images with Marker…' });
+      if (mode === 'automatic') {
+        update(id, { stage: isPdf ? 'Running the configured document extractor…' : 'Checking the configured document extractor…' });
         try {
           const dataUrl = await new Promise<string>((resolve, reject) => {
             const reader = new FileReader();
@@ -145,7 +145,7 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
         Documents are extracted now and saved to your local library. Creating a quiz is a separate step.
       </Typography.Paragraph>
       <Select value={converter} onChange={setConverter} style={{ width: 280, marginBottom: 12 }} options={[
-        ...(toolSettings.marker ? [{ value: 'automatic' as const, label: 'Automatic (use Marker if installed)' }] : []),
+        { value: 'automatic' as const, label: 'Automatic (configured extractor)' },
         { value: 'basic', label: 'Basic PDF text extraction' },
       ]} />
       <Upload.Dragger multiple showUploadList={false} beforeUpload={addFile} accept=".pdf,.txt,.md">

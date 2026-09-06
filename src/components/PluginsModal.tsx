@@ -66,6 +66,8 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const [status, setStatus] = useState<IntegrationStatus | null>(null);
   const [statusError, setStatusError] = useState('');
   const [externalPlugins, setExternalPlugins] = useState<ExternalPlugin[]>([]);
+  const [extractorPlugin, setExtractorPlugin] = useState('builtin');
+  const [ocrPlugin, setOcrPlugin] = useState('builtin');
   const [embedderPlugin, setEmbedderPlugin] = useState('builtin');
   const [externalError, setExternalError] = useState('');
   const [externalLoading, setExternalLoading] = useState(true);
@@ -78,6 +80,10 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
     && plugin.compatible && plugin.capabilities?.includes('generator')), [externalPlugins]);
   const embedderPlugins = useMemo(() => externalPlugins.filter(plugin => plugin.status === 'installed' && plugin.enabled
     && plugin.compatible && plugin.capabilities?.includes('embedder')), [externalPlugins]);
+  const extractorPlugins = useMemo(() => externalPlugins.filter(plugin => plugin.status === 'installed' && plugin.enabled
+    && plugin.compatible && plugin.capabilities?.includes('extractor')), [externalPlugins]);
+  const ocrPlugins = useMemo(() => externalPlugins.filter(plugin => plugin.status === 'installed' && plugin.enabled
+    && plugin.compatible && plugin.capabilities?.includes('ocr')), [externalPlugins]);
 
   const refresh = useCallback(async () => {
     try {
@@ -100,6 +106,10 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       ]);
       setExternalPlugins(collection.plugins);
       setDeveloperMode(settings.values['plugins.developerMode'] === true);
+      setExtractorPlugin(typeof settings.values['extraction.extractorPlugin'] === 'string'
+        ? settings.values['extraction.extractorPlugin'] : 'builtin');
+      setOcrPlugin(typeof settings.values['extraction.ocrPlugin'] === 'string'
+        ? settings.values['extraction.ocrPlugin'] : 'builtin');
       setEmbedderPlugin(typeof settings.values['embeddings.embedderPlugin'] === 'string'
         ? settings.values['embeddings.embedderPlugin'] : 'builtin');
       setExternalError('');
@@ -232,7 +242,9 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       await serviceJson('/api/v1/settings', 'PATCH', { values: {
         'generation.defaultProvider': selectedProvider,
         'extraction.marker': enabledTools.marker,
+        'extraction.extractorPlugin': extractorPlugin,
         'extraction.ocr': enabledTools.ocr,
+        'extraction.ocrPlugin': ocrPlugin,
         'embeddings.enabled': enabledTools.embeddings,
         'embeddings.embedderPlugin': embedderPlugin,
       } });
@@ -250,6 +262,8 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const markerWorking = status?.marker.job.state === 'working';
   const ocrWorking = status?.ocr?.job.state === 'working';
   const embeddingsWorking = status?.embeddings?.job.state === 'working';
+  const selectedExtractor = extractorPlugins.find(plugin => plugin.id === extractorPlugin);
+  const selectedOcr = ocrPlugins.find(plugin => plugin.id === ocrPlugin);
   const selectedEmbedder = embedderPlugins.find(plugin => plugin.id === embedderPlugin);
   const embeddingReady = embedderPlugin === 'builtin' ? Boolean(status?.embeddings?.installed) : Boolean(selectedEmbedder);
   const configuredProviderOptions = PROVIDERS.filter(provider => enabledProviders[provider.id] && (provider.kind === 'api'
@@ -288,32 +302,46 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       {!status && !statusError ? <div className="plugin-loading"><Spin /></div> : <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <section className="plugin-card">
           <div className="plugin-card-heading">
-            <div><Typography.Title level={5}>Marker PDF</Typography.Title><Typography.Text type="secondary">Extracts PDF text, layout, and images before quiz generation.</Typography.Text></div>
-            {statusTag(Boolean(status?.marker.installed), Boolean(markerWorking), status?.marker.managed ? 'Installed by Quizzer' : 'Installed')}
+            <div><Typography.Title level={5}>Document extraction</Typography.Title><Typography.Text type="secondary">Use Quizzer’s local PDF/text pipeline or an installed extractor plugin.</Typography.Text></div>
+            {statusTag(extractorPlugin === 'builtin' || Boolean(selectedExtractor), Boolean(markerWorking), extractorPlugin === 'builtin' ? 'Built-in ready' : 'Plugin ready')}
           </div>
-          {!status?.marker.installed && !markerWorking && <Button icon={<CloudDownloadOutlined />} onClick={() => void runAction('/api/integrations/marker/install')}>Install Marker</Button>}
-          {status?.marker.installed && <Space><Switch checked={enabledTools.marker} onChange={value => setEnabledTools(current => ({ ...current, marker: value }))} /><Typography.Text>Enabled</Typography.Text></Space>}
-          {markerWorking && <Space><Spin size="small" /> Installing Marker…</Space>}
-          {status?.marker.job.message && status.marker.job.state !== 'idle' && (
+          <Select aria-label="Document extractor component" value={extractorPlugin} onChange={setExtractorPlugin} style={{ width: '100%' }}
+            options={[
+              { value: 'builtin', label: 'Built-in · PDF.js/text with optional Marker' },
+              ...extractorPlugins.map(plugin => ({ value: plugin.id, label: `${plugin.name ?? plugin.id} · ${plugin.id}` })),
+            ]} />
+          {extractorPlugin === 'builtin' && !status?.marker.installed && !markerWorking && <Button icon={<CloudDownloadOutlined />} onClick={() => void runAction('/api/integrations/marker/install')}>Install Marker visual extraction</Button>}
+          {extractorPlugin === 'builtin' && status?.marker.installed && <Space><Switch checked={enabledTools.marker} onChange={value => setEnabledTools(current => ({ ...current, marker: value }))} /><Typography.Text>Use Marker for automatic PDF extraction</Typography.Text></Space>}
+          {extractorPlugin === 'builtin' && markerWorking && <Space><Spin size="small" /> Installing Marker…</Space>}
+          {extractorPlugin === 'builtin' && status?.marker.job.message && status.marker.job.state !== 'idle' && (
             <Alert showIcon type={status.marker.job.state === 'error' ? 'error' : status.marker.job.state === 'complete' ? 'success' : 'info'}
               message={status.marker.job.state === 'working' ? 'Installing Marker' : status.marker.job.state === 'complete' ? 'Marker ready' : 'Installation failed'}
               description={<pre className="plugin-output">{status.marker.job.message}</pre>} />
           )}
+          {extractorPlugin !== 'builtin' && !selectedExtractor && <Alert type="warning" showIcon message="Selected extractor is unavailable"
+            description="Choose an enabled, compatible extractor plugin or switch back to built-in extraction." />}
         </section>
 
         <section className="plugin-card">
           <div className="plugin-card-heading">
             <div><Typography.Title level={5}>Image OCR</Typography.Title><Typography.Text type="secondary">Optionally uses RapidOCR locally to read labels, diagrams, and screenshots extracted by Marker. Quizzer does not install or run OCR unless you choose it.</Typography.Text></div>
-            {statusTag(Boolean(status?.ocr?.installed), Boolean(ocrWorking), 'Installed by Quizzer')}
+            {statusTag(ocrPlugin === 'builtin' ? Boolean(status?.ocr?.installed) : Boolean(selectedOcr), ocrPlugin === 'builtin' && Boolean(ocrWorking), ocrPlugin === 'builtin' ? 'Installed by Quizzer' : 'Plugin ready')}
           </div>
-          {!status?.ocr?.installed && !ocrWorking && <Button icon={<CloudDownloadOutlined />} onClick={() => void runAction('/api/integrations/ocr/install')}>Install Image OCR</Button>}
-          {status?.ocr?.installed && <Space><Switch checked={enabledTools.ocr} onChange={value => setEnabledTools(current => ({ ...current, ocr: value }))} /><Typography.Text>Enabled</Typography.Text></Space>}
-          {ocrWorking && <Space><Spin size="small" /> Installing Image OCR…</Space>}
-          {status?.ocr?.job.message && status.ocr.job.state !== 'idle' && (
+          <Select aria-label="OCR component" value={ocrPlugin} onChange={setOcrPlugin} style={{ width: '100%' }}
+            options={[
+              { value: 'builtin', label: 'Built-in · managed RapidOCR' },
+              ...ocrPlugins.map(plugin => ({ value: plugin.id, label: `${plugin.name ?? plugin.id} · ${plugin.id}` })),
+            ]} />
+          {ocrPlugin === 'builtin' && !status?.ocr?.installed && !ocrWorking && <Button icon={<CloudDownloadOutlined />} onClick={() => void runAction('/api/integrations/ocr/install')}>Install Image OCR</Button>}
+          {(ocrPlugin === 'builtin' ? status?.ocr?.installed : selectedOcr) && <Space><Switch checked={enabledTools.ocr} onChange={value => setEnabledTools(current => ({ ...current, ocr: value }))} /><Typography.Text>Enabled</Typography.Text></Space>}
+          {ocrPlugin === 'builtin' && ocrWorking && <Space><Spin size="small" /> Installing Image OCR…</Space>}
+          {ocrPlugin === 'builtin' && status?.ocr?.job.message && status.ocr.job.state !== 'idle' && (
             <Alert showIcon type={status.ocr.job.state === 'error' ? 'error' : status.ocr.job.state === 'complete' ? 'success' : 'info'}
               message={status.ocr.job.state === 'working' ? 'Installing Image OCR' : status.ocr.job.state === 'complete' ? 'Image OCR ready' : 'Installation failed'}
               description={<pre className="plugin-output">{status.ocr.job.message}</pre>} />
           )}
+          {ocrPlugin !== 'builtin' && !selectedOcr && <Alert type="warning" showIcon message="Selected OCR plugin is unavailable"
+            description="Choose an enabled, compatible OCR plugin or switch back to managed RapidOCR." />}
         </section>
 
         <section className="plugin-card">

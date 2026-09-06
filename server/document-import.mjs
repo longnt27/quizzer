@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import { basename, extname, resolve } from 'node:path';
-import { isStoredObjectReference } from './object-store.mjs';
+import { isStoredObjectReference, materializeDocumentImages } from './object-store.mjs';
 
 export const DOCUMENT_EXTRACTION_SCHEMA_VERSION = 1;
 export const PDFJS_PARSER_VERSION = 'pdfjs-5.3.31';
@@ -39,17 +39,35 @@ const sourceType = (name, mimeType) => {
   return { extension, mimeType: resolvedMimeType, isPdf: false };
 };
 
-export const extractDocumentBuffer = async (data, { name = 'document', mimeType, now = Date.now } = {}) => {
+const applyImageOcr = async (images, ocr, signal) => {
+  if (!Array.isArray(images) || typeof ocr !== 'function') return images;
+  return Promise.all(images.map(async image => {
+    if (!image || typeof image !== 'object' || image.ocrText || typeof image.data !== 'string') return image;
+    const binary = Buffer.from(image.data, 'base64');
+    const ocrText = await ocr(binary, { name: image.name, mimeType: image.mimeType, signal });
+    return typeof ocrText === 'string' && ocrText.trim() ? { ...image, ocrText: ocrText.trim() } : image;
+  }));
+};
+
+export const extractDocumentBuffer = async (data, {
+  name = 'document', mimeType, now = Date.now, extractor, ocr, signal,
+} = {}) => {
   if (!Buffer.isBuffer(data) && !(data instanceof Uint8Array)) throw new Error('Document data must be binary');
   const source = sourceType(name, mimeType);
-  const extracted = source.isPdf
-    ? await extractPdf(Buffer.from(data))
-    : { content: Buffer.from(data).toString('utf8'), parserVersion: UTF8_PARSER_VERSION, extractor: 'utf8' };
+  const extracted = typeof extractor === 'function'
+    ? await extractor(Buffer.from(data), { name, mimeType: source.mimeType, signal })
+    : source.isPdf
+      ? await extractPdf(Buffer.from(data))
+      : { content: Buffer.from(data).toString('utf8'), parserVersion: UTF8_PARSER_VERSION, extractor: 'utf8' };
+  if (!extracted || typeof extracted !== 'object' || typeof extracted.content !== 'string') {
+    throw new Error('The document extractor returned an invalid result');
+  }
   if (!extracted.content.trim()) throw new Error('The document contains no extractable text');
   const extractedAt = now();
   if (!Number.isSafeInteger(extractedAt) || extractedAt < 0) throw new Error('Invalid extraction time');
   return {
     ...extracted,
+    images: await applyImageOcr(extracted.images, ocr, signal),
     mimeType: source.mimeType,
     extractionSchemaVersion: DOCUMENT_EXTRACTION_SCHEMA_VERSION,
     extractedAt,
@@ -101,20 +119,22 @@ const pageForOffset = (content, offset) => {
   return page || undefined;
 };
 
-export const importDocumentFile = async (path, { tags = [], objectStore, now = Date.now } = {}) => {
+export const importDocumentFile = async (path, {
+  tags = [], objectStore, now = Date.now, extractor, ocr, signal,
+} = {}) => {
   const absolutePath = resolve(path);
   const details = await stat(absolutePath);
   if (!details.isFile()) throw new Error('Document path must refer to a file');
   if (details.size > 250 * 1024 * 1024) throw new Error('Documents larger than 250 MB must be imported from the desktop app');
   const data = await readFile(absolutePath);
-  const extracted = await extractDocumentBuffer(data, { name: absolutePath, now });
+  const extracted = await extractDocumentBuffer(data, { name: absolutePath, now, extractor, ocr, signal });
   const id = randomUUID();
   const originalMetadata = {
     type: extracted.mimeType,
     name: basename(absolutePath),
     lastModified: Math.round(details.mtimeMs),
   };
-  return {
+  const document = {
     id,
     name: basename(absolutePath),
     createdAt: extracted.extractedAt,
@@ -129,12 +149,14 @@ export const importDocumentFile = async (path, { tags = [], objectStore, now = D
     extractedAt: extracted.extractedAt,
     extractionContentHash: extracted.extractionContentHash,
     chunks: chunkDocument(id, extracted.content),
+    images: extracted.images,
     originalFile: objectStore ? await objectStore.putBuffer(data, originalMetadata) : {
       __quizzerBlob: true,
       ...originalMetadata,
       data: `data:${originalMetadata.type};base64,${data.toString('base64')}`,
     },
   };
+  return objectStore ? (await materializeDocumentImages(document, objectStore)).document : document;
 };
 
 const extractionRevision = document => ({
@@ -144,7 +166,9 @@ const extractionRevision = document => ({
   extractionContentHash: document.extractionContentHash || sha256(document.content || ''),
 });
 
-export const reextractDocument = async (document, { objectStore, now = Date.now } = {}) => {
+export const reextractDocument = async (document, {
+  objectStore, now = Date.now, extractor, ocr, signal,
+} = {}) => {
   if (!document || typeof document !== 'object' || typeof document.id !== 'string') throw new Error('A stored document is required');
   if (!objectStore || typeof objectStore.readBuffer !== 'function') throw new Error('Re-extraction requires object storage');
   if (!isStoredObjectReference(document.originalFile)) throw new Error('The verified original file is unavailable for re-extraction');
@@ -153,9 +177,11 @@ export const reextractDocument = async (document, { objectStore, now = Date.now 
   if (sourceHash !== document.originalFile.sha256 || (document.contentHash && sourceHash !== document.contentHash)) {
     throw new Error('The stored original does not match the document content hash');
   }
-  const extracted = await extractDocumentBuffer(data, { name: document.name, mimeType: document.mimeType, now });
+  const extracted = await extractDocumentBuffer(data, {
+    name: document.name, mimeType: document.mimeType, now, extractor, ocr, signal,
+  });
   const history = [...(Array.isArray(document.extractionHistory) ? document.extractionHistory : []), extractionRevision(document)].slice(-20);
-  return {
+  const reextracted = {
     ...document,
     content: extracted.content,
     contentHash: sourceHash,
@@ -167,9 +193,10 @@ export const reextractDocument = async (document, { objectStore, now = Date.now 
     extractionContentHash: extracted.extractionContentHash,
     extractionHistory: history,
     chunks: chunkDocument(document.id, extracted.content),
-    images: undefined,
+    images: extracted.images,
     indexedAt: undefined,
     indexVersion: undefined,
     documentVersionHash: undefined,
   };
+  return (await materializeDocumentImages(reextracted, objectStore)).document;
 };

@@ -181,6 +181,7 @@ export class PluginManager {
       signal: options.signal,
       timeoutMs: options.timeoutMs,
       files: options.files,
+      fileLimits: options.fileLimits,
     });
   }
 

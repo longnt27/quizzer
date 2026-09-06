@@ -20,7 +20,7 @@ import { collectStoredObjectReferences, materializeDocumentImages, materializeSe
 import { denseIndexPathFor, sparseIndexPathFor } from './server/paths.mjs';
 import { createBackup, listBackups, verifyBackup } from './server/backup.mjs';
 import { cancelIndexJob, createIndexJob, recoverIndexJob, resumeIndexJob, runIndexJob } from './server/index-jobs.mjs';
-import { reextractDocument } from './server/document-import.mjs';
+import { extractDocumentBuffer, reextractDocument } from './server/document-import.mjs';
 import { PROVIDER_POLICIES, providerConcurrencyLimits, publicProviderPolicies } from './server/provider-policy.mjs';
 import { RetrievalIndex } from './server/retrieval-index.mjs';
 import { bindRequestCancellation } from './server/request-lifetime.mjs';
@@ -28,6 +28,7 @@ import { ProviderCredentialStore } from './server/provider-credentials.mjs';
 import { GenerationJobWorker } from './server/generation-worker.mjs';
 import { runGeneratorPlugin } from './server/plugin-generation.mjs';
 import { resolveEmbeddingProvider } from './server/plugin-embeddings.mjs';
+import { resolveDocumentExtractor, resolveOcrProvider } from './server/plugin-extraction.mjs';
 
 const configuredPortValue = process.env.QUIZZER_SERVICE_PORT ?? '8787';
 const configuredPort = Number(configuredPortValue);
@@ -509,6 +510,19 @@ const runManagedOcr = async (path, signal) => {
   return Array.isArray(texts) ? texts.filter(value => typeof value === 'string').join(' ') : '';
 };
 
+const runManagedOcrBuffer = async (data, { name = 'image.png', signal } = {}) => {
+  if (!await managedOcrWorks()) return '';
+  const directory = await mkdtemp(join(tmpdir(), 'quizzer-ocr-'));
+  const safeName = String(name).replace(/[^a-zA-Z0-9._-]/g, '_').slice(-200) || 'image.png';
+  const path = join(directory, safeName);
+  try {
+    await writeFile(path, data);
+    return await runManagedOcr(path, signal);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+};
+
 const connectCodex = () => {
   if (integrationJobs.codex.state === 'working') return;
   integrationJobs.codex = { state: 'working', message: 'Starting Codex device login…' };
@@ -977,7 +991,7 @@ const mapWithConcurrency = async (items, concurrency, mapper) => {
   return result;
 };
 
-const runMarker = async ({ name, data, ocrEnabled = false }, signal) => {
+const runMarker = async ({ name, data, ocrEnabled = false }, signal, { ocr } = {}) => {
   if (typeof data !== 'string' || !data) throw new Error('PDF data is required');
   if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : cancellationError();
   const work = await mkdtemp(join(tmpdir(), 'quizzer-marker-'));
@@ -996,7 +1010,7 @@ const runMarker = async ({ name, data, ocrEnabled = false }, signal) => {
     const markdown = await readFile(markdownPath, 'utf8');
     const references = imageReferences(markdown);
     const imagePaths = files.filter(path => /\.(png|jpe?g|webp)$/i.test(path));
-    const canOcr = Boolean(ocrEnabled) && await managedOcrWorks();
+    const canOcr = Boolean(ocrEnabled) && typeof ocr === 'function';
     const images = await mapWithConcurrency(imagePaths, 2, async (path, index) => {
       const name = basename(path);
       const reference = references.find(item => {
@@ -1007,12 +1021,12 @@ const runMarker = async ({ name, data, ocrEnabled = false }, signal) => {
       const context = sourceStart === undefined ? '' : cleanMarkdownContext(markdown.slice(Math.max(0, sourceStart - 500), sourceStart + 700));
       const caption = cleanMarkdownContext(reference?.caption || '');
       if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : cancellationError();
-      const ocrText = canOcr ? await runManagedOcr(path, signal).catch(error => {
+      const lower = name.toLowerCase();
+      const mimeType = lower.endsWith('.png') ? 'image/png' : lower.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
+      const ocrText = canOcr ? await ocr(await readFile(path), { name, mimeType, signal }).catch(error => {
         if (signal?.aborted || error?.name === 'AbortError') throw error;
         return '';
       }) : '';
-      const lower = name.toLowerCase();
-      const mimeType = lower.endsWith('.png') ? 'image/png' : lower.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
       return {
         id: `image-${index}`,
         name,
@@ -1029,6 +1043,51 @@ const runMarker = async ({ name, data, ocrEnabled = false }, signal) => {
   } finally {
     await rm(work, { recursive: true, force: true });
   }
+};
+
+const configuredExtractionRoutes = async ({ ocrRequested = true } = {}) => {
+  const settings = await loadResolvedSettings(appDataDirectory);
+  const extractorRoute = await resolveDocumentExtractor(settings, { loadManager: getPluginManager });
+  const ocrRoute = settings.values['extraction.ocr'] && ocrRequested
+    ? await resolveOcrProvider(settings, { loadManager: getPluginManager, builtin: runManagedOcrBuffer })
+    : { component: 'disabled', identity: 'disabled', ocr: undefined };
+  return { settings, extractorRoute, ocrRoute };
+};
+
+const decodeDocumentPayload = data => {
+  if (typeof data !== 'string' || !data || data.length % 4 === 1 || !/^[A-Za-z0-9+/]*={0,2}$/.test(data)) {
+    throw new Error('Document data must be valid base64');
+  }
+  const decoded = Buffer.from(data, 'base64');
+  if (!decoded.length) throw new Error('Document data is empty');
+  return decoded;
+};
+
+const runConfiguredExtraction = async (body, signal) => {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('Extraction request must be an object');
+  const name = typeof body.name === 'string' && body.name.length <= 1024 ? body.name : 'document.pdf';
+  const data = decodeDocumentPayload(body.data);
+  const mimeType = typeof body.mimeType === 'string' && body.mimeType.length <= 255
+    ? body.mimeType
+    : name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : undefined;
+  const routes = await configuredExtractionRoutes({ ocrRequested: body.ocrEnabled === true });
+
+  if (routes.extractorRoute.extract) {
+    return extractDocumentBuffer(data, {
+      name,
+      mimeType,
+      extractor: routes.extractorRoute.extract,
+      ocr: routes.ocrRoute.ocr,
+      signal,
+    });
+  }
+  if ((mimeType === 'application/pdf' || name.toLowerCase().endsWith('.pdf'))
+    && routes.settings.values['extraction.marker']) {
+    return runMarker({ name, data: body.data, ocrEnabled: Boolean(routes.ocrRoute.ocr) }, signal, {
+      ocr: routes.ocrRoute.ocr,
+    });
+  }
+  return extractDocumentBuffer(data, { name, mimeType, signal });
 };
 
 const handleVersionedApi = async (request, response, url) => {
@@ -1291,7 +1350,12 @@ const handleVersionedApi = async (request, response, url) => {
         send(response, 404, { error: 'Document not found' });
         return true;
       }
-      const extracted = await reextractDocument(existing.data, { objectStore });
+      const routes = await configuredExtractionRoutes();
+      const extracted = await reextractDocument(existing.data, {
+        objectStore,
+        extractor: routes.extractorRoute.extract,
+        ocr: routes.ocrRoute.ocr,
+      });
       const saved = putRecord('documents', id, extracted);
       await retrievalIndex.removeDocument(id);
       const indexJob = prepareIndexJob({ records: [saved], force: true });
@@ -1483,7 +1547,7 @@ const serviceServer = createServer(async (request, response) => {
   if (request.method === 'POST' && request.url === '/api/extract') {
     const lifetime = bindRequestCancellation(request, response, 'Extraction request disconnected');
     try {
-      const result = await runMarker(await readJson(request), lifetime.signal);
+      const result = await runConfiguredExtraction(await readJson(request), lifetime.signal);
       if (!response.destroyed) return send(response, 200, result);
     } catch (error) {
       if (!response.destroyed) return send(response, error?.name === 'AbortError' ? 499 : 503, { error: error instanceof Error ? error.message : 'Extraction failed' });

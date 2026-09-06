@@ -869,6 +869,22 @@ components:
           maxItems: 20
           items: { $ref: '#/components/schemas/ExtractionRevision' }
         originalFile: { $ref: '#/components/schemas/StoredObjectReference' }
+        images:
+          type: array
+          items: { $ref: '#/components/schemas/DocumentImage' }
+    DocumentImage:
+      type: object
+      required: [name, mimeType, object]
+      properties:
+        id: { type: string }
+        name: { type: string, minLength: 1, maxLength: 1024 }
+        mimeType: { type: string, enum: [image/png, image/jpeg, image/webp] }
+        object: { $ref: '#/components/schemas/StoredObjectReference' }
+        page: { type: integer, minimum: 1 }
+        sourceStart: { type: integer, minimum: 0 }
+        caption: { type: string, maxLength: 10000 }
+        context: { type: string, maxLength: 20000 }
+        ocrText: { type: string, maxLength: 100000 }
     StoredObjectReference:
       type: object
       required: [__quizzerObject, algorithm, sha256, size]

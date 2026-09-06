@@ -8,10 +8,12 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import test from 'node:test';
 import { canonicalizeManifest } from '../release/manifest.mjs';
+import { ObjectStore } from '../server/object-store.mjs';
 
 const execute = promisify(execFile);
 const directory = await mkdtemp(join(tmpdir(), 'quizzer-cli-test-'));
 const source = join(directory, 'terraform.md');
+const pluginSourceDocument = join(directory, 'plugin-source.md');
 const backup = join(directory, 'backup');
 const pluginDirectory = join(directory, 'test-plugin');
 const standaloneExecutable = process.env.QUIZZER_CLI_EXECUTABLE;
@@ -106,6 +108,7 @@ test('verifies canonical release metadata and rejects tampering', async () => {
 
 test.before(async () => {
   await writeFile(source, '# Terraform\n\nOnly ask about providers and state.\n');
+  await writeFile(pluginSourceDocument, '# Original plugin source\n');
   await mkdir(pluginDirectory);
   const pluginSource = `
 import { createInterface } from 'node:readline';
@@ -113,7 +116,11 @@ for await (const line of createInterface({ input: process.stdin })) {
   const request = JSON.parse(line);
   const result = request.method === 'rag.rerank'
     ? { ranking: request.params.candidates.map((candidate, index) => ({ sourceSpanId: candidate.sourceSpanId, score: 1 - index / 10 })).reverse() }
-    : { status: 'ready' };
+    : request.method === 'document.extract'
+      ? { content: '# Plugin extracted\\n\\nDurable extractor output.', parserVersion: 'test-1', images: [{ name: 'diagram.png', mimeType: 'image/png', data: Buffer.from('diagram').toString('base64') }] }
+      : request.method === 'document.ocr'
+        ? { text: 'diagram labels' }
+        : { status: 'ready' };
   process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }) + '\\n');
 }
 `;
@@ -125,11 +132,11 @@ for await (const line of createInterface({ input: process.stdin })) {
     version: '1.0.0',
     protocolVersion: 1,
     entrypoint: 'plugin.mjs',
-    capabilities: ['generator', 'reranker'],
+    capabilities: ['generator', 'reranker', 'extractor', 'ocr'],
     platforms: [{ os: process.platform, architectures: [process.arch] }],
     resources: { memoryMB: 32, diskMB: 1 },
     configuration: { type: 'object' },
-    permissions: { network: [], filesystem: ['scoped-temp'], secrets: [], subprocess: false },
+    permissions: { network: [], filesystem: ['scoped-temp', 'document-read'], secrets: [], subprocess: false },
     healthCheck: { method: 'plugin.health', timeoutMs: 1000 },
     files: [{ path: 'plugin.mjs', sha256: createHash('sha256').update(pluginSource).digest('hex') }],
   }));
@@ -252,7 +259,8 @@ test('manages unsigned local plugins only after explicit developer opt-in', asyn
   const installed = await cli('plugins', 'install', pluginDirectory);
   assert.equal(installed.plugin.id, 'dev.quizzer.cli-test');
   assert.match(installed.plugin.warning, /Unsigned local plugin/);
-  assert.equal((await cli('plugins', 'health', installed.plugin.id)).health.ok, true);
+  const health = (await cli('plugins', 'health', installed.plugin.id)).health;
+  assert.equal(health.ok, true, health.error);
   assert.equal((await cli('plugins', 'disable', installed.plugin.id)).plugin.enabled, false);
   assert.equal((await cli('plugins', 'enable', installed.plugin.id)).plugin.enabled, true);
   await cli('config', 'set', 'retrieval.rerankerPlugin', installed.plugin.id);
@@ -261,6 +269,20 @@ test('manages unsigned local plugins only after explicit developer opt-in', asyn
   assert.equal(reranked.reranking.status, 'ready');
   assert.equal(reranked.reranking.component, installed.plugin.id);
   await cli('config', 'set', 'retrieval.rerankerPlugin', 'builtin');
+  await cli('config', 'set', 'extraction.extractorPlugin', installed.plugin.id);
+  await cli('config', 'set', 'extraction.ocrPlugin', installed.plugin.id);
+  await cli('config', 'set', 'extraction.ocr', 'true');
+  const extracted = await cli('documents', 'import', pluginSourceDocument);
+  assert.equal(extracted.document.parserVersion, `plugin:${installed.plugin.id}@1.0.0/test-1`);
+  assert.equal(extracted.document.content, '# Plugin extracted\n\nDurable extractor output.');
+  assert.equal(extracted.document.images[0].ocrText, 'diagram labels');
+  assert.equal(extracted.document.images[0].data, undefined);
+  assert.equal(extracted.document.images[0].object.__quizzerObject, true);
+  await cli('documents', 'remove', extracted.document.id, '--yes');
+  const retainedSourceHash = createHash('sha256').update(await readFile(source)).digest('hex');
+  await new ObjectStore(appDataDirectory).garbageCollect(new Set([retainedSourceHash]), { minimumAgeMs: 0 });
+  await cli('config', 'set', 'extraction.extractorPlugin', 'builtin');
+  await cli('config', 'set', 'extraction.ocrPlugin', 'builtin');
   const removed = await cli('plugins', 'remove', installed.plugin.id, '--yes');
   assert.equal(removed.removed, true);
 });

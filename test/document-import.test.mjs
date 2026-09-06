@@ -68,3 +68,31 @@ test('re-extracts only from the verified original and retains bounded converter 
   assert.equal(reextracted.documentVersionHash, undefined);
   await assert.rejects(reextractDocument({ ...stale, originalFile: undefined }, { objectStore }), /original file is unavailable/);
 });
+
+test('uses injected extractor and OCR routes while materializing plugin images', async () => {
+  const path = join(directory, 'plugin-source.md');
+  const objectStore = new ObjectStore(join(directory, 'plugin-extraction-data'));
+  await writeFile(path, 'original source');
+  const extractor = async (_data, options) => {
+    assert.equal(options.mimeType, 'text/markdown');
+    return {
+      content: '# Plugin output',
+      parserVersion: 'plugin:dev.quizzer.extractor@1.0.0',
+      extractor: 'dev.quizzer.extractor',
+      images: [{ name: 'diagram.png', mimeType: 'image/png', data: Buffer.from('diagram').toString('base64') }],
+    };
+  };
+  const ocr = async (data, options) => {
+    assert.deepEqual(data, Buffer.from('diagram'));
+    assert.equal(options.name, 'diagram.png');
+    return 'diagram labels';
+  };
+
+  const document = await importDocumentFile(path, { objectStore, extractor, ocr, now: () => 300 });
+  assert.equal(document.content, '# Plugin output');
+  assert.equal(document.parserVersion, 'plugin:dev.quizzer.extractor@1.0.0');
+  assert.equal(document.images[0].data, undefined);
+  assert.equal(document.images[0].object.__quizzerObject, true);
+  assert.equal(document.images[0].ocrText, 'diagram labels');
+  assert.deepEqual(await objectStore.readBuffer(document.images[0].object.sha256), Buffer.from('diagram'));
+});

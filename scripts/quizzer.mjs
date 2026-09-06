@@ -18,6 +18,7 @@ import { ObjectStore } from '../server/object-store.mjs';
 import { createBackup, restoreBackup, verifyBackup } from '../server/backup.mjs';
 import { cancelIndexJob, createIndexJob, recoverIndexJob, resumeIndexJob, runIndexJob } from '../server/index-jobs.mjs';
 import { PROVIDER_POLICIES } from '../server/provider-policy.mjs';
+import { resolveDocumentExtractor, resolveOcrProvider } from '../server/plugin-extraction.mjs';
 
 const usage = `Quizzer CLI
 
@@ -235,6 +236,19 @@ const runPlugins = async action => {
   fail('Use plugins list, install, enable, disable, health, rollback, or remove');
 };
 
+const loadCliExtractionOptions = async () => {
+  const settings = await loadResolvedSettings(appDataDirectory);
+  const loadManager = async () => new PluginManager({
+    appDataDirectory,
+    developerMode: settings.values['plugins.developerMode'],
+  });
+  const extractor = await resolveDocumentExtractor(settings, { loadManager });
+  const ocr = settings.values['extraction.ocr']
+    ? await resolveOcrProvider(settings, { loadManager })
+    : { ocr: undefined };
+  return { extractor: extractor.extract, ocr: ocr.ocr };
+};
+
 const runDocuments = async action => {
   const database = await storage();
   if (action === 'list') {
@@ -247,7 +261,10 @@ const runDocuments = async action => {
   if (action === 'import') {
     const path = parsed.positionals.shift();
     if (!path) fail('documents import requires a file path');
-    const document = await importDocumentFile(path, { tags: String(flag('tags', '')).split(','), objectStore });
+    const extraction = await loadCliExtractionOptions();
+    const document = await importDocumentFile(path, {
+      tags: String(flag('tags', '')).split(','), objectStore, ...extraction,
+    });
     const duplicate = database.listRecords('documents').find(record => record.data.contentHash === document.contentHash);
     if (duplicate) return writeResult({ imported: false, duplicateOf: duplicate.id, document: duplicate.data }, `Already imported as ${duplicate.data.name} (${duplicate.id})`);
     database.putRecord('documents', document.id, document);
@@ -262,7 +279,7 @@ const runDocuments = async action => {
     return writeResult({ document }, `${document.name}\n${document.mimeType} · ${document.size} bytes · ${document.chunks?.length ?? 0} chunks\n\n${document.content.slice(0, 800)}`);
   }
   if (action === 'reextract') {
-    const extracted = await reextractDocument(record.data, { objectStore });
+    const extracted = await reextractDocument(record.data, { objectStore, ...await loadCliExtractionOptions() });
     const saved = database.putRecord('documents', id, extracted);
     const index = createRetrievalIndex();
     try { await index.removeDocument(id); }

@@ -24,6 +24,8 @@ test('resolves profile, user, environment, CLI, and job settings in order', () =
   assert.equal(resolved.values['embeddings.model'], 'all-minilm');
   assert.equal(resolved.values['embeddings.embedderPlugin'], 'builtin');
   assert.equal(resolved.values['retrieval.rerankerPlugin'], 'builtin');
+  assert.equal(resolved.values['extraction.extractorPlugin'], 'builtin');
+  assert.equal(resolved.values['extraction.ocrPlugin'], 'builtin');
   assert.equal(resolved.values['retrieval.contextBudget'], 5000);
   assert.equal(resolved.values['generation.concurrency'], 6);
   assert.equal(resolved.sources['generation.concurrency'], 'job');
@@ -38,6 +40,7 @@ test('resolves profile, user, environment, CLI, and job settings in order', () =
 test('validates types, ranges, unknown settings, and secret-like keys', () => {
   assert.deepEqual(validateSettings({ 'extraction.ocr': true }), { 'extraction.ocr': true });
   assert.deepEqual(validateSettings({ 'embeddings.embedderPlugin': 'dev.quizzer.embedder' }), { 'embeddings.embedderPlugin': 'dev.quizzer.embedder' });
+  assert.deepEqual(validateSettings({ 'extraction.extractorPlugin': 'dev.quizzer.extractor' }), { 'extraction.extractorPlugin': 'dev.quizzer.extractor' });
   assert.throws(() => validateSettings({ 'generation.concurrency': 99 }), /from 1 to 10/);
   assert.throws(() => validateSettings({ 'providers.codex.maxConcurrency': 0 }), /from 1 to 10/);
   assert.throws(() => validateSettings({ 'unknown.value': true }), /Unknown setting/);

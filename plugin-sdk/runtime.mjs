@@ -45,8 +45,17 @@ const javascriptRuntime = async () => {
   throw new Error('JavaScript plugins require the Quizzer desktop app, QUIZZER_NODE_RUNTIME, or a Node.js executable on PATH');
 };
 
-const materializeScopedFiles = async (temporaryDirectory, manifest, files) => {
-  if (!Array.isArray(files) || files.length > 30) throw new Error('Plugin scoped files must be an array of at most 30 items');
+const materializeScopedFiles = async (temporaryDirectory, manifest, files, limits = {}) => {
+  const maximumFiles = limits.maximumFiles ?? 30;
+  const maximumFileBytes = limits.maximumFileBytes ?? 20 * 1024 * 1024;
+  const maximumTotalBytes = limits.maximumTotalBytes ?? 100 * 1024 * 1024;
+  if (![maximumFiles, maximumFileBytes, maximumTotalBytes].every(value => Number.isSafeInteger(value) && value > 0)
+    || maximumFiles > 100 || maximumFileBytes > 250 * 1024 * 1024 || maximumTotalBytes > 500 * 1024 * 1024) {
+    throw new Error('Plugin scoped file limits are invalid');
+  }
+  if (!Array.isArray(files) || files.length > maximumFiles) {
+    throw new Error(`Plugin scoped files must be an array of at most ${maximumFiles} items`);
+  }
   if (files.length && !manifest.permissions.filesystem.includes('scoped-temp')) {
     throw new Error(`Plugin ${manifest.id} must declare scoped-temp permission to receive files`);
   }
@@ -63,9 +72,9 @@ const materializeScopedFiles = async (temporaryDirectory, manifest, files) => {
     }
     const data = Buffer.isBuffer(file.data) ? file.data
       : typeof file.data === 'string' ? Buffer.from(file.data) : Buffer.from(file.data.buffer, file.data.byteOffset, file.data.byteLength);
-    if (data.length > 20 * 1024 * 1024) throw new Error(`Plugin scoped file exceeds 20 MB: ${path}`);
+    if (data.length > maximumFileBytes) throw new Error(`Plugin scoped file exceeds ${maximumFileBytes} bytes: ${path}`);
     totalBytes += data.length;
-    if (totalBytes > 100 * 1024 * 1024) throw new Error('Plugin scoped files exceed the 100 MB invocation limit');
+    if (totalBytes > maximumTotalBytes) throw new Error(`Plugin scoped files exceed the ${maximumTotalBytes}-byte invocation limit`);
     const destination = join(temporaryDirectory, path);
     await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
     await writeFile(destination, data, { mode: 0o600, flag: 'wx' });
@@ -76,7 +85,7 @@ const materializeScopedFiles = async (temporaryDirectory, manifest, files) => {
 
 export const invokePluginProcess = async ({
   appDataDirectory, directory, manifest, method, params = {}, configuration = {}, secrets = {}, signal,
-  timeoutMs = 30_000, files = [],
+  timeoutMs = 30_000, files = [], fileLimits,
 }) => {
   if (typeof method !== 'string' || !method.trim()) throw new Error('Plugin method is required');
   if (!params || typeof params !== 'object' || Array.isArray(params)) throw new Error('Plugin parameters must be an object');
@@ -94,7 +103,7 @@ export const invokePluginProcess = async ({
   const startedAt = Date.now();
   let child;
   try {
-    const scopedFiles = await materializeScopedFiles(temporaryDirectory, manifest, files);
+    const scopedFiles = await materializeScopedFiles(temporaryDirectory, manifest, files, fileLimits);
     return await new Promise((resolve, reject) => {
       let settled = false;
       let stdout = '';

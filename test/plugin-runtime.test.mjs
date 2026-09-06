@@ -140,6 +140,11 @@ test('rejects invalid plugin invocation inputs before spawning', async () => {
   await assert.rejects(invokePluginProcess({ ...common, method: 'plugin.echo', params: [] }), /parameters must be an object/);
   await assert.rejects(invokePluginProcess({ ...common, method: 'plugin.echo', configuration: null }), /configuration must be an object/);
   await assert.rejects(invokePluginProcess({ ...common, method: 'plugin.echo', files: {} }), /array of at most 30/);
+  await assert.rejects(invokePluginProcess({ ...common, method: 'plugin.echo', fileLimits: { maximumFiles: 101 } }), /file limits are invalid/);
+  await assert.rejects(invokePluginProcess({
+    ...common, method: 'plugin.echo', files: [{ path: 'source.txt', data: 'xx' }],
+    fileLimits: { maximumFiles: 1, maximumFileBytes: 1, maximumTotalBytes: 2 },
+  }), /exceeds 1 bytes/);
   await assert.rejects(invokePluginProcess({ ...common, method: 'plugin.echo', files: [{ path: '../escape', data: 'x' }] }), /Unsafe plugin path/);
   await assert.rejects(invokePluginProcess({
     ...common, method: 'plugin.echo', files: [{ path: 'source.txt', data: 'x' }],
