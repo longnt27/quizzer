@@ -17,9 +17,11 @@ test('detectPlatform and detectArch normalize operating system and architecture'
   assert.equal(detectPlatform('win32'), 'windows');
   assert.equal(detectPlatform('windows'), 'windows');
   assert.equal(detectPlatform('linux'), 'linux');
+  assert.equal(detectPlatform('freebsd'), 'freebsd');
 
   assert.equal(detectArch('x64'), 'x64');
   assert.equal(detectArch('arm64'), 'arm64');
+  assert.equal(detectArch('ia32'), 'ia32');
 });
 
 test('semver comparison correctly handles versions and prereleases according to SemVer 2.0.0', () => {
@@ -48,6 +50,8 @@ test('semver comparison correctly handles versions and prereleases according to 
   assert.equal(compareSemver('1.0.0-beta.10', '1.0.0-beta.2'), 1);
   assert.equal(compareSemver('1.0.0-rc.1', '1.0.0-beta.9'), 1);
   assert.equal(compareSemver('1.0.0-beta.1', '1.0.0-beta.1'), 0);
+  assert.equal(compareSemver('1.0.0-1', '1.0.0-alpha'), -1);
+  assert.equal(compareSemver('1.0.0-alpha', '1.0.0-1'), 1);
 });
 
 test('selectTargetArtifact filters for matching OS and architecture, excluding CLI artifacts', () => {

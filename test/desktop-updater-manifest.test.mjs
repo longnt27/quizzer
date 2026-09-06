@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import test from 'node:test';
-import { DesktopUpdater, validateCanonicalReleaseUrl } from '../desktop/updater.mjs';
+import { DesktopUpdater, normalizePublicKey, validateCanonicalReleaseUrl } from '../desktop/updater.mjs';
 import { buildReleaseManifest, canonicalizeManifest, privateKeyFromBase64, signReleaseManifest } from '../release/manifest.mjs';
 
 const createSignedManifest = async ({
@@ -186,3 +186,55 @@ test('channel filtering respects stable and beta releases', async () => {
   assert.equal(betaStatus.state, 'available');
   assert.equal(betaStatus.updateInfo.version, '1.1.0-beta.1');
 });
+
+test('normalizePublicKey handles PEM, base64 DER SPKI, JWK, and rejects invalid keys', () => {
+  const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+  const pem = publicKey.export({ format: 'pem', type: 'spki' });
+  const spkiBase64 = publicKey.export({ format: 'der', type: 'spki' }).toString('base64');
+  const jwk = publicKey.export({ format: 'jwk' });
+
+  assert.ok(normalizePublicKey(pem));
+  assert.ok(normalizePublicKey(spkiBase64));
+  assert.ok(normalizePublicKey(jwk));
+  assert.ok(normalizePublicKey(publicKey));
+  assert.equal(normalizePublicKey(null), null);
+
+  assert.throws(() => normalizePublicKey(privateKey), /KeyObject must be of type public/);
+  assert.throws(() => normalizePublicKey(12345), /Unsupported public key format/);
+});
+
+test('verifyManifest validates manifest structure and algorithm before crypto operations', async () => {
+  const { signed, keyPair } = await createSignedManifest();
+  const updater = new DesktopUpdater({
+    trustedKeys: { 'quizzer-release-test': keyPair.publicKey },
+  });
+
+  await assert.rejects(updater.verifyManifest('{invalid json'), /Invalid release manifest JSON/);
+  await assert.rejects(updater.verifyManifest(null), /Release manifest must be a non-empty object/);
+  await assert.rejects(
+    updater.verifyManifest({ ...signed, signatureAlgorithm: 'rsa' }),
+    /Unsupported signature algorithm: rsa/,
+  );
+  await assert.rejects(
+    updater.verifyManifest({ ...signed, signature: '' }),
+    /Release manifest is missing signature/,
+  );
+});
+
+test('updater configures trusted key from QUIZZER_RELEASE_PUBLIC_KEY environment variable', async () => {
+  const { signed, keyPair } = await createSignedManifest({ publicKeyId: 'default' });
+  const pem = keyPair.publicKey.export({ format: 'pem', type: 'spki' });
+
+  process.env.QUIZZER_RELEASE_PUBLIC_KEY = pem;
+  try {
+    const updater = new DesktopUpdater({
+      fetch: async () => ({ ok: true, text: async () => JSON.stringify(signed) }),
+    });
+    assert.equal(updater.getKeyStatus().configured, true);
+    const verified = await updater.verifyManifest(JSON.stringify(signed));
+    assert.equal(verified.version, signed.version);
+  } finally {
+    delete process.env.QUIZZER_RELEASE_PUBLIC_KEY;
+  }
+});
+

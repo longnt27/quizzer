@@ -201,3 +201,44 @@ test('download rejects tampered SHA-256 and never exposes corrupt binary', async
     await rm(env.directory, { recursive: true, force: true });
   }
 });
+
+test('downloadUpdate streams through web ReadableStream getReader and updates progress', async () => {
+  const env = await setupTestEnvironment();
+  try {
+    const chunk1 = env.artifactContent.subarray(0, 20);
+    const chunk2 = env.artifactContent.subarray(20);
+
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(chunk1);
+        controller.enqueue(chunk2);
+        controller.close();
+      },
+    });
+
+    const updater = new DesktopUpdater({
+      userDataDir: env.directory,
+      currentVersion: '1.0.0',
+      platform: 'macos',
+      architecture: 'arm64',
+      trustedKeys: { 'quizzer-release-test': env.keyPair.publicKey },
+      fetch: async url => {
+        if (url.endsWith('release-manifest.json')) {
+          return { ok: true, text: async () => JSON.stringify(env.signed) };
+        }
+        return {
+          ok: true,
+          body: stream,
+        };
+      },
+    });
+
+    await updater.checkForUpdates();
+    const result = await updater.downloadUpdate();
+    assert.equal(result.state, 'downloaded');
+    assert.equal(updater.downloadProgress?.percent, 100);
+  } finally {
+    await rm(env.directory, { recursive: true, force: true });
+  }
+});
+

@@ -165,3 +165,34 @@ test('rollback reports honest error when no rollback metadata exists', async () 
     await rm(env.directory, { recursive: true, force: true });
   }
 });
+
+test('applyUpdate in packaged mode reports staged-ready mechanism and restartRequested', async () => {
+  const env = await setupRollbackEnv();
+  try {
+    const updater = new DesktopUpdater({
+      userDataDir: env.directory,
+      currentVersion: '1.0.0',
+      isPackaged: true,
+      platform: 'macos',
+      architecture: 'arm64',
+      trustedKeys: { 'quizzer-release-test': env.keyPair.publicKey },
+      fetch: async url => {
+        if (url.endsWith('release-manifest.json')) {
+          return { ok: true, text: async () => JSON.stringify(env.signed) };
+        }
+        return { ok: true, arrayBuffer: async () => env.content };
+      },
+    });
+
+    await updater.checkForUpdates();
+    await updater.downloadUpdate();
+    const result = await updater.applyUpdate({ restart: true });
+    assert.equal(result.applied, true);
+    assert.equal(result.mechanism, 'staged-ready');
+    assert.equal(result.restartRequested, true);
+    assert.match(result.message, /staged for application on restart/);
+  } finally {
+    await rm(env.directory, { recursive: true, force: true });
+  }
+});
+
