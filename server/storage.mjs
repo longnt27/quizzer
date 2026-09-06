@@ -4,6 +4,7 @@ import {
   isModernGenerationOptions, validateActiveRoute, validateCoveragePlan, validateGenerationOptions,
   validateGenerationProgress, validateNewGenerationJob, validateProviderAttempts,
 } from './generation-validation.mjs';
+import { validateOnboardingState } from './onboarding.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream, mkdirSync } from 'node:fs';
 import { chmod, mkdir, writeFile } from 'node:fs/promises';
@@ -170,6 +171,10 @@ const validateChange = (change, { bootstrap = false, trusted = false } = {}) => 
   }
   if (!change.deleted && (typeof change.data !== 'object' || change.data === null)) {
     throw new Error('Storage records must contain an object');
+  }
+  if (!change.deleted && change.collection === 'profiles') {
+    if (change.id !== 'default' || change.data.id !== 'default') throw new Error('Application profile id must be default');
+    validateOnboardingState(change.data.onboarding);
   }
   if (!bootstrap && !trusted && change.collection === 'generationJobs') {
     if (!change.deleted) throw new Error('Generation jobs must be created and updated through /api/v1/jobs');

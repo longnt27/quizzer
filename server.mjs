@@ -13,6 +13,7 @@ import { ensureServiceToken, isAuthorizedRequest } from './server/auth.mjs';
 import {
   HARDWARE_PROFILE_SETTINGS, loadResolvedSettings, readUserSettings, SETTINGS_REGISTRY, SETTINGS_SCHEMA, settingsPath, validateSettings, writeUserSettings,
 } from './server/settings.mjs';
+import { validateOnboardingState } from './server/onboarding.mjs';
 import { PluginManager } from './plugin-sdk/manager.mjs';
 import { materializeRuntimeAsset, readRuntimeText, runningAsSingleExecutable } from './server/runtime-assets.mjs';
 import { collectStoredObjectReferences, materializeDocumentImages, materializeSerializedObjects, ObjectStore } from './server/object-store.mjs';
@@ -1088,11 +1089,11 @@ const handleVersionedApi = async (request, response, url) => {
     }
     if (request.method === 'PUT' && url.pathname === '/api/v1/onboarding') {
       const body = await readJson(request);
-      if (!body?.onboarding || typeof body.onboarding !== 'object') throw new Error('onboarding is required');
+      const onboarding = validateOnboardingState(body?.onboarding);
       const current = getRecord('profiles', 'default')?.data ?? {
         id: 'default', createdAt: Date.now(), interfaceMode: 'simple', hardwareProfile: 'lite', upgradedExistingLibrary: false,
       };
-      const profile = { ...current, id: 'default', onboarding: body.onboarding, updatedAt: Date.now() };
+      const profile = { ...current, id: 'default', onboarding, updatedAt: Date.now() };
       send(response, 200, { profile: publicRecord(putRecord('profiles', 'default', profile)) });
       return true;
     }

@@ -723,13 +723,21 @@ components:
         sources: { type: object, additionalProperties: { type: string } }
     OnboardingState:
       type: object
+      additionalProperties: false
       required: [onboardingVersion, completedSteps, currentStep, skipped]
       properties:
-        onboardingVersion: { type: integer, minimum: 1 }
-        completedSteps: { type: array, items: { type: string } }
-        currentStep: { type: string }
+        onboardingVersion: { type: integer, const: 1 }
+        completedSteps:
+          type: array
+          uniqueItems: true
+          maxItems: 8
+          items: { type: string, enum: [welcome, hardware, provider, document, instruction, generate, practice, complete] }
+        currentStep: { type: string, enum: [welcome, hardware, provider, document, instruction, generate, practice, complete] }
         skipped: { type: boolean }
-        completedAt: { type: integer }
+        completedAt: { type: integer, minimum: 1 }
+        documentId: { type: string, minLength: 1, maxLength: 500 }
+        generationJobId: { type: string, minLength: 1, maxLength: 500 }
+        generationTestId: { type: string, minLength: 1, maxLength: 500 }
     ApplicationProfile:
       type: object
       required: [id, interfaceMode, hardwareProfile, onboarding, createdAt, updatedAt]

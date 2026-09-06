@@ -50,16 +50,20 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
     }).catch(error => setHardwareError((error as Error).message));
   }, [hardware, hardwareError, open]);
 
-  const practiceComplete = useMemo(() => Boolean(library?.tests.some(test => test.attempts.length)
-    || library?.drafts.some(draft => Object.values(draft.submittedQuestions).some(Boolean))), [library]);
-  const generatedTest = library?.tests[0];
+  const onboardingDocument = library?.documents.find(document => document.id === profile.onboarding.documentId && document.content.trim());
+  const generationJob = library?.jobs.find(job => job.id === profile.onboarding.generationJobId
+    && job.testId === profile.onboarding.generationTestId);
+  const generatedTest = library?.tests.find(test => test.id === profile.onboarding.generationTestId);
+  const practiceComplete = useMemo(() => Boolean(generatedTest?.attempts.length
+    || library?.drafts.some(draft => draft.testId === generatedTest?.id
+      && Object.values(draft.submittedQuestions).some(Boolean))), [generatedTest, library]);
   const requirementMet: Record<OnboardingStep, boolean> = {
     welcome: true,
     hardware: Boolean(hardware) || Boolean(hardwareError),
     provider: configured.providers.length > 0,
-    document: Boolean(library?.documents.length),
+    document: Boolean(onboardingDocument),
     instruction: true,
-    generate: Boolean(library?.tests.length),
+    generate: Boolean(generationJob && generatedTest),
     practice: practiceComplete,
     complete: true,
   };
@@ -143,7 +147,7 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
       <FileAddOutlined className="onboarding-hero-icon" />
       <Typography.Title level={3}>Import a real document</Typography.Title>
       <Typography.Paragraph>Add a PDF, Markdown, or text file. This step completes only after readable content is extracted and saved.</Typography.Paragraph>
-      {library?.documents.length ? <Alert type="success" showIcon message={`${library.documents.length} document${library.documents.length === 1 ? '' : 's'} ready`} /> : null}
+      {onboardingDocument ? <Alert type="success" showIcon message={`${onboardingDocument.name} is readable and saved`} /> : null}
       <Button type="primary" icon={<FileAddOutlined />} onClick={onAddDocument}>Add document</Button>
     </Space>}
 
@@ -159,7 +163,8 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
       <FormOutlined className="onboarding-hero-icon" />
       <Typography.Title level={3}>Create your first quiz</Typography.Title>
       <Typography.Paragraph>Review the source, learning goal, provider, and privacy note, then queue generation. Progress is checkpointed in Activity.</Typography.Paragraph>
-      {library?.jobs.some(job => ['queued', 'running', 'waiting', 'paused'].includes(job.status)) && <Alert type="info" showIcon message="Your quiz is being generated" description="You can pause this walkthrough and come back when it finishes." />}
+      {generationJob && ['queued', 'running', 'waiting', 'paused'].includes(generationJob.status) && <Alert type="info" showIcon message="Your quiz is being generated" description="You can pause this walkthrough and come back when it finishes." />}
+      {generationJob?.status === 'error' && <Alert type="warning" showIcon message="Generation needs attention" description={generationJob.error || 'Open Activity to retry or switch routes without losing progress.'} />}
       {generatedTest && <Alert type="success" showIcon message={`${generatedTest.name} is ready`} description={`${generatedTest.questions.length} validated questions`} />}
       <Button type="primary" icon={<FormOutlined />} onClick={onAddTest}>{generatedTest ? 'Create another test' : 'Create test'}</Button>
     </Space>}

@@ -12,7 +12,13 @@ import { useConfiguredProviders } from '../utils/useConfiguredProviders';
 import { BUILT_IN_PROMPT_PROFILE, snapshotPromptProfile } from '../utils/promptProfiles';
 import { serviceJson, serviceRequest } from '../utils/serviceApi';
 
-interface Props { onClose: () => void; onManagePlugins: () => void; onOpenPromptStudio: () => void; profile: StoredAppProfile; }
+interface Props {
+  onClose: () => void;
+  onManagePlugins: () => void;
+  onOpenPromptStudio: () => void;
+  onCreated?: (jobs: StoredGenerationJob[]) => void | Promise<void>;
+  profile: StoredAppProfile;
+}
 type CreationMode = 'combined' | 'separate';
 type QuizPreset = 'quick' | 'balanced' | 'deep';
 type ResolvedSettings = { profile: string; values: Record<string, string | number | boolean> };
@@ -32,7 +38,7 @@ const uniqueTestName = (requestedName: string, usedNames: Set<string>) => {
   return candidate;
 };
 
-export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStudio, profile }: Props) {
+export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStudio, onCreated, profile }: Props) {
   const settings = useMemo(getProviderSettings, []);
   const configured = useConfiguredProviders();
   const documents = useLiveQuery(() => db.documents.orderBy('createdAt').reverse().toArray(), []) ?? [];
@@ -133,6 +139,7 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
       const created = await serviceJson<{ jobs: StoredGenerationJob[] }>('/api/v1/jobs', 'POST', { jobs });
       await Promise.all(created.jobs.map(job => applyServiceRecord('generationJobs', job.id, job)));
       void pumpGenerationQueue();
+      await onCreated?.(created.jobs);
       message.success(`${jobs.length} test${jobs.length === 1 ? '' : 's'} queued. You can keep using Quizzer while generation runs.`);
       onClose();
     } catch (error) {

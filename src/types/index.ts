@@ -147,6 +147,9 @@ export interface OnboardingState {
   currentStep: OnboardingStep;
   skipped: boolean;
   completedAt?: number;
+  documentId?: string;
+  generationJobId?: string;
+  generationTestId?: string;
 }
 
 export interface HardwareCapabilities {

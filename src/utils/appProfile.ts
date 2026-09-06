@@ -114,3 +114,15 @@ export const restartOnboarding = async () => updateAppProfile({
     skipped: false,
   },
 });
+
+export const recordOnboardingDocument = async (documentId: string) => {
+  const profile = await ensureAppProfile();
+  if (profile.onboarding.currentStep !== 'document' || profile.onboarding.completedAt || profile.onboarding.skipped) return;
+  await updateAppProfile({ onboarding: { ...profile.onboarding, documentId } });
+};
+
+export const recordOnboardingGeneration = async (generationJobId: string, generationTestId: string) => {
+  const profile = await ensureAppProfile();
+  if (profile.onboarding.currentStep !== 'generate' || profile.onboarding.completedAt || profile.onboarding.skipped) return;
+  await updateAppProfile({ onboarding: { ...profile.onboarding, generationJobId, generationTestId } });
+};

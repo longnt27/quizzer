@@ -24,7 +24,7 @@ interface PendingDocument {
 
 interface Props {
   onClose: () => void;
-  onCreated: (id: string) => void;
+  onCreated: (id: string) => void | Promise<void>;
 }
 
 const parseTags = (value: string) => value.split(',').map(tag => tag.trim()).filter(Boolean);
@@ -125,7 +125,7 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
         });
       }
       message.success(`${ready.length} document(s) added`);
-      onCreated(ready[0].id);
+      await onCreated(ready[0].id);
     } finally {
       setSaving(false);
     }

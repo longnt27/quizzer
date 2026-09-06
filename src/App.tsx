@@ -19,7 +19,7 @@ import type { StoredAppProfile } from './db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import HomePage from './components/HomePage';
 import OnboardingGuide from './components/OnboardingGuide';
-import { restartOnboarding, setInterfaceMode } from './utils/appProfile';
+import { recordOnboardingDocument, recordOnboardingGeneration, restartOnboarding, setInterfaceMode } from './utils/appProfile';
 import { useRuntimeSettings } from './utils/useRuntimeSettings';
 
 interface ShellProps { dark: boolean; onToggleTheme: () => void; }
@@ -145,8 +145,10 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
       <Drawer placement="left" width="min(88vw, 340px)" open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} styles={{ body: { padding: 0 } }}>
         <Sidebar {...sidebarProps} embedded />
       </Drawer>
-      {showAddModal && profile && <AddTestModal profile={profile} onClose={() => setShowAddModal(false)} onManagePlugins={() => setShowPluginsModal(true)} onOpenPromptStudio={() => setShowPromptStudio(true)} />}
-      {showDocumentModal && <AddDocumentModal onClose={() => setShowDocumentModal(false)} onCreated={id => {
+      {showAddModal && profile && <AddTestModal profile={profile} onClose={() => setShowAddModal(false)} onManagePlugins={() => setShowPluginsModal(true)} onOpenPromptStudio={() => setShowPromptStudio(true)}
+        onCreated={async jobs => { const job = jobs[0]; if (job) await recordOnboardingGeneration(job.id, job.testId); }} />}
+      {showDocumentModal && <AddDocumentModal onClose={() => setShowDocumentModal(false)} onCreated={async id => {
+        await recordOnboardingDocument(id);
         setSelection({ kind: 'document', id }); setShowDocumentModal(false);
       }} />}
       {showPluginsModal && profile && <PluginsModal interfaceMode={profile.interfaceMode} onClose={() => setShowPluginsModal(false)} />}

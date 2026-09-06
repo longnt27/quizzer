@@ -202,6 +202,13 @@ test('provides onboarding, document, job, and event operations', async () => {
   assert.equal(savedProfile.status, 200);
   assert.deepEqual((await savedProfile.json()).profile.onboarding, onboarding);
 
+  const rejectedOnboarding = await authorized('/api/v1/onboarding', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ onboarding: { ...onboarding, generationJobId: 'job-without-test' } }),
+  });
+  assert.equal(rejectedOnboarding.status, 400);
+  assert.match((await rejectedOnboarding.json()).error, /recorded together/);
+
   const sync = await authorized('/api/storage/sync', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ changes: [

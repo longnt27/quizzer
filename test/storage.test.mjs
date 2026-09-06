@@ -93,6 +93,12 @@ test('synchronizes the versioned application profile', () => {
   });
   assert.equal(result.cursor, 4);
   assert.deepEqual(result.changes[0].data, profile);
+  assert.throws(() => syncStorage({
+    cursor: 4,
+    changes: [{ collection: 'profiles', id: profile.id, data: {
+      ...profile, onboarding: { ...profile.onboarding, currentStep: 'unknown' },
+    } }],
+  }), /Current onboarding step/);
 });
 
 test('synchronizes versioned prompt profiles', () => {
