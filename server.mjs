@@ -28,6 +28,7 @@ import { ProviderCredentialStore } from './server/provider-credentials.mjs';
 import { GenerationJobWorker } from './server/generation-worker.mjs';
 import { runGeneratorPlugin } from './server/plugin-generation.mjs';
 import { resolveEmbeddingProvider } from './server/plugin-embeddings.mjs';
+import { resolveVectorIndexProvider } from './server/plugin-vector-index.mjs';
 import { resolveDocumentExtractor, resolveOcrProvider } from './server/plugin-extraction.mjs';
 
 const configuredPortValue = process.env.QUIZZER_SERVICE_PORT ?? '8787';
@@ -62,7 +63,8 @@ const builtInPlugins = Object.freeze([
   { id: 'quizzer.extract.basic', name: 'Basic PDF.js and text extraction', capabilities: ['extractor'], builtIn: true },
   { id: 'quizzer.extract.marker', name: 'Marker visual extraction', capabilities: ['extractor'], builtIn: true },
   { id: 'quizzer.ocr.rapidocr', name: 'RapidOCR', capabilities: ['ocr'], builtIn: true },
-  { id: 'quizzer.index.fts5', name: 'SQLite FTS5 and BM25', capabilities: ['vector-index'], builtIn: true },
+  { id: 'quizzer.index.fts5', name: 'SQLite FTS5 and BM25', capabilities: ['sparse-search'], builtIn: true },
+  { id: 'quizzer.index.lancedb', name: 'LanceDB vector index', capabilities: ['vector-index'], builtIn: true },
   { id: 'quizzer.embed.minilm', name: 'MiniLM through Ollama', capabilities: ['embedder', 'reranker'], builtIn: true },
   { id: 'quizzer.generate.providers', name: 'Local agents and API providers', capabilities: ['generator'], builtIn: true },
 ]);
@@ -92,6 +94,9 @@ const retrievalIndex = new RetrievalIndex({
   densePath: process.env.QUIZZER_DENSE_INDEX_PATH || denseIndexPathFor(appDataDirectory),
   loadSettings: () => loadResolvedSettings(appDataDirectory),
   resolveEmbedding: settings => resolveEmbeddingProvider(settings, { loadManager: getPluginManager }),
+  resolveVectorIndex: (settings, { builtin }) => resolveVectorIndexProvider(settings, {
+    loadManager: getPluginManager, builtin,
+  }),
   invokeReranker: async (id, params, options) => {
     const manager = await getPluginManager();
     const plugin = (await manager.list()).find(item => item.id === id);

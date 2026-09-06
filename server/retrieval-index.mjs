@@ -4,12 +4,26 @@ import { fuseHybridRankings, reciprocalRankFusion } from './hybrid-retrieval.mjs
 import { SparseDocumentIndex } from './sparse-index.mjs';
 import { rerankRetrieval } from './reranking.mjs';
 import { condenseQuery, decomposeQuery, normalizeQuery } from './query-planning.mjs';
+import { resolveVectorIndexProvider } from './plugin-vector-index.mjs';
 
 const errorMessage = error => error instanceof Error ? error.message : String(error);
 const refusal = 'Quizzer could not find sufficient indexed evidence for this query.';
 
 const throwIfAborted = signal => {
   if (signal?.aborted) throw signal.reason ?? Object.assign(new Error('Retrieval cancelled'), { name: 'AbortError' });
+};
+
+const unavailableVectorIndex = (component, error) => {
+  const reject = async () => { throw error; };
+  return {
+    component,
+    identity: `unavailable:${component}`,
+    indexDocument: reject,
+    retrieve: reject,
+    removeDocument: reject,
+    status: reject,
+    close: async () => {},
+  };
 };
 
 /** Applies limit and contextBudget to a flat results array, returning capped results and token estimate. */
@@ -60,7 +74,10 @@ const hybridConfidence = (previews, results) => {
 };
 
 export class RetrievalIndex {
-  constructor({ sparsePath, densePath, loadSettings, embed = embedTextsWithOllama, resolveEmbedding, invokeReranker, invokeLocalHyde, onDenseIssue = () => {} }) {
+  constructor({
+    sparsePath, densePath, loadSettings, embed = embedTextsWithOllama, resolveEmbedding, resolveVectorIndex,
+    invokeReranker, invokeLocalHyde, onDenseIssue = () => {},
+  }) {
     if (typeof loadSettings !== 'function') throw new Error('Retrieval index requires a settings loader');
     if (typeof embed !== 'function') throw new Error('Retrieval index requires an embedding provider');
     this.sparse = new SparseDocumentIndex(sparsePath);
@@ -68,6 +85,8 @@ export class RetrievalIndex {
     this.loadSettings = loadSettings;
     this.embed = embed;
     this.resolveEmbedding = resolveEmbedding;
+    this.resolveVectorIndex = resolveVectorIndex
+      ?? (settings => resolveVectorIndexProvider(settings, { builtin: this.dense }));
     this.invokeReranker = invokeReranker;
     this.invokeLocalHyde = invokeLocalHyde;
     this.onDenseIssue = onDenseIssue;
@@ -86,30 +105,44 @@ export class RetrievalIndex {
     if (!embedding || typeof embedding.identity !== 'string' || !embedding.identity.trim() || typeof embedding.embed !== 'function') {
       throw new Error('Embedding provider resolution returned an invalid route');
     }
+    const vectorComponent = settings.values['retrieval.vectorIndexPlugin'] ?? 'builtin';
+    let vectorIndex;
+    try {
+      vectorIndex = await this.resolveVectorIndex(settings, { builtin: this.dense });
+      if (!vectorIndex || typeof vectorIndex.identity !== 'string' || !vectorIndex.identity.trim()
+        || ['indexDocument', 'retrieve', 'removeDocument', 'status'].some(method => typeof vectorIndex[method] !== 'function')) {
+        throw new Error('Vector-index provider resolution returned an invalid route');
+      }
+    } catch (error) {
+      vectorIndex = unavailableVectorIndex(vectorComponent, error);
+    }
     return {
       settings,
       embeddings: settings.values['embeddings.enabled'],
       embeddingModel: embedding.identity,
       embedding,
+      vectorIndex,
       retrievalMode: settings.values['retrieval.mode'],
     };
   }
 
   async indexDocument(record, options) {
     const sparse = this.sparse.indexDocument(record, options);
-    const { embeddings, embeddingModel, embedding } = await this.configuration();
-    if (!embeddings) return { ...sparse, dense: { status: 'disabled' } };
+    const { embeddings, embeddingModel, embedding, vectorIndex } = await this.configuration();
+    if (!embeddings) return { ...sparse, dense: { status: 'disabled', component: vectorIndex.component } };
     this.denseUsed = true;
     try {
-      const dense = await this.dense.indexDocument(record, {
+      const dense = await vectorIndex.indexDocument(record, {
         ...options,
         embeddingModel,
-        embed: texts => embedding.embed(texts),
+        embed: texts => embedding.embed(texts, { signal: options?.signal }),
       });
       this.denseIssue = undefined;
-      return { ...sparse, dense: { status: 'ready', ...dense } };
+      return { ...sparse, dense: { status: 'ready', component: vectorIndex.component, ...dense } };
     } catch (error) {
-      this.denseIssue = { model: embeddingModel, message: errorMessage(error), occurredAt: Date.now() };
+      this.denseIssue = {
+        model: embeddingModel, component: vectorIndex.component, message: errorMessage(error), occurredAt: Date.now(),
+      };
       this.onDenseIssue(this.denseIssue, record);
       throw new Error(`Sparse indexing completed, but dense indexing with ${embeddingModel} is unavailable: ${this.denseIssue.message}`, { cause: error });
     }
@@ -121,14 +154,17 @@ export class RetrievalIndex {
 
   async status() {
     const sparse = this.sparse.status();
-    const { embeddings, embeddingModel } = await this.configuration();
-    const currentIssue = this.denseIssue?.model === embeddingModel ? this.denseIssue : undefined;
+    const { embeddings, embeddingModel, vectorIndex } = await this.configuration();
+    const currentIssue = this.denseIssue?.model === embeddingModel && this.denseIssue?.component === vectorIndex.component
+      ? this.denseIssue : undefined;
     let dense = {
       version: 1,
-      engine: 'lancedb',
-      databasePath: this.dense.databasePath,
+      engine: vectorIndex.component === 'builtin' ? 'lancedb' : 'plugin',
+      ...(vectorIndex.databasePath ? { databasePath: vectorIndex.databasePath } : {}),
       enabled: embeddings,
       embeddingModel,
+      component: vectorIndex.component,
+      identity: vectorIndex.identity,
       status: embeddings ? 'not-built' : 'disabled',
       tableCount: 0,
       chunkCount: 0,
@@ -136,22 +172,30 @@ export class RetrievalIndex {
     };
     if (embeddings || this.denseUsed) {
       try {
-        const persisted = await this.dense.status();
-        const activeTables = persisted.tables.filter(table => table.embeddingModel === embeddingModel);
-        const activeChunkCount = activeTables.reduce((sum, table) => sum + table.chunks, 0);
+        const persisted = await vectorIndex.status({ embeddingModel });
+        const activeTables = persisted.tables?.filter(table => table.embeddingModel === embeddingModel) ?? [];
+        const activeTableCount = persisted.activeTableCount ?? activeTables.length;
+        const activeChunkCount = persisted.activeChunkCount ?? activeTables.reduce((sum, table) => sum + table.chunks, 0);
         const status = !embeddings ? 'disabled' : currentIssue ? 'unavailable' : activeChunkCount ? 'ready' : 'not-built';
-        dense = { ...persisted, enabled: embeddings, embeddingModel, status, activeTableCount: activeTables.length, activeChunkCount };
+        dense = {
+          ...persisted, enabled: embeddings, embeddingModel, component: vectorIndex.component,
+          identity: vectorIndex.identity, status, activeTableCount, activeChunkCount,
+        };
       } catch (error) {
-        this.denseIssue = { model: embeddingModel, message: errorMessage(error), occurredAt: Date.now() };
+        this.denseIssue = {
+          model: embeddingModel, component: vectorIndex.component, message: errorMessage(error), occurredAt: Date.now(),
+        };
         dense = { ...dense, status: embeddings ? 'unavailable' : 'disabled' };
       }
     }
-    if (embeddings && currentIssue) dense.issue = currentIssue;
+    const reportedIssue = currentIssue ?? (this.denseIssue?.model === embeddingModel
+      && this.denseIssue?.component === vectorIndex.component ? this.denseIssue : undefined);
+    if (embeddings && reportedIssue) dense.issue = reportedIssue;
     return { ...sparse, dense };
   }
 
   async retrieve(options = {}) {
-    const { settings, embeddings, embeddingModel, embedding, retrievalMode } = await this.configuration();
+    const { settings, embeddings, embeddingModel, embedding, vectorIndex, retrievalMode } = await this.configuration();
     throwIfAborted(options.signal);
     const retrievalOptions = {
       ...options,
@@ -228,11 +272,12 @@ export class RetrievalIndex {
         const allDenseResults = [];
         for (const vector of vectors) {
           throwIfAborted(options.signal);
-          const dense = await this.dense.retrieve({
+          const dense = await vectorIndex.retrieve({
             vector,
             embeddingModel,
             documentIds: retrievalOptions.documentIds,
             limit: Math.min(100, Math.max(10, requestedLimit * 4)),
+            signal: options.signal,
           });
           allDenseResults.push(dense.filter(result => normalizedTags.every(
             tag => result.tags.map(value => String(value).toLocaleLowerCase()).includes(tag),
@@ -242,25 +287,35 @@ export class RetrievalIndex {
           sparseRankings: sparsePreviews.map(item => item.results),
           denseRankings: allDenseResults,
         });
-        const confidence = hybridConfidence(sparsePreviews, fused);
+        const hydratedFused = typeof this.sparse.hydrateResults === 'function'
+          ? this.sparse.hydrateResults(fused, { includeNeighbors: false, dropMissing: true })
+          : fused;
+        const confidence = hybridConfidence(sparsePreviews, hydratedFused);
         this.denseIssue = undefined;
         preview = {
           query: baseQuery,
           method: 'hybrid-rrf',
           correctivePass: sparsePreviews.some(item => item.correctivePass),
           confidence,
-          results: fused,
+          results: hydratedFused,
           planningTrace,
           ...(confidence === 'low' ? { refusal } : {}),
-          dense: { status: 'ready', embeddingModel, candidates: allDenseResults.reduce((sum, r) => sum + r.length, 0) },
+          dense: {
+            status: 'ready', component: vectorIndex.component, embeddingModel,
+            candidates: allDenseResults.reduce((sum, r) => sum + r.length, 0),
+          },
         };
       } catch (error) {
         if (options.signal?.aborted || error?.name === 'AbortError') throw error;
-        this.denseIssue = { model: embeddingModel, message: errorMessage(error), occurredAt: Date.now() };
+        this.denseIssue = {
+          model: embeddingModel, component: vectorIndex.component, message: errorMessage(error), occurredAt: Date.now(),
+        };
         preview = {
           ...preview,
           requestedMethod: 'hybrid-rrf',
-          dense: { status: 'unavailable', embeddingModel, error: this.denseIssue.message },
+          dense: {
+            status: 'unavailable', component: vectorIndex.component, embeddingModel, error: this.denseIssue.message,
+          },
         };
       }
     }
@@ -292,7 +347,11 @@ export class RetrievalIndex {
   async removeDocument(id) {
     const sparse = this.sparse.removeDocument(id);
     this.denseUsed = true;
-    const dense = await this.dense.removeDocument(id);
+    const { vectorIndex } = await this.configuration();
+    const dense = vectorIndex.component === 'builtin'
+      ? await vectorIndex.removeDocument(id)
+      : await vectorIndex.removeDocument(id).catch(error => ({ id, removedChunks: 0, issue: errorMessage(error) }));
+    if (vectorIndex.component !== 'builtin') await this.dense.removeDocument(id);
     return { sparse, dense };
   }
 

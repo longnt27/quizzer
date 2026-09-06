@@ -918,13 +918,15 @@ components:
         documents: { type: array, items: { type: object } }
         dense:
           type: object
-          required: [version, engine, databasePath, enabled, embeddingModel, status, tableCount, chunkCount, tables]
+          required: [version, engine, enabled, embeddingModel, component, identity, status, tableCount, chunkCount, tables]
           properties:
             version: { type: integer, const: 1 }
-            engine: { type: string, const: lancedb }
+            engine: { type: string }
             databasePath: { type: string }
             enabled: { type: boolean }
             embeddingModel: { type: string }
+            component: { type: string }
+            identity: { type: string }
             status: { type: string, enum: [disabled, not-built, ready, unavailable] }
             tableCount: { type: integer, minimum: 0 }
             chunkCount: { type: integer, minimum: 0 }
@@ -1016,6 +1018,7 @@ components:
           required: [status, embeddingModel]
           properties:
             status: { type: string, enum: [ready, unavailable] }
+            component: { type: string }
             embeddingModel: { type: string }
             candidates: { type: integer, minimum: 0 }
             error: { type: string }

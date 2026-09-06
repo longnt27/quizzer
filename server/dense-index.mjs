@@ -13,7 +13,7 @@ const loadLanceDb = () => {
   return lanceDbModule;
 };
 
-const documentVersionHash = (document, embeddingModel) => sha256(JSON.stringify({
+export const denseDocumentVersionHash = (document, embeddingModel) => sha256(JSON.stringify({
   contentHash: document.contentHash || sha256(document.content),
   parserVersion: document.parserVersion || 'unknown',
   extractionContentHash: document.extractionContentHash || sha256(document.content),
@@ -21,7 +21,7 @@ const documentVersionHash = (document, embeddingModel) => sha256(JSON.stringify(
   length: document.content.length,
 }));
 
-const sourceRows = record => {
+export const denseSourceRows = record => {
   const document = record.data;
   const sourceChunks = Array.isArray(document.chunks) && document.chunks.length
     ? document.chunks
@@ -49,7 +49,7 @@ const sourceRows = record => {
   }).filter(row => row.content);
 };
 
-const validateVectors = (vectors, expected, dimension) => {
+export const validateDenseVectors = (vectors, expected, dimension) => {
   if (!Array.isArray(vectors) || vectors.length !== expected || !vectors.length) {
     throw new Error(`Embedding provider returned ${Array.isArray(vectors) ? vectors.length : 0} vectors for ${expected} chunks`);
   }
@@ -60,6 +60,21 @@ const validateVectors = (vectors, expected, dimension) => {
     throw new Error('Embedding provider returned invalid or inconsistent vectors');
   }
   return resolvedDimension;
+};
+
+export const embedDenseRows = async (rows, embed, { batchSize = 250 } = {}) => {
+  if (!Array.isArray(rows) || !rows.length) throw new Error('Dense indexing requires at least one source row');
+  if (typeof embed !== 'function') throw new Error('Dense indexing requires an embedding provider');
+  if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 250) throw new Error('Dense embedding batch size must be from 1 to 250');
+  const vectors = [];
+  let dimension;
+  for (let offset = 0; offset < rows.length; offset += batchSize) {
+    const batch = rows.slice(offset, offset + batchSize);
+    const embedded = await embed(batch.map(row => row.content));
+    dimension = validateDenseVectors(embedded, batch.length, dimension);
+    vectors.push(...embedded);
+  }
+  return { vectors, dimension };
 };
 
 const tableNameFor = (embeddingModel, dimension) => `${TABLE_PREFIX}${sha256(embeddingModel).slice(0, 12)}_${dimension}`;
@@ -97,9 +112,9 @@ export class DenseDocumentIndex {
     if (!record.data.content.trim()) throw new Error(`Document ${record.id} contains no indexable text`);
     if (typeof embeddingModel !== 'string' || !embeddingModel.trim()) throw new Error('Dense indexing requires an embedding model');
     if (typeof embed !== 'function') throw new Error('Dense indexing requires an embedding provider');
-    const rows = sourceRows(record);
+    const rows = denseSourceRows(record);
     if (!rows.length) throw new Error(`Document ${record.id} contains no indexable chunks`);
-    const versionHash = documentVersionHash(record.data, embeddingModel);
+    const versionHash = denseDocumentVersionHash(record.data, embeddingModel);
     const predicate = `document_id = ${sqlString(record.id)}`;
 
     if (!force) {
@@ -117,8 +132,7 @@ export class DenseDocumentIndex {
       }
     }
 
-    const probeVectors = await embed(rows.map(row => row.content));
-    const dimension = validateVectors(probeVectors, rows.length);
+    const { vectors: probeVectors, dimension } = await embedDenseRows(rows, embed);
     const tableName = tableNameFor(embeddingModel, dimension);
     let table = await this.#table(tableName);
     const embeddedRows = rows.map((row, index) => ({
@@ -138,7 +152,7 @@ export class DenseDocumentIndex {
   }
 
   async retrieve({ vector, embeddingModel, documentIds = [], limit = 10 } = {}) {
-    const dimension = validateVectors([vector], 1);
+    const dimension = validateDenseVectors([vector], 1);
     if (typeof embeddingModel !== 'string' || !embeddingModel.trim()) throw new Error('Dense retrieval requires an embedding model');
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new Error('Dense retrieval limit must be from 1 to 100');
     const table = await this.#table(tableNameFor(embeddingModel, dimension));

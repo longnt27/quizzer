@@ -126,6 +126,67 @@ test('keeps resolved plugin identities separate and uses the resolved embedder',
   }
 });
 
+test('routes dense work through a vector-index plugin and drops stale plugin spans', async () => {
+  const routedDirectory = join(directory, 'resolved-vector-index');
+  const calls = [];
+  let knownSpan;
+  const vectorRoute = {
+    component: 'dev.quizzer.vector',
+    identity: 'plugin:dev.quizzer.vector@1.0.0',
+    indexDocument: async source => {
+      calls.push('index');
+      knownSpan = `${source.id}:span:0:test`;
+      return {
+        id: source.id, name: source.data.name, versionHash: 'v1', chunks: 1, reused: false,
+        embeddingModel: 'mini-v1', dimension: 2, tableName: 'plugin:test',
+      };
+    },
+    retrieve: async () => {
+      calls.push('retrieve');
+      return [
+        { sourceSpanId: knownSpan, documentId: record.id, tags: ['iac'], score: 0.95 },
+        { sourceSpanId: 'deleted:span', documentId: 'deleted', tags: ['iac'], score: 0.99 },
+      ];
+    },
+    status: async () => ({
+      version: 1, engine: 'test-vector', tableCount: 1, chunkCount: 1,
+      activeTableCount: 1, activeChunkCount: 1, tables: [],
+    }),
+    removeDocument: async id => { calls.push(`remove:${id}`); return { id, removedChunks: 1 }; },
+  };
+  const routed = new RetrievalIndex({
+    sparsePath: join(routedDirectory, 'sparse.sqlite'),
+    densePath: join(routedDirectory, 'dense.lance'),
+    loadSettings: async () => ({ values: {
+      ...settings,
+      'embeddings.enabled': true,
+      'retrieval.mode': 'hybrid',
+      'retrieval.rerank': false,
+      'retrieval.vectorIndexPlugin': vectorRoute.component,
+    } }),
+    embed: async texts => texts.map(vectorFor),
+    resolveVectorIndex: async () => vectorRoute,
+  });
+  try {
+    await routed.indexDocument(record);
+    knownSpan = routed.sparse.retrieve({ query: 'Terraform state' }).results[0].sourceSpanId;
+    const retrieved = await routed.retrieve({ query: 'Terraform state', tags: ['iac'] });
+    assert.equal(retrieved.dense.component, vectorRoute.component);
+    assert.ok(retrieved.results.some(result => result.sourceSpanId === knownSpan));
+    assert.ok(!retrieved.results.some(result => result.sourceSpanId === 'deleted:span'));
+    const status = await routed.status();
+    assert.equal(status.dense.status, 'ready');
+    assert.equal(status.dense.engine, 'test-vector');
+    assert.equal(status.dense.databasePath, undefined);
+    await routed.removeDocument(record.id);
+    assert.ok(calls.includes('index'));
+    assert.ok(calls.includes('retrieve'));
+    assert.ok(calls.includes(`remove:${record.id}`));
+  } finally {
+    await routed.close();
+  }
+});
+
 const planningSettings = mode => ({
   ...settings,
   'embeddings.enabled': false,
