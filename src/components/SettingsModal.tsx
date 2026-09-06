@@ -7,6 +7,7 @@ import { updateAppProfile } from '../utils/appProfile';
 import { setGenerationBatchSize, setGenerationConcurrency } from '../utils/generationSettings';
 import { getProviderSettings, PROVIDERS, setProviderSettings } from '../utils/providerSettings';
 import { getMessageApi } from '../utils/messageProvider';
+import { getModalApi } from '../utils/modalProvider';
 import { serviceJson, serviceRequest } from '../utils/serviceApi';
 import UpdaterStatusView from './UpdaterStatus';
 
@@ -127,7 +128,7 @@ export default function SettingsModal({ profile, onClose }: Props) {
       });
     };
     if (key === 'plugins.developerMode' && value === true && draft[key] !== true) {
-      Modal.confirm({
+      getModalApi().confirm({
         title: 'Enable Advanced Developer Mode?',
         content: 'Unsigned plugins can execute local code with their declared permissions. Only install plugins whose source and hashes you have verified.',
         okText: 'Enable developer mode',

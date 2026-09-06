@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, ConfigProvider, Drawer, Grid, Layout, message, theme } from 'antd';
+import { App as AntdApp, Button, ConfigProvider, Drawer, Grid, Layout, theme } from 'antd';
 import { ApiOutlined, ExperimentOutlined, FileAddOutlined, FormOutlined, HomeOutlined, MenuOutlined, MoonOutlined, QuestionCircleOutlined, SettingOutlined, SwapOutlined, SyncOutlined, SunOutlined } from '@ant-design/icons';
 import Sidebar, { type LibrarySelection } from './components/Sidebar';
 import MainContent from './components/MainContent';
@@ -13,6 +13,7 @@ import PromptStudio from './components/PromptStudio';
 import GenerationWorker from './components/GenerationWorker';
 import { GenerationActivity, GenerationCenter } from './components/GenerationCenter';
 import { setMessageApi } from './utils/messageProvider';
+import { setModalApi } from './utils/modalProvider';
 import type { TestSession } from './types';
 import { db } from './db/db';
 import type { StoredAppProfile } from './db/db';
@@ -36,12 +37,13 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
   const [showOnboarding, setShowOnboarding] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [session, setSession] = useState<TestSession | null>(null);
-  const [messageApi, contextHolder] = message.useMessage();
+  const { message: messageApi, modal: modalApi } = AntdApp.useApp();
   const screens = Grid.useBreakpoint();
   const mobile = screens.md === false;
   const profile = useLiveQuery(() => db.profiles.get('default'), []) as StoredAppProfile | undefined;
   useRuntimeSettings(profile);
   setMessageApi(messageApi);
+  setModalApi(modalApi);
 
   useEffect(() => {
     let active = true;
@@ -117,7 +119,6 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
   ];
 
   return <>
-    {contextHolder}
     <GenerationWorker />
     <Layout className="app-shell">
       {!mobile && session?.mode !== 'taking' && <Sidebar {...sidebarProps} />}
@@ -184,7 +185,9 @@ export default function App() {
       algorithm: dark ? theme.darkAlgorithm : theme.defaultAlgorithm,
       token: { colorPrimary: '#1677ff', borderRadius: 8 },
     }}>
-      <AppShell dark={dark} onToggleTheme={() => setDark(value => !value)} />
+      <AntdApp>
+        <AppShell dark={dark} onToggleTheme={() => setDark(value => !value)} />
+      </AntdApp>
     </ConfigProvider>
   );
 }
