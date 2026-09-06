@@ -1,4 +1,5 @@
 import type { GenerationProvider, ProviderRoute } from '../types';
+import { serviceJson } from './serviceApi';
 
 const PROVIDER_SETTINGS_KEY = 'quizzer.providerSettings';
 const API_KEY_PREFIX = 'quizzer.apiKey.';
@@ -87,16 +88,26 @@ export const setProviderSettings = (settings: ProviderSettings) => {
 
 export const getApiKey = (provider: GenerationProvider) => sessionStorage.getItem(`${API_KEY_PREFIX}${provider}`) ?? rememberedApiKeys[provider] ?? '';
 
+export const syncProviderCredentials = async () => {
+  const values = Object.fromEntries(API_PROVIDERS.flatMap(({ id }) => {
+    const value = getApiKey(id);
+    return value ? [[id, value]] : [];
+  }));
+  return serviceJson<{ providers: GenerationProvider[] }>('/api/v1/provider-credentials', 'PUT', { values });
+};
+
 export const setApiKey = (provider: GenerationProvider, value: string) => {
   const key = `${API_KEY_PREFIX}${provider}`;
   if (value) sessionStorage.setItem(key, value);
   else sessionStorage.removeItem(key);
+  void syncProviderCredentials().catch(() => {});
 };
 
 export const loadRememberedApiKeys = async () => {
   if (!window.quizzerDesktop) return { values: rememberedApiKeys, providers: [] as GenerationProvider[] };
   const values = await window.quizzerDesktop.credentials.list();
   rememberedApiKeys = { ...values };
+  await syncProviderCredentials();
   window.dispatchEvent(new Event('quizzer:provider-settings'));
   return { values: rememberedApiKeys, providers: Object.keys(values) as GenerationProvider[] };
 };

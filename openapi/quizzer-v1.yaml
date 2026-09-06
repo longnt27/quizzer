@@ -113,6 +113,53 @@ paths:
           $ref: '#/components/responses/InvalidRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /provider-credentials:
+    get:
+      operationId: getProviderCredentialStatus
+      summary: List API providers with an in-memory or environment credential, never credential values
+      responses:
+        '200':
+          description: Configured provider names
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [providers]
+                properties:
+                  providers:
+                    type: array
+                    uniqueItems: true
+                    items: { type: string, enum: [gemini, anthropic, openai, openrouter, deepseek] }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: replaceProviderCredentials
+      summary: Replace volatile provider credentials used by service-owned jobs
+      description: Values remain in service memory only and are excluded from settings, logs, backups, and diagnostics.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [values]
+              properties:
+                values:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    gemini: { type: string, minLength: 1, maxLength: 16384, writeOnly: true }
+                    anthropic: { type: string, minLength: 1, maxLength: 16384, writeOnly: true }
+                    openai: { type: string, minLength: 1, maxLength: 16384, writeOnly: true }
+                    openrouter: { type: string, minLength: 1, maxLength: 16384, writeOnly: true }
+                    deepseek: { type: string, minLength: 1, maxLength: 16384, writeOnly: true }
+      responses:
+        '200':
+          description: Configured provider names, without values
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /onboarding:
     get:
       operationId: getOnboarding

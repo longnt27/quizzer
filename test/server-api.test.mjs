@@ -152,6 +152,28 @@ test('exposes settings schema, precedence, and validated updates', async () => {
   assert.equal(rejected.status, 400);
 });
 
+test('accepts volatile provider credentials without exposing their values', async () => {
+  const stored = await authorized('/api/v1/provider-credentials', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ values: { openai: 'service-secret', gemini: 'another-secret' } }),
+  });
+  assert.equal(stored.status, 200);
+  assert.deepEqual(await stored.json(), { providers: ['gemini', 'openai'] });
+
+  const status = await authorized('/api/v1/provider-credentials');
+  const serialized = JSON.stringify(await status.json());
+  assert.equal(serialized, '{"providers":["gemini","openai"]}');
+  assert.equal(serialized.includes('service-secret'), false);
+
+  const rejected = await authorized('/api/v1/provider-credentials', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ values: { codex: 'must-not-be-accepted' } }),
+  });
+  assert.equal(rejected.status, 400);
+});
+
 test('exposes the plugin contract and bounded lifecycle collection', async () => {
   const schema = await (await authorized('/api/v1/plugins/schema')).json();
   assert.equal(schema.schema.properties.protocolVersion.const, 1);

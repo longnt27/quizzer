@@ -25,6 +25,7 @@ import { providerConcurrencyLimits, publicProviderPolicies } from './server/prov
 import { embedTextsWithOllama } from './server/embeddings.mjs';
 import { RetrievalIndex } from './server/retrieval-index.mjs';
 import { bindRequestCancellation } from './server/request-lifetime.mjs';
+import { ProviderCredentialStore } from './server/provider-credentials.mjs';
 
 const configuredPortValue = process.env.QUIZZER_SERVICE_PORT ?? '8787';
 const configuredPort = Number(configuredPortValue);
@@ -40,6 +41,15 @@ const managedMarkerExecutable = join(managedMarkerDirectory, process.platform ==
 const managedOcrDirectory = join(appDataDirectory, '.quizzer-tools', 'ocr');
 const managedOcrPython = join(managedOcrDirectory, process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'python.exe' : 'python');
 const serviceToken = await ensureServiceToken(appDataDirectory);
+const providerCredentials = new ProviderCredentialStore();
+process.parentPort?.on?.('message', event => {
+  const message = event?.data ?? event;
+  if (message?.type !== 'quizzer-provider-credentials') return;
+  try { providerCredentials.replace(message.values); }
+  catch (error) {
+    process.stderr.write(`Credential handoff rejected: ${error instanceof Error ? error.message : String(error)}\n`);
+  }
+});
 const ocrScript = process.env.QUIZZER_OCR_SCRIPT || (runningAsSingleExecutable
   ? await materializeRuntimeAsset('scripts/ocr_image.py', join(appDataDirectory, 'runtime', 'ocr_image.py'))
   : join(resourceDirectory, 'scripts', 'ocr_image.py'));
@@ -980,7 +990,7 @@ const handleVersionedApi = async (request, response, url) => {
         hardware,
         providers: Object.keys(providerRunners),
         providerPolicies: publicProviderPolicies(settings.values),
-        operations: ['settings', 'onboarding', 'migrations', 'backups', 'plugins', 'objects', 'documents', 'indexing', 'retrieval', 'jobs', 'events'],
+        operations: ['settings', 'provider-credentials', 'onboarding', 'migrations', 'backups', 'plugins', 'objects', 'documents', 'indexing', 'retrieval', 'jobs', 'events'],
       });
       return true;
     }
@@ -1044,6 +1054,15 @@ const handleVersionedApi = async (request, response, url) => {
     if (request.method === 'PATCH' && url.pathname === '/api/v1/settings') {
       await updateUserSettings(await readJson(request));
       send(response, 200, await loadResolvedSettings(appDataDirectory));
+      return true;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/v1/provider-credentials') {
+      send(response, 200, providerCredentials.status());
+      return true;
+    }
+    if (request.method === 'PUT' && url.pathname === '/api/v1/provider-credentials') {
+      const body = await readJson(request);
+      send(response, 200, providerCredentials.replace(body?.values));
       return true;
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/plugins/schema') {
@@ -1428,7 +1447,12 @@ const serviceServer = createServer(async (request, response) => {
     if (!body || typeof body.prompt !== 'string' || !body.schema) throw new Error('prompt and schema are required');
     const runner = providerRunners[body.provider];
     if (!runner) throw new Error('Unsupported provider');
-    const output = await runner(body, lifetime.signal);
+    const output = await runner({
+      ...body,
+      apiKey: body.apiKey || (PROVIDER_POLICIES[body.provider]?.billing === 'usage-based'
+        ? providerCredentials.get(body.provider)
+        : undefined),
+    }, lifetime.signal);
     if (!response.destroyed) send(response, 200, { output });
   } catch (error) {
     const normalized = normalizeProviderError(error);

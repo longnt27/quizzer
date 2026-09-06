@@ -31,6 +31,21 @@ let serviceStableTimer;
 let trayRefreshTimer;
 let closeDecisionPending = false;
 
+const syncServiceCredentials = async () => {
+  if (!credentialVault || !servicePort || !serviceToken) return;
+  const values = await credentialVault.list();
+  if (service?.postMessage) {
+    service.postMessage({ type: 'quizzer-provider-credentials', values });
+    return;
+  }
+  const response = await net.fetch(`http://127.0.0.1:${servicePort}/api/v1/provider-credentials`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${serviceToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ values }),
+  });
+  if (!response.ok) throw new Error(`Could not hand credentials to the local service (${response.status})`);
+};
+
 const isTrustedRenderer = event => {
   return isTrustedRendererUrl(event.senderFrame.url, developmentUrl);
 };
@@ -54,11 +69,15 @@ const registerValidatedIpc = () => {
   });
   ipcMain.handle('credentials:set', async (event, provider, value) => {
     if (!isTrustedRenderer(event)) throw new Error('Untrusted renderer');
-    return credentialVault.set(provider, value);
+    const result = await credentialVault.set(provider, value);
+    await syncServiceCredentials();
+    return result;
   });
   ipcMain.handle('credentials:delete', async (event, provider) => {
     if (!isTrustedRenderer(event)) throw new Error('Untrusted renderer');
-    return credentialVault.delete(provider);
+    const result = await credentialVault.delete(provider);
+    await syncServiceCredentials();
+    return result;
   });
 };
 
@@ -124,6 +143,7 @@ const startService = async () => {
   }
   clearTimeout(serviceStableTimer);
   serviceStableTimer = setTimeout(() => { serviceRestartAttempt = 0; }, 60_000);
+  await syncServiceCredentials();
 };
 
 const registerApplicationProtocol = () => protocol.handle('quizzer', request => {
