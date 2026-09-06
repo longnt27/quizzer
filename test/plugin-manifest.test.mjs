@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import {
   assertPluginTrust, isPluginCompatible, loadPluginManifest, pluginSignaturePayload,
-  validatePluginManifest, verifyPluginFiles, verifyPluginSignature,
+  validatePluginManifest, validatePluginPath, verifyPluginFiles, verifyPluginSignature,
 } from '../plugin-sdk/manifest.mjs';
 
 const directory = await mkdtemp(join(tmpdir(), 'quizzer-plugin-manifest-test-'));
@@ -48,6 +48,79 @@ test('validates manifest capabilities, compatibility, paths, and file hashes', a
   }), /hash mismatch/);
 });
 
+test('rejects malformed values in every plugin manifest section', () => {
+  const invalid = [
+    [null, /must be an object/],
+    [[], /must be an object/],
+    [{ ...manifest, schemaVersion: 2 }, /schema version/],
+    [{ ...manifest, protocolVersion: 2 }, /protocol version/],
+    [{ ...manifest, id: 'Invalid Plugin' }, /id is invalid/],
+    [{ ...manifest, name: '' }, /name must be/],
+    [{ ...manifest, description: 42 }, /description/],
+    [{ ...manifest, version: '01.0.0' }, /semantic versioning/],
+    [{ ...manifest, capabilities: [] }, /capabilities/],
+    [{ ...manifest, capabilities: ['generator', 'generator'] }, /capabilities/],
+    [{ ...manifest, platforms: [] }, /platforms/],
+    [{ ...manifest, platforms: [null] }, /platform must be an object/],
+    [{ ...manifest, platforms: [{ os: 'aix', architectures: ['x64'] }] }, /operating system/],
+    [{ ...manifest, platforms: [{ os: process.platform, architectures: [] }] }, /architectures/],
+    [{ ...manifest, platforms: [{ os: process.platform, architectures: ['mips'] }] }, /architectures/],
+    [{ ...manifest, resources: null }, /resources must be an object/],
+    [{ ...manifest, resources: { ...manifest.resources, memoryMB: -1 } }, /memoryMB/],
+    [{ ...manifest, resources: { ...manifest.resources, diskMB: 1.5 } }, /diskMB/],
+    [{ ...manifest, resources: { ...manifest.resources, accelerators: ['tpu'] } }, /accelerators/],
+    [{ ...manifest, configuration: null }, /configuration must be an object/],
+    [{ ...manifest, permissions: { ...manifest.permissions, network: [false] } }, /network permissions/],
+    [{ ...manifest, permissions: { ...manifest.permissions, filesystem: ['everything'] } }, /filesystem permissions/],
+    [{ ...manifest, permissions: { ...manifest.permissions, secrets: ['lowercase'] } }, /secret permissions/],
+    [{ ...manifest, permissions: { ...manifest.permissions, subprocess: 'no' } }, /subprocess permission/],
+    [{ ...manifest, healthCheck: null }, /health check must be an object/],
+    [{ ...manifest, healthCheck: { ...manifest.healthCheck, method: '' } }, /health-check method/],
+    [{ ...manifest, healthCheck: { ...manifest.healthCheck, timeoutMs: 99 } }, /timeout/],
+    [{ ...manifest, files: [] }, /files are required/],
+    [{ ...manifest, files: [null] }, /file must be an object/],
+    [{ ...manifest, files: [{ path: entrypoint, sha256: 'invalid' }] }, /Invalid SHA-256/],
+    [{ ...manifest, files: [manifest.files[0], manifest.files[0]] }, /Duplicate plugin file/],
+    [{ ...manifest, entrypoint: 'other.mjs' }, /entrypoint must be included/],
+    [{ ...manifest, signature: { algorithm: 'rsa', keyId: 'key', value: 'signature' } }, /Ed25519/],
+    [{ ...manifest, signature: { algorithm: 'ed25519', keyId: '', value: 'signature' } }, /key id/],
+    [{ ...manifest, signature: { algorithm: 'ed25519', keyId: 'key', value: '' } }, /signature value/],
+  ];
+  for (const [candidate, pattern] of invalid) {
+    assert.throws(() => validatePluginManifest(candidate), pattern);
+  }
+
+  for (const path of ['', '/absolute/plugin.mjs', 'nested\\plugin.mjs', 'nested//plugin.mjs', './plugin.mjs', 'nested/../plugin.mjs']) {
+    assert.throws(() => validatePluginPath(path), /Plugin path|Unsafe plugin path/);
+  }
+  assert.equal(isPluginCompatible(manifest, { platform: 'aix', architecture: 'mips' }), false);
+});
+
+test('loads manifests without file verification and explains unreadable manifests', async () => {
+  assert.equal((await loadPluginManifest(directory, { verifyFiles: false })).id, manifest.id);
+
+  const malformed = join(directory, 'malformed');
+  await mkdir(malformed);
+  await writeFile(join(malformed, 'quizzer.plugin.json'), '{not json');
+  await assert.rejects(loadPluginManifest(malformed), /Could not read quizzer\.plugin\.json/);
+
+  const directoryManifest = join(directory, 'directory-manifest');
+  await mkdir(join(directoryManifest, 'quizzer.plugin.json'), { recursive: true });
+  await assert.rejects(loadPluginManifest(directoryManifest), /manifest must be a regular file/);
+});
+
+test('rejects symbolic links in verified plugin payloads', { skip: process.platform === 'win32' }, async () => {
+  const linkedDirectory = join(directory, 'linked');
+  await mkdir(linkedDirectory);
+  await symlink(join(directory, entrypoint), join(linkedDirectory, 'linked.mjs'));
+  const linkedManifest = {
+    ...manifest,
+    entrypoint: 'linked.mjs',
+    files: [{ path: 'linked.mjs', sha256: digest }],
+  };
+  await assert.rejects(verifyPluginFiles(linkedDirectory, linkedManifest), /regular file/);
+});
+
 test('requires developer mode for unsigned local plugins', () => {
   assert.throws(() => assertPluginTrust(manifest), /Developer Mode/);
   assert.equal(assertPluginTrust(manifest, { developerMode: true }), 'unsigned-local');
@@ -67,6 +140,9 @@ test('verifies Ed25519 signatures over canonical manifest metadata', () => {
   };
   const trustedKeys = { 'test-key': publicKey.export({ format: 'der', type: 'spki' }).toString('base64') };
   assert.equal(verifyPluginSignature(signed, trustedKeys), true);
+  assert.equal(verifyPluginSignature(manifest, trustedKeys), false);
   assert.equal(assertPluginTrust(signed, { trustedKeys }), 'signed');
+  assert.equal(verifyPluginSignature(signed, { 'test-key': publicKey.export({ format: 'pem', type: 'spki' }).toString() }), true);
+  assert.throws(() => verifyPluginSignature(signed, {}), /not trusted/);
   assert.throws(() => verifyPluginSignature({ ...signed, name: 'Tampered' }, trustedKeys), /verification failed/);
 });
