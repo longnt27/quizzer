@@ -71,7 +71,9 @@ export default function PromptStudio({ onClose }: Props) {
   const fileInput = useRef<HTMLInputElement>(null);
   const message = getMessageApi();
 
-  useEffect(() => { setDraft(cloneProfile(selected)); }, [selected]);
+  useEffect(() => {
+    setDraft(current => current.id === selected.id ? current : cloneProfile(selected));
+  }, [selected]);
   const errors = useMemo(() => promptTemplateErrors(draft.templates), [draft.templates]);
   const hasErrors = Object.values(errors).some(items => items?.length);
   const changed = JSON.stringify(draft) !== JSON.stringify(selected);
