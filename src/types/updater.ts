@@ -9,6 +9,7 @@ export type UpdateState =
   | 'downloaded'
   | 'applying'
   | 'installer-handoff-pending'
+  | 'manual-handoff'
   | 'error'
   | 'unsupported';
 
@@ -66,7 +67,7 @@ export interface UpdaterStatus {
   channel: UpdateChannel;
   target: UpdateTarget;
   keyStatus: KeyStatus;
-  mechanism: string;
+  mechanism: 'staged-ready' | 'staged-development' | 'manual-handoff';
   supported: boolean;
   updateInfo?: UpdateInfo;
   downloadProgress?: DownloadProgress;
@@ -89,7 +90,7 @@ export interface ApplyUpdateResult {
   applied: false;
   handoffPending: boolean;
   restartRequested: boolean;
-  mechanism: string;
+  mechanism: 'staged-ready' | 'staged-development' | 'manual-handoff';
   message: string;
   status: UpdaterStatus;
 }

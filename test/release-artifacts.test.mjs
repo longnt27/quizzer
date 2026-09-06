@@ -11,8 +11,10 @@ test('normalizes and merges cross-platform release artifacts without ambiguous t
     const builds = join(directory, 'builds');
     const downloads = join(directory, 'downloads');
     await mkdir(join(builds, 'mac', 'zip'), { recursive: true });
+    await mkdir(join(builds, 'mac', 'pkg'), { recursive: true });
     await mkdir(join(builds, 'linux', 'deb'), { recursive: true });
     await writeFile(join(builds, 'mac', 'zip', 'Quizzer-darwin-arm64.zip'), 'mac artifact');
+    await writeFile(join(builds, 'mac', 'pkg', 'Quizzer-darwin-arm64.pkg'), 'mac installer');
     await writeFile(join(builds, 'linux', 'deb', 'quizzer_amd64.deb'), 'linux artifact');
     await writeFile(join(builds, 'mac', 'quizzer'), 'mac cli');
     await writeFile(join(builds, 'linux', 'quizzer'), 'linux cli');
@@ -21,12 +23,13 @@ test('normalizes and merges cross-platform release artifacts without ambiguous t
     const merged = await mergeReleaseArtifacts({ inputDirectory: downloads, outputDirectory: join(directory, 'bundle') });
     assert.deepEqual(merged.artifacts.map(item => item.name).sort(), [
       'quizzer-1.0.0-beta.1-linux-x64.deb',
+      'quizzer-1.0.0-beta.1-macos-arm64.pkg',
       'quizzer-1.0.0-beta.1-macos-arm64.zip',
       'quizzer-cli-1.0.0-beta.1-linux-x64',
       'quizzer-cli-1.0.0-beta.1-macos-arm64',
     ]);
     assert.equal(merged.artifacts.filter(item => item.cli).length, 2);
-    assert.equal(JSON.parse(await readFile(merged.descriptorPath, 'utf8')).length, 4);
+    assert.equal(JSON.parse(await readFile(merged.descriptorPath, 'utf8')).length, 5);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

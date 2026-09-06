@@ -109,16 +109,16 @@ test('selectTargetArtifact filters for matching OS and architecture, excluding C
     },
   ];
 
-  // macOS arm64 prefers zip
+  // macOS arm64 prefers pkg, then dmg, then zip (handoff-capable formats first)
   const macArm = selectTargetArtifact(artifacts, { platform: 'macos', architecture: 'arm64' });
-  assert.equal(macArm.format, 'zip');
-  assert.equal(macArm.name, 'quizzer-1.0.0-macos-arm64.zip');
+  assert.equal(macArm.format, 'dmg');
+  assert.equal(macArm.name, 'quizzer-1.0.0-macos-arm64.dmg');
 
   // Explicit format override
   const macDmg = selectTargetArtifact(artifacts, { platform: 'macos', architecture: 'arm64', preferredFormat: 'dmg' });
   assert.equal(macDmg.format, 'dmg');
 
-  // Windows x64 selects exe
+  // Windows x64 prefers msi, then exe (only exe available in test fixtures)
   const win = selectTargetArtifact(artifacts, { platform: 'windows', architecture: 'x64' });
   assert.equal(win.format, 'exe');
 
