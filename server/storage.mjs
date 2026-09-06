@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { validateQuestionCheckpoint } from './question-validation.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream, mkdirSync } from 'node:fs';
 import { chmod, mkdir, writeFile } from 'node:fs/promises';
@@ -376,19 +377,32 @@ const generationPatchKeys = new Set([
   'progress', 'providerAttempts', 'questions', 'rejected', 'rounds', 'status',
 ]);
 const workerStatuses = new Set(['running', 'waiting', 'paused', 'error']);
+const generationQuestionTypes = new Set(['multiple-choice', 'fill-blank', 'reasoning', 'coding']);
 
-const validateGenerationPatch = patch => {
+const validateGenerationPatch = (patch, job = {}) => {
   if (!patch || typeof patch !== 'object' || Array.isArray(patch) || !Object.keys(patch).length) {
     throw new Error('A generation job patch is required');
   }
   const unsupported = Object.keys(patch).filter(key => !generationPatchKeys.has(key));
   if (unsupported.length) throw new Error(`Generation workers cannot update: ${unsupported.join(', ')}`);
   if (patch.status !== undefined && !workerStatuses.has(patch.status)) throw new Error('Invalid worker generation status');
+  if (patch.questions !== undefined) validateQuestionCheckpoint(patch.questions, job);
+  if (patch.rejected !== undefined && (!Number.isSafeInteger(patch.rejected) || patch.rejected < 0)) {
+    throw new Error('Rejected question count must be a non-negative integer');
+  }
+  if (patch.rounds !== undefined && (!patch.rounds || typeof patch.rounds !== 'object' || Array.isArray(patch.rounds)
+    || Object.entries(patch.rounds).some(([type, round]) => !generationQuestionTypes.has(type) || !Number.isSafeInteger(round) || round < 0 || round > 5))) {
+    throw new Error('Generation rounds are invalid');
+  }
+  if (patch.options !== undefined && (!patch.options || typeof patch.options !== 'object' || Array.isArray(patch.options))) {
+    throw new Error('Generation options must be an object');
+  }
+  if (patch.providerAttempts !== undefined && !Array.isArray(patch.providerAttempts)) throw new Error('Provider attempts must be an array');
 };
 
 export const updateGenerationJobWithLease = (id, { workerId, leaseId, patch, now = Date.now() } = {}) => {
-  validateGenerationPatch(patch);
   const existing = getRecord('generationJobs', id);
+  validateGenerationPatch(patch, { ...existing?.data, ...(patch?.options ? { options: patch.options } : {}) });
   requireActiveGenerationLease(existing, { workerId, leaseId, now });
   const running = (patch.status ?? existing.data.status) === 'running';
   return putRecord('generationJobs', id, {
@@ -408,11 +422,13 @@ export const completeGenerationJob = (id, {
   }
   if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw new Error('Generation completion patch must be an object');
   if (Object.hasOwn(patch, 'status')) throw new Error('Generation completion status is managed by the service');
-  validateGenerationPatch({ questions: patch.questions ?? test.questions, ...patch });
+  const existing = getRecord('generationJobs', id);
+  validateGenerationPatch({ questions: patch.questions ?? test.questions, ...patch }, {
+    ...existing?.data, ...(patch.options ? { options: patch.options } : {}),
+  });
   if (patch.questions && JSON.stringify(patch.questions) !== JSON.stringify(test.questions)) {
     throw new Error('Completed job questions must match the stored test');
   }
-  const existing = getRecord('generationJobs', id);
   if (existing?.data.status === 'completed' && existing.data.completionId === completionId) {
     const storedTest = getRecord('tests', existing.data.testId);
     if (!storedTest) throw new Error('Completed generation job is missing its test');

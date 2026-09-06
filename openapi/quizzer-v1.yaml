@@ -506,7 +506,7 @@ paths:
       - $ref: '#/components/parameters/JobId'
     patch:
       operationId: checkpointGenerationJob
-      summary: Persist a generation checkpoint while the worker lease is active
+      summary: Validate and persist a source-grounded generation checkpoint while the worker lease is active
       requestBody:
         required: true
         content:
@@ -546,7 +546,7 @@ paths:
       - $ref: '#/components/parameters/JobId'
     post:
       operationId: completeGenerationJob
-      summary: Atomically store a generated test and complete its leased job
+      summary: Revalidate every question, atomically store the generated test, and complete its leased job
       requestBody:
         required: true
         content:

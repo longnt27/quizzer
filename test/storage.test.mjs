@@ -216,6 +216,26 @@ test('shares validated resume and cancel transitions across service clients', ()
   assert.throws(() => controlGenerationJob('control-job', 'resume', { resetRounds: 'yes' }, 26), /boolean/);
 });
 
+test('rejects malformed modern question checkpoints before committing them', () => {
+  const leaseId = 'strict-checkpoint-lease';
+  putRecord('generationJobs', 'strict-checkpoint-job', {
+    id: 'strict-checkpoint-job', testId: 'strict-checkpoint-test', name: 'Strict checkpoint', status: 'running',
+    createdAt: 100, updatedAt: 100, documentIds: ['strict-doc'], workerId: 'strict-worker', leaseId, leaseExpiresAt: 10_000,
+    options: { provider: 'codex', questionCount: 1, ragProfile: { id: 'balanced' } }, questions: [], rejected: 0, rounds: {},
+  });
+  assert.throws(() => updateGenerationJobWithLease('strict-checkpoint-job', {
+    workerId: 'strict-worker', leaseId, now: 101,
+    patch: { questions: [{ statement: 'This lacks its enforced answer schema and provenance.' }] },
+  }), /Multiple-choice questions require 3-6 answers/);
+  assert.throws(() => updateGenerationJobWithLease('strict-checkpoint-job', {
+    workerId: 'strict-worker', leaseId, now: 101, patch: { rejected: -1 },
+  }), /non-negative integer/);
+  assert.throws(() => updateGenerationJobWithLease('strict-checkpoint-job', {
+    workerId: 'strict-worker', leaseId, now: 101, patch: { rounds: { reasoning: 6 } },
+  }), /rounds are invalid/);
+  controlGenerationJob('strict-checkpoint-job', 'cancel', {}, 102);
+});
+
 test('backs up, transactionally receipts, and verifies a legacy browser migration', async () => {
   const changes = [
     { collection: 'documents', id: 'legacy-doc', data: { id: 'legacy-doc', name: 'Legacy.md', content: 'Migrated content' } },
