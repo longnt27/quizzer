@@ -32,16 +32,20 @@ export default function HomePage({ profile, onAddDocument, onAddTest, onOpenGene
   const configured = useConfiguredProviders();
   const [systemHealth, setSystemHealth] = useState<{ index?: IndexHealth; plugins?: PluginHealth; error?: string; loading: boolean }>({ loading: true });
   const data = useLiveQuery(async () => {
-    const [documents, testCount, tests, jobs, drafts] = await Promise.all([
+    const [documents, testCount, tests, jobs, indexJobs, drafts] = await Promise.all([
       db.documents.count(),
       db.tests.count(),
       db.tests.orderBy('createdAt').reverse().limit(4).toArray(),
       db.generationJobs.toArray(),
+      db.indexJobs.toArray(),
       db.testDrafts.orderBy('updatedAt').reverse().toArray(),
     ]);
-    return { documents, testCount, tests, jobs, drafts };
+    return { documents, testCount, tests, jobs, indexJobs, drafts };
   }, []);
-  const activeJobs = data?.jobs.filter(job => ['queued', 'running', 'waiting', 'paused'].includes(job.status)) ?? [];
+  const activeGenerationJobs = data?.jobs.filter(job => ['queued', 'running', 'waiting', 'paused', 'error'].includes(job.status)) ?? [];
+  const activeIndexJobs = data?.indexJobs.filter(job => ['queued', 'running', 'failed'].includes(job.status)) ?? [];
+  const activeJobCount = activeGenerationJobs.length + activeIndexJobs.length;
+  const hasRunningJob = activeGenerationJobs.some(job => job.status === 'running') || activeIndexJobs.some(job => job.status === 'running');
   const completion = Math.round(profile.onboarding.completedSteps.length / ONBOARDING_STEPS.length * 100);
   const showWhatsNew = profile.upgradedExistingLibrary && profile.whatsNewDismissedVersion !== CURRENT_WHATS_NEW_VERSION;
   const refreshHealth = useCallback(async () => {
@@ -96,7 +100,7 @@ export default function HomePage({ profile, onAddDocument, onAddTest, onOpenGene
     <Row gutter={[16, 16]}>
       <Col xs={12} md={6}><Card><Statistic title="Documents" value={data?.documents ?? 0} prefix={<FileAddOutlined />} /></Card></Col>
       <Col xs={12} md={6}><Card><Statistic title="Tests" value={data?.testCount ?? 0} prefix={<FormOutlined />} /></Card></Col>
-      <Col xs={12} md={6}><Card><Statistic title="Active jobs" value={activeJobs.length} prefix={<SyncOutlined spin={activeJobs.some(job => job.status === 'running')} />} /></Card></Col>
+      <Col xs={12} md={6}><Card><Statistic title="Active jobs" value={activeJobCount} prefix={<SyncOutlined spin={hasRunningJob} />} /></Card></Col>
       <Col xs={12} md={6}><Card><Statistic title="Profile" value={profile.hardwareProfile.toUpperCase()} prefix={<ApiOutlined />} /></Card></Col>
     </Row>
 

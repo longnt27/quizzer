@@ -119,7 +119,7 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
           <Badge status={sync.status === 'synced' ? 'success' : sync.status === 'offline' ? 'warning' : 'processing'} />
           {sync.status === 'offline' ? 'Offline — saved locally' : sync.lastSyncedAt ? 'Saved on server' : 'Syncing library'}
         </Button>
-        <Button type="text" icon={<SyncOutlined />} onClick={onOpenGeneration}>Generation queue</Button>
+        <Button type="text" icon={<SyncOutlined />} onClick={onOpenGeneration}>Activity</Button>
         <Button type="text" icon={<ApiOutlined />} onClick={onOpenPlugins}>Plugins & models</Button>
         <Button type="text" icon={<SettingOutlined />} onClick={onOpenSettings}>Settings</Button>
         {profile?.interfaceMode === 'advanced' && <Button type="text" icon={<ExperimentOutlined />} onClick={onOpenPromptStudio}>Prompt Studio</Button>}

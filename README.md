@@ -226,13 +226,13 @@ Quizzer never concatenates every selected document into a generation prompt. Upl
 
 If the requested question count is smaller than the number of documents, the creation dialog warns that complete coverage is impossible instead of silently implying otherwise.
 
-Open **Generation queue** to choose between 1 and 10 concurrent test instances; the default is 5. Lower values reduce simultaneous provider usage and memory pressure. Higher values complete multi-document queues faster. Reducing the value does not abort requests already running—the new limit takes effect as they finish.
+Open **Activity** to choose between 1 and 10 concurrent test instances; the default is 5. Lower values reduce simultaneous provider usage and memory pressure. Higher values complete multi-document queues faster. Reducing the value does not abort requests already running—the new limit takes effect as they finish.
 
 The same panel controls batch size from 5 to 25 questions, defaulting to 20. Larger batches reduce request overhead, while smaller batches create more frequent recovery checkpoints and reduce the amount of work lost when a provider returns malformed output. Refill requests always ask for the exact remaining count when it is smaller than the configured batch size.
 
 Every candidate is independently validated and deduplicated before the next batch begins. The quality gate also rejects lesson-bound trivia—such as slide structure, classroom instructions, demo setup, and components installed only for an exercise—so generated questions favor durable conceptual, diagnostic, and applied knowledge. Multiple-choice candidates must use credible near-miss distractors from the same domain, sufficiently useful explanations, and choices balanced in grammar, specificity, and approximate length; conspicuous length outliers are rejected and refilled. Rejected candidates leave only their missing slots for the next bounded refill round. If a target cannot be reached after five rounds, Quizzer saves the valid partial quiz instead of retrying forever.
 
-Open **Generation queue** from the sidebar or the floating activity indicator to inspect every job, cancel work, retry an error, or switch providers. As each separate test completes it appears in the Tests sidebar immediately, where you can take it while later jobs continue.
+Open **Activity** from the sidebar or the floating activity indicator to inspect generation and document-indexing jobs, see their durable checkpoints, cancel work, resume remaining documents, retry an error, or switch providers. As each separate test completes it appears in the Tests sidebar immediately, where you can take it while later jobs continue.
 
 After every request and validated round, Quizzer checkpoints progress, accepted questions, retry counters, and provider settings through the local service. The service accepts updates only from the renderer holding the renewable 45-second lease, preventing an expired tab from overwriting a resumed job. Creating the final test and completing its job is one idempotent SQLite transaction. A dropped connection moves the job into a waiting state and retries automatically when connectivity returns. Reloading or closing the page stops active computation; after the abandoned lease expires, any connected Quizzer window can resume from the latest checkpoint without restarting accepted batches from zero.
 
@@ -312,7 +312,7 @@ Install Codex CLI and ensure `codex` is available on `PATH` for the process star
 
 ### An agent reaches its usage limit
 
-Open **Generation queue**, select a configured replacement provider on the paused job, and choose **Continue**. Accepted questions are preserved. If the replacement uses an API key you have not entered, open **Plugins & models** directly from the job first.
+Open **Activity**, select a configured replacement provider on the paused job, and choose **Continue**. Accepted questions are preserved. If the replacement uses an API key you have not entered, open **Plugins & models** directly from the job first.
 
 ### Generation was interrupted
 
