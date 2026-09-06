@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('quizzerDesktop', Object.freeze({
     checkForUpdates: options => ipcRenderer.invoke('updater:check', options),
     downloadUpdate: () => ipcRenderer.invoke('updater:download'),
     applyUpdate: options => ipcRenderer.invoke('updater:apply', options),
+    discardUpdate: () => ipcRenderer.invoke('updater:discard'),
     rollbackUpdate: () => ipcRenderer.invoke('updater:rollback'),
   }),
 }));

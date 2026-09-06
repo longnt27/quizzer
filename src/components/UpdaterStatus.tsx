@@ -6,7 +6,6 @@ import {
   ExclamationCircleOutlined,
   LoadingOutlined,
   ReloadOutlined,
-  RollbackOutlined,
   SafetyCertificateOutlined,
   SyncOutlined,
 } from '@ant-design/icons';
@@ -31,7 +30,7 @@ export default function UpdaterStatusView() {
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [applying, setApplying] = useState(false);
-  const [rollingBack, setRollingBack] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
   const message = getMessageApi();
 
   const isDesktop = typeof window !== 'undefined' && Boolean(window.quizzerDesktop?.updater);
@@ -98,34 +97,34 @@ export default function UpdaterStatusView() {
     try {
       const result = await window.quizzerDesktop.updater.applyUpdate();
       setStatus(result.status);
-      message.success(result.message || 'Update applied');
+      message.success(result.message || 'Verified staged package — installer handoff pending');
     } catch (err) {
-      message.error(err instanceof Error ? err.message : 'Apply failed');
+      message.error(err instanceof Error ? err.message : 'Verification failed');
       await refreshStatus();
     } finally {
       setApplying(false);
     }
   };
 
-  const handleRollback = () => {
+  const handleDiscard = () => {
     Modal.confirm({
-      title: 'Roll back to prior version?',
-      icon: <RollbackOutlined />,
-      content: `This will restore version ${status?.rollbackInfo?.version || 'previous'} and replace the currently staged version.`,
-      okText: 'Roll back',
+      title: 'Discard staged update?',
+      icon: <ExclamationCircleOutlined />,
+      content: 'This will remove the downloaded update package and staging metadata from private storage.',
+      okText: 'Discard staged update',
       okButtonProps: { danger: true },
       onOk: async () => {
         if (!window.quizzerDesktop?.updater) return;
-        setRollingBack(true);
+        setDiscarding(true);
         try {
-          const result = await window.quizzerDesktop.updater.rollbackUpdate();
+          const result = await window.quizzerDesktop.updater.discardUpdate();
           setStatus(result.status);
-          message.success(`Rolled back to version ${result.restoredVersion}`);
+          message.info('Staged update discarded');
         } catch (err) {
-          message.error(err instanceof Error ? err.message : 'Rollback failed');
+          message.error(err instanceof Error ? err.message : 'Discard failed');
           await refreshStatus();
         } finally {
-          setRollingBack(false);
+          setDiscarding(false);
         }
       },
     });
@@ -170,7 +169,7 @@ export default function UpdaterStatusView() {
               size="small"
               value={status?.channel || 'stable'}
               onChange={e => void handleChannelChange(e.target.value as UpdateChannel)}
-              disabled={loading || downloading || applying || rollingBack}
+              disabled={loading || downloading || applying || discarding}
             >
               <Radio.Button value="stable">Stable</Radio.Button>
               <Radio.Button value="beta">Beta</Radio.Button>
@@ -231,41 +230,57 @@ export default function UpdaterStatusView() {
             type="success"
             showIcon
             icon={<CheckCircleOutlined />}
-            message="Update verified and ready to apply"
+            message="Update downloaded and verified"
             description={
               <Space direction="vertical" size="small" style={{ width: '100%', marginTop: 8 }}>
                 <Typography.Text type="secondary">
-                  SHA-256 and Ed25519 signature verified in scoped staging.
+                  SHA-256 and Ed25519 signature verified in scoped staging. Ready to verify host package and stage for installer handoff.
                 </Typography.Text>
-                <Button
-                  type="primary"
-                  size="small"
-                  icon={<CheckCircleOutlined />}
-                  onClick={() => void handleApply()}
-                  loading={applying}
-                >
-                  Apply update
-                </Button>
+                <Space>
+                  <Button
+                    type="primary"
+                    size="small"
+                    icon={<CheckCircleOutlined />}
+                    onClick={() => void handleApply()}
+                    loading={applying}
+                  >
+                    Verify staged package
+                  </Button>
+                  <Button
+                    size="small"
+                    danger
+                    onClick={handleDiscard}
+                    loading={discarding}
+                  >
+                    Discard staged update
+                  </Button>
+                </Space>
               </Space>
             }
           />
         )}
 
-        {state === 'applied' && (
+        {state === 'installer-handoff-pending' && (
           <Alert
             type="success"
             showIcon
-            message="Update applied"
-            description="The update has been safely staged. A recoverable prior version has been preserved in rollback metadata."
-          />
-        )}
-
-        {state === 'rolled-back' && (
-          <Alert
-            type="warning"
-            showIcon
-            message="Rolled back to prior version"
-            description={`Restored prior version ${status?.rollbackInfo?.version || ''}.`}
+            icon={<CheckCircleOutlined />}
+            message="Verified staged package — installer handoff pending"
+            description={
+              <Space direction="vertical" size="small" style={{ width: '100%', marginTop: 8 }}>
+                <Typography.Text type="secondary">
+                  The update package has been downloaded and cryptographically verified. Automatic binary replacement is not performed without a tested platform adapter. Run the verified package installer manually or wait for platform installer handoff.
+                </Typography.Text>
+                <Button
+                  size="small"
+                  danger
+                  onClick={handleDiscard}
+                  loading={discarding}
+                >
+                  Discard staged update
+                </Button>
+              </Space>
+            }
           />
         )}
 
@@ -302,35 +317,6 @@ export default function UpdaterStatusView() {
           />
         )}
 
-        {/* Rollback Section */}
-        {status?.rollbackInfo?.available && (
-          <div>
-            <Divider style={{ margin: '8px 0' }} />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <Typography.Text strong>
-                  <RollbackOutlined /> Rollback to Prior Version
-                </Typography.Text>
-                <div>
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    Recoverable backup version: <Tag>{status.rollbackInfo.version}</Tag>
-                    {status.rollbackInfo.timestamp && ` (replaced ${new Date(status.rollbackInfo.timestamp).toLocaleDateString()})`}
-                  </Typography.Text>
-                </div>
-              </div>
-              <Button
-                danger
-                size="small"
-                icon={<RollbackOutlined />}
-                onClick={handleRollback}
-                loading={rollingBack}
-              >
-                Roll back
-              </Button>
-            </div>
-          </div>
-        )}
-
         {/* Environment & Verification Diagnostics */}
         <Divider style={{ margin: '8px 0' }} />
         <Descriptions size="small" column={1}>
@@ -342,12 +328,12 @@ export default function UpdaterStatusView() {
             )}
           </Descriptions.Item>
           <Descriptions.Item label="Safety guarantee">
-            All updates are verified with Ed25519 signatures and SHA-256 digests in scoped staging before installation.
+            All updates are cryptographically verified with Ed25519 signatures and SHA-256 digests in scoped staging before handoff. In-place binary replacement without an explicit platform adapter is never executed.
           </Descriptions.Item>
           <Descriptions.Item label="Runtime mode">
-            {status?.mechanism === 'staged-development'
-              ? 'Development mode (staged files verified; binary replacement simulated)'
-              : 'Packaged desktop application'}
+            {status?.mechanism === 'staged-ready'
+              ? 'Packaged desktop application (verified staging; installer handoff pending)'
+              : 'Development mode (verified staging; binary replacement simulated)'}
           </Descriptions.Item>
         </Descriptions>
       </Space>

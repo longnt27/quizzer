@@ -100,9 +100,13 @@ const registerValidatedIpc = () => {
     const validated = validateUpdaterApplyOptions(options);
     return desktopUpdater?.applyUpdate(validated);
   });
+  ipcMain.handle('updater:discard', async event => {
+    if (!isTrustedRenderer(event)) throw new Error('Untrusted renderer');
+    return desktopUpdater?.discardUpdate();
+  });
   ipcMain.handle('updater:rollback', async event => {
     if (!isTrustedRenderer(event)) throw new Error('Untrusted renderer');
-    return desktopUpdater?.rollbackUpdate();
+    return desktopUpdater?.discardUpdate();
   });
 };
 

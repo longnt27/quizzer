@@ -8,8 +8,7 @@ export type UpdateState =
   | 'downloading'
   | 'downloaded'
   | 'applying'
-  | 'applied'
-  | 'rolled-back'
+  | 'installer-handoff-pending'
   | 'error'
   | 'unsupported';
 
@@ -72,7 +71,7 @@ export interface UpdaterStatus {
   updateInfo?: UpdateInfo;
   downloadProgress?: DownloadProgress;
   rollbackInfo?: RollbackInfo;
-  stagedPath?: string;
+  stagedArtifactName?: string;
   error?: string;
 }
 
@@ -87,17 +86,23 @@ export interface ApplyUpdateOptions {
 }
 
 export interface ApplyUpdateResult {
-  applied: boolean;
+  applied: false;
+  handoffPending: boolean;
   restartRequested: boolean;
   mechanism: string;
   message: string;
-  stagedPath?: string;
+  status: UpdaterStatus;
+}
+
+export interface DiscardUpdateResult {
+  discarded: boolean;
   status: UpdaterStatus;
 }
 
 export interface RollbackResult {
-  rolledBack: boolean;
-  restoredVersion: string;
+  rolledBack?: boolean;
+  discarded?: boolean;
+  restoredVersion?: string;
   status: UpdaterStatus;
 }
 
@@ -106,5 +111,6 @@ export interface QuizzerDesktopUpdaterApi {
   checkForUpdates: (options?: CheckUpdateOptions) => Promise<UpdaterStatus>;
   downloadUpdate: () => Promise<UpdaterStatus>;
   applyUpdate: (options?: ApplyUpdateOptions) => Promise<ApplyUpdateResult>;
-  rollbackUpdate: () => Promise<RollbackResult>;
+  discardUpdate: () => Promise<DiscardUpdateResult>;
+  rollbackUpdate?: () => Promise<DiscardUpdateResult | RollbackResult>;
 }
