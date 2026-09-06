@@ -5,7 +5,8 @@ import { dirname } from 'node:path';
 import { chunkDocument } from './document-import.mjs';
 
 const sha256 = value => createHash('sha256').update(value).digest('hex');
-const queryTokens = value => [...new Set(String(value).normalize('NFKC').toLowerCase().match(/[\p{L}\p{N}_-]+/gu) ?? [])].slice(0, 24);
+const normalizedTokens = value => String(value).normalize('NFKC').toLowerCase().match(/[\p{L}\p{N}_-]+/gu) ?? [];
+const queryTokens = value => [...new Set(normalizedTokens(value))].slice(0, 24);
 const quoteToken = token => `"${token.replaceAll('"', '""')}"`;
 
 const headingBreadcrumbs = content => {
@@ -238,15 +239,23 @@ export class SparseDocumentIndex {
         parentContent: parentStatement.all(row.parent_id).map(item => item.content).join('\n\n'),
       };
     });
-    const allTermsInTop = results[0] && tokens.every(token => `${results[0].breadcrumb || ''} ${results[0].content}`.toLocaleLowerCase().includes(token));
+    const topTokens = new Set(results[0] ? normalizedTokens(`${results[0].breadcrumb || ''} ${results[0].content}`) : []);
+    const matchedTermsInTop = tokens.filter(token => topTokens.has(token)).length;
+    const confidence = !results.length
+      ? 'low'
+      : matchedTermsInTop === tokens.length
+        ? 'high'
+        : matchedTermsInTop >= Math.ceil(tokens.length / 2)
+          ? 'medium'
+          : 'low';
     return {
       query: String(query),
       method: 'sparse-bm25',
       correctivePass,
-      confidence: results.length ? allTermsInTop ? 'high' : 'medium' : 'low',
+      confidence,
       estimatedContextTokens: estimatedTokens,
       results,
-      ...(results.length ? {} : { refusal: 'Quizzer could not find sufficient indexed evidence for this query.' }),
+      ...(confidence === 'low' ? { refusal: 'Quizzer could not find sufficient indexed evidence for this query.' } : {}),
     };
   }
 

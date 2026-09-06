@@ -7,6 +7,7 @@ test('packages application code in an ASAR archive', () => {
   assert.deepEqual(forgeConfig.packagerConfig.asar, {
     unpack: '**/*.{node,dll,dylib,so}',
   });
+  assert.ok(forgeConfig.packagerConfig.ignore.some(pattern => pattern.test('/eval/rag/en.json')));
 });
 
 test('locks security-sensitive Electron fuses in packaged builds', () => {

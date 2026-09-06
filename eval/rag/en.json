@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "id": "quizzer-rag-en-v1",
+  "language": "en",
+  "documents": [
+    {
+      "id": "en-terraform",
+      "name": "Terraform operations",
+      "tags": ["english", "infrastructure"],
+      "chunks": [
+        {
+          "spanId": "en-terraform:state-locking",
+          "page": 1,
+          "text": "# Remote state\n\nTerraform state maps configuration resources to remote infrastructure. Remote state locking serializes concurrent writes so two operators cannot update the same state at once."
+        },
+        {
+          "spanId": "en-terraform:planning",
+          "page": 2,
+          "text": "# Planning\n\nThe terraform plan command compares configuration with recorded state and provider observations. It previews proposed infrastructure changes without applying them."
+        }
+      ]
+    },
+    {
+      "id": "en-database",
+      "name": "SQLite durability",
+      "tags": ["english", "database"],
+      "chunks": [
+        {
+          "spanId": "en-database:wal",
+          "page": 4,
+          "text": "# Write-ahead logging\n\nSQLite write-ahead logging lets readers continue while a writer appends changes to the WAL file. A checkpoint later transfers committed pages back into the main database."
+        },
+        {
+          "spanId": "en-database:transactions",
+          "page": 5,
+          "text": "# Transactions\n\nAn atomic transaction commits every included mutation together or rolls all of them back. This prevents clients from observing partially updated records."
+        }
+      ]
+    },
+    {
+      "id": "en-security",
+      "name": "Application security",
+      "tags": ["english", "security"],
+      "chunks": [
+        {
+          "spanId": "en-security:least-privilege",
+          "page": 7,
+          "text": "# Least privilege\n\nA least-privilege process receives only the permissions and secrets required for its current operation. Removing ambient authority limits the impact of a compromise."
+        },
+        {
+          "spanId": "en-security:checksums",
+          "page": 8,
+          "text": "# Artifact verification\n\nA SHA-256 checksum detects accidental or malicious changes to a downloaded artifact. A trusted digital signature authenticates the signed release metadata containing that checksum."
+        }
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "id": "en-state-locking",
+      "query": "How does remote state locking prevent concurrent Terraform writes?",
+      "answerable": true,
+      "relevantSpanIds": ["en-terraform:state-locking"]
+    },
+    {
+      "id": "en-plan-preview",
+      "query": "Which command previews proposed infrastructure changes without applying them?",
+      "answerable": true,
+      "relevantSpanIds": ["en-terraform:planning"]
+    },
+    {
+      "id": "en-wal-checkpoint",
+      "query": "Where does a WAL checkpoint transfer committed pages?",
+      "answerable": true,
+      "relevantSpanIds": ["en-database:wal"]
+    },
+    {
+      "id": "en-atomic-rollback",
+      "query": "What prevents clients from observing partially updated records?",
+      "answerable": true,
+      "relevantSpanIds": ["en-database:transactions"]
+    },
+    {
+      "id": "en-signed-checksum",
+      "query": "What authenticates release metadata containing a SHA-256 checksum?",
+      "answerable": true,
+      "relevantSpanIds": ["en-security:checksums"]
+    },
+    {
+      "id": "en-refuse-biology",
+      "query": "Chlorophyll stomata photosynthesis regulation",
+      "answerable": false
+    },
+    {
+      "id": "en-refuse-history",
+      "query": "Peloponnesian triremes armistice outcome",
+      "answerable": false
+    }
+  ]
+}

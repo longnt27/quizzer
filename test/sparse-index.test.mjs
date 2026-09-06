@@ -63,6 +63,12 @@ test('runs one corrective pass and clearly refuses without evidence', () => {
   const broadened = index.retrieve({ query: 'locking nonexistentterm', limit: 2 });
   assert.equal(broadened.correctivePass, true);
   assert.ok(broadened.results.length > 0);
+  assert.equal(broadened.confidence, 'medium');
+  assert.equal(broadened.refusal, undefined);
+  const weakOverlap = index.retrieve({ query: 'remote chlorophyll photosynthesis stomata', limit: 2 });
+  assert.ok(weakOverlap.results.length > 0);
+  assert.equal(weakOverlap.confidence, 'low');
+  assert.match(weakOverlap.refusal, /sufficient indexed evidence/);
   const refused = index.retrieve({ query: 'zyxwvutsrqponmlkjihgfedcba' });
   assert.equal(refused.confidence, 'low');
   assert.match(refused.refusal, /sufficient indexed evidence/);

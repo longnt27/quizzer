@@ -288,7 +288,8 @@ Do not upload confidential material unless the selected provider and your accoun
 | `npm run make:desktop` | Build the current platform's configured installer/archive |
 | `npm run build:cli` | Build the signed standalone CLI with Node.js 26+ |
 | `npm run lint` | Run ESLint |
-| `npm test` | Run server storage tests |
+| `npm test` | Run unit and service integration tests |
+| `npm run eval:rag` | Run the offline English/Vietnamese retrieval quality gate |
 | `npm run preview` | Preview the browser bundle; start the service separately for generation |
 
 Source development uses loopback port 8787 so Vite can proxy API requests. The packaged desktop app asks the operating system for an unused ephemeral loopback port, waits for an authenticated utility-process ready message, and only then opens the renderer; set `QUIZZER_DESKTOP_SERVICE_PORT` only for a managed desktop deployment that requires a fixed port.

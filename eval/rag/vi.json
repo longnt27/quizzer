@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "id": "quizzer-rag-vi-v1",
+  "language": "vi",
+  "documents": [
+    {
+      "id": "vi-hatang",
+      "name": "Vận hành hạ tầng",
+      "tags": ["vietnamese", "infrastructure"],
+      "chunks": [
+        {
+          "spanId": "vi-hatang:khoa-trang-thai",
+          "page": 1,
+          "text": "# Trạng thái từ xa\n\nKhóa trạng thái ngăn nhiều kỹ sư ghi đồng thời vào cùng một trạng thái Terraform. Cơ chế này giúp nhóm tránh xung đột khi cộng tác trên hạ tầng."
+        },
+        {
+          "spanId": "vi-hatang:ke-hoach",
+          "page": 2,
+          "text": "# Lập kế hoạch\n\nLệnh terraform plan so sánh cấu hình mong muốn với trạng thái hiện tại. Kết quả cho biết những thay đổi dự kiến trước khi áp dụng."
+        }
+      ]
+    },
+    {
+      "id": "vi-hoctap",
+      "name": "Kỹ thuật học tập",
+      "tags": ["vietnamese", "learning"],
+      "chunks": [
+        {
+          "spanId": "vi-hoctap:lap-lai-ngat-quang",
+          "page": 3,
+          "text": "# Lặp lại ngắt quãng\n\nLặp lại ngắt quãng tăng dần khoảng thời gian giữa các lần ôn tập. Câu hỏi khó hoặc trả lời sai sẽ xuất hiện lại sớm hơn."
+        },
+        {
+          "spanId": "vi-hoctap:goi-nho-chu-dong",
+          "page": 4,
+          "text": "# Gợi nhớ chủ động\n\nGợi nhớ chủ động yêu cầu người học tự tạo câu trả lời trước khi xem đáp án. Việc truy xuất kiến thức củng cố trí nhớ tốt hơn chỉ đọc lại."
+        }
+      ]
+    },
+    {
+      "id": "vi-baomat",
+      "name": "Bảo mật bản phát hành",
+      "tags": ["vietnamese", "security"],
+      "chunks": [
+        {
+          "spanId": "vi-baomat:chu-ky-so",
+          "page": 6,
+          "text": "# Chữ ký số\n\nChữ ký số xác thực nguồn gốc của bản kê phát hành. Mã băm SHA-256 trong bản kê dùng để kiểm tra tệp tải xuống không bị thay đổi."
+        },
+        {
+          "spanId": "vi-baomat:quyen-toi-thieu",
+          "page": 7,
+          "text": "# Quyền tối thiểu\n\nTiến trình theo nguyên tắc quyền tối thiểu chỉ nhận quyền và bí mật cần cho tác vụ hiện tại. Giới hạn quyền làm giảm tác động khi tiến trình bị xâm nhập."
+        }
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "id": "vi-khoa-trang-thai",
+      "query": "Khóa trạng thái giúp nhóm Terraform tránh xung đột như thế nào?",
+      "answerable": true,
+      "relevantSpanIds": ["vi-hatang:khoa-trang-thai"]
+    },
+    {
+      "id": "vi-plan",
+      "query": "Lệnh nào cho biết thay đổi dự kiến trước khi áp dụng?",
+      "answerable": true,
+      "relevantSpanIds": ["vi-hatang:ke-hoach"]
+    },
+    {
+      "id": "vi-lap-lai",
+      "query": "Lặp lại ngắt quãng xử lý câu trả lời sai ra sao?",
+      "answerable": true,
+      "relevantSpanIds": ["vi-hoctap:lap-lai-ngat-quang"]
+    },
+    {
+      "id": "vi-goi-nho",
+      "query": "Kỹ thuật nào yêu cầu tự tạo câu trả lời trước khi xem đáp án?",
+      "answerable": true,
+      "relevantSpanIds": ["vi-hoctap:goi-nho-chu-dong"]
+    },
+    {
+      "id": "vi-chu-ky",
+      "query": "Điều gì xác thực nguồn gốc của bản kê phát hành?",
+      "answerable": true,
+      "relevantSpanIds": ["vi-baomat:chu-ky-so"]
+    },
+    {
+      "id": "vi-tu-choi-sinh-hoc",
+      "query": "Khủng long stegosaurus kỷ Jura",
+      "answerable": false
+    },
+    {
+      "id": "vi-tu-choi-dia-ly",
+      "query": "Hải lưu Humboldt, chim cánh cụt, quần đảo Galapagos",
+      "answerable": false
+    }
+  ]
+}

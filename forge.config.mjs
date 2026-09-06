@@ -23,6 +23,7 @@ export default {
       /^\/landing($|\/)/,
       /^\/src($|\/)/,
       /^\/docs($|\/)/,
+      /^\/eval($|\/)/,
       /^\/test($|\/)/,
       /^\/\.quizzer/,
       /^\/out($|\/)/,
