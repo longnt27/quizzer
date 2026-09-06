@@ -121,3 +121,48 @@ test('preserves cancellation and converts process failure to provider unavailabi
   const cancelled = await failure(Object.assign(new Error('cancelled'), { name: 'AbortError' }));
   await assert.rejects(cancelled.retrieve({ vector: [1], embeddingModel: 'model' }), error => error.name === 'AbortError');
 });
+
+test('validates every stateful vector-index operation before accepting plugin data', async () => {
+  const responses = {
+    'rag.index': { reused: false, chunks: 1 },
+    'rag.search': { matches: [] },
+    'rag.remove': { removedChunks: 1 },
+    'rag.status': { engine: 'test', tableCount: 1, chunkCount: 1, activeTableCount: 1, activeChunkCount: 1 },
+  };
+  const route = await resolveVectorIndexProvider(settings(), { loadManager: async () => ({
+    list: async () => [plugin],
+    invoke: async (_id, method) => ({ result: responses[method] }),
+  }) });
+  const indexOptions = { embeddingModel: 'model', embed: async texts => texts.map(() => [1, 0]) };
+
+  for (const invalid of [undefined, {}, { id: 1 }, { id: 'doc', data: {} }]) {
+    await assert.rejects(route.indexDocument(invalid, indexOptions), /stored document/);
+  }
+  await assert.rejects(route.indexDocument({ ...record, id: 'x'.repeat(501) }, indexOptions), /document id/);
+  await assert.rejects(route.indexDocument({ ...record, data: { ...record.data, content: '   ' } }, indexOptions), /no indexable text/);
+  await assert.rejects(route.indexDocument({
+    ...record, data: { ...record.data, chunks: [{ id: 'blank', text: '   ' }] },
+  }, indexOptions), /1 to 10000 chunks/);
+  await assert.rejects(route.indexDocument({
+    ...record, data: { ...record.data, tags: [''] },
+  }, indexOptions), /source row 1 tags/);
+  await assert.rejects(route.indexDocument(record, {
+    ...indexOptions, embed: async texts => texts.map(() => Array.from({ length: 8_193 }, () => 0)),
+  }), /cannot exceed 8192 dimensions/);
+  responses['rag.index'] = { reused: false, chunks: 0 };
+  await assert.rejects(route.indexDocument(record, indexOptions), /confirm exactly 1/);
+  responses['rag.index'] = { reused: false, chunks: 1 };
+
+  await assert.rejects(route.retrieve({ vector: Array.from({ length: 8_193 }, () => 0), embeddingModel: 'model' }), /cannot exceed/);
+  await assert.rejects(route.retrieve({ vector: [1], embeddingModel: 'model', documentIds: {} }), /documentIds/);
+  await assert.rejects(route.retrieve({ vector: [1], embeddingModel: 'model', documentIds: [''] }), /documentIds/);
+  await assert.rejects(route.retrieve({ vector: [1], embeddingModel: 'model', limit: 0 }), /limit/);
+  await assert.rejects(route.removeDocument(''), /document id/);
+  responses['rag.remove'] = { removedChunks: -1 };
+  await assert.rejects(route.removeDocument('doc-1'), /invalid removal/);
+
+  responses['rag.status'] = null;
+  await assert.rejects(route.status({ embeddingModel: 'model' }), /status is invalid/);
+  responses['rag.status'] = { engine: 'test', tableCount: -1, chunkCount: 0, activeTableCount: 0, activeChunkCount: 0 };
+  await assert.rejects(route.status({ embeddingModel: 'model' }), /tableCount is invalid/);
+});
