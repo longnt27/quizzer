@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Button, Card, Descriptions, Divider, Drawer, Input, Modal, Progress, Radio, Space, Spin, Steps, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Descriptions, Divider, Drawer, Input, Progress, Radio, Space, Spin, Steps, Tag, Typography } from 'antd';
 import { ApiOutlined, CheckCircleOutlined, FileAddOutlined, FormOutlined, LaptopOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type StoredAppProfile } from '../db/db';
@@ -7,6 +7,7 @@ import type { HardwareCapabilities, HardwareProfileId, InterfaceMode, Onboarding
 import { useConfiguredProviders } from '../utils/useConfiguredProviders';
 import { advanceOnboarding, goToOnboardingStep, ONBOARDING_STEPS, setHardwareProfile, setInterfaceMode, skipOnboarding, updateAppProfile } from '../utils/appProfile';
 import { serviceFetch } from '../utils/serviceApi';
+import { getModalApi } from '../utils/modalProvider';
 
 interface Props {
   open: boolean;
@@ -85,7 +86,7 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
     await setHardwareProfile(capabilities.recommendedProfile);
   };
 
-  const confirmSkip = () => Modal.confirm({
+  const confirmSkip = () => getModalApi().confirm({
     title: 'Skip setup?',
     content: 'You can restart the walkthrough at any time from the sidebar. Your current documents and settings will stay intact.',
     okText: 'Skip for now',

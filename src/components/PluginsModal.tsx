@@ -8,6 +8,7 @@ import {
   ollamaModelMatches, setApiKey, setProviderSettings, type AgentProvider,
 } from '../utils/providerSettings';
 import { getMessageApi } from '../utils/messageProvider';
+import { getModalApi } from '../utils/modalProvider';
 import { serviceFetch, serviceJson, serviceRequest } from '../utils/serviceApi';
 
 type JobState = 'idle' | 'working' | 'complete' | 'error';
@@ -179,7 +180,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
     catch (error) { message.error((error as Error).message); }
   };
 
-  const installOllama = () => Modal.confirm({
+  const installOllama = () => getModalApi().confirm({
     title: 'Install the Ollama runtime?',
     content: 'Quizzer will download and install Ollama from its official distribution. No generation model is downloaded until you choose one separately.',
     okText: 'Install Ollama',
@@ -197,7 +198,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const pullOllamaModel = () => {
     const model = models.ollama?.trim();
     if (!model) return message.warning('Enter an Ollama model name first');
-    Modal.confirm({
+    getModalApi().confirm({
       title: `Download ${model}?`,
       content: 'Model downloads can require several gigabytes of disk space. The model stays on this device and Quizzer will not send document content to a remote provider.',
       okText: 'Download model',
@@ -251,7 +252,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
     }
   };
 
-  const removeExternalPlugin = (plugin: ExternalPlugin) => Modal.confirm({
+  const removeExternalPlugin = (plugin: ExternalPlugin) => getModalApi().confirm({
     title: `Remove ${plugin.name ?? plugin.id}?`,
     content: 'Quizzer will disable the plugin and move it to recoverable removed storage. Its files are not permanently deleted.',
     okText: 'Remove plugin',
@@ -341,7 +342,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       return;
     }
     if (!credentialStorage.available) return message.warning(credentialStorage.message);
-    Modal.confirm({
+    getModalApi().confirm({
       title: `Remember ${provider.label.replace(' – ', ' ')} credentials?`,
       content: 'Quizzer will encrypt this API key with the operating system and store only the encrypted value in your local application data. It is never included in exports, backups, or diagnostics.',
       okText: 'Encrypt and remember',
