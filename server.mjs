@@ -5,7 +5,7 @@ import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promi
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import {
-  backupDatabase, beginLegacyMigration, claimGenerationJob, completeGenerationJob, controlGenerationJob, deleteRecord, finalizeLegacyMigration, getRecord, listLegacyMigrations,
+  backupDatabase, beginLegacyMigration, claimGenerationJob, completeGenerationJob, controlGenerationJob, createGenerationJobs, deleteRecord, finalizeLegacyMigration, getRecord, listLegacyMigrations,
   listRecords, putRecord, renewGenerationJobLease, storageInfo, subscribeStorageChanges, syncStorage, updateGenerationJobWithLease,
 } from './server/storage.mjs';
 import { detectHardwareCapabilities } from './server/hardware-profile.mjs';
@@ -1211,6 +1211,12 @@ const handleVersionedApi = async (request, response, url) => {
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/jobs') {
       send(response, 200, { jobs: listRecords('generationJobs').map(publicRecord) });
+      return true;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/v1/jobs') {
+      const body = await readJson(request);
+      const jobs = createGenerationJobs(body?.jobs).map(publicRecord);
+      send(response, 201, { jobs });
       return true;
     }
     if (request.method === 'POST' && url.pathname === '/api/v1/jobs/claim') {

@@ -3,12 +3,14 @@ import { Alert, Button, Checkbox, Empty, Input, InputNumber, List, Modal, Radio,
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db, type StoredAppProfile, type StoredGenerationJob } from '../db/db';
+import { applyServiceRecord, syncNow } from '../db/serverSync';
 import type { CoverageStrategy, GenerationOptions, GenerationProvider } from '../types';
 import { getMessageApi } from '../utils/messageProvider';
 import { pumpGenerationQueue } from '../utils/generationQueue';
 import { getProviderDefinition, getProviderRoute, getProviderSettings } from '../utils/providerSettings';
 import { useConfiguredProviders } from '../utils/useConfiguredProviders';
 import { BUILT_IN_PROMPT_PROFILE, snapshotPromptProfile } from '../utils/promptProfiles';
+import { serviceJson } from '../utils/serviceApi';
 
 interface Props { onClose: () => void; onManagePlugins: () => void; onOpenPromptStudio: () => void; profile: StoredAppProfile; }
 type CreationMode = 'combined' | 'separate';
@@ -118,7 +120,9 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
         createdAt: now + index, updatedAt: now, status: 'queued', options,
         questions: [], rejected: 0, rounds: {},
       }));
-      await db.generationJobs.bulkAdd(jobs);
+      await syncNow();
+      const created = await serviceJson<{ jobs: StoredGenerationJob[] }>('/api/v1/jobs', 'POST', { jobs });
+      await Promise.all(created.jobs.map(job => applyServiceRecord('generationJobs', job.id, job)));
       void pumpGenerationQueue();
       message.success(`${jobs.length} test${jobs.length === 1 ? '' : 's'} queued. You can keep using Quizzer while generation runs.`);
       onClose();

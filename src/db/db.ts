@@ -40,6 +40,7 @@ export interface StoredGenerationJob {
   leaseId?: string;
   leaseExpiresAt?: number;
   completionId?: string;
+  creationFingerprint?: string;
 }
 
 export type IndexJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';

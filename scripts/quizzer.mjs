@@ -422,8 +422,8 @@ const runTestCreate = async () => {
     rejected: 0,
     rounds: {},
   };
-  database.putRecord('generationJobs', job.id, job);
-  writeResult({ job }, `Queued ${name} (${job.id}). Open Quizzer to process it.`);
+  const created = database.createGenerationJobs([job])[0].data;
+  writeResult({ job: created }, `Queued ${name} (${job.id}). Open Quizzer to process it.`);
 };
 
 const runJobs = async (action, explicitId) => {

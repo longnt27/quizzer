@@ -1,0 +1,134 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+  validateActiveRoute, validateCoveragePlan, validateGenerationOptions, validateGenerationProgress,
+  validateNewGenerationJob, validateProviderAttempts, validateProviderRoute,
+} from '../server/generation-validation.mjs';
+
+const options = () => ({
+  provider: 'openai',
+  model: 'gpt-5-mini',
+  questionCount: 2,
+  questionCounts: { multipleChoice: 1, fillBlank: 0, reasoning: 1, coding: 0 },
+  multipleChoiceMode: 'single',
+  coverageStrategy: 'balanced',
+  customInstruction: 'Focus on operational tradeoffs.',
+  ragProfile: { id: 'balanced', retrieval: 'hybrid', contextBudget: 8_192, rerank: true },
+  routeChain: [{ provider: 'openai', model: 'gpt-5-mini', privacy: 'remote-api', paid: true, approved: true }],
+  resolvedSettings: { 'hardware.profile': 'balanced', nested: { enabled: true } },
+});
+
+test('validates complete generation snapshots and provider policy metadata', () => {
+  const value = options();
+  assert.equal(validateGenerationOptions(value, { requireSnapshots: true }), value);
+  assert.equal(validateProviderRoute(value.routeChain[0]), value.routeChain[0]);
+  assert.throws(() => validateProviderRoute({
+    provider: 'openai', privacy: 'local', paid: false, approved: true,
+  }), /privacy and cost policy/);
+  assert.throws(() => validateGenerationOptions({ ...value, provider: 'unknown' }), /Unsupported generation provider/);
+  assert.throws(() => validateGenerationOptions({
+    ...value, questionCounts: { multipleChoice: 1, fillBlank: 0, reasoning: 0, coding: 0 },
+  }), /sum to questionCount/);
+  assert.throws(() => validateGenerationOptions({
+    ...value, resolvedSettings: { apiKey: 'must-not-be-snapshotted' },
+  }), /cannot contain secrets/);
+});
+
+test('bounds prompt, route, instruction, and resolved-setting snapshots', () => {
+  const value = options();
+  const generation = 'Generate {{count}} grounded questions now.';
+  const snapshot = {
+    id: 'team-grounded', version: 2, name: 'Team grounded', template: generation,
+    templates: {
+      generation,
+      grading: 'Grade {{question}} against its reference answer.',
+      rag: 'Retrieve direct evidence for this learning query.',
+    },
+  };
+  assert.doesNotThrow(() => validateGenerationOptions({ ...value, promptProfileSnapshot: snapshot }));
+  assert.throws(() => validateGenerationOptions({
+    ...value, promptProfileSnapshot: { ...snapshot, templates: { ...snapshot.templates, generation: 'A different generation template long enough.' } },
+  }), /generation templates do not match/);
+  assert.throws(() => validateGenerationOptions({ ...value, multipleChoiceMode: 'sometimes' }), /multiple-choice mode/);
+  assert.throws(() => validateGenerationOptions({ ...value, coverageStrategy: 'random' }), /coverage strategy/);
+  assert.throws(() => validateGenerationOptions({ ...value, customInstruction: '' }), /Custom learning instruction/);
+  assert.throws(() => validateGenerationOptions({ ...value, routeChain: [] }), /1-10 routes/);
+  assert.throws(() => validateGenerationOptions({
+    ...value, routeChain: [{ ...value.routeChain[0], model: 'other' }],
+  }), /must match a route/);
+  assert.throws(() => validateGenerationOptions({
+    ...value, routeChain: [{ ...value.routeChain[0], approved: false }],
+  }), /explicitly approved/);
+
+  assert.doesNotThrow(() => validateGenerationOptions({ ...value, resolvedSettings: { routes: [true, null, 1, 'safe'] } }));
+  assert.throws(() => validateGenerationOptions({ ...value, resolvedSettings: { invalid: undefined } }), /JSON-compatible/);
+  assert.throws(() => validateGenerationOptions({ ...value, resolvedSettings: { '': true } }), /invalid field name/);
+  assert.throws(() => validateGenerationOptions({ ...value, resolvedSettings: { values: Array.from({ length: 1_001 }) } }), /too many values/);
+  assert.throws(() => validateGenerationOptions({ ...value, resolvedSettings: { value: 'x'.repeat(100_001) } }), /too large/);
+  let deeplyNested = {};
+  for (let index = 0; index < 10; index += 1) deeplyNested = { nested: deeplyNested };
+  assert.throws(() => validateGenerationOptions({ ...value, resolvedSettings: deeplyNested }), /nested too deeply/);
+
+  const withoutRoute = { ...value };
+  delete withoutRoute.routeChain;
+  assert.throws(() => validateGenerationOptions(withoutRoute, { requireSnapshots: true }), /approved provider route chain/);
+  const withoutSettings = { ...value };
+  delete withoutSettings.resolvedSettings;
+  assert.throws(() => validateGenerationOptions(withoutSettings, { requireSnapshots: true }), /require resolved settings/);
+});
+
+test('accepts only pristine queued jobs at the creation boundary', () => {
+  const job = {
+    id: 'job-validation-one', testId: 'test-validation-one', name: 'Validated job',
+    createdAt: 10, updatedAt: 10, status: 'queued', documentIds: ['doc-one'], options: options(),
+    questions: [], rejected: 0, rounds: {},
+  };
+  assert.equal(validateNewGenerationJob(job), job);
+  assert.throws(() => validateNewGenerationJob({ ...job, status: 'running' }), /must be queued/);
+  assert.throws(() => validateNewGenerationJob({ ...job, workerId: 'forged-worker' }), /unsupported fields: workerId/);
+  assert.throws(() => validateNewGenerationJob({ ...job, questions: [{ statement: 'forged' }] }), /start without questions/);
+  assert.throws(() => validateNewGenerationJob({ ...job, documentIds: ['doc-one', 'doc-one'] }), /document ids are invalid/);
+});
+
+test('validates route-bound attempts, progress, and retrieval coverage', () => {
+  const value = options();
+  const attempts = [{
+    provider: 'openai', model: 'gpt-5-mini', routeIndex: 0, at: 20, accepted: 1,
+    outcome: 'failed', errorCode: 'provider_limit', message: 'Quota reached',
+  }];
+  assert.equal(validateProviderAttempts(attempts, value), attempts);
+  assert.throws(() => validateProviderAttempts([{ ...attempts[0], provider: 'gemini' }], value), /does not match/);
+  assert.throws(() => validateProviderAttempts({}, value), /array of at most/);
+  assert.throws(() => validateProviderAttempts([{ ...attempts[0], outcome: 'unknown' }], value), /outcome is invalid/);
+  assert.throws(() => validateProviderAttempts([{ ...attempts[0], accepted: 3 }], value), /accepted count is invalid/);
+  assert.equal(validateActiveRoute(0, value), 0);
+  assert.throws(() => validateActiveRoute(1, value), /does not match/);
+
+  const progress = {
+    accepted: 1, target: 2, round: 1, maxRounds: 5, rejected: 0, currentType: 'reasoning',
+    typeAccepted: 0, typeTarget: 1, phase: 'requesting', provider: 'openai', parallelRequests: 1,
+  };
+  assert.equal(validateGenerationProgress(progress, value), progress);
+  assert.throws(() => validateGenerationProgress({ ...progress, accepted: 3 }, value), /accepted is invalid|exceeds/);
+  assert.throws(() => validateGenerationProgress({ ...progress, currentType: 'essay' }, value), /question type/);
+  assert.throws(() => validateGenerationProgress({ ...progress, phase: 'done' }, value), /phase/);
+  assert.throws(() => validateGenerationProgress({ ...progress, provider: 'unknown' }, value), /provider/);
+  assert.throws(() => validateGenerationProgress({ ...progress, parallelRequests: 0 }, value), /parallel request/);
+  assert.throws(() => validateGenerationProgress({ ...progress, accepted: 2, target: 1 }, value), /exceeds its target/);
+
+  const coverage = {
+    strategy: 'balanced', createdAt: 30,
+    slots: [
+      { documentIds: ['doc-one'], chunkIndexes: { 'doc-one': 0 } },
+      { documentIds: ['doc-two'], chunkIndexes: { 'doc-two': 2 } },
+    ],
+  };
+  assert.equal(validateCoveragePlan(coverage, ['doc-one', 'doc-two'], 2), coverage);
+  assert.throws(() => validateCoveragePlan({ ...coverage, slots: coverage.slots.slice(0, 1) }, ['doc-one'], 2), /match the question count/);
+  assert.throws(() => validateCoveragePlan({
+    ...coverage, slots: [{ documentIds: ['other'], chunkIndexes: { other: 0 } }, coverage.slots[1]],
+  }, ['doc-one', 'doc-two'], 2), /document ids are invalid/);
+  assert.throws(() => validateCoveragePlan({
+    ...coverage, slots: [{ documentIds: ['doc-one'], chunkIndexes: { 'doc-two': 0 } }, coverage.slots[1]],
+  }, ['doc-one', 'doc-two'], 2), /out-of-scope chunk index/);
+});

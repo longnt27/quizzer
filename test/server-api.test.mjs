@@ -190,13 +190,34 @@ test('provides onboarding, document, job, and event operations', async () => {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ changes: [
       { collection: 'documents', id: 'doc-1', data: { id: 'doc-1', name: 'Guide.md', createdAt: 1, mimeType: 'text/markdown', size: 10, tags: ['iac'], content: '# Terraform\n\nRemote state locking supports safe team collaboration.', originalFile: { __quizzerBlob: true, type: 'text/markdown', name: 'Guide.md', data: `data:text/markdown;base64,${Buffer.from('# Terraform').toString('base64')}` }, images: [{ id: 'figure-1', name: 'state.png', mimeType: 'image/png', data: Buffer.from('state diagram').toString('base64'), page: 1 }] } },
-      { collection: 'generationJobs', id: 'job-1', data: {
-        id: 'job-1', testId: 'generated-test-1', name: 'Generated test', status: 'paused', createdAt: 1, updatedAt: 1,
-        documentIds: ['doc-1'], options: { provider: 'gemini', questionCount: 1 }, questions: [], rejected: 0, rounds: {},
-      } },
     ] }),
   });
   assert.equal(sync.status, 200);
+
+  const generationOptions = {
+    provider: 'gemini', model: 'gemini-2.5-flash', questionCount: 1,
+    questionCounts: { multipleChoice: 1, fillBlank: 0, reasoning: 0, coding: 0 },
+    multipleChoiceMode: 'single', coverageStrategy: 'balanced',
+    ragProfile: { id: 'balanced', retrieval: 'hybrid', contextBudget: 8_192, rerank: true },
+    routeChain: [{ provider: 'gemini', model: 'gemini-2.5-flash', privacy: 'remote-api', paid: true, approved: true }],
+    resolvedSettings: { 'hardware.profile': 'balanced' },
+  };
+  const createdJobs = await authorized('/api/v1/jobs', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jobs: [{
+      id: 'job-1', testId: 'generated-test-1', name: 'Generated test', status: 'queued', createdAt: 1, updatedAt: 1,
+      documentIds: ['doc-1'], options: generationOptions, questions: [], rejected: 0, rounds: {},
+    }] }),
+  });
+  assert.equal(createdJobs.status, 201);
+  assert.equal((await createdJobs.json()).jobs[0].id, 'job-1');
+  const forgedSync = await authorized('/api/storage/sync', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ changes: [{
+      collection: 'generationJobs', id: 'job-1', data: { id: 'job-1', status: 'completed' },
+    }] }),
+  });
+  assert.equal(forgedSync.status, 400);
 
   const documents = await (await authorized('/api/v1/documents')).json();
   assert.equal(documents.documents[0].name, 'Guide.md');
@@ -260,7 +281,13 @@ test('provides onboarding, document, job, and event operations', async () => {
 
   const resumed = await authorized('/api/v1/jobs/job-1/resume', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ options: { provider: 'codex', questionCount: 1 }, activeRouteIndex: 0, resetRounds: true }),
+    body: JSON.stringify({
+      options: {
+        ...generationOptions, provider: 'codex', model: undefined,
+        routeChain: [{ provider: 'codex', privacy: 'signed-in-agent', paid: false, approved: true }],
+      },
+      activeRouteIndex: 0, resetRounds: true,
+    }),
   });
   const resumedJob = (await resumed.json()).job;
   assert.equal(resumedJob.status, 'queued');
@@ -293,8 +320,24 @@ test('provides onboarding, document, job, and event operations', async () => {
   assert.equal(staleCheckpoint.status, 400);
   const completionBody = {
     workerId: 'api-worker-one', leaseId: leasedJob.leaseId, completionId: 'api-completion-one',
-    test: { id: 'generated-test-1', name: 'Generated test', createdAt: Date.now(), questions: [{ statement: 'What is state locking?' }], attempts: [] },
-    patch: { questions: [{ statement: 'What is state locking?' }], rejected: 1 },
+    test: { id: 'generated-test-1', name: 'Generated test', createdAt: Date.now(), questions: [{
+      type: 'multiple-choice', statement: 'What does remote state locking protect?',
+      answer: [
+        { content: 'Concurrent state mutation', correct: true, explanation: 'It serializes writers so state changes cannot overwrite one another.' },
+        { content: 'Provider authentication', correct: false, explanation: 'Authentication controls access but does not serialize state mutation.' },
+        { content: 'Source-code formatting', correct: false, explanation: 'Formatting is unrelated to coordination around shared remote state.' },
+      ],
+      provenance: { documentIds: ['doc-1'], sourceSpanIds: ['doc-1:span:state-locking'], provider: 'codex' },
+    }], attempts: [] },
+    patch: { questions: [{
+      type: 'multiple-choice', statement: 'What does remote state locking protect?',
+      answer: [
+        { content: 'Concurrent state mutation', correct: true, explanation: 'It serializes writers so state changes cannot overwrite one another.' },
+        { content: 'Provider authentication', correct: false, explanation: 'Authentication controls access but does not serialize state mutation.' },
+        { content: 'Source-code formatting', correct: false, explanation: 'Formatting is unrelated to coordination around shared remote state.' },
+      ],
+      provenance: { documentIds: ['doc-1'], sourceSpanIds: ['doc-1:span:state-locking'], provider: 'codex' },
+    }], rejected: 1 },
   };
   const completed = await authorized('/api/v1/jobs/job-1/complete', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(completionBody),

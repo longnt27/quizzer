@@ -8,7 +8,7 @@ import test from 'node:test';
 const directory = await mkdtemp(join(tmpdir(), 'quizzer-storage-test-'));
 process.env.QUIZZER_DATABASE_PATH = join(directory, 'quizzer.sqlite');
 const {
-  beginLegacyMigration, claimGenerationJob, completeGenerationJob, controlGenerationJob, finalizeLegacyMigration, getRecord, listLegacyMigrations,
+  beginLegacyMigration, claimGenerationJob, completeGenerationJob, controlGenerationJob, createGenerationJobs, finalizeLegacyMigration, getRecord, listLegacyMigrations,
   listRecords, putRecord, renewGenerationJobLease, subscribeStorageChanges, syncStorage, updateGenerationJobWithLease,
 } = await import('../server/storage.mjs');
 
@@ -17,6 +17,18 @@ const fingerprint = changes => sha256(changes.map(change => ({
   key: `${change.collection}:${change.id}`,
   payloadHash: sha256(JSON.stringify(change)),
 })).sort((left, right) => left.key.localeCompare(right.key)).map(item => `${item.key}:${item.payloadHash}\n`).join(''));
+const generationOptions = (provider = 'codex') => ({
+  provider,
+  questionCount: 1,
+  ragProfile: { id: 'lite', retrieval: 'sparse', contextBudget: 4_096, rerank: false },
+  routeChain: [{
+    provider,
+    privacy: provider.endsWith('-agent') || provider === 'codex' ? 'signed-in-agent' : 'remote-api',
+    paid: !(provider.endsWith('-agent') || provider === 'codex'),
+    approved: true,
+  }],
+  resolvedSettings: { 'hardware.profile': 'lite' },
+});
 
 test.after(async () => rm(directory, { recursive: true, force: true }));
 
@@ -124,6 +136,41 @@ test('supports record-level reads, writes, and change subscriptions', () => {
   assert.throws(() => listRecords('secrets'), /Unknown storage collection/);
 });
 
+test('creates validated generation jobs transactionally and keeps generic sync read-only', () => {
+  putRecord('documents', 'creation-doc', { id: 'creation-doc', name: 'Creation.md', content: 'Evidence' });
+  const job = {
+    id: 'created-generation-job', testId: 'created-generation-test', name: 'Created through service',
+    createdAt: 25, updatedAt: 25, status: 'queued', documentIds: ['creation-doc'],
+    options: generationOptions('openai'), questions: [], rejected: 0, rounds: {},
+  };
+  const [created] = createGenerationJobs([job]);
+  assert.equal(created.data.status, 'queued');
+  assert.match(created.data.creationFingerprint, /^[a-f0-9]{64}$/);
+  assert.equal(createGenerationJobs([job])[0].revision, created.revision);
+  const progressed = putRecord('generationJobs', job.id, { ...created.data, options: generationOptions('codex') });
+  assert.equal(createGenerationJobs([job])[0].revision, progressed.revision);
+  assert.throws(() => createGenerationJobs([{ ...job, name: 'Conflicting retry' }]), /job id is already used/);
+  assert.throws(() => controlGenerationJob(job.id, 'resume', {
+    options: { provider: 'openai', questionCount: 1 }, activeRouteIndex: 0,
+  }, 26), /require a RAG profile snapshot/);
+  assert.throws(() => createGenerationJobs([{ ...job, id: 'missing-document-job', testId: 'missing-document-test', documentIds: ['absent'] }]), /documents not found/);
+  const transactionJob = { ...job, id: 'transaction-job', testId: 'transaction-test' };
+  assert.throws(() => createGenerationJobs([
+    transactionJob,
+    { ...job, id: 'transaction-missing-job', testId: 'transaction-missing-test', documentIds: ['absent'] },
+  ]), /documents not found/);
+  assert.equal(getRecord('generationJobs', transactionJob.id), undefined);
+  assert.throws(() => syncStorage({
+    changes: [{ collection: 'generationJobs', id: 'forged-job', data: job }],
+  }), /must be created and updated through/);
+  assert.throws(() => syncStorage({
+    changes: [{ collection: 'generationJobs', id: job.id, deleted: true }],
+  }), /Active generation jobs cannot be deleted/);
+  controlGenerationJob(job.id, 'cancel', {}, 27);
+  syncStorage({ changes: [{ collection: 'generationJobs', id: job.id, deleted: true }] });
+  assert.equal(getRecord('generationJobs', job.id), undefined);
+});
+
 test('claims one generation worker at a time and recovers expired leases', () => {
   putRecord('generationJobs', 'lease-job', {
     id: 'lease-job', testId: 'lease-test', name: 'Lease test', status: 'queued',
@@ -199,7 +246,9 @@ test('shares validated resume and cancel transitions across service clients', ()
     questions: [], rejected: 0, rounds: { reasoning: 2 }, error: 'Quota reached', errorCode: 'provider_limit',
   });
   const resumed = controlGenerationJob('control-job', 'resume', {
-    options: { provider: 'codex' }, activeRouteIndex: 1, providerAttempts: [{ outcome: 'manually-selected' }], resetRounds: true,
+    options: generationOptions('codex'), activeRouteIndex: 0,
+    providerAttempts: [{ provider: 'codex', routeIndex: 0, at: 21, accepted: 0, outcome: 'manually-selected' }],
+    resetRounds: true,
   }, 21);
   assert.equal(resumed.data.status, 'queued');
   assert.equal(resumed.data.options.provider, 'codex');

@@ -1,5 +1,9 @@
 import Database from 'better-sqlite3';
 import { validateQuestionCheckpoint } from './question-validation.mjs';
+import {
+  isModernGenerationOptions, validateActiveRoute, validateCoveragePlan, validateGenerationOptions,
+  validateGenerationProgress, validateNewGenerationJob, validateProviderAttempts,
+} from './generation-validation.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream, mkdirSync } from 'node:fs';
 import { chmod, mkdir, writeFile } from 'node:fs/promises';
@@ -160,20 +164,26 @@ const validateMigration = migration => {
   return migration;
 };
 
-const validateChange = change => {
+const validateChange = (change, { bootstrap = false, trusted = false } = {}) => {
   if (!change || !collections.has(change.collection) || typeof change.id !== 'string' || !change.id) {
     throw new Error('Invalid storage change');
   }
   if (!change.deleted && (typeof change.data !== 'object' || change.data === null)) {
     throw new Error('Storage records must contain an object');
   }
+  if (!bootstrap && !trusted && change.collection === 'generationJobs') {
+    if (!change.deleted) throw new Error('Generation jobs must be created and updated through /api/v1/jobs');
+    const existing = recordById.get('generationJobs', change.id);
+    const status = existing ? JSON.parse(existing.data).status : undefined;
+    if (existing && !['completed', 'cancelled'].includes(status)) throw new Error('Active generation jobs cannot be deleted through storage sync');
+  }
 };
 
-const applyChanges = database.transaction((changes, bootstrap, migrationId, migrationPayloadHashes) => {
+const applyChanges = database.transaction((changes, bootstrap, migrationId, migrationPayloadHashes, trusted) => {
   const now = Date.now();
   const applied = [];
   for (const change of changes) {
-    validateChange(change);
+    validateChange(change, { bootstrap, trusted });
     if (migrationId) insertMigrationItem.run({
       migrationId,
       collection: change.collection,
@@ -196,13 +206,13 @@ const applyChanges = database.transaction((changes, bootstrap, migrationId, migr
   return applied;
 });
 
-export const syncStorage = ({ cursor = 0, changes = [], bootstrap = false, migration } = {}, { migrationPayloadHashes } = {}) => {
+export const syncStorage = ({ cursor = 0, changes = [], bootstrap = false, migration } = {}, { migrationPayloadHashes, trusted = false } = {}) => {
   if (!Number.isSafeInteger(cursor) || cursor < 0 || !Array.isArray(changes) || changes.length > 10_000) {
     throw new Error('Invalid storage sync request');
   }
   if (migration && !bootstrap) throw new Error('Legacy migration metadata requires bootstrap mode');
   if (migration) validateMigration(migration);
-  const applied = applyChanges(changes, Boolean(bootstrap), migration?.id, migrationPayloadHashes);
+  const applied = applyChanges(changes, Boolean(bootstrap), migration?.id, migrationPayloadHashes, Boolean(trusted));
   if (applied.length) for (const listener of listeners) listener(applied);
   const rows = changesAfter.all(cursor);
   return {
@@ -279,14 +289,54 @@ export const getRecord = (collection, id) => {
 };
 
 export const putRecord = (collection, id, data) => {
-  validateChange({ collection, id, data });
-  syncStorage({ cursor: Number(currentRevision.get().revision), changes: [{ collection, id, data }] });
+  validateChange({ collection, id, data }, { trusted: true });
+  syncStorage({ cursor: Number(currentRevision.get().revision), changes: [{ collection, id, data }] }, { trusted: true });
   return getRecord(collection, id);
 };
 
 export const deleteRecord = (collection, id) => {
   validateCollection(collection);
-  syncStorage({ cursor: Number(currentRevision.get().revision), changes: [{ collection, id, deleted: true }] });
+  syncStorage({ cursor: Number(currentRevision.get().revision), changes: [{ collection, id, deleted: true }] }, { trusted: true });
+};
+
+const generationRequestFingerprint = job => sha256(JSON.stringify({
+  id: job.id,
+  testId: job.testId,
+  name: job.name,
+  createdAt: job.createdAt,
+  documentIds: job.documentIds,
+  options: job.options,
+}));
+
+export const createGenerationJobs = jobs => {
+  if (!Array.isArray(jobs) || !jobs.length || jobs.length > 100) throw new Error('Generation job creation requires 1-100 jobs');
+  jobs.forEach(validateNewGenerationJob);
+  if (new Set(jobs.map(job => job.id)).size !== jobs.length) throw new Error('Generation job ids must be unique');
+  if (new Set(jobs.map(job => job.testId)).size !== jobs.length) throw new Error('Generation test ids must be unique');
+
+  const knownTestIds = new Set(listRecords('tests').map(record => record.id));
+  const generationRecords = listRecords('generationJobs');
+  const jobById = new Map(generationRecords.map(record => [record.id, record]));
+  const jobByTestId = new Map(generationRecords.map(record => [record.data.testId, record]));
+  const changes = [];
+  for (const job of jobs) {
+    const missingDocuments = job.documentIds.filter(id => !getRecord('documents', id));
+    if (missingDocuments.length) throw new Error(`Generation documents not found: ${missingDocuments.join(', ')}`);
+    const existing = jobById.get(job.id);
+    if (existing) {
+      if (existing.data.creationFingerprint !== generationRequestFingerprint(job)) throw new Error(`Generation job id is already used: ${job.id}`);
+      continue;
+    }
+    if (knownTestIds.has(job.testId) || jobByTestId.has(job.testId)) throw new Error(`Generation test id is already used: ${job.testId}`);
+    changes.push({
+      collection: 'generationJobs', id: job.id,
+      data: { ...job, creationFingerprint: generationRequestFingerprint(job) },
+    });
+  }
+  if (changes.length) syncStorage({
+    cursor: Number(currentRevision.get().revision), changes,
+  }, { trusted: true });
+  return jobs.map(job => getRecord('generationJobs', job.id));
 };
 
 const validateWorker = (workerId, leaseMs) => {
@@ -386,7 +436,8 @@ const validateGenerationPatch = (patch, job = {}) => {
   const unsupported = Object.keys(patch).filter(key => !generationPatchKeys.has(key));
   if (unsupported.length) throw new Error(`Generation workers cannot update: ${unsupported.join(', ')}`);
   if (patch.status !== undefined && !workerStatuses.has(patch.status)) throw new Error('Invalid worker generation status');
-  if (patch.questions !== undefined) validateQuestionCheckpoint(patch.questions, job);
+  const checkpointJob = { ...job, ...(patch.options ? { options: patch.options } : {}) };
+  if (patch.questions !== undefined) validateQuestionCheckpoint(patch.questions, checkpointJob);
   if (patch.rejected !== undefined && (!Number.isSafeInteger(patch.rejected) || patch.rejected < 0)) {
     throw new Error('Rejected question count must be a non-negative integer');
   }
@@ -394,15 +445,18 @@ const validateGenerationPatch = (patch, job = {}) => {
     || Object.entries(patch.rounds).some(([type, round]) => !generationQuestionTypes.has(type) || !Number.isSafeInteger(round) || round < 0 || round > 5))) {
     throw new Error('Generation rounds are invalid');
   }
-  if (patch.options !== undefined && (!patch.options || typeof patch.options !== 'object' || Array.isArray(patch.options))) {
-    throw new Error('Generation options must be an object');
-  }
-  if (patch.providerAttempts !== undefined && !Array.isArray(patch.providerAttempts)) throw new Error('Provider attempts must be an array');
+  const options = patch.options ?? job.options;
+  if (patch.options !== undefined) validateGenerationOptions(patch.options, { requireSnapshots: isModernGenerationOptions(job.options) });
+  if (isModernGenerationOptions(options)) validateActiveRoute(patch.activeRouteIndex ?? job.activeRouteIndex ?? 0, options);
+  else if (patch.activeRouteIndex !== undefined) validateActiveRoute(patch.activeRouteIndex, options);
+  if (patch.providerAttempts !== undefined) validateProviderAttempts(patch.providerAttempts, options);
+  if (patch.progress !== undefined) validateGenerationProgress(patch.progress, options);
+  if (patch.coveragePlan !== undefined) validateCoveragePlan(patch.coveragePlan, job.documentIds, options?.questionCount);
 };
 
 export const updateGenerationJobWithLease = (id, { workerId, leaseId, patch, now = Date.now() } = {}) => {
   const existing = getRecord('generationJobs', id);
-  validateGenerationPatch(patch, { ...existing?.data, ...(patch?.options ? { options: patch.options } : {}) });
+  validateGenerationPatch(patch, existing?.data);
   requireActiveGenerationLease(existing, { workerId, leaseId, now });
   const running = (patch.status ?? existing.data.status) === 'running';
   return putRecord('generationJobs', id, {
@@ -423,9 +477,7 @@ export const completeGenerationJob = (id, {
   if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw new Error('Generation completion patch must be an object');
   if (Object.hasOwn(patch, 'status')) throw new Error('Generation completion status is managed by the service');
   const existing = getRecord('generationJobs', id);
-  validateGenerationPatch({ questions: patch.questions ?? test.questions, ...patch }, {
-    ...existing?.data, ...(patch.options ? { options: patch.options } : {}),
-  });
+  validateGenerationPatch({ questions: patch.questions ?? test.questions, ...patch }, existing?.data);
   if (patch.questions && JSON.stringify(patch.questions) !== JSON.stringify(test.questions)) {
     throw new Error('Completed job questions must match the stored test');
   }
@@ -455,7 +507,7 @@ export const completeGenerationJob = (id, {
       { collection: 'tests', id: test.id, data: test },
       { collection: 'generationJobs', id, data: job },
     ],
-  });
+  }, { trusted: true });
   return { job: getRecord('generationJobs', id), test: getRecord('tests', test.id) };
 };
 
@@ -465,16 +517,14 @@ export const controlGenerationJob = (id, action, changes = {}, now = Date.now())
   if (!changes || typeof changes !== 'object' || Array.isArray(changes)) throw new Error('Generation action must be an object');
   const unsupported = Object.keys(changes).filter(key => !['activeRouteIndex', 'options', 'providerAttempts', 'resetRounds'].includes(key));
   if (unsupported.length) throw new Error(`Generation action does not support: ${unsupported.join(', ')}`);
-  if (changes.options !== undefined && (!changes.options || typeof changes.options !== 'object' || Array.isArray(changes.options))) {
-    throw new Error('Generation options must be an object');
-  }
-  if (changes.providerAttempts !== undefined && !Array.isArray(changes.providerAttempts)) throw new Error('Provider attempts must be an array');
-  if (changes.activeRouteIndex !== undefined && (!Number.isSafeInteger(changes.activeRouteIndex) || changes.activeRouteIndex < 0)) {
-    throw new Error('Active route index must be a non-negative integer');
-  }
   if (changes.resetRounds !== undefined && typeof changes.resetRounds !== 'boolean') throw new Error('resetRounds must be a boolean');
   const existing = getRecord('generationJobs', id);
   if (!existing) throw new Error('Generation job not found');
+  const options = changes.options ?? existing.data.options;
+  if (changes.options !== undefined) validateGenerationOptions(changes.options, { requireSnapshots: isModernGenerationOptions(existing.data.options) });
+  if (isModernGenerationOptions(options)) validateActiveRoute(changes.activeRouteIndex ?? existing.data.activeRouteIndex ?? 0, options);
+  else if (changes.activeRouteIndex !== undefined) validateActiveRoute(changes.activeRouteIndex, options);
+  if (changes.providerAttempts !== undefined) validateProviderAttempts(changes.providerAttempts, options);
   if (action === 'cancel' && existing.data.status === 'completed') throw new Error('A completed generation job cannot be cancelled');
   if (action === 'resume' && ['running', 'completed'].includes(existing.data.status)) {
     throw new Error(`A ${existing.data.status} generation job cannot be resumed`);
