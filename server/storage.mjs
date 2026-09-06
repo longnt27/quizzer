@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import { validateQuestionCheckpoint } from './question-validation.mjs';
 import {
   isModernGenerationOptions, validateActiveRoute, validateCoveragePlan, validateGenerationOptions,
-  validateGenerationOptionsTransition, validateGenerationProgress, validateNewGenerationJob,
+  validateGenerationOptionsTransition, validateGenerationProgress, validateGenerationRejectionTransition, validateNewGenerationJob,
   validateProviderAttemptTransition,
 } from './generation-validation.mjs';
 import { validateOnboardingState } from './onboarding.mjs';
@@ -430,7 +430,7 @@ export const renewGenerationJobLease = (id, { workerId, leaseId, leaseMs = 45_00
 
 const generationPatchKeys = new Set([
   'activeRouteIndex', 'coveragePlan', 'error', 'errorCode', 'nextAttemptAt', 'options',
-  'progress', 'providerAttempts', 'questions', 'rejected', 'rounds', 'status',
+  'progress', 'providerAttempts', 'questions', 'rejected', 'rejections', 'rounds', 'status',
 ]);
 const workerStatuses = new Set(['running', 'waiting', 'paused', 'error']);
 const generationQuestionTypes = new Set(['multiple-choice', 'fill-blank', 'reasoning', 'coding']);
@@ -447,6 +447,7 @@ const validateGenerationPatch = (patch, job = {}) => {
   if (patch.rejected !== undefined && (!Number.isSafeInteger(patch.rejected) || patch.rejected < 0)) {
     throw new Error('Rejected question count must be a non-negative integer');
   }
+  if (patch.rejections !== undefined) validateGenerationRejectionTransition(patch.rejections, job.rejections);
   if (patch.rounds !== undefined && (!patch.rounds || typeof patch.rounds !== 'object' || Array.isArray(patch.rounds)
     || Object.entries(patch.rounds).some(([type, round]) => !generationQuestionTypes.has(type) || !Number.isSafeInteger(round) || round < 0 || round > 5))) {
     throw new Error('Generation rounds are invalid');

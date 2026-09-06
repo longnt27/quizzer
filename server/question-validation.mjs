@@ -14,9 +14,16 @@ const expectedCounts = options => {
   return { 'multiple-choice': options?.questionCount, 'fill-blank': 0, reasoning: 0, coding: 0 };
 };
 
-const validateProvenance = (provenance, allowedDocumentIds) => {
+const coverageRange = (type, expected) => {
+  const ordered = ['multiple-choice', 'fill-blank', 'reasoning', 'coding'];
+  const index = ordered.indexOf(type);
+  const start = ordered.slice(0, index).reduce((sum, item) => sum + expected[item], 0);
+  return { start, end: start + expected[type] };
+};
+
+const validateProvenance = (provenance, allowedDocumentIds, questionCount) => {
   if (!provenance || typeof provenance !== 'object' || Array.isArray(provenance)) throw new Error('Question provenance is required');
-  const unsupported = Object.keys(provenance).filter(key => !['documentIds', 'sourceSpanIds', 'provider', 'model'].includes(key));
+  const unsupported = Object.keys(provenance).filter(key => !['documentIds', 'sourceSpanIds', 'coverageSlot', 'provider', 'model'].includes(key));
   if (unsupported.length) throw new Error(`Question provenance contains unsupported fields: ${unsupported.join(', ')}`);
   if (!Array.isArray(provenance.documentIds) || !provenance.documentIds.length || provenance.documentIds.length > 20
     || provenance.documentIds.some(id => !boundedText(id, 1, 500) || !allowedDocumentIds.has(id))) {
@@ -30,6 +37,10 @@ const validateProvenance = (provenance, allowedDocumentIds) => {
   }
   if (new Set(provenance.sourceSpanIds).size !== provenance.sourceSpanIds.length) {
     throw new Error('Question provenance source-span ids must be unique');
+  }
+  if (provenance.coverageSlot !== undefined && (!Number.isSafeInteger(provenance.coverageSlot)
+    || provenance.coverageSlot < 0 || provenance.coverageSlot >= questionCount)) {
+    throw new Error('Question provenance coverage slot is invalid');
   }
   for (const key of ['provider', 'model']) {
     if (provenance[key] !== undefined && !boundedText(provenance[key], 1, 200)) throw new Error(`Question provenance ${key} is invalid`);
@@ -89,7 +100,11 @@ export const validateQuestionCheckpoint = (questions, job = {}) => {
   if (!Array.isArray(questions) || questions.length > 200) throw new Error('Generation questions must be an array of at most 200 items');
   const strict = Boolean(job.options?.ragProfile || job.options?.promptProfileSnapshot || job.options?.resolvedSettings);
   const allowedDocumentIds = new Set(Array.isArray(job.documentIds) ? job.documentIds : []);
+  const expected = strict ? expectedCounts(job.options) : undefined;
+  const questionCount = job.options?.questionCount
+    ?? Object.values(expected ?? {}).reduce((sum, count) => sum + count, 0);
   const counts = { 'multiple-choice': 0, 'fill-blank': 0, reasoning: 0, coding: 0 };
+  const coverageSlots = new Set();
   for (const question of questions) {
     if (!question || typeof question !== 'object' || Array.isArray(question) || !boundedText(question.statement, 1, 20_000)) {
       throw new Error('Generation checkpoint contains an invalid question');
@@ -97,10 +112,17 @@ export const validateQuestionCheckpoint = (questions, job = {}) => {
     if (!strict) continue;
     const type = validateStrictQuestion(question, job.options);
     counts[type] += 1;
-    validateProvenance(question.provenance, allowedDocumentIds);
+    validateProvenance(question.provenance, allowedDocumentIds, questionCount);
+    if (question.provenance.coverageSlot !== undefined) {
+      const range = coverageRange(type, expected);
+      if (question.provenance.coverageSlot < range.start || question.provenance.coverageSlot >= range.end) {
+        throw new Error('Question provenance coverage slot does not match its question type');
+      }
+      if (coverageSlots.has(question.provenance.coverageSlot)) throw new Error('Question provenance coverage slots must be unique');
+      coverageSlots.add(question.provenance.coverageSlot);
+    }
   }
   if (strict) {
-    const expected = expectedCounts(job.options);
     for (const type of questionTypes) {
       if (!Number.isSafeInteger(expected[type]) || expected[type] < 0 || expected[type] > 200) {
         throw new Error('Generation job has invalid expected question counts');

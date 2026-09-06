@@ -48,6 +48,16 @@ test('rejects ungrounded, out-of-scope, and excessive modern checkpoints', () =>
   assert.throws(() => validateQuestionCheckpoint([{ ...questions[0], provenance: {
     documentIds: ['doc-1'], sourceSpanIds: ['other-doc:span:0'],
   } }], job), /invalid source-span ids/);
+  assert.throws(() => validateQuestionCheckpoint([{ ...questions[0], provenance: {
+    ...provenance, coverageSlot: 4,
+  } }], job), /coverage slot/);
+  assert.throws(() => validateQuestionCheckpoint([{ ...questions[1], provenance: {
+    ...provenance, coverageSlot: 0,
+  } }], job), /does not match its question type/);
+  assert.throws(() => validateQuestionCheckpoint([
+    { ...questions[0], provenance: { ...provenance, coverageSlot: 0 } },
+    { ...questions[0], statement: 'A second valid multiple-choice question', provenance: { ...provenance, coverageSlot: 0 } },
+  ], { ...job, options: { ...job.options, questionCounts: { multipleChoice: 2, fillBlank: 1, reasoning: 1, coding: 1 } } }), /coverage slots must be unique/);
   assert.throws(() => validateQuestionCheckpoint([questions[0], questions[0]], job), /exceeds the multiple-choice/);
 });
 

@@ -4,7 +4,9 @@ import {
   buildGenerationCoveragePlan, executeGenerationJob, extractGenerationJson,
   GenerationJobWorker, generationQuestionSchemas, requestedQuestionCounts, validGeneratedCandidate,
 } from '../server/generation-worker.mjs';
-import { validateCoveragePlan, validateProviderAttemptTransition } from '../server/generation-validation.mjs';
+import {
+  validateCoveragePlan, validateGenerationRejectionTransition, validateProviderAttemptTransition,
+} from '../server/generation-validation.mjs';
 import { validateQuestionCheckpoint } from '../server/question-validation.mjs';
 
 const documents = [
@@ -26,7 +28,7 @@ const optionsFor = ({ provider = 'codex', questionCounts, routeChain } = {}) => 
     questionCounts: counts,
     multipleChoiceMode: 'single',
     coverageStrategy: 'cross-document',
-    customInstruction: 'Focus on safe concurrent updates.',
+    customInstruction: 'Focus on leases and coordination.',
     promptProfileSnapshot: {
       id: 'test-profile', version: 1, name: 'Test profile',
       template: 'Create {{count}} {{questionType}} items. {{typeInstructions}} {{multipleChoiceRule}} {{instruction}} Avoid: {{acceptedQuestions}}',
@@ -92,6 +94,7 @@ const createHarness = (job, requestProvider) => {
         if (patch.providerAttempts) validateProviderAttemptTransition(
           patch.providerAttempts, state.providerAttempts, nextOptions, (patch.questions ?? state.questions).length,
         );
+        if (patch.rejections) validateGenerationRejectionTransition(patch.rejections, state.rejections);
         state = { ...state, ...structuredClone(patch), updatedAt: timestamp++ };
         patches.push(structuredClone(patch));
         return state;
@@ -103,6 +106,7 @@ const createHarness = (job, requestProvider) => {
         validateProviderAttemptTransition(
           value.patch.providerAttempts, state.providerAttempts, value.test.generationOptions, value.test.questions.length,
         );
+        validateGenerationRejectionTransition(value.patch.rejections ?? [], state.rejections);
         completion = structuredClone(value);
         state = { ...state, ...value.patch, status: 'completed', completionId: value.completionId };
         return state;
@@ -132,10 +136,11 @@ test('service worker retrieves, validates, checkpoints, and atomically completes
   assert.equal(result.status, 'completed');
   assert.deepEqual(requests.map(request => request.type), ['multiple-choice', 'fill-blank', 'reasoning', 'coding']);
   assert.ok(requests.every(request => request.prompt.includes('SECURITY RULES (protected by Quizzer')));
-  assert.ok(requests.every(request => request.prompt.includes('Focus on safe concurrent updates.')));
+  assert.ok(requests.every(request => request.prompt.includes('Focus on leases and coordination.')));
   assert.ok(requests.every(request => request.prompt.includes('Source span: doc-')));
   assert.ok(requests.every(request => request.images.length === 0));
   assert.equal(harness.completion().test.questions.length, 4);
+  assert.deepEqual(harness.completion().test.questions.map(question => question.provenance.coverageSlot), [0, 1, 2, 3]);
   assert.equal(harness.completion().test.fileContent.includes('Coordination two'), true);
   assert.equal(harness.completion().patch.providerAttempts.at(-1).outcome, 'completed');
   assert.ok(harness.completion().test.questions.every(question => question.provenance.sourceSpanIds.length >= 1));
@@ -226,10 +231,14 @@ test('service worker uses local embeddings to reject semantic duplicates', async
   harness.dependencies.embed = texts => texts.map(() => [1, 0, 0]);
 
   const result = await executeGenerationJob(job, harness.dependencies);
-  assert.equal(result.status, 'completed');
-  assert.equal(harness.completion().test.questions.length, 1);
+  assert.equal(result.status, 'error');
+  assert.equal(result.errorCode, 'validation_exhausted');
+  assert.equal(harness.completion(), undefined);
+  assert.equal(harness.state().questions.length, 1);
   assert.equal(requestCount, 5);
   assert.ok(harness.state().rejected >= 5);
+  assert.ok(harness.state().rejections.some(rejection => rejection.reason === 'duplicate'));
+  assert.ok(harness.state().rejections.some(rejection => rejection.reason === 'out-of-coverage'));
 });
 
 test('service worker falls back to source chunks, carries images, and renews its lease', async () => {
@@ -261,6 +270,84 @@ test('service worker falls back to source chunks, carries images, and renews its
   }
 });
 
+test('service worker runs one corrective retrieval pass before generating', async () => {
+  const options = optionsFor({ questionCounts: { multipleChoice: 1, fillBlank: 0, reasoning: 0, coding: 0 } });
+  const job = {
+    id: 'job-corrective', testId: 'test-corrective', name: 'Corrective quiz', status: 'running',
+    workerId: 'service-worker', leaseId: 'lease-corrective', createdAt: 1, updatedAt: 1,
+    documentIds: ['doc-one'], options, questions: [], rejected: 0, rounds: {}, activeRouteIndex: 0,
+  };
+  const harness = createHarness(job, () => JSON.stringify({ questions: [candidateFor('multiple-choice')] }));
+  let retrievals = 0;
+  harness.dependencies.retrieve = () => {
+    retrievals += 1;
+    const evidence = [{
+      sourceSpanId: 'doc-one:span:0:a', documentId: 'doc-one', documentName: 'Coordination one',
+      content: documents[0].content,
+    }];
+    return retrievals === 1
+      ? { confidence: 'low', refusal: 'Insufficient evidence', results: evidence }
+      : { confidence: 'high', results: evidence };
+  };
+
+  const result = await executeGenerationJob(job, harness.dependencies);
+  assert.equal(result.status, 'completed');
+  assert.equal(retrievals, 2);
+});
+
+test('service worker refuses after one unsuccessful corrective retrieval pass', async () => {
+  const options = optionsFor({ questionCounts: { multipleChoice: 1, fillBlank: 0, reasoning: 0, coding: 0 } });
+  const job = {
+    id: 'job-refusal', testId: 'test-refusal', name: 'Refusal quiz', status: 'running',
+    workerId: 'service-worker', leaseId: 'lease-refusal', createdAt: 1, updatedAt: 1,
+    documentIds: ['doc-one'], options, questions: [], rejected: 0, rounds: {}, activeRouteIndex: 0,
+  };
+  let retrievals = 0;
+  let providerRequests = 0;
+  const harness = createHarness(job, () => { providerRequests += 1; return '{}'; });
+  harness.dependencies.retrieve = () => {
+    retrievals += 1;
+    return { confidence: 'low', refusal: 'Insufficient evidence', results: [] };
+  };
+
+  const result = await executeGenerationJob(job, harness.dependencies);
+  assert.equal(result.status, 'error');
+  assert.equal(result.errorCode, 'insufficient_evidence');
+  assert.match(result.error, /one corrective retrieval pass/);
+  assert.equal(retrievals, 2);
+  assert.equal(providerRequests, 0);
+});
+
+test('service worker audits an ungrounded candidate and refills only its slot', async () => {
+  const options = optionsFor({ questionCounts: { multipleChoice: 2, fillBlank: 0, reasoning: 0, coding: 0 } });
+  const job = {
+    id: 'job-grounding', testId: 'test-grounding', name: 'Grounding quiz', status: 'running',
+    workerId: 'service-worker', leaseId: 'lease-grounding', createdAt: 1, updatedAt: 1,
+    documentIds: ['doc-one'], options, questions: [], rejected: 0, rounds: {}, activeRouteIndex: 0,
+  };
+  let requests = 0;
+  const harness = createHarness(job, () => {
+    requests += 1;
+    if (requests > 1) return JSON.stringify({ questions: [candidateFor('multiple-choice', 3)] });
+    return JSON.stringify({ questions: [{
+      type: 'multiple-choice', statement: 'Which pigment absorbs sunlight during photosynthesis?',
+      answer: [
+        { correct: true, content: 'Chlorophyll', explanation: 'Chlorophyll absorbs light energy for photosynthesis.' },
+        { correct: false, content: 'Hemoglobin', explanation: 'Hemoglobin transports oxygen rather than absorbing sunlight.' },
+        { correct: false, content: 'Keratin', explanation: 'Keratin provides structural support and is not a photosynthetic pigment.' },
+      ],
+    }, candidateFor('multiple-choice', 2)] });
+  });
+
+  const result = await executeGenerationJob(job, harness.dependencies);
+  assert.equal(result.status, 'completed');
+  assert.equal(requests, 2);
+  assert.equal(result.rejected, 1);
+  assert.deepEqual(result.rejections.map(rejection => rejection.reason), ['ungrounded']);
+  assert.match(result.rejections[0].statement, /pigment/);
+  assert.deepEqual(result.questions.map(question => question.provenance.coverageSlot), [1, 0]);
+});
+
 test('service worker records missing sources, empty generations, and network waits', async () => {
   const options = optionsFor({ questionCounts: { multipleChoice: 1, fillBlank: 0, reasoning: 0, coding: 0 } });
   const base = {
@@ -276,7 +363,9 @@ test('service worker records missing sources, empty generations, and network wai
   const empty = createHarness({ ...base, id: 'job-empty' }, () => '{"questions":[]}');
   const emptyResult = await executeGenerationJob({ ...base, id: 'job-empty' }, empty.dependencies);
   assert.equal(emptyResult.status, 'error');
-  assert.match(emptyResult.error, /No valid questions/);
+  assert.equal(emptyResult.errorCode, 'validation_exhausted');
+  assert.match(emptyResult.error, /validated 0 of 1/);
+  assert.equal(emptyResult.rejections.reduce((sum, rejection) => sum + rejection.count, 0), 5);
 
   const disconnected = createHarness({ ...base, id: 'job-waiting' }, () => { throw new Error('Network socket connection failed'); });
   const waitingResult = await executeGenerationJob({ ...base, id: 'job-waiting' }, disconnected.dependencies);

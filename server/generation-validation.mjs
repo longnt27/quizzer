@@ -5,6 +5,9 @@ import { isDeepStrictEqual } from 'node:util';
 const generationProviders = new Set(Object.keys(PROVIDER_POLICIES));
 const questionTypes = new Set(['multiple-choice', 'fill-blank', 'reasoning', 'coding']);
 const coverageStrategies = new Set(['balanced', 'proportional', 'ai-selected', 'cross-document']);
+const rejectionReasons = new Set([
+  'invalid-schema', 'ungrounded', 'instruction-mismatch', 'duplicate', 'empty-response', 'out-of-coverage',
+]);
 const secretName = /(api.?key|password|secret|token|credential)/i;
 
 const isObject = value => value && typeof value === 'object' && !Array.isArray(value);
@@ -240,6 +243,34 @@ export const validateProviderAttemptTransition = (input, previous, options, acce
   }
   if (input.length > prior.length && input.at(-1).accepted !== acceptedCount) {
     throw new Error('A provider attempt must record the current accepted-question checkpoint');
+  }
+  return input;
+};
+
+export const validateGenerationRejections = input => {
+  if (!Array.isArray(input) || input.length > 5_000) {
+    throw new Error('Generation rejections must be an array of at most 5000 events');
+  }
+  for (const rejection of input) {
+    requireObject(rejection, 'Generation rejection must be an object');
+    rejectUnknown(rejection, new Set(['at', 'type', 'round', 'reason', 'count', 'statement']), 'Generation rejection');
+    boundedInteger(rejection.at, 0, Number.MAX_SAFE_INTEGER, 'Generation rejection time is invalid');
+    if (!questionTypes.has(rejection.type)) throw new Error('Generation rejection question type is invalid');
+    boundedInteger(rejection.round, 1, 5, 'Generation rejection round is invalid');
+    if (!rejectionReasons.has(rejection.reason)) throw new Error('Generation rejection reason is invalid');
+    boundedInteger(rejection.count, 1, 200, 'Generation rejection count is invalid');
+    if (rejection.statement !== undefined && !boundedText(rejection.statement, 1, 500)) {
+      throw new Error('Generation rejection statement is invalid');
+    }
+  }
+  return input;
+};
+
+export const validateGenerationRejectionTransition = (input, previous) => {
+  validateGenerationRejections(input);
+  const prior = previous ?? [];
+  if (input.length < prior.length || prior.some((rejection, index) => !isDeepStrictEqual(rejection, input[index]))) {
+    throw new Error('Generation rejection history is append-only');
   }
   return input;
 };

@@ -1072,6 +1072,21 @@ components:
         leaseExpiresAt: { type: integer }
         completionId: { type: string }
         creationFingerprint: { type: string, pattern: '^[a-f0-9]{64}$' }
+        rejections:
+          type: array
+          maxItems: 5000
+          items: { $ref: '#/components/schemas/GenerationRejection' }
+    GenerationRejection:
+      type: object
+      required: [at, type, round, reason, count]
+      additionalProperties: false
+      properties:
+        at: { type: integer, minimum: 0 }
+        type: { type: string, enum: [multiple-choice, fill-blank, reasoning, coding] }
+        round: { type: integer, minimum: 1, maximum: 5 }
+        reason: { type: string, enum: [invalid-schema, ungrounded, instruction-mismatch, duplicate, empty-response, out-of-coverage] }
+        count: { type: integer, minimum: 1, maximum: 200 }
+        statement: { type: string, minLength: 1, maxLength: 500 }
     GenerationJobPatch:
       type: object
       minProperties: 1
@@ -1089,6 +1104,7 @@ components:
         providerAttempts: { type: array, items: { type: object } }
         questions: { type: array, items: { type: object } }
         rejected: { type: integer, minimum: 0 }
+        rejections: { type: array, maxItems: 5000, items: { $ref: '#/components/schemas/GenerationRejection' } }
         rounds: { type: object }
         status: { type: string, enum: [running, waiting, paused, error] }
     PluginSummary:

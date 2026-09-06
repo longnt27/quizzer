@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   validateActiveRoute, validateCoveragePlan, validateGenerationOptions, validateGenerationOptionsTransition,
-  validateGenerationProgress, validateNewGenerationJob, validateProviderAttempts,
+  validateGenerationProgress, validateGenerationRejections, validateGenerationRejectionTransition,
+  validateNewGenerationJob, validateProviderAttempts,
   validateProviderAttemptTransition, validateProviderRoute,
 } from '../server/generation-validation.mjs';
 import { resolveSettings } from '../server/settings.mjs';
@@ -190,4 +191,15 @@ test('validates route-bound attempts, progress, and retrieval coverage', () => {
   assert.throws(() => validateCoveragePlan({
     ...coverage, slots: [{ documentIds: ['doc-one'], chunkIndexes: { 'doc-two': 0 } }, coverage.slots[1]],
   }, ['doc-one', 'doc-two'], 2), /out-of-scope chunk index/);
+
+  const rejections = [{
+    at: 40, type: 'reasoning', round: 1, reason: 'ungrounded', count: 1,
+    statement: 'Why is an unrelated claim true?',
+  }];
+  assert.equal(validateGenerationRejections(rejections), rejections);
+  const appended = [...rejections, { at: 41, type: 'reasoning', round: 2, reason: 'duplicate', count: 2 }];
+  assert.equal(validateGenerationRejectionTransition(appended, rejections), appended);
+  assert.throws(() => validateGenerationRejectionTransition(appended.slice(1), rejections), /append-only/);
+  assert.throws(() => validateGenerationRejections([{ ...rejections[0], reason: 'unknown' }]), /reason is invalid/);
+  assert.throws(() => validateGenerationRejections([{ ...rejections[0], statement: 'x'.repeat(501) }]), /statement is invalid/);
 });

@@ -4,6 +4,15 @@ import type { ReasoningJudgment } from '../utils/judgeReasoning';
 
 export type GenerationJobStatus = 'queued' | 'running' | 'waiting' | 'paused' | 'error' | 'completed' | 'cancelled';
 
+export interface GenerationRejection {
+  at: number;
+  type: QuestionType;
+  round: number;
+  reason: 'invalid-schema' | 'ungrounded' | 'instruction-mismatch' | 'duplicate' | 'empty-response' | 'out-of-coverage';
+  count: number;
+  statement?: string;
+}
+
 export interface StoredGenerationJob {
   id: string;
   testId: string;
@@ -16,6 +25,7 @@ export interface StoredGenerationJob {
   options: GenerationOptions;
   questions: QuizQuestion[];
   rejected: number;
+  rejections?: GenerationRejection[];
   rounds: Partial<Record<QuestionType, number>>;
   coveragePlan?: StoredCoveragePlan;
   activeRouteIndex?: number;

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { chunkDocument } from './document-import.mjs';
+import { assessQuestionQuality, retrievalNeedsCorrection } from './generation-quality.mjs';
 
 const QUESTION_TYPES = ['multiple-choice', 'fill-blank', 'reasoning', 'coding'];
 const MAX_ROUNDS = 5;
@@ -19,7 +20,7 @@ Do not repeat the knowledge tested by these already accepted questions:
 export const generationQuestionSchemas = Object.freeze({
   'multiple-choice': {
     type: 'object', additionalProperties: false, required: ['questions'], properties: { questions: {
-      type: 'array', items: { type: 'object', additionalProperties: false, required: ['type', 'statement', 'answer'], properties: {
+      type: 'array', maxItems: 25, items: { type: 'object', additionalProperties: false, required: ['type', 'statement', 'answer'], properties: {
         type: { type: 'string', enum: ['multiple-choice'] }, statement: { type: 'string' }, answer: {
           type: 'array', minItems: 3, maxItems: 6, items: { type: 'object', additionalProperties: false,
             required: ['correct', 'content', 'explanation'], properties: {
@@ -31,7 +32,7 @@ export const generationQuestionSchemas = Object.freeze({
   },
   'fill-blank': {
     type: 'object', additionalProperties: false, required: ['questions'], properties: { questions: {
-      type: 'array', items: { type: 'object', additionalProperties: false,
+      type: 'array', maxItems: 25, items: { type: 'object', additionalProperties: false,
         required: ['type', 'statement', 'acceptedAnswers', 'explanation'], properties: {
           type: { type: 'string', enum: ['fill-blank'] }, statement: { type: 'string' },
           acceptedAnswers: { type: 'array', minItems: 3, maxItems: 16, items: { type: 'string' } }, explanation: { type: 'string' },
@@ -40,7 +41,7 @@ export const generationQuestionSchemas = Object.freeze({
   },
   reasoning: {
     type: 'object', additionalProperties: false, required: ['questions'], properties: { questions: {
-      type: 'array', items: { type: 'object', additionalProperties: false,
+      type: 'array', maxItems: 25, items: { type: 'object', additionalProperties: false,
         required: ['type', 'statement', 'referenceAnswer', 'explanation'], properties: {
           type: { type: 'string', enum: ['reasoning'] }, statement: { type: 'string' },
           referenceAnswer: { type: 'string' }, explanation: { type: 'string' },
@@ -49,7 +50,7 @@ export const generationQuestionSchemas = Object.freeze({
   },
   coding: {
     type: 'object', additionalProperties: false, required: ['questions'], properties: { questions: {
-      type: 'array', items: { type: 'object', additionalProperties: false,
+      type: 'array', maxItems: 25, items: { type: 'object', additionalProperties: false,
         required: ['type', 'statement', 'referenceAnswer', 'explanation'], properties: {
           type: { type: 'string', enum: ['coding'] }, statement: { type: 'string' },
           referenceAnswer: { type: 'string' }, explanation: { type: 'string' },
@@ -234,29 +235,47 @@ const loadSourceImages = async (slots, documentMap, loadImage) => {
   return images;
 };
 
-const buildSourceContext = async ({ documents, plan, offset, count, options, retrieve, loadImage, signal }) => {
+const insufficientEvidenceError = () => Object.assign(
+  new Error('Quizzer could not find sufficient indexed evidence after one corrective retrieval pass.'),
+  { code: 'insufficient_evidence' },
+);
+
+const retrieveSlotEvidence = async ({ fallback, slot, options, retrieve, limit, contextBudget, signal }) => {
+  if (typeof retrieve !== 'function') return fallback;
+  const seed = fallback.map(item => item.content.slice(0, 600)).join('\n');
+  const request = query => retrieve({
+    query,
+    documentIds: slot.documentIds,
+    limit,
+    contextBudget,
+    includeNeighbors: true,
+    signal,
+  });
+  try {
+    const initial = await request([options.customInstruction, seed].filter(Boolean).join('\n'));
+    if (!retrievalNeedsCorrection(initial)) return initial.results;
+    const corrected = await request(seed);
+    if (retrievalNeedsCorrection(corrected)) throw insufficientEvidenceError();
+    return corrected.results;
+  } catch (error) {
+    if (signal?.aborted || error?.name === 'AbortError' || error?.code === 'insufficient_evidence') throw error;
+    return fallback;
+  }
+};
+
+const buildSourceContext = async ({ documents, plan, slotIndexes, options, retrieve, loadImage, signal }) => {
   const documentMap = new Map(documents.map(document => [document.id, document]));
-  const slots = plan.slots.slice(offset, offset + count);
+  const slots = slotIndexes.map(index => plan.slots[index]);
   const contextBudget = options.ragProfile?.contextBudget ?? options.resolvedSettings?.['retrieval.contextBudget'] ?? 4096;
   const perSlotBudget = Math.max(512, Math.floor(contextBudget / Math.max(1, slots.length)));
   const slotContexts = await Promise.all(slots.map(async slot => {
     const fallback = fallbackEvidence(slot, documentMap);
-    if (typeof retrieve !== 'function') return fallback;
-    const seed = fallback.map(item => item.content.slice(0, 600)).join('\n');
-    try {
-      const result = await retrieve({
-        query: [options.customInstruction, seed].filter(Boolean).join('\n'),
-        documentIds: slot.documentIds,
-        limit: Math.min(4, Math.max(2, slot.documentIds.length * 2)),
-        contextBudget: perSlotBudget,
-        includeNeighbors: true,
-        signal,
-      });
-      return result?.results?.length ? result.results : fallback;
-    } catch (error) {
-      if (signal?.aborted || error?.name === 'AbortError') throw error;
-      return fallback;
-    }
+    return retrieveSlotEvidence({
+      fallback, slot, options, retrieve,
+      limit: Math.min(4, Math.max(2, slot.documentIds.length * 2)),
+      contextBudget: perSlotBudget,
+      signal,
+    });
   }));
   const evidence = new Map();
   for (const results of slotContexts) for (const item of results) evidence.set(item.sourceSpanId, item);
@@ -272,6 +291,8 @@ const buildSourceContext = async ({ documents, plan, offset, count, options, ret
       documentIds: [...new Set(results.map(item => item.documentId))],
       sourceSpanIds: [...new Set(results.map(item => item.sourceSpanId))],
     })),
+    evidenceBySlot: slotContexts,
+    slotIndexes,
   };
 };
 
@@ -361,6 +382,19 @@ export const executeGenerationJob = async (claimedJob, dependencies) => {
     let providerAttempts = [...(job.providerAttempts ?? [])];
     const accepted = [...(job.questions ?? [])];
     let rejected = job.rejected ?? 0;
+    const rejections = [...(job.rejections ?? [])];
+    const recordRejection = ({ type, round, reason, statement }, count = 1) => {
+      rejected += count;
+      let remaining = count;
+      while (remaining > 0) {
+        const eventCount = Math.min(200, remaining);
+        rejections.push({
+          at: dependencies.now?.() ?? Date.now(), type, round, reason, count: eventCount,
+          ...(boundedText(statement) ? { statement: statement.trim().slice(0, 500) } : {}),
+        });
+        remaining -= eventCount;
+      }
+    };
     const rounds = { ...(job.rounds ?? {}) };
     const offsets = {
       'multiple-choice': 0,
@@ -371,17 +405,28 @@ export const executeGenerationJob = async (claimedJob, dependencies) => {
     const batchSize = Math.max(5, Math.min(25, options.resolvedSettings?.['generation.batchSize'] ?? 10));
     for (const type of QUESTION_TYPES) {
       const typeTarget = counts[type];
-      let typeAccepted = accepted.filter(question => (question.type ?? 'multiple-choice') === type).length;
+      const typeSlotIndexes = Array.from({ length: typeTarget }, (_, index) => offsets[type] + index);
+      const typeQuestions = accepted.filter(question => (question.type ?? 'multiple-choice') === type);
+      const filledSlots = new Set(typeQuestions.flatMap(question => {
+        const slot = question.provenance?.coverageSlot;
+        return Number.isSafeInteger(slot) && typeSlotIndexes.includes(slot) ? [slot] : [];
+      }));
+      for (let index = filledSlots.size; index < typeQuestions.length; index += 1) {
+        const legacySlot = typeSlotIndexes.find(slot => !filledSlots.has(slot));
+        if (legacySlot !== undefined) filledSlots.add(legacySlot);
+      }
+      let typeAccepted = filledSlots.size;
       let round = (rounds[type] ?? 0) + 1;
       while (round <= MAX_ROUNDS && typeAccepted < typeTarget) {
         if (controller.signal.aborted) throw controller.signal.reason ?? abortError();
-        const requested = Math.min(batchSize, typeTarget - typeAccepted);
+        const requestedSlotIndexes = typeSlotIndexes.filter(slot => !filledSlots.has(slot)).slice(0, batchSize);
+        const requested = requestedSlotIndexes.length;
         await persist({ progress: {
           accepted: accepted.length, target, round, maxRounds: MAX_ROUNDS, rejected,
           currentType: type, typeAccepted, typeTarget, phase: 'requesting', provider: options.provider, parallelRequests: 1,
         } });
         const source = await buildSourceContext({
-          documents, plan: coveragePlan, offset: offsets[type] + typeAccepted, count: requested,
+          documents, plan: coveragePlan, slotIndexes: requestedSlotIndexes,
           options, retrieve: dependencies.retrieve, loadImage: dependencies.loadImage, signal: controller.signal,
         });
         let candidates;
@@ -418,10 +463,22 @@ export const executeGenerationJob = async (claimedJob, dependencies) => {
           accepted: accepted.length, target, round, maxRounds: MAX_ROUNDS, rejected,
           currentType: type, typeAccepted, typeTarget, phase: 'validating', provider: options.provider, parallelRequests: 1,
         } });
-        if (!candidates.length) rejected += requested;
-        const validCandidates = candidates.flatMap((candidate, sourceIndex) =>
-          validGeneratedCandidate(candidate, type, options.multipleChoiceMode) ? [{ candidate, sourceIndex }] : []);
-        rejected += candidates.length - validCandidates.length;
+        if (!candidates.length) recordRejection({ type, round, reason: 'empty-response' }, requested);
+        if (candidates.length > requested) {
+          recordRejection({ type, round, reason: 'out-of-coverage' }, candidates.length - requested);
+        }
+        const validCandidates = candidates.slice(0, requested).flatMap((candidate, sourceIndex) => {
+          if (!validGeneratedCandidate(candidate, type, options.multipleChoiceMode)) {
+            recordRejection({ type, round, reason: 'invalid-schema', statement: candidate?.statement });
+            return [];
+          }
+          const quality = assessQuestionQuality(candidate, source.evidenceBySlot[sourceIndex], options.customInstruction);
+          if (!quality.accepted) {
+            recordRejection({ type, round, reason: quality.reason, statement: candidate.statement });
+            return [];
+          }
+          return [{ candidate, sourceIndex }];
+        });
         let vectors;
         if (options.resolvedSettings?.['embeddings.enabled'] && typeof dependencies.embed === 'function' && validCandidates.length) {
           try {
@@ -441,23 +498,30 @@ export const executeGenerationJob = async (claimedJob, dependencies) => {
           if (accepted.some(existing => normalize(existing.statement) === normalize(candidate.statement)
             || similarity(existing.statement, candidate.statement) >= 0.82)
             || (candidateVector && acceptedVectors.some(vector => cosineSimilarity(vector, candidateVector) >= 0.9))) {
-            rejected += 1;
+            recordRejection({ type, round, reason: 'duplicate', statement: candidate.statement });
             continue;
           }
           const provenance = source.provenanceBySlot[sourceIndex] ?? source.provenanceBySlot[0];
           accepted.push({ ...candidate, provenance: {
-            ...provenance, provider: options.provider, ...(options.model ? { model: options.model } : {}),
+            ...provenance, coverageSlot: source.slotIndexes[sourceIndex],
+            provider: options.provider, ...(options.model ? { model: options.model } : {}),
           } });
+          filledSlots.add(source.slotIndexes[sourceIndex]);
           if (candidateVector) acceptedVectors.push(candidateVector);
           typeAccepted += 1;
           if (typeAccepted === typeTarget) break;
         }
         rounds[type] = round;
-        await persist({ questions: [...accepted], rejected, rounds: { ...rounds }, options });
+        await persist({ questions: [...accepted], rejected, rejections: [...rejections], rounds: { ...rounds }, options });
         round += 1;
       }
     }
-    if (!accepted.length) throw new Error('No valid questions could be generated.');
+    if (accepted.length !== target) {
+      throw Object.assign(
+        new Error(`Quizzer validated ${accepted.length} of ${target} requested questions. Retry to refill only the unfinished slots.`),
+        { code: 'validation_exhausted' },
+      );
+    }
     const finishedAt = dependencies.now?.() ?? Date.now();
     const content = documents.map(document => `# Document: ${document.name}\n\n${document.content}`).join('\n\n---\n\n');
     const completionAttempt = {
@@ -471,7 +535,7 @@ export const executeGenerationJob = async (claimedJob, dependencies) => {
         attempts: [], documentIds: job.documentIds, fileContent: content, generationOptions: options,
       },
       patch: {
-        questions: accepted, activeRouteIndex: routeIndex,
+        questions: accepted, activeRouteIndex: routeIndex, rejections,
         providerAttempts: [...providerAttempts, completionAttempt],
         progress: job.progress ? { ...job.progress, accepted: accepted.length, phase: 'validating', provider: options.provider } : undefined,
       },

@@ -72,6 +72,7 @@ export type HardwareProfileId = 'lite' | 'balanced' | 'max';
 export interface QuestionProvenance {
   sourceSpanIds: string[];
   documentIds: string[];
+  coverageSlot?: number;
   provider?: string;
   model?: string;
 }
