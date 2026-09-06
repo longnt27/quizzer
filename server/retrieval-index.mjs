@@ -111,6 +111,7 @@ export class RetrievalIndex {
           dense: { status: 'ready', embeddingModel, candidates: dense.length },
         };
       } catch (error) {
+        if (options.signal?.aborted || error?.name === 'AbortError') throw error;
         this.denseIssue = { model: embeddingModel, message: errorMessage(error), occurredAt: Date.now() };
         preview = {
           ...sparse,

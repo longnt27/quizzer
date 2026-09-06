@@ -9,18 +9,34 @@ import test from 'node:test';
 
 const directory = await mkdtemp(join(tmpdir(), 'quizzer-api-test-'));
 const token = 'quizzer-test-token-0123456789abcdef';
+let slowEmbeddingStarted;
+let slowEmbeddingCancelled;
 const embeddingServer = createServer((request, response) => {
   let body = '';
   request.setEncoding('utf8');
   request.on('data', chunk => { body += chunk; });
   request.on('end', () => {
     const input = JSON.parse(body).input;
-    const embeddings = input.map(text => {
-      const normalized = text.toLocaleLowerCase();
-      return [normalized.includes('terraform') ? 1 : 0, normalized.includes('state') ? 1 : 0, normalized.includes('locking') ? 1 : 0];
-    });
-    response.writeHead(200, { 'Content-Type': 'application/json' });
-    response.end(JSON.stringify({ embeddings }));
+    const respond = () => {
+      const embeddings = input.map(text => {
+        const normalized = text.toLocaleLowerCase();
+        return [normalized.includes('terraform') ? 1 : 0, normalized.includes('state') ? 1 : 0, normalized.includes('locking') ? 1 : 0];
+      });
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ embeddings }));
+    };
+    if (input.some(text => text.includes('__slow__'))) {
+      slowEmbeddingStarted?.();
+      const timer = setTimeout(respond, 5_000);
+      response.once('close', () => {
+        if (!response.writableEnded) {
+          clearTimeout(timer);
+          slowEmbeddingCancelled?.();
+        }
+      });
+      return;
+    }
+    respond();
   });
 });
 await new Promise((resolve, reject) => {
@@ -391,6 +407,26 @@ test('persists failed asynchronous indexing and resumes from its checkpoint', as
   const completed = await waitForIndexJob(startedJob.id, 'completed');
   assert.deepEqual(completed.completedDocumentIds, ['repair-doc']);
   assert.deepEqual(completed.remainingDocumentIds, []);
+});
+
+test('cancels dense retrieval when its HTTP client disconnects', async () => {
+  const started = new Promise(resolve => { slowEmbeddingStarted = resolve; });
+  const cancelled = new Promise(resolve => { slowEmbeddingCancelled = resolve; });
+  const controller = new AbortController();
+  const pending = authorized('/api/v1/retrieval/preview', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal,
+    body: JSON.stringify({ query: '__slow__ terraform', documentIds: ['doc-1'] }),
+  });
+  await started;
+  controller.abort();
+  await assert.rejects(pending, error => error.name === 'AbortError');
+  await Promise.race([
+    cancelled,
+    new Promise((_resolve, reject) => setTimeout(() => reject(new Error('Embedding request was not cancelled')), 1_000)),
+  ]);
+  assert.equal((await authorized('/api/v1/health')).status, 200);
+  slowEmbeddingStarted = undefined;
+  slowEmbeddingCancelled = undefined;
 });
 
 test('creates, lists, and verifies complete service-managed backups', async () => {

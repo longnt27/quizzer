@@ -23,6 +23,7 @@ import { reextractDocument } from './server/document-import.mjs';
 import { providerConcurrencyLimits, publicProviderPolicies } from './server/provider-policy.mjs';
 import { embedTextsWithOllama } from './server/embeddings.mjs';
 import { RetrievalIndex } from './server/retrieval-index.mjs';
+import { bindRequestCancellation } from './server/request-lifetime.mjs';
 
 const configuredPortValue = process.env.QUIZZER_SERVICE_PORT ?? '8787';
 const configuredPort = Number(configuredPortValue);
@@ -313,21 +314,36 @@ const cancellationError = () => Object.assign(new Error('Generation cancelled'),
 
 const stripTerminalCodes = value => value.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '').replace(/\r/g, '').trim();
 
-const runCommand = (command, args, { timeout = 20_000, onOutput } = {}) => new Promise((resolve, reject) => {
+const runCommand = (command, args, { timeout = 20_000, onOutput, signal } = {}) => new Promise((resolve, reject) => {
+  if (signal?.aborted) return reject(signal.reason instanceof Error ? signal.reason : cancellationError());
   const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'], env: process.env });
   let output = '';
+  let failure;
   const append = chunk => {
     output = `${output}${chunk.toString()}`.slice(-12_000);
     onOutput?.(stripTerminalCodes(output));
   };
+  const cleanup = () => {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
+  };
+  const abort = () => {
+    failure = signal?.reason instanceof Error ? signal.reason : cancellationError();
+    child.kill('SIGTERM');
+  };
   child.stdout.on('data', append);
   child.stderr.on('data', append);
-  child.on('error', reject);
-  const timer = setTimeout(() => child.kill('SIGTERM'), timeout);
+  child.on('error', error => { cleanup(); reject(error); });
+  const timer = setTimeout(() => {
+    failure = new Error(`${command} timed out after ${timeout} ms`);
+    child.kill('SIGTERM');
+  }, timeout);
+  signal?.addEventListener('abort', abort, { once: true });
   child.on('close', code => {
-    clearTimeout(timer);
+    cleanup();
     const cleanOutput = stripTerminalCodes(output);
-    if (code === 0) resolve(cleanOutput);
+    if (failure) reject(failure);
+    else if (code === 0) resolve(cleanOutput);
     else reject(new Error(cleanOutput || `${command} exited with code ${code}`));
   });
 });
@@ -469,9 +485,9 @@ const installOcr = () => {
   });
 };
 
-const runManagedOcr = async path => {
+const runManagedOcr = async (path, signal) => {
   if (!await managedOcrWorks()) return '';
-  const output = await runCommand(managedOcrPython, [ocrScript, path], { timeout: 90_000 });
+  const output = await runCommand(managedOcrPython, [ocrScript, path], { timeout: 90_000, signal });
   const marker = '__QUIZZER_OCR__';
   const markerIndex = output.lastIndexOf(marker);
   if (markerIndex < 0) throw new Error('OCR returned an unreadable result.');
@@ -884,8 +900,9 @@ const mapWithConcurrency = async (items, concurrency, mapper) => {
   return result;
 };
 
-const runMarker = async ({ name, data, ocrEnabled = false }) => {
+const runMarker = async ({ name, data, ocrEnabled = false }, signal) => {
   if (typeof data !== 'string' || !data) throw new Error('PDF data is required');
+  if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : cancellationError();
   const work = await mkdtemp(join(tmpdir(), 'quizzer-marker-'));
   const safeName = String(name || 'document.pdf').replace(/[^a-zA-Z0-9._-]/g, '_');
   const input = join(work, safeName.endsWith('.pdf') ? safeName : `${safeName}.pdf`);
@@ -893,13 +910,9 @@ const runMarker = async ({ name, data, ocrEnabled = false }) => {
   await writeFile(input, Buffer.from(data, 'base64'));
   try {
     const executable = await markerCommand();
-    await new Promise((resolve, reject) => {
-      const child = spawn(executable, [input, '--output_dir', output, '--output_format', 'markdown', '--paginate_output'], { stdio: ['ignore', 'ignore', 'pipe'] });
-      let errors = '';
-      child.stderr.on('data', chunk => { errors += chunk.toString(); });
-      child.on('error', error => reject(error.code === 'ENOENT' ? new Error('Marker is not installed') : error));
-      child.on('close', code => code === 0 ? resolve() : reject(new Error(errors.trim() || `Marker exited with code ${code}`)));
-    });
+    await runCommand(executable, [input, '--output_dir', output, '--output_format', 'markdown', '--paginate_output'], {
+      timeout: 10 * 60_000, signal,
+    }).catch(error => { throw error?.code === 'ENOENT' ? new Error('Marker is not installed') : error; });
     const files = await walkFiles(output);
     const markdownPath = files.find(path => path.endsWith('.md'));
     if (!markdownPath) throw new Error('Marker produced no Markdown output');
@@ -916,7 +929,11 @@ const runMarker = async ({ name, data, ocrEnabled = false }) => {
       const sourceStart = reference?.index;
       const context = sourceStart === undefined ? '' : cleanMarkdownContext(markdown.slice(Math.max(0, sourceStart - 500), sourceStart + 700));
       const caption = cleanMarkdownContext(reference?.caption || '');
-      const ocrText = canOcr ? await runManagedOcr(path).catch(() => '') : '';
+      if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : cancellationError();
+      const ocrText = canOcr ? await runManagedOcr(path, signal).catch(error => {
+        if (signal?.aborted || error?.name === 'AbortError') throw error;
+        return '';
+      }) : '';
       const lower = name.toLowerCase();
       const mimeType = lower.endsWith('.png') ? 'image/png' : lower.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
       return {
@@ -1144,34 +1161,41 @@ const handleVersionedApi = async (request, response, url) => {
       return true;
     }
     if (request.method === 'POST' && url.pathname === '/api/v1/retrieval/preview') {
-      const body = await readJson(request);
-      if (typeof body?.query !== 'string' || !body.query.trim()) throw new Error('A retrieval query is required');
-      const selected = selectIndexDocuments(body.documentIds);
-      const configuration = await retrievalIndex.configuration();
-      const settings = configuration.settings;
-      const indexConfiguration = JSON.stringify({
-        embeddings: configuration.embeddings,
-        embeddingModel: configuration.embeddingModel,
-      });
-      const retrievalIndexKey = `retrieval.${createHash('sha256').update(`${selected.map(retrievalDocumentFingerprint).join('|')}|${indexConfiguration}`).digest('hex')}`;
-      const indexJob = prepareIndexJob({ records: selected, idempotencyKey: retrievalIndexKey });
-      let indexingError;
-      if (indexJob.data.status !== 'completed') {
-        try { await executeIndexJob(indexJob.id); }
-        catch (error) { indexingError = error instanceof Error ? error.message : String(error); }
+      const lifetime = bindRequestCancellation(request, response, 'Retrieval request disconnected');
+      try {
+        const body = await readJson(request);
+        if (typeof body?.query !== 'string' || !body.query.trim()) throw new Error('A retrieval query is required');
+        const selected = selectIndexDocuments(body.documentIds);
+        const configuration = await retrievalIndex.configuration();
+        const settings = configuration.settings;
+        const indexConfiguration = JSON.stringify({
+          embeddings: configuration.embeddings,
+          embeddingModel: configuration.embeddingModel,
+        });
+        const retrievalIndexKey = `retrieval.${createHash('sha256').update(`${selected.map(retrievalDocumentFingerprint).join('|')}|${indexConfiguration}`).digest('hex')}`;
+        const indexJob = prepareIndexJob({ records: selected, idempotencyKey: retrievalIndexKey });
+        let indexingError;
+        if (indexJob.data.status !== 'completed') {
+          try { await executeIndexJob(indexJob.id); }
+          catch (error) { indexingError = error instanceof Error ? error.message : String(error); }
+        }
+        if (lifetime.signal.aborted) throw lifetime.signal.reason;
+        if (indexingError) for (const record of selected) retrievalIndex.indexSparseDocument(record);
+        const retrievalOptions = {
+          query: body.query,
+          documentIds: body.documentIds ?? [],
+          tags: body.tags ?? [],
+          limit: body.limit,
+          contextBudget: body.contextBudget ?? settings.values['retrieval.contextBudget'],
+          includeNeighbors: body.includeNeighbors !== false,
+          signal: lifetime.signal,
+        };
+        const result = await retrievalIndex.retrieve(retrievalOptions);
+        if (!response.destroyed) send(response, 200, indexingError ? { ...result, indexingError } : result);
+        return true;
+      } finally {
+        lifetime.dispose();
       }
-      if (indexingError) for (const record of selected) retrievalIndex.indexSparseDocument(record);
-      const retrievalOptions = {
-        query: body.query,
-        documentIds: body.documentIds ?? [],
-        tags: body.tags ?? [],
-        limit: body.limit,
-        contextBudget: body.contextBudget ?? settings.values['retrieval.contextBudget'],
-        includeNeighbors: body.includeNeighbors !== false,
-      };
-      const result = await retrievalIndex.retrieve(retrievalOptions);
-      send(response, 200, indexingError ? { ...result, indexingError } : result);
-      return true;
     }
     const reextractDocumentMatch = /^\/api\/v1\/documents\/([^/]+)\/reextract$/.exec(url.pathname);
     if (reextractDocumentMatch && request.method === 'POST') {
@@ -1274,7 +1298,7 @@ const handleVersionedApi = async (request, response, url) => {
       return true;
     }
   } catch (error) {
-    send(response, 400, { error: error instanceof Error ? error.message : 'Invalid API request' });
+    if (!response.destroyed) send(response, 400, { error: error instanceof Error ? error.message : 'Invalid API request' });
     return true;
   }
   send(response, 404, { error: 'Not found' });
@@ -1368,33 +1392,42 @@ const serviceServer = createServer(async (request, response) => {
     return send(response, 202, { ok: true });
   }
   if (request.method === 'POST' && request.url === '/api/extract') {
-    try { return send(response, 200, await runMarker(await readJson(request))); }
-    catch (error) { return send(response, 503, { error: error instanceof Error ? error.message : 'Extraction failed' }); }
+    const lifetime = bindRequestCancellation(request, response, 'Extraction request disconnected');
+    try {
+      const result = await runMarker(await readJson(request), lifetime.signal);
+      if (!response.destroyed) return send(response, 200, result);
+    } catch (error) {
+      if (!response.destroyed) return send(response, error?.name === 'AbortError' ? 499 : 503, { error: error instanceof Error ? error.message : 'Extraction failed' });
+    } finally {
+      lifetime.dispose();
+    }
+    return undefined;
   }
   if (request.method === 'POST' && request.url === '/api/embed') {
+    const lifetime = bindRequestCancellation(request, response, 'Embedding request disconnected');
     try {
       const { texts } = await readJson(request);
       const settings = await loadResolvedSettings(appDataDirectory);
-      return send(response, 200, {
-        embeddings: await embedTextsWithOllama(texts, { model: settings.values['embeddings.model'] }),
+      const embeddings = await embedTextsWithOllama(texts, {
+        model: settings.values['embeddings.model'], signal: lifetime.signal,
       });
+      if (!response.destroyed) return send(response, 200, { embeddings });
     } catch (error) {
-      return send(response, 503, { error: error instanceof Error ? error.message : 'Embedding failed' });
+      if (!response.destroyed) return send(response, error?.name === 'AbortError' ? 499 : 503, { error: error instanceof Error ? error.message : 'Embedding failed' });
+    } finally {
+      lifetime.dispose();
     }
+    return undefined;
   }
   if (request.method !== 'POST' || request.url !== '/api/generate') return send(response, 404, { error: 'Not found' });
 
-  const generationController = new AbortController();
-  request.on('aborted', () => generationController.abort());
-  response.on('close', () => {
-    if (!response.writableEnded) generationController.abort();
-  });
+  const lifetime = bindRequestCancellation(request, response, 'Generation request disconnected');
   try {
     const body = await readJson(request);
     if (!body || typeof body.prompt !== 'string' || !body.schema) throw new Error('prompt and schema are required');
     const runner = providerRunners[body.provider];
     if (!runner) throw new Error('Unsupported provider');
-    const output = await runner(body, generationController.signal);
+    const output = await runner(body, lifetime.signal);
     if (!response.destroyed) send(response, 200, { output });
   } catch (error) {
     const normalized = normalizeProviderError(error);
@@ -1402,6 +1435,8 @@ const serviceServer = createServer(async (request, response) => {
       error: normalized instanceof Error ? normalized.message : 'Generation failed',
       code: normalized?.code,
     });
+  } finally {
+    lifetime.dispose();
   }
 });
 

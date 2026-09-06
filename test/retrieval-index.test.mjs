@@ -72,3 +72,27 @@ test('recovers the dense index when the configured model becomes available', asy
   assert.equal(removed.sparse.removedChunks, 1);
   assert.equal(removed.dense.removedChunks, 1);
 });
+
+test('propagates retrieval cancellation instead of reporting a dense-model failure', async () => {
+  let embeddingStarted;
+  const started = new Promise(resolve => { embeddingStarted = resolve; });
+  const cancellable = new RetrievalIndex({
+    sparsePath: join(directory, 'cancel-sparse.sqlite'),
+    densePath: join(directory, 'cancel-dense.lance'),
+    loadSettings: async () => ({ values: {
+      ...settings, 'embeddings.enabled': true, 'retrieval.mode': 'hybrid', 'retrieval.rerank': true,
+    } }),
+    embed: async (_texts, { signal }) => new Promise((_resolve, reject) => {
+      embeddingStarted();
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    }),
+  });
+  cancellable.indexSparseDocument(record);
+  const controller = new AbortController();
+  const pending = cancellable.retrieve({ query: 'Terraform state', documentIds: [record.id], signal: controller.signal });
+  await started;
+  controller.abort(Object.assign(new Error('Preview closed'), { name: 'AbortError' }));
+  await assert.rejects(pending, error => error.name === 'AbortError' && /Preview closed/.test(error.message));
+  assert.notEqual((await cancellable.status()).dense.status, 'unavailable');
+  await cancellable.close();
+});
