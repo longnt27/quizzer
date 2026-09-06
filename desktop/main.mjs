@@ -7,6 +7,7 @@ import { CredentialVault } from './credential-vault.mjs';
 import { isAllowedExternalUrl, isTrustedRendererUrl } from './security.mjs';
 import { serviceRestartDelay, waitForServiceReady } from './service-process.mjs';
 import { protectedBackgroundFallback, summarizeBackgroundState } from './background-policy.mjs';
+import { DesktopUpdater } from './updater.mjs';
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'quizzer', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
 
@@ -24,6 +25,7 @@ let window;
 let tray;
 let quitting = false;
 let credentialVault;
+let desktopUpdater;
 let serviceRecoveryEnabled = false;
 let serviceRestartAttempt = 0;
 let serviceRestartTimer;
@@ -78,6 +80,50 @@ const registerValidatedIpc = () => {
     const result = await credentialVault.delete(provider);
     await syncServiceCredentials();
     return result;
+  });
+  ipcMain.handle('updater:status', event => {
+    if (!isTrustedRenderer(event)) throw new Error('Untrusted renderer');
+    return desktopUpdater?.getStatus();
+  });
+  ipcMain.handle('updater:check', async (event, options) => {
+    if (!isTrustedRenderer(event)) throw new Error('Untrusted renderer');
+    if (options !== undefined && (typeof options !== 'object' || options === null || Array.isArray(options))) {
+      throw new Error('Invalid options for updater:check');
+    }
+    const validated = {};
+    if (options?.channel !== undefined) {
+      if (options.channel !== 'stable' && options.channel !== 'beta') {
+        throw new Error('Channel must be stable or beta');
+      }
+      validated.channel = options.channel;
+    }
+    if (options?.repository !== undefined) {
+      if (typeof options.repository !== 'string' || !/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(options.repository)) {
+        throw new Error('Invalid GitHub repository format');
+      }
+      validated.repository = options.repository;
+    }
+    return desktopUpdater?.checkForUpdates(validated);
+  });
+  ipcMain.handle('updater:download', async event => {
+    if (!isTrustedRenderer(event)) throw new Error('Untrusted renderer');
+    return desktopUpdater?.downloadUpdate();
+  });
+  ipcMain.handle('updater:apply', async (event, options) => {
+    if (!isTrustedRenderer(event)) throw new Error('Untrusted renderer');
+    if (options !== undefined && (typeof options !== 'object' || options === null || Array.isArray(options))) {
+      throw new Error('Invalid options for updater:apply');
+    }
+    const validated = {};
+    if (options?.restart !== undefined) {
+      if (typeof options.restart !== 'boolean') throw new Error('restart must be a boolean');
+      validated.restart = options.restart;
+    }
+    return desktopUpdater?.applyUpdate(validated);
+  });
+  ipcMain.handle('updater:rollback', async event => {
+    if (!isTrustedRenderer(event)) throw new Error('Untrusted renderer');
+    return desktopUpdater?.rollbackUpdate();
   });
 };
 
@@ -273,6 +319,12 @@ const createTray = () => {
 
 app.whenReady().then(async () => {
   credentialVault = new CredentialVault(join(app.getPath('userData'), 'credentials.json'), safeStorage);
+  desktopUpdater = new DesktopUpdater({
+    userDataDir: app.getPath('userData'),
+    currentVersion: app.getVersion() || '1.0.0-beta.1',
+    isPackaged: app.isPackaged,
+    fetch: net.fetch,
+  });
   await startService();
   serviceRecoveryEnabled = externalDevelopmentPort === undefined;
   if (!servicePort) scheduleServiceRestart();
