@@ -263,7 +263,7 @@ export class SparseDocumentIndex {
     };
   }
 
-  hydrateResults(results, { includeNeighbors = true } = {}) {
+  hydrateResults(results, { includeNeighbors = true, dropMissing = false } = {}) {
     if (!Array.isArray(results) || results.some(result => typeof result?.sourceSpanId !== 'string')) {
       throw new Error('Retrieval results with stable source span ids are required');
     }
@@ -273,22 +273,23 @@ export class SparseDocumentIndex {
       FROM rag_chunks WHERE document_id = ? AND chunk_index BETWEEN ? AND ? AND span_id <> ? ORDER BY chunk_index
     `);
     const parentStatement = this.database.prepare('SELECT content FROM rag_chunks WHERE parent_id = ? ORDER BY chunk_index');
-    return results.map(result => {
+    return results.flatMap(result => {
       const row = rowStatement.get(result.sourceSpanId);
       if (!row) {
+        if (dropMissing) return [];
         const content = result.content ?? result.excerpt ?? '';
-        return {
+        return [{
           ...result,
           content,
           excerpt: result.excerpt ?? content.slice(0, 480),
           neighbors: result.neighbors ?? [],
           parentContent: result.parentContent ?? content,
-        };
+        }];
       }
       const neighbors = includeNeighbors
         ? neighborStatement.all(row.document_id, row.chunk_index - 1, row.chunk_index + 1, row.span_id)
         : [];
-      return {
+      return [{
         ...result,
         sourceSpanId: row.span_id,
         documentId: row.document_id,
@@ -302,7 +303,7 @@ export class SparseDocumentIndex {
         excerpt: row.content.slice(0, 480),
         neighbors,
         parentContent: parentStatement.all(row.parent_id).map(item => item.content).join('\n\n'),
-      };
+      }];
     });
   }
 

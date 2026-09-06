@@ -106,6 +106,9 @@ test('hydrates final stable spans only after ranking and selection', () => {
     neighbors: [],
     parentContent: 'cached evidence',
   }]);
+  assert.deepEqual(index.hydrateResults([{
+    sourceSpanId: 'removed:span', excerpt: 'stale evidence', score: 0.5,
+  }], { dropMissing: true }), []);
   assert.throws(() => index.hydrateResults([{}]), /stable source span ids/);
 });
 

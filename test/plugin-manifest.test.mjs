@@ -43,6 +43,14 @@ test('validates manifest capabilities, compatibility, paths, and file hashes', a
   assert.equal(await verifyPluginFiles(directory, manifest), true);
   assert.throws(() => validatePluginManifest({ ...manifest, entrypoint: '../escape.mjs' }), /Unsafe plugin path/);
   assert.throws(() => validatePluginManifest({ ...manifest, capabilities: ['unknown'] }), /capabilities/);
+  assert.equal(validatePluginManifest({
+    ...manifest,
+    capabilities: ['vector-index'],
+    permissions: { ...manifest.permissions, filesystem: ['scoped-temp', 'persistent-data'] },
+  }).capabilities[0], 'vector-index');
+  assert.throws(() => validatePluginManifest({
+    ...manifest, capabilities: ['vector-index'],
+  }), /require scoped-temp and persistent-data/);
   await assert.rejects(verifyPluginFiles(directory, {
     ...manifest, files: [{ path: entrypoint, sha256: '0'.repeat(64) }],
   }), /hash mismatch/);

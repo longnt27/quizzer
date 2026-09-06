@@ -19,6 +19,8 @@ import { createBackup, restoreBackup, verifyBackup } from '../server/backup.mjs'
 import { cancelIndexJob, createIndexJob, recoverIndexJob, resumeIndexJob, runIndexJob } from '../server/index-jobs.mjs';
 import { PROVIDER_POLICIES } from '../server/provider-policy.mjs';
 import { resolveDocumentExtractor, resolveOcrProvider } from '../server/plugin-extraction.mjs';
+import { resolveEmbeddingProvider } from '../server/plugin-embeddings.mjs';
+import { resolveVectorIndexProvider } from '../server/plugin-vector-index.mjs';
 
 const usage = `Quizzer CLI
 
@@ -72,6 +74,19 @@ const createRetrievalIndex = () => new RetrievalIndex({
   sparsePath: sparseIndexPath,
   densePath: denseIndexPath,
   loadSettings: () => loadResolvedSettings(appDataDirectory),
+  resolveEmbedding: settings => resolveEmbeddingProvider(settings, {
+    loadManager: async () => new PluginManager({
+      appDataDirectory,
+      developerMode: settings.values['plugins.developerMode'],
+    }),
+  }),
+  resolveVectorIndex: (settings, { builtin }) => resolveVectorIndexProvider(settings, {
+    builtin,
+    loadManager: async () => new PluginManager({
+      appDataDirectory,
+      developerMode: settings.values['plugins.developerMode'],
+    }),
+  }),
   invokeReranker: async (id, params, options) => {
     const settings = await loadResolvedSettings(appDataDirectory);
     const manager = new PluginManager({

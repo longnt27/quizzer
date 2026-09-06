@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { DenseDocumentIndex } from '../server/dense-index.mjs';
+import { DenseDocumentIndex, embedDenseRows } from '../server/dense-index.mjs';
 
 const directory = await mkdtemp(join(tmpdir(), 'quizzer-dense-index-test-'));
 const index = new DenseDocumentIndex(join(directory, 'dense.lance'));
@@ -113,4 +113,22 @@ test('validates dense-index inputs and safely handles missing or empty tables', 
   const emptyStatus = await index.status();
   assert.equal(emptyStatus.chunkCount, 0);
   assert.ok(emptyStatus.tables.every(table => table.embeddingModel === undefined && table.dimension === undefined));
+});
+
+test('batches large embedding work and enforces one vector dimension', async () => {
+  const rows = Array.from({ length: 251 }, (_, index) => ({ content: `row ${index}` }));
+  const calls = [];
+  const result = await embedDenseRows(rows, async texts => {
+    calls.push(texts.length);
+    return texts.map(() => [1, 0]);
+  });
+  assert.deepEqual(calls, [250, 1]);
+  assert.equal(result.vectors.length, 251);
+  assert.equal(result.dimension, 2);
+  await assert.rejects(embedDenseRows(rows, async texts => texts.map(() => [1, 0, 0]), { batchSize: 0 }), /batch size/);
+  let invocation = 0;
+  await assert.rejects(embedDenseRows(rows, async texts => {
+    invocation += 1;
+    return texts.map(() => invocation === 1 ? [1, 0] : [1]);
+  }), /invalid or inconsistent/);
 });

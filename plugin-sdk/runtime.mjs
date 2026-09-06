@@ -9,7 +9,7 @@ import { validatePluginPath } from './manifest.mjs';
 
 const retainedEnvironment = ['PATH', 'SystemRoot', 'ComSpec', 'PATHEXT', 'TMP', 'TEMP', 'TMPDIR', 'LANG', 'LC_ALL'];
 
-const pluginEnvironment = ({ manifest, temporaryDirectory, secrets }) => {
+const pluginEnvironment = ({ manifest, temporaryDirectory, persistentDataDirectory, secrets }) => {
   const environment = {
     QUIZZER_PLUGIN_ID: manifest.id,
     QUIZZER_PLUGIN_TEMP_DIR: temporaryDirectory,
@@ -18,6 +18,7 @@ const pluginEnvironment = ({ manifest, temporaryDirectory, secrets }) => {
     ELECTRON_RUN_AS_NODE: '1',
     NO_COLOR: '1',
   };
+  if (persistentDataDirectory) environment.QUIZZER_PLUGIN_DATA_DIR = persistentDataDirectory;
   for (const key of retainedEnvironment) if (process.env[key]) environment[key] = process.env[key];
   for (const key of manifest.permissions.secrets) {
     if (typeof secrets?.[key] === 'string') environment[key] = secrets[key];
@@ -93,6 +94,10 @@ export const invokePluginProcess = async ({
   const temporaryRoot = join(appDataDirectory, 'plugin-temp');
   await mkdir(temporaryRoot, { recursive: true, mode: 0o700 });
   const temporaryDirectory = await mkdtemp(join(temporaryRoot, `${manifest.id}-`));
+  const persistentDataDirectory = manifest.permissions.filesystem.includes('persistent-data')
+    ? join(appDataDirectory, 'plugins', 'data', manifest.id)
+    : undefined;
+  if (persistentDataDirectory) await mkdir(persistentDataDirectory, { recursive: true, mode: 0o700 });
   const entrypoint = join(directory, manifest.entrypoint);
   const javascript = /\.(?:c?js|mjs)$/i.test(entrypoint);
   const command = javascript ? await javascriptRuntime() : entrypoint;
@@ -133,7 +138,7 @@ export const invokePluginProcess = async ({
 
       child = spawn(command, arguments_, {
         cwd: directory,
-        env: pluginEnvironment({ manifest, temporaryDirectory, secrets }),
+        env: pluginEnvironment({ manifest, temporaryDirectory, persistentDataDirectory, secrets }),
         shell: false,
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
@@ -166,7 +171,13 @@ export const invokePluginProcess = async ({
       });
       child.stdin.end(`${JSON.stringify({
         jsonrpc: '2.0', id: requestId, method, params,
-        context: { temporaryDirectory, scopedFiles, configuration, protocolVersion: manifest.protocolVersion },
+        context: {
+          temporaryDirectory,
+          scopedFiles,
+          ...(persistentDataDirectory ? { persistentDataDirectory } : {}),
+          configuration,
+          protocolVersion: manifest.protocolVersion,
+        },
       })}\n`);
     });
   } finally {

@@ -7,7 +7,7 @@ export const PLUGIN_PROTOCOL_VERSION = 1;
 export const PLUGIN_CAPABILITIES = Object.freeze(['extractor', 'ocr', 'embedder', 'vector-index', 'reranker', 'generator']);
 const supportedOperatingSystems = new Set(['darwin', 'linux', 'win32']);
 const supportedArchitectures = new Set(['x64', 'arm64']);
-const supportedFilesystemPermissions = new Set(['scoped-temp', 'document-read', 'model-read']);
+const supportedFilesystemPermissions = new Set(['scoped-temp', 'document-read', 'model-read', 'persistent-data']);
 const semver = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/;
 const pluginId = /^[a-z0-9](?:[a-z0-9.-]{0,126}[a-z0-9])?$/;
 const sha256Pattern = /^[a-f0-9]{64}$/;
@@ -66,6 +66,10 @@ export const validatePluginManifest = input => {
   if (!Array.isArray(permissions.filesystem) || permissions.filesystem.some(item => !supportedFilesystemPermissions.has(item))) throw new Error('Plugin filesystem permissions are invalid');
   if (!Array.isArray(permissions.secrets) || permissions.secrets.some(item => !secretName.test(item))) throw new Error('Plugin secret permissions are invalid');
   if (typeof permissions.subprocess !== 'boolean') throw new Error('Plugin subprocess permission must be true or false');
+  if (manifest.capabilities.includes('vector-index')
+    && (!permissions.filesystem.includes('scoped-temp') || !permissions.filesystem.includes('persistent-data'))) {
+    throw new Error('Vector-index plugins require scoped-temp and persistent-data filesystem permissions');
+  }
 
   const healthCheck = requireObject(manifest.healthCheck, 'Plugin health check');
   requireString(healthCheck.method, 'Plugin health-check method', 100);

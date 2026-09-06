@@ -69,6 +69,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const [extractorPlugin, setExtractorPlugin] = useState('builtin');
   const [ocrPlugin, setOcrPlugin] = useState('builtin');
   const [embedderPlugin, setEmbedderPlugin] = useState('builtin');
+  const [vectorIndexPlugin, setVectorIndexPlugin] = useState('builtin');
   const [externalError, setExternalError] = useState('');
   const [externalLoading, setExternalLoading] = useState(true);
   const [developerMode, setDeveloperMode] = useState(false);
@@ -80,6 +81,8 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
     && plugin.compatible && plugin.capabilities?.includes('generator')), [externalPlugins]);
   const embedderPlugins = useMemo(() => externalPlugins.filter(plugin => plugin.status === 'installed' && plugin.enabled
     && plugin.compatible && plugin.capabilities?.includes('embedder')), [externalPlugins]);
+  const vectorIndexPlugins = useMemo(() => externalPlugins.filter(plugin => plugin.status === 'installed' && plugin.enabled
+    && plugin.compatible && plugin.capabilities?.includes('vector-index')), [externalPlugins]);
   const extractorPlugins = useMemo(() => externalPlugins.filter(plugin => plugin.status === 'installed' && plugin.enabled
     && plugin.compatible && plugin.capabilities?.includes('extractor')), [externalPlugins]);
   const ocrPlugins = useMemo(() => externalPlugins.filter(plugin => plugin.status === 'installed' && plugin.enabled
@@ -112,6 +115,8 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
         ? settings.values['extraction.ocrPlugin'] : 'builtin');
       setEmbedderPlugin(typeof settings.values['embeddings.embedderPlugin'] === 'string'
         ? settings.values['embeddings.embedderPlugin'] : 'builtin');
+      setVectorIndexPlugin(typeof settings.values['retrieval.vectorIndexPlugin'] === 'string'
+        ? settings.values['retrieval.vectorIndexPlugin'] : 'builtin');
       setExternalError('');
     } catch (error) {
       setExternalError(error instanceof Error ? error.message : 'Could not load external plugins');
@@ -247,6 +252,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
         'extraction.ocrPlugin': ocrPlugin,
         'embeddings.enabled': enabledTools.embeddings,
         'embeddings.embedderPlugin': embedderPlugin,
+        'retrieval.vectorIndexPlugin': vectorIndexPlugin,
       } });
       setProviderSettings({ defaultProvider: selectedProvider, models, enabledProviders, enabledTools });
       window.dispatchEvent(new Event('quizzer:settings-changed'));
@@ -265,6 +271,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const selectedExtractor = extractorPlugins.find(plugin => plugin.id === extractorPlugin);
   const selectedOcr = ocrPlugins.find(plugin => plugin.id === ocrPlugin);
   const selectedEmbedder = embedderPlugins.find(plugin => plugin.id === embedderPlugin);
+  const selectedVectorIndex = vectorIndexPlugins.find(plugin => plugin.id === vectorIndexPlugin);
   const embeddingReady = embedderPlugin === 'builtin' ? Boolean(status?.embeddings?.installed) : Boolean(selectedEmbedder);
   const configuredProviderOptions = PROVIDERS.filter(provider => enabledProviders[provider.id] && (provider.kind === 'api'
     ? Boolean(apiKeys[provider.id]?.trim())
@@ -354,6 +361,16 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
               { value: 'builtin', label: 'Built-in · Ollama all-minilm' },
               ...embedderPlugins.map(plugin => ({ value: plugin.id, label: `${plugin.name ?? plugin.id} · ${plugin.id}` })),
             ]} />
+          {interfaceMode === 'advanced' && <>
+            <Typography.Text strong>Vector index</Typography.Text>
+            <Select aria-label="Vector index component" value={vectorIndexPlugin} onChange={setVectorIndexPlugin} style={{ width: '100%' }}
+              options={[
+                { value: 'builtin', label: 'Built-in · LanceDB' },
+                ...vectorIndexPlugins.map(plugin => ({ value: plugin.id, label: `${plugin.name ?? plugin.id} · ${plugin.id}` })),
+              ]} />
+            {vectorIndexPlugin !== 'builtin' && !selectedVectorIndex && <Alert type="warning" showIcon message="Selected vector index is unavailable"
+              description="Choose an enabled, compatible vector-index plugin or switch back to built-in LanceDB before indexing." />}
+          </>}
           {embedderPlugin === 'builtin' && !status?.embeddings?.installed && !embeddingsWorking && <Button icon={<CloudDownloadOutlined />}
             onClick={() => void runAction('/api/integrations/embeddings/install')}>
             {status?.embeddings?.runtimeInstalled ? 'Install all-minilm' : 'Install Ollama + all-minilm'}
