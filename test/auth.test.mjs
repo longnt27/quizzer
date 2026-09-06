@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -21,4 +21,18 @@ test('accepts bearer and explicit token headers without exposing the token', asy
   assert.equal(isAuthorizedRequest({ headers: { authorization: `Bearer ${token}` } }, token), true);
   assert.equal(isAuthorizedRequest({ headers: { 'x-quizzer-token': token } }, token), true);
   assert.equal(isAuthorizedRequest({ headers: { authorization: 'Bearer incorrect' } }, token), false);
+  assert.equal(isAuthorizedRequest({ headers: {} }, token), false);
+  assert.equal(isAuthorizedRequest({ headers: { authorization: 'Basic credentials', 'x-quizzer-token': 42 } }, token), false);
+});
+
+test('prefers an explicit environment token and rejects corrupt stored credentials', async () => {
+  const environmentToken = 'environment-token-that-is-long-enough';
+  const environmentDirectory = join(directory, 'environment');
+  assert.equal(await ensureServiceToken(environmentDirectory, { QUIZZER_API_TOKEN: `  ${environmentToken}  ` }), environmentToken);
+  await assert.rejects(stat(environmentDirectory), /ENOENT/);
+
+  const corruptedDirectory = join(directory, 'corrupted');
+  await mkdir(corruptedDirectory);
+  await writeFile(join(corruptedDirectory, 'service-token'), 'too-short\n');
+  await assert.rejects(ensureServiceToken(corruptedDirectory, {}), /service token is invalid/);
 });

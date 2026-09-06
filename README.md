@@ -289,6 +289,7 @@ Do not upload confidential material unless the selected provider and your accoun
 | `npm run build:cli` | Build the signed standalone CLI with Node.js 26+ |
 | `npm run lint` | Run ESLint |
 | `npm test` | Run unit and service integration tests |
+| `npm run test:coverage` | Enforce 90% line and 80% branch coverage across core service modules |
 | `npm run eval:rag` | Run the offline English/Vietnamese retrieval quality gate |
 | `npm run preview` | Preview the browser bundle; start the service separately for generation |
 

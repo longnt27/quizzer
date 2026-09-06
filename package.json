@@ -21,6 +21,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test": "node --test test/*.test.mjs",
+    "test:coverage": "node scripts/test-coverage.mjs",
     "eval:rag": "node scripts/evaluate-rag.mjs",
     "preview": "vite preview",
     "package:desktop": "npm run build && node scripts/forge.mjs package",

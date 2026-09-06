@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import { detectHardwareCapabilities, recommendHardwareProfile } from '../server/hardware-profile.mjs';
 
@@ -23,4 +25,12 @@ test('returns a complete capability snapshot for onboarding', () => {
   assert.ok(result.freeDiskGB >= 0);
   assert.ok(['lite', 'balanced', 'max'].includes(result.recommendedProfile));
   assert.ok(result.reasons.length >= 2);
+});
+
+test('falls back to Lite when free disk space cannot be inspected', () => {
+  const missing = join(tmpdir(), `quizzer-missing-hardware-path-${process.pid}-${Date.now()}`);
+  const result = detectHardwareCapabilities(missing);
+  assert.equal(result.freeDiskGB, 0);
+  assert.equal(result.recommendedProfile, 'lite');
+  assert.match(result.reasons[0], /Lite keeps/);
 });

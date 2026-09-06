@@ -164,3 +164,69 @@ test('installs, blocks, enables, checks, upgrades, rolls back, and removes plugi
   assert.equal((await stat(removed.recoveryPath)).isDirectory(), true);
   assert.equal((await manager.list()).length, 0);
 });
+
+test('validates manager configuration and rejects corrupted durable state', async () => {
+  assert.throws(() => new PluginManager({ appDataDirectory: '', trustedKeys: {} }), /app-data directory/);
+  assert.throws(() => new PluginManager({ appDataDirectory: [], trustedKeys: {} }), /app-data directory/);
+
+  const previous = process.env.QUIZZER_PLUGIN_TRUSTED_KEYS;
+  try {
+    process.env.QUIZZER_PLUGIN_TRUSTED_KEYS = '{not-json';
+    assert.throws(() => new PluginManager({ appDataDirectory }), /must be a JSON object/);
+    for (const encoded of ['[]', 'null', '{"key":42}']) {
+      process.env.QUIZZER_PLUGIN_TRUSTED_KEYS = encoded;
+      assert.throws(() => new PluginManager({ appDataDirectory }), /must map key ids/);
+    }
+    process.env.QUIZZER_PLUGIN_TRUSTED_KEYS = '{"release":"public-key"}';
+    assert.equal(new PluginManager({ appDataDirectory }).trustedKeys.release, 'public-key');
+  } finally {
+    if (previous === undefined) delete process.env.QUIZZER_PLUGIN_TRUSTED_KEYS;
+    else process.env.QUIZZER_PLUGIN_TRUSTED_KEYS = previous;
+  }
+
+  const corrupted = new PluginManager({ appDataDirectory: join(directory, 'corrupted-state'), trustedKeys: {} });
+  await corrupted.prepare();
+  await writeFile(corrupted.statePath, JSON.stringify({ version: 99, plugins: {} }));
+  await assert.rejects(corrupted.readState(), /Plugin state is invalid/);
+  await writeFile(corrupted.statePath, '{not-json');
+  await assert.rejects(corrupted.readState(), /JSON/);
+  assert.throws(() => corrupted.directoryFor('../escape'), /Plugin id is invalid/);
+});
+
+test('surfaces broken, incompatible, and unhealthy plugin states', async () => {
+  const brokenManager = new PluginManager({ appDataDirectory: join(directory, 'broken-manager'), developerMode: true });
+  await brokenManager.prepare();
+  await mkdir(join(brokenManager.installedRoot, 'dev.quizzer.broken'));
+  await writeFile(join(brokenManager.installedRoot, 'dev.quizzer.broken', 'quizzer.plugin.json'), '{broken');
+  await writeFile(join(brokenManager.installedRoot, 'not-a-plugin-directory'), 'ignored');
+  const broken = await brokenManager.list();
+  assert.equal(broken.length, 1);
+  assert.equal(broken[0].status, 'broken');
+  assert.match(broken[0].error, /Could not read/);
+
+  const incompatible = await createPlugin('2.0.0', 'incompatible');
+  const otherArchitecture = process.arch === 'x64' ? 'arm64' : 'x64';
+  incompatible.manifest.platforms = [{ os: process.platform, architectures: [otherArchitecture] }];
+  await writeFile(join(incompatible.pluginDirectory, 'quizzer.plugin.json'), JSON.stringify(incompatible.manifest));
+  await assert.rejects(brokenManager.install(incompatible.pluginDirectory), /does not support/);
+
+  const occupied = await createPlugin('2.0.1', 'occupied');
+  const occupiedManager = new PluginManager({ appDataDirectory: join(directory, 'occupied-manager'), developerMode: true });
+  await occupiedManager.prepare();
+  await writeFile(occupiedManager.directoryFor(occupied.manifest.id), 'not a directory');
+  await assert.rejects(occupiedManager.install(occupied.pluginDirectory), /destination is not a directory/);
+
+  const unhealthy = await createPlugin('2.0.2', 'unhealthy');
+  unhealthy.manifest.healthCheck = { method: 'plugin.exit', timeoutMs: 1000 };
+  await writeFile(join(unhealthy.pluginDirectory, 'quizzer.plugin.json'), JSON.stringify(unhealthy.manifest));
+  const unhealthyManager = new PluginManager({ appDataDirectory: join(directory, 'unhealthy-manager'), developerMode: true });
+  await unhealthyManager.install(unhealthy.pluginDirectory);
+  const health = await unhealthyManager.health(unhealthy.manifest.id);
+  assert.equal(health.ok, false);
+  assert.match(health.error, /deliberate plugin exit/);
+  await assert.rejects(unhealthyManager.rollback(unhealthy.manifest.id), /No rollback version/);
+
+  unhealthy.manifest.platforms = [{ os: process.platform, architectures: [otherArchitecture] }];
+  await writeFile(join(unhealthyManager.directoryFor(unhealthy.manifest.id), 'quizzer.plugin.json'), JSON.stringify(unhealthy.manifest));
+  await assert.rejects(unhealthyManager.invoke(unhealthy.manifest.id, 'plugin.echo'), /not compatible/);
+});
