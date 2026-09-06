@@ -1,5 +1,6 @@
 import { PROVIDER_POLICIES } from './provider-policy.mjs';
 import { validateSettings } from './settings.mjs';
+import { isDeepStrictEqual } from 'node:util';
 
 const generationProviders = new Set(Object.keys(PROVIDER_POLICIES));
 const questionTypes = new Set(['multiple-choice', 'fill-blank', 'reasoning', 'coding']);
@@ -88,6 +89,16 @@ const validateRagProfile = input => {
 
 const routeMatchesOptions = (route, options) => route.provider === options.provider
   && (route.model ?? undefined) === (options.model ?? undefined);
+const routeIdentity = route => ({
+  provider: route.provider,
+  model: route.model,
+  privacy: route.privacy,
+  paid: route.paid,
+});
+const immutableGenerationOptionKeys = [
+  'questionCount', 'questionCounts', 'multipleChoiceMode', 'coverageStrategy', 'customInstruction',
+  'promptProfileSnapshot', 'ragProfile', 'resolvedSettings',
+];
 
 export const validateGenerationOptions = (input, { requireSnapshots = false, requireCompleteSettings = false } = {}) => {
   const options = requireObject(input, 'Generation options must be an object');
@@ -124,6 +135,8 @@ export const validateGenerationOptions = (input, { requireSnapshots = false, req
       throw new Error('Provider route chain must contain 1-10 routes');
     }
     options.routeChain.forEach(validateProviderRoute);
+    const routeKeys = options.routeChain.map(route => `${route.provider}\0${route.model ?? ''}`);
+    if (new Set(routeKeys).size !== routeKeys.length) throw new Error('Provider route chain cannot contain duplicate provider and model routes');
     const activeRoute = options.routeChain.find(route => routeMatchesOptions(route, options));
     if (!activeRoute) throw new Error('Generation provider and model must match a route in the route chain');
     if (!activeRoute.approved) throw new Error('The active provider route must be explicitly approved');
@@ -150,6 +163,48 @@ export const validateGenerationOptions = (input, { requireSnapshots = false, req
   return options;
 };
 
+export const validateGenerationOptionsTransition = (previous, next, { allowRouteApproval = false } = {}) => {
+  if (!isModernGenerationOptions(previous)) return next;
+  for (const key of immutableGenerationOptionKeys) {
+    if (!isDeepStrictEqual(previous[key], next[key])) {
+      throw new Error(`Generation option ${key} cannot change after the job is created`);
+    }
+  }
+  const previousRoutes = previous.routeChain ?? [];
+  const nextRoutes = next.routeChain ?? [];
+  if (!allowRouteApproval) {
+    if (!isDeepStrictEqual(previousRoutes, nextRoutes)) {
+      throw new Error('Generation workers cannot change the approved route chain');
+    }
+    return next;
+  }
+  if (nextRoutes.length < previousRoutes.length || nextRoutes.length > previousRoutes.length + 1) {
+    throw new Error('A resume can only retain routes or append one approved route');
+  }
+  let newlyApprovedIndex = -1;
+  for (let index = 0; index < previousRoutes.length; index += 1) {
+    const previousRoute = previousRoutes[index];
+    const nextRoute = nextRoutes[index];
+    if (!isDeepStrictEqual(routeIdentity(previousRoute), routeIdentity(nextRoute))) {
+      throw new Error('Existing provider routes cannot be removed, reordered, or changed');
+    }
+    if (previousRoute.approved && !nextRoute.approved) throw new Error('Provider route approval cannot be revoked from generation history');
+    if (!previousRoute.approved && nextRoute.approved) {
+      if (newlyApprovedIndex >= 0) throw new Error('A resume can approve only one provider route');
+      newlyApprovedIndex = index;
+    }
+  }
+  if (nextRoutes.length > previousRoutes.length) {
+    if (newlyApprovedIndex >= 0) throw new Error('A resume can approve only one provider route');
+    newlyApprovedIndex = nextRoutes.length - 1;
+    if (!nextRoutes[newlyApprovedIndex].approved) throw new Error('A newly appended provider route must be explicitly approved');
+  }
+  if (newlyApprovedIndex >= 0 && !routeMatchesOptions(nextRoutes[newlyApprovedIndex], next)) {
+    throw new Error('A resume can only approve the provider route selected for continuation');
+  }
+  return next;
+};
+
 export const validateProviderAttempts = (input, options) => {
   if (!Array.isArray(input) || input.length > 1_000) throw new Error('Provider attempts must be an array of at most 1000 items');
   const routes = options?.routeChain;
@@ -170,6 +225,21 @@ export const validateProviderAttempts = (input, options) => {
         throw new Error('Provider attempt does not match its route-chain entry');
       }
     }
+  }
+  return input;
+};
+
+export const validateProviderAttemptTransition = (input, previous, options, acceptedCount) => {
+  validateProviderAttempts(input, options);
+  const prior = previous ?? [];
+  if (input.length < prior.length || input.length > prior.length + 1) {
+    throw new Error('Provider attempt history is append-only');
+  }
+  if (prior.some((attempt, index) => !isDeepStrictEqual(attempt, input[index]))) {
+    throw new Error('Existing provider attempts cannot be removed or changed');
+  }
+  if (input.length > prior.length && input.at(-1).accepted !== acceptedCount) {
+    throw new Error('A provider attempt must record the current accepted-question checkpoint');
   }
   return input;
 };

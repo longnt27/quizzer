@@ -303,16 +303,32 @@ test('provides onboarding, document, job, and event operations', async () => {
   assert.equal(reextracted.job.status, 'completed');
   assert.equal(reextracted.job.force, true);
 
+  const rewritten = await authorized('/api/v1/jobs/job-1/resume', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      options: { ...generationOptions, customInstruction: 'Rewrite the original generation contract.' },
+      activeRouteIndex: 0,
+    }),
+  });
+  assert.equal(rewritten.status, 400);
+  assert.match((await rewritten.json()).error, /customInstruction cannot change/);
+  const continuedOptions = {
+    ...generationOptions, provider: 'codex', model: undefined,
+    routeChain: [
+      ...generationOptions.routeChain,
+      { provider: 'codex', privacy: 'signed-in-agent', paid: false, approved: true },
+    ],
+  };
   const resumed = await authorized('/api/v1/jobs/job-1/resume', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      options: {
-        ...generationOptions, provider: 'codex', model: undefined,
-        routeChain: [{ provider: 'codex', privacy: 'signed-in-agent', paid: false, approved: true }],
-      },
-      activeRouteIndex: 0, resetRounds: true,
+      options: continuedOptions,
+      activeRouteIndex: 1,
+      providerAttempts: [{ provider: 'codex', routeIndex: 1, at: 2, accepted: 0, outcome: 'manually-selected' }],
+      resetRounds: true,
     }),
   });
+  assert.equal(resumed.status, 200);
   const resumedJob = (await resumed.json()).job;
   assert.equal(resumedJob.status, 'queued');
   assert.equal(resumedJob.options.provider, 'codex');

@@ -2,7 +2,8 @@ import Database from 'better-sqlite3';
 import { validateQuestionCheckpoint } from './question-validation.mjs';
 import {
   isModernGenerationOptions, validateActiveRoute, validateCoveragePlan, validateGenerationOptions,
-  validateGenerationProgress, validateNewGenerationJob, validateProviderAttempts,
+  validateGenerationOptionsTransition, validateGenerationProgress, validateNewGenerationJob,
+  validateProviderAttemptTransition,
 } from './generation-validation.mjs';
 import { validateOnboardingState } from './onboarding.mjs';
 import { createHash, randomUUID } from 'node:crypto';
@@ -455,9 +456,12 @@ const validateGenerationPatch = (patch, job = {}) => {
     requireSnapshots: isModernGenerationOptions(job.options),
     requireCompleteSettings: Boolean(job.creationFingerprint),
   });
+  if (patch.options !== undefined) validateGenerationOptionsTransition(job.options, patch.options);
   if (isModernGenerationOptions(options)) validateActiveRoute(patch.activeRouteIndex ?? job.activeRouteIndex ?? 0, options);
   else if (patch.activeRouteIndex !== undefined) validateActiveRoute(patch.activeRouteIndex, options);
-  if (patch.providerAttempts !== undefined) validateProviderAttempts(patch.providerAttempts, options);
+  if (patch.providerAttempts !== undefined) validateProviderAttemptTransition(
+    patch.providerAttempts, job.providerAttempts, options, (patch.questions ?? job.questions ?? []).length,
+  );
   if (patch.progress !== undefined) validateGenerationProgress(patch.progress, options);
   if (patch.coveragePlan !== undefined) validateCoveragePlan(patch.coveragePlan, job.documentIds, options?.questionCount);
 };
@@ -533,9 +537,12 @@ export const controlGenerationJob = (id, action, changes = {}, now = Date.now())
     requireSnapshots: isModernGenerationOptions(existing.data.options),
     requireCompleteSettings: Boolean(existing.data.creationFingerprint),
   });
+  if (changes.options !== undefined) validateGenerationOptionsTransition(existing.data.options, changes.options, { allowRouteApproval: true });
   if (isModernGenerationOptions(options)) validateActiveRoute(changes.activeRouteIndex ?? existing.data.activeRouteIndex ?? 0, options);
   else if (changes.activeRouteIndex !== undefined) validateActiveRoute(changes.activeRouteIndex, options);
-  if (changes.providerAttempts !== undefined) validateProviderAttempts(changes.providerAttempts, options);
+  if (changes.providerAttempts !== undefined) validateProviderAttemptTransition(
+    changes.providerAttempts, existing.data.providerAttempts, options, existing.data.questions?.length ?? 0,
+  );
   if (action === 'cancel' && existing.data.status === 'completed') throw new Error('A completed generation job cannot be cancelled');
   if (action === 'resume' && ['running', 'completed'].includes(existing.data.status)) {
     throw new Error(`A ${existing.data.status} generation job cannot be resumed`);

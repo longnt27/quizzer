@@ -273,6 +273,78 @@ test('shares validated resume and cancel transitions across service clients', ()
   assert.throws(() => controlGenerationJob('control-job', 'resume', { resetRounds: 'yes' }, 26), /boolean/);
 });
 
+test('allows route continuation without rewriting a modern generation contract or audit history', () => {
+  const originalOptions = generationOptions('openai');
+  const codexRoute = { provider: 'codex', privacy: 'signed-in-agent', paid: false, approved: true };
+  putRecord('generationJobs', 'route-policy-job', {
+    id: 'route-policy-job', testId: 'route-policy-test', name: 'Route policy', status: 'paused',
+    createdAt: 70, updatedAt: 70, documentIds: ['creation-doc'], options: originalOptions,
+    questions: [], rejected: 0, rounds: {}, creationFingerprint: 'a'.repeat(64),
+  });
+  const continuedOptions = {
+    ...originalOptions, provider: 'codex', routeChain: [...originalOptions.routeChain, codexRoute],
+  };
+  const continued = controlGenerationJob('route-policy-job', 'resume', {
+    options: continuedOptions,
+    activeRouteIndex: 1,
+    providerAttempts: [{ provider: 'codex', routeIndex: 1, at: 71, accepted: 0, outcome: 'manually-selected' }],
+  }, 71);
+  assert.equal(continued.data.options.provider, 'codex');
+  assert.equal(continued.data.options.questionCount, 1);
+  assert.equal(continued.data.providerAttempts.length, 1);
+  assert.throws(() => controlGenerationJob('route-policy-job', 'resume', {
+    options: { ...continuedOptions, customInstruction: 'Change the job after it was queued.' }, activeRouteIndex: 1,
+  }, 72), /customInstruction cannot change/);
+  assert.throws(() => controlGenerationJob('route-policy-job', 'resume', {
+    options: { ...continuedOptions, routeChain: [...continuedOptions.routeChain].reverse() }, activeRouteIndex: 0,
+  }, 72), /removed, reordered, or changed/);
+  assert.throws(() => controlGenerationJob('route-policy-job', 'resume', {
+    providerAttempts: [],
+  }, 72), /attempt history is append-only/);
+  controlGenerationJob('route-policy-job', 'cancel', {}, 73);
+});
+
+test('lets workers select only an existing pre-approved route', () => {
+  const originalOptions = generationOptions('openai');
+  const routeChain = [
+    ...originalOptions.routeChain,
+    { provider: 'codex', privacy: 'signed-in-agent', paid: false, approved: true },
+  ];
+  const leaseId = 'route-worker-lease';
+  putRecord('generationJobs', 'route-worker-job', {
+    id: 'route-worker-job', testId: 'route-worker-test', name: 'Automatic route', status: 'running',
+    createdAt: 80, updatedAt: 80, documentIds: ['creation-doc'], workerId: 'route-worker', leaseId, leaseExpiresAt: 10_000,
+    options: { ...originalOptions, routeChain }, questions: [], rejected: 0, rounds: {}, creationFingerprint: 'b'.repeat(64),
+  });
+  const automaticOptions = { ...originalOptions, provider: 'codex', routeChain };
+  const switched = updateGenerationJobWithLease('route-worker-job', {
+    workerId: 'route-worker', leaseId, now: 81,
+    patch: {
+      options: automaticOptions,
+      activeRouteIndex: 1,
+      providerAttempts: [{
+        provider: 'openai', routeIndex: 0, at: 81, accepted: 0, outcome: 'failed', errorCode: 'provider_limit',
+      }],
+    },
+  });
+  assert.equal(switched.data.options.provider, 'codex');
+  assert.throws(() => updateGenerationJobWithLease('route-worker-job', {
+    workerId: 'route-worker', leaseId, now: 82,
+    patch: { options: { ...automaticOptions, routeChain: [...routeChain, {
+      provider: 'claude-agent', privacy: 'signed-in-agent', paid: false, approved: true,
+    }] } },
+  }), /workers cannot change the approved route chain/);
+  assert.throws(() => updateGenerationJobWithLease('route-worker-job', {
+    workerId: 'route-worker', leaseId, now: 82,
+    patch: { options: { ...automaticOptions, questionCount: 2 } },
+  }), /questionCount cannot change/);
+  assert.throws(() => updateGenerationJobWithLease('route-worker-job', {
+    workerId: 'route-worker', leaseId, now: 82,
+    patch: { providerAttempts: [] },
+  }), /attempt history is append-only/);
+  controlGenerationJob('route-worker-job', 'cancel', {}, 83);
+});
+
 test('rejects malformed modern question checkpoints before committing them', () => {
   const leaseId = 'strict-checkpoint-lease';
   putRecord('generationJobs', 'strict-checkpoint-job', {

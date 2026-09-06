@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  validateActiveRoute, validateCoveragePlan, validateGenerationOptions, validateGenerationProgress,
-  validateNewGenerationJob, validateProviderAttempts, validateProviderRoute,
+  validateActiveRoute, validateCoveragePlan, validateGenerationOptions, validateGenerationOptionsTransition,
+  validateGenerationProgress, validateNewGenerationJob, validateProviderAttempts,
+  validateProviderAttemptTransition, validateProviderRoute,
 } from '../server/generation-validation.mjs';
 import { resolveSettings } from '../server/settings.mjs';
 
@@ -60,6 +61,9 @@ test('bounds prompt, route, instruction, and resolved-setting snapshots', () => 
     ...value, routeChain: [{ ...value.routeChain[0], model: 'other' }],
   }), /must match a route/);
   assert.throws(() => validateGenerationOptions({
+    ...value, routeChain: [value.routeChain[0], { ...value.routeChain[0] }],
+  }), /duplicate provider and model routes/);
+  assert.throws(() => validateGenerationOptions({
     ...value, routeChain: [{ ...value.routeChain[0], approved: false }],
   }), /explicitly approved/);
 
@@ -83,6 +87,36 @@ test('bounds prompt, route, instruction, and resolved-setting snapshots', () => 
   assert.throws(() => validateGenerationOptions({
     ...value, resolvedSettings: { ...resolvedSettings, 'retrieval.contextBudget': 4_096 },
   }, { requireCompleteSettings: true }), /RAG profile must match/);
+});
+
+test('keeps generation semantics and route history immutable across failover', () => {
+  const value = options();
+  const codexRoute = { provider: 'codex', privacy: 'signed-in-agent', paid: false, approved: true };
+  const continued = {
+    ...value,
+    provider: 'codex',
+    model: undefined,
+    routeChain: [...value.routeChain, codexRoute],
+  };
+  assert.equal(validateGenerationOptionsTransition(value, continued, { allowRouteApproval: true }), continued);
+  assert.throws(() => validateGenerationOptionsTransition(value, continued), /workers cannot change the approved route chain/);
+  assert.throws(() => validateGenerationOptionsTransition(value, {
+    ...continued, customInstruction: 'Replace the original learning goal.',
+  }, { allowRouteApproval: true }), /customInstruction cannot change/);
+  assert.throws(() => validateGenerationOptionsTransition(value, {
+    ...continued, routeChain: [codexRoute, value.routeChain[0]],
+  }, { allowRouteApproval: true }), /removed, reordered, or changed/);
+  assert.throws(() => validateGenerationOptionsTransition(value, {
+    ...continued, routeChain: [...value.routeChain, { ...codexRoute, approved: false }],
+  }, { allowRouteApproval: true }), /newly appended provider route must be explicitly approved/);
+
+  const pendingCodex = { ...codexRoute, approved: false };
+  const withPendingRoute = { ...value, routeChain: [...value.routeChain, pendingCodex] };
+  const approvedCodex = { ...continued, routeChain: [...value.routeChain, codexRoute] };
+  assert.equal(validateGenerationOptionsTransition(withPendingRoute, approvedCodex, { allowRouteApproval: true }), approvedCodex);
+  assert.throws(() => validateGenerationOptionsTransition(withPendingRoute, {
+    ...approvedCodex, provider: 'openai', model: 'gpt-5-mini',
+  }, { allowRouteApproval: true }), /selected for continuation/);
 });
 
 test('accepts only pristine queued jobs at the creation boundary', () => {
@@ -109,6 +143,23 @@ test('validates route-bound attempts, progress, and retrieval coverage', () => {
   assert.throws(() => validateProviderAttempts({}, value), /array of at most/);
   assert.throws(() => validateProviderAttempts([{ ...attempts[0], outcome: 'unknown' }], value), /outcome is invalid/);
   assert.throws(() => validateProviderAttempts([{ ...attempts[0], accepted: 3 }], value), /accepted count is invalid/);
+  const continuedOptions = {
+    ...value,
+    provider: 'codex',
+    model: undefined,
+    routeChain: [...value.routeChain, { provider: 'codex', privacy: 'signed-in-agent', paid: false, approved: true }],
+  };
+  const continuedAttempts = [...attempts, {
+    provider: 'codex', routeIndex: 1, at: 21, accepted: 1, outcome: 'manually-selected',
+  }];
+  assert.equal(validateProviderAttemptTransition(continuedAttempts, attempts, continuedOptions, 1), continuedAttempts);
+  assert.throws(() => validateProviderAttemptTransition(continuedAttempts.slice(1), attempts, continuedOptions, 1), /attempt history is append-only|cannot be removed or changed/);
+  assert.throws(() => validateProviderAttemptTransition([
+    { ...attempts[0], message: 'Rewritten failure' }, continuedAttempts[1],
+  ], attempts, continuedOptions, 1), /cannot be removed or changed/);
+  assert.throws(() => validateProviderAttemptTransition([
+    ...attempts, { ...continuedAttempts[1], accepted: 0 },
+  ], attempts, continuedOptions, 1), /current accepted-question checkpoint/);
   assert.equal(validateActiveRoute(0, value), 0);
   assert.throws(() => validateActiveRoute(1, value), /does not match/);
 

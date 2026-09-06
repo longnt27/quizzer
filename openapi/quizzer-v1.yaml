@@ -597,15 +597,21 @@ paths:
     post:
       operationId: resumeJob
       summary: Queue the unfinished portion of a generation job
+      description: Generation semantics and prior route history remain immutable. A resume may select an existing approved route, approve one existing route, or append one explicitly approved route.
       requestBody:
         content:
           application/json:
             schema:
               type: object
               properties:
-                options: { $ref: '#/components/schemas/GenerationOptions' }
+                options:
+                  allOf: [{ $ref: '#/components/schemas/GenerationOptions' }]
+                  description: Full generation snapshot. Only provider, model, and one append-only route approval may differ from the stored job.
                 activeRouteIndex: { type: integer, minimum: 0 }
-                providerAttempts: { type: array, items: { type: object } }
+                providerAttempts:
+                  type: array
+                  description: Complete append-only attempt history, including the newly selected route and current accepted-question count.
+                  items: { type: object }
                 resetRounds: { type: boolean }
       responses:
         '200': { description: Updated generation job }
@@ -1029,7 +1035,9 @@ components:
         error: { type: string }
         errorCode: { type: string }
         nextAttemptAt: { type: integer }
-        options: { $ref: '#/components/schemas/GenerationOptions' }
+        options:
+          allOf: [{ $ref: '#/components/schemas/GenerationOptions' }]
+          description: Immutable generation snapshot with only the active provider and model changed to an existing pre-approved route.
         progress: { type: object }
         providerAttempts: { type: array, items: { type: object } }
         questions: { type: array, items: { type: object } }
