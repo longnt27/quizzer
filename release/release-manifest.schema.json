@@ -30,7 +30,7 @@
           },
           "platform": { "enum": ["windows", "macos", "linux"] },
           "architecture": { "enum": ["x64", "arm64"] },
-          "format": { "enum": ["exe", "msi", "dmg", "zip", "appimage", "deb", "rpm", "tar.gz", "sea"] },
+          "format": { "enum": ["exe", "msi", "dmg", "pkg", "zip", "appimage", "deb", "rpm", "tar.gz", "sea"] },
           "url": { "type": "string", "format": "uri", "pattern": "^https://" },
           "size": { "type": "integer", "minimum": 1, "maximum": 1073741824 },
           "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },

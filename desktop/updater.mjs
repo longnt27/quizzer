@@ -1,6 +1,7 @@
 import { createHash, createPublicKey, KeyObject } from 'node:crypto';
 import { createReadStream, readFileSync } from 'node:fs';
 import { lstat, mkdir, open, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { verifyReleaseManifestSignature } from '../release/manifest.mjs';
 import { isValidArtifactName, MAX_DESKTOP_PACKAGE_SIZE, validateReleaseManifest } from '../server/release-manifest.mjs';
@@ -155,8 +156,8 @@ export const fetchBoundedText = async (fetchFn, url, options = {}, maxBytes = MA
 };
 
 const FORMAT_PREFERENCES = {
-  macos: ['zip', 'dmg'],
-  windows: ['exe', 'zip'],
+  macos: ['pkg', 'dmg', 'zip'],
+  windows: ['msi', 'exe', 'zip'],
   linux: ['deb', 'rpm', 'appimage', 'tar.gz', 'zip'],
 };
 
@@ -338,6 +339,67 @@ export const normalizePublicKey = value => {
   throw new Error('Unsupported public key format');
 };
 
+// Strict allowlists for automatic installer handoff per platform.
+// Only well-known, platform-native installer formats that can be safely
+// opened without shell interpolation are included.
+export const HANDOFF_ALLOWLIST = Object.freeze({
+  macos: Object.freeze(['pkg', 'dmg']),
+  windows: Object.freeze(['exe', 'msi']),
+  linux: Object.freeze(['deb', 'rpm', 'appimage']),
+});
+
+export const isAutoHandoffSupported = (platform, format) => {
+  const allowed = HANDOFF_ALLOWLIST[platform];
+  return Array.isArray(allowed) && allowed.includes(format);
+};
+
+export const resolveHandoffLaunch = (filePath, format, platform) => {
+  if (typeof filePath !== 'string' || !filePath) {
+    throw new Error('Installer handoff requires a verified package path');
+  }
+  if (!isAutoHandoffSupported(platform, format)) {
+    throw new Error(`Unsupported format for automatic handoff on ${platform}: ${format}`);
+  }
+
+  if (platform === 'macos') {
+    return { command: '/usr/bin/open', args: [filePath] };
+  }
+  if (platform === 'windows') {
+    return format === 'exe'
+      ? { command: filePath, args: [] }
+      : { command: 'C:\\Windows\\System32\\msiexec.exe', args: ['/i', filePath] };
+  }
+  return { command: '/usr/bin/xdg-open', args: [filePath] };
+};
+
+export const defaultLauncher = async (filePath, format, platform) => {
+  const { command, args } = resolveHandoffLaunch(filePath, format, platform);
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      stdio: 'ignore',
+      detached: true,
+      windowsHide: true,
+      shell: false,
+    });
+
+    let settled = false;
+    child.on('error', (err) => {
+      if (!settled) {
+        settled = true;
+        reject(new Error(`Failed to launch installer: ${err.message}`));
+      }
+    });
+
+    child.on('spawn', () => {
+      if (!settled) {
+        settled = true;
+        child.unref();
+        resolve();
+      }
+    });
+  });
+};
+
 export class DesktopUpdater {
   constructor(options = {}) {
     this.userDataDir = options.userDataDir || '';
@@ -347,6 +409,7 @@ export class DesktopUpdater {
     this.repository = CANONICAL_REPOSITORY;
     this.isPackaged = options.isPackaged ?? false;
     this.fetch = options.fetch || globalThis.fetch;
+    this.launcher = options.launcher || defaultLauncher;
 
     this.channel = this.loadPersistedChannelSync(options.channel);
 
@@ -519,7 +582,9 @@ export class DesktopUpdater {
         architecture: this.architecture,
       },
       keyStatus,
-      mechanism: this.isPackaged ? 'staged-ready' : 'staged-development',
+      mechanism: this.state === 'manual-handoff'
+        ? 'manual-handoff'
+        : this.isPackaged ? 'staged-ready' : 'staged-development',
       supported: Boolean(this.userDataDir),
       updateInfo: this.updateInfo ? { ...this.updateInfo } : undefined,
       downloadProgress: this.downloadProgress ? { ...this.downloadProgress } : undefined,
@@ -831,6 +896,45 @@ export class DesktopUpdater {
       this.state = 'applying';
       const { artifact: targetArtifact } = stagedPackage;
 
+      const format = targetArtifact.format;
+      const autoHandoff = isAutoHandoffSupported(this.platform, format);
+
+      if (!this.isPackaged) {
+        this.state = 'installer-handoff-pending';
+        this.stagedArtifactName = targetArtifact.name;
+        return {
+          applied: false,
+          handoffPending: true,
+          restartRequested: false,
+          mechanism: 'staged-development',
+          message: 'Update verified and staged. In unpacked development mode, installer handoff is pending without binary execution.',
+          status: await this.getStatus(),
+        };
+      }
+
+      const artifactPath = join(this.userDataDir, 'updates', 'staging', targetArtifact.name);
+
+      if (!autoHandoff) {
+        this.state = 'manual-handoff';
+        this.stagedArtifactName = targetArtifact.name;
+        return {
+          applied: false,
+          handoffPending: true,
+          restartRequested: false,
+          mechanism: 'manual-handoff',
+          message: `Update package format ${format} requires manual opening. The verified package remains in private update staging.`,
+          status: await this.getStatus(),
+        };
+      }
+
+      try {
+        await this.launcher(artifactPath, format, this.platform);
+      } catch (err) {
+        this.state = 'error';
+        this.lastError = `Installer handoff failed: ${err instanceof Error ? err.message : String(err)}`;
+        throw new Error(this.lastError);
+      }
+
       this.state = 'installer-handoff-pending';
       this.stagedArtifactName = targetArtifact.name;
 
@@ -838,10 +942,8 @@ export class DesktopUpdater {
         applied: false,
         handoffPending: true,
         restartRequested: options.restart ?? false,
-        mechanism: this.isPackaged ? 'staged-ready' : 'staged-development',
-        message: this.isPackaged
-          ? 'Update package cryptographically verified and staged. Installer handoff pending.'
-          : 'Update verified and staged. In unpacked development mode, installer handoff is pending without binary execution.',
+        mechanism: 'staged-ready',
+        message: 'Update package cryptographically verified and successfully handed off to system installer.',
         status: await this.getStatus(),
       };
     } catch (error) {

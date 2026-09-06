@@ -98,7 +98,11 @@ const registerValidatedIpc = () => {
   ipcMain.handle('updater:apply', async (event, options) => {
     if (!isTrustedRenderer(event)) throw new Error('Untrusted renderer');
     const validated = validateUpdaterApplyOptions(options);
-    return desktopUpdater?.applyUpdate(validated);
+    const result = await desktopUpdater?.applyUpdate(validated);
+    if (result?.restartRequested && result.mechanism === 'staged-ready') {
+      setTimeout(() => quitApplication(), 500);
+    }
+    return result;
   });
   ipcMain.handle('updater:discard', async event => {
     if (!isTrustedRenderer(event)) throw new Error('Untrusted renderer');

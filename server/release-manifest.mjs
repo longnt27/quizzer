@@ -10,7 +10,7 @@ export const isValidArtifactName = name => {
 
 const platforms = new Set(['windows', 'macos', 'linux']);
 const architectures = new Set(['x64', 'arm64']);
-const formats = new Set(['exe', 'msi', 'dmg', 'zip', 'appimage', 'deb', 'rpm', 'tar.gz', 'sea']);
+const formats = new Set(['exe', 'msi', 'dmg', 'pkg', 'zip', 'appimage', 'deb', 'rpm', 'tar.gz', 'sea']);
 
 const trustedReleaseUrl = value => {
   try {

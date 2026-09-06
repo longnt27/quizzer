@@ -1,7 +1,16 @@
 import { copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 
-const formats = new Map([['.zip', 'zip'], ['.exe', 'exe'], ['.deb', 'deb'], ['.rpm', 'rpm']]);
+const formats = new Map([
+  ['.zip', 'zip'],
+  ['.exe', 'exe'],
+  ['.msi', 'msi'],
+  ['.dmg', 'dmg'],
+  ['.pkg', 'pkg'],
+  ['.appimage', 'appimage'],
+  ['.deb', 'deb'],
+  ['.rpm', 'rpm'],
+]);
 const minimumOs = { macos: 'macOS 13', windows: 'Windows 10 x64 / Windows 11 arm64', linux: 'Current 64-bit Ubuntu or Fedora' };
 
 const filesBelow = async directory => {

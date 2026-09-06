@@ -265,11 +265,35 @@ export default function UpdaterStatusView() {
             type="success"
             showIcon
             icon={<CheckCircleOutlined />}
-            message="Verified staged package — installer handoff pending"
+            message="Installer handoff successful"
             description={
               <Space direction="vertical" size="small" style={{ width: '100%', marginTop: 8 }}>
                 <Typography.Text type="secondary">
-                  The update package has been downloaded and cryptographically verified. Automatic binary replacement is not performed without a tested platform adapter. Run the verified package installer manually or wait for platform installer handoff.
+                  The update package has been downloaded, cryptographically verified, and handed off to the system installer. Complete the installation in the system window that opened.
+                </Typography.Text>
+                <Button
+                  size="small"
+                  danger
+                  onClick={handleDiscard}
+                  loading={discarding}
+                >
+                  Discard staged update
+                </Button>
+              </Space>
+            }
+          />
+        )}
+
+        {state === 'manual-handoff' && (
+          <Alert
+            type="info"
+            showIcon
+            icon={<CheckCircleOutlined />}
+            message="Verified staged package — manual opening required"
+            description={
+              <Space direction="vertical" size="small" style={{ width: '100%', marginTop: 8 }}>
+                <Typography.Text type="secondary">
+                  The update package has been downloaded and cryptographically verified. The package format requires manual installation. Please locate the package in your updates directory and run it.
                 </Typography.Text>
                 <Button
                   size="small"
@@ -331,9 +355,11 @@ export default function UpdaterStatusView() {
             All updates are cryptographically verified with Ed25519 signatures and SHA-256 digests in scoped staging before handoff. In-place binary replacement without an explicit platform adapter is never executed.
           </Descriptions.Item>
           <Descriptions.Item label="Runtime mode">
-            {status?.mechanism === 'staged-ready'
-              ? 'Packaged desktop application (verified staging; installer handoff pending)'
-              : 'Development mode (verified staging; binary replacement simulated)'}
+            {status?.mechanism === 'manual-handoff'
+              ? 'Packaged desktop application (verified staging; manual installation required)'
+              : status?.mechanism === 'staged-ready'
+                ? 'Packaged desktop application (verified staging; platform handoff enabled)'
+                : 'Development mode (verified staging; binary replacement simulated)'}
           </Descriptions.Item>
         </Descriptions>
       </Space>

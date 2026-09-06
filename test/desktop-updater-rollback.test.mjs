@@ -261,20 +261,49 @@ test('discardUpdate removes staged files and resets state to idle without fake r
 });
 
 test('applyUpdate in packaged mode reports staged-ready mechanism, handoffPending, and restartRequested', async () => {
-  const env = await setupRollbackEnv();
+  // Use dmg format (handoff-capable on macOS) to test the full staged-ready path
+  const directory = await mkdtemp(join(tmpdir(), 'quizzer-rollback-test-'));
+  const keyPair = generateKeyPairSync('ed25519');
+  const encodedPrivateKey = keyPair.privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64');
+
+  const content = Buffer.from('Quizzer binary package content for rollback tests');
+  const sha256 = createHash('sha256').update(content).digest('hex');
+
+  const unsigned = {
+    schemaVersion: 1,
+    version: '1.2.0',
+    channel: 'stable',
+    publishedAt: '2026-09-06T12:00:00.000Z',
+    signatureAlgorithm: 'ed25519',
+    publicKeyId: 'quizzer-release-test',
+    signature: '',
+    artifacts: [{
+      name: 'quizzer-1.2.0-macos-arm64.dmg',
+      platform: 'macos',
+      architecture: 'arm64',
+      format: 'dmg',
+      url: 'https://github.com/Somethings1/quizzer/releases/download/v1.2.0/quizzer-1.2.0-macos-arm64.dmg',
+      size: content.length,
+      sha256,
+      minimumOs: 'macOS 13',
+    }],
+  };
+  const signed = signReleaseManifest(unsigned, privateKeyFromBase64(encodedPrivateKey));
+
   try {
     const updater = new DesktopUpdater({
-      userDataDir: env.directory,
+      userDataDir: directory,
       currentVersion: '1.0.0',
       isPackaged: true,
       platform: 'macos',
       architecture: 'arm64',
-      trustedKeys: { 'quizzer-release-test': env.keyPair.publicKey },
+      trustedKeys: { 'quizzer-release-test': keyPair.publicKey },
+      launcher: async () => {},
       fetch: async url => {
         if (url.endsWith('release-manifest.json')) {
-          return { ok: true, text: async () => JSON.stringify(env.signed) };
+          return { ok: true, text: async () => JSON.stringify(signed) };
         }
-        return { ok: true, arrayBuffer: async () => env.content };
+        return { ok: true, arrayBuffer: async () => content };
       },
     });
 
@@ -285,8 +314,8 @@ test('applyUpdate in packaged mode reports staged-ready mechanism, handoffPendin
     assert.equal(result.handoffPending, true);
     assert.equal(result.mechanism, 'staged-ready');
     assert.equal(result.restartRequested, true);
-    assert.match(result.message, /Installer handoff pending/);
+    assert.match(result.message, /handed off to system installer/i);
   } finally {
-    await rm(env.directory, { recursive: true, force: true });
+    await rm(directory, { recursive: true, force: true });
   }
 });
