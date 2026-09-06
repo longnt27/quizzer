@@ -41,7 +41,7 @@ const fulfillGeneration = async (route: Route) => {
   });
 };
 
-test('resumes real onboarding and completes a durable mocked quiz generation', async ({ page }) => {
+test('resumes real onboarding and finishes through durable quiz practice', async ({ page }) => {
   await page.route('**/api/integrations', route => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({ codex: { installed: true, connected: true }, marker: { installed: false, job: { state: 'idle', message: '' } } }),
@@ -88,4 +88,40 @@ test('resumes real onboarding and completes a durable mocked quiz generation', a
   await expect(page.getByText('Combined quiz is ready')).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText('10 validated questions')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Continue' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Continue' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Try one question' })).toBeVisible();
+  await page.getByRole('button', { name: 'Open Combined quiz' }).click();
+  await page.locator('.ant-radio-button-wrapper').filter({ hasText: 'Practice mode' }).click();
+  await page.getByRole('button', { name: 'Start Practice' }).click();
+  await expect(page.getByRole('heading', { name: 'Question 1' })).toBeVisible();
+
+  const multipleChoice = page.locator('.quiz-body .ant-radio-wrapper').first();
+  const fillBlank = page.getByPlaceholder('Type the missing word or phrase');
+  const writtenAnswer = page.locator('.written-answer-block textarea');
+  if (await multipleChoice.isVisible()) await multipleChoice.click();
+  else if (await fillBlank.isVisible()) await fillBlank.fill('lease');
+  else await writtenAnswer.fill('Exclusive ownership serializes writers and prevents conflicting updates.');
+
+  await page.getByRole('button', { name: /Check answer/ }).click();
+  await expect(page.getByRole('button', { name: /Ask AI about this answer/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Pause' }).click();
+
+  await page.getByRole('button', { name: 'Resume setup' }).click();
+  await expect(page.getByRole('heading', { name: 'Try one question' })).toBeVisible();
+  await expect(page.getByText('First question answered')).toBeVisible();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await expect(page.getByRole('heading', { name: 'You’re ready' })).toBeVisible();
+  await page.getByRole('button', { name: 'Finish' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Welcome to Quizzer' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Resume setup' })).toHaveCount(0);
+
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Question 1' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Learn from your own material' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Pause' }).click();
+  await page.getByRole('button', { name: 'Home' }).click();
+  await expect(page.getByRole('heading', { name: 'Welcome to Quizzer' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Resume setup' })).toHaveCount(0);
 });
