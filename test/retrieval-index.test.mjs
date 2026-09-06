@@ -96,3 +96,32 @@ test('propagates retrieval cancellation instead of reporting a dense-model failu
   assert.notEqual((await cancellable.status()).dense.status, 'unavailable');
   await cancellable.close();
 });
+
+test('keeps resolved plugin identities separate and uses the resolved embedder', async () => {
+  const routedDirectory = join(directory, 'resolved-plugin');
+  const invocations = [];
+  const routed = new RetrievalIndex({
+    sparsePath: join(routedDirectory, 'sparse.sqlite'),
+    densePath: join(routedDirectory, 'dense.lance'),
+    loadSettings: async () => ({ values: {
+      ...settings, 'embeddings.enabled': true, 'retrieval.mode': 'hybrid', 'retrieval.rerank': false,
+    } }),
+    resolveEmbedding: async () => ({
+      identity: 'plugin:dev.quizzer.embedder@2.0.0:mini-v1',
+      embed: async (texts, options) => {
+        invocations.push({ texts, options });
+        return texts.map(vectorFor);
+      },
+    }),
+  });
+  try {
+    const indexed = await routed.indexDocument(record);
+    assert.equal(indexed.dense.embeddingModel, 'plugin:dev.quizzer.embedder@2.0.0:mini-v1');
+    const retrieved = await routed.retrieve({ query: 'Terraform state', documentIds: [record.id] });
+    assert.equal(retrieved.dense.embeddingModel, 'plugin:dev.quizzer.embedder@2.0.0:mini-v1');
+    assert.equal(retrieved.results[0].documentId, record.id);
+    assert.equal(invocations.length, 2);
+  } finally {
+    await routed.close();
+  }
+});

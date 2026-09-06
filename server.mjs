@@ -22,12 +22,12 @@ import { createBackup, listBackups, verifyBackup } from './server/backup.mjs';
 import { cancelIndexJob, createIndexJob, recoverIndexJob, resumeIndexJob, runIndexJob } from './server/index-jobs.mjs';
 import { reextractDocument } from './server/document-import.mjs';
 import { PROVIDER_POLICIES, providerConcurrencyLimits, publicProviderPolicies } from './server/provider-policy.mjs';
-import { embedTextsWithOllama } from './server/embeddings.mjs';
 import { RetrievalIndex } from './server/retrieval-index.mjs';
 import { bindRequestCancellation } from './server/request-lifetime.mjs';
 import { ProviderCredentialStore } from './server/provider-credentials.mjs';
 import { GenerationJobWorker } from './server/generation-worker.mjs';
 import { runGeneratorPlugin } from './server/plugin-generation.mjs';
+import { resolveEmbeddingProvider } from './server/plugin-embeddings.mjs';
 
 const configuredPortValue = process.env.QUIZZER_SERVICE_PORT ?? '8787';
 const configuredPort = Number(configuredPortValue);
@@ -90,6 +90,7 @@ const retrievalIndex = new RetrievalIndex({
   sparsePath: process.env.QUIZZER_SPARSE_INDEX_PATH || sparseIndexPathFor(appDataDirectory),
   densePath: process.env.QUIZZER_DENSE_INDEX_PATH || denseIndexPathFor(appDataDirectory),
   loadSettings: () => loadResolvedSettings(appDataDirectory),
+  resolveEmbedding: settings => resolveEmbeddingProvider(settings, { loadManager: getPluginManager }),
   invokeReranker: async (id, params, options) => {
     const manager = await getPluginManager();
     const plugin = (await manager.list()).find(item => item.id === id);
@@ -894,7 +895,8 @@ const generationWorker = process.env.QUIZZER_DISABLE_SERVICE_GENERATION === '1' 
   retrieve: options => retrievalIndex.retrieve(options),
   embed: async (texts, signal) => {
     const settings = await loadResolvedSettings(appDataDirectory);
-    return embedTextsWithOllama(texts, { model: settings.values['embeddings.model'], signal });
+    const embedding = await resolveEmbeddingProvider(settings, { loadManager: getPluginManager });
+    return embedding.embed(texts, { signal });
   },
   loadImage: async image => {
     if (typeof image?.data === 'string' && image.data) return `data:${image.mimeType};base64,${image.data}`;
@@ -1495,9 +1497,8 @@ const serviceServer = createServer(async (request, response) => {
     try {
       const { texts } = await readJson(request);
       const settings = await loadResolvedSettings(appDataDirectory);
-      const embeddings = await embedTextsWithOllama(texts, {
-        model: settings.values['embeddings.model'], signal: lifetime.signal,
-      });
+      const embedding = await resolveEmbeddingProvider(settings, { loadManager: getPluginManager });
+      const embeddings = await embedding.embed(texts, { signal: lifetime.signal });
       if (!response.destroyed) return send(response, 200, { embeddings });
     } catch (error) {
       if (!response.destroyed) return send(response, error?.name === 'AbortError' ? 499 : 503, { error: error instanceof Error ? error.message : 'Embedding failed' });

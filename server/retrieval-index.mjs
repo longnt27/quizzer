@@ -7,13 +7,14 @@ import { rerankRetrieval } from './reranking.mjs';
 const errorMessage = error => error instanceof Error ? error.message : String(error);
 
 export class RetrievalIndex {
-  constructor({ sparsePath, densePath, loadSettings, embed = embedTextsWithOllama, invokeReranker, onDenseIssue = () => {} }) {
+  constructor({ sparsePath, densePath, loadSettings, embed = embedTextsWithOllama, resolveEmbedding, invokeReranker, onDenseIssue = () => {} }) {
     if (typeof loadSettings !== 'function') throw new Error('Retrieval index requires a settings loader');
     if (typeof embed !== 'function') throw new Error('Retrieval index requires an embedding provider');
     this.sparse = new SparseDocumentIndex(sparsePath);
     this.dense = new DenseDocumentIndex(densePath);
     this.loadSettings = loadSettings;
     this.embed = embed;
+    this.resolveEmbedding = resolveEmbedding;
     this.invokeReranker = invokeReranker;
     this.onDenseIssue = onDenseIssue;
     this.denseUsed = false;
@@ -21,24 +22,35 @@ export class RetrievalIndex {
 
   async configuration() {
     const settings = await this.loadSettings();
+    const configuredModel = settings.values['embeddings.model'];
+    const embedding = this.resolveEmbedding
+      ? await this.resolveEmbedding(settings)
+      : {
+          identity: configuredModel,
+          embed: (texts, options = {}) => this.embed(texts, { ...options, model: configuredModel }),
+        };
+    if (!embedding || typeof embedding.identity !== 'string' || !embedding.identity.trim() || typeof embedding.embed !== 'function') {
+      throw new Error('Embedding provider resolution returned an invalid route');
+    }
     return {
       settings,
       embeddings: settings.values['embeddings.enabled'],
-      embeddingModel: settings.values['embeddings.model'],
+      embeddingModel: embedding.identity,
+      embedding,
       retrievalMode: settings.values['retrieval.mode'],
     };
   }
 
   async indexDocument(record, options) {
     const sparse = this.sparse.indexDocument(record, options);
-    const { embeddings, embeddingModel } = await this.configuration();
+    const { embeddings, embeddingModel, embedding } = await this.configuration();
     if (!embeddings) return { ...sparse, dense: { status: 'disabled' } };
     this.denseUsed = true;
     try {
       const dense = await this.dense.indexDocument(record, {
         ...options,
         embeddingModel,
-        embed: texts => this.embed(texts, { model: embeddingModel }),
+        embed: texts => embedding.embed(texts),
       });
       this.denseIssue = undefined;
       return { ...sparse, dense: { status: 'ready', ...dense } };
@@ -85,7 +97,7 @@ export class RetrievalIndex {
   }
 
   async retrieve(options = {}) {
-    const { settings, embeddings, embeddingModel, retrievalMode } = await this.configuration();
+    const { settings, embeddings, embeddingModel, embedding, retrievalMode } = await this.configuration();
     const retrievalOptions = {
       ...options,
       contextBudget: options.contextBudget ?? settings.values['retrieval.contextBudget'],
@@ -95,7 +107,7 @@ export class RetrievalIndex {
     if (retrievalMode === 'hybrid' && embeddings) {
       try {
         this.denseUsed = true;
-        const [vector] = await this.embed([options.query], { model: embeddingModel, signal: options.signal });
+        const [vector] = await embedding.embed([options.query], { signal: options.signal });
         const normalizedTags = (retrievalOptions.tags ?? []).map(tag => tag.toLocaleLowerCase());
         const dense = (await this.dense.retrieve({
           vector,

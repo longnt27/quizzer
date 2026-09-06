@@ -77,9 +77,15 @@ const baseSettings = [
   },
   {
     key: 'embeddings.model', type: 'string', default: 'all-minilm',
-    title: 'Embedding model', description: 'Ollama model used to build and query the rebuildable dense index.',
+    title: 'Embedding model', description: 'Model name supplied to the selected local embedding component.',
     visibility: 'advanced', resourceEffect: 'high', restartRequired: false, reindexRequired: true,
     environment: 'QUIZZER_EMBEDDING_MODEL',
+  },
+  {
+    key: 'embeddings.embedderPlugin', type: 'string', default: 'builtin',
+    title: 'Embedding component', description: 'Uses built-in Ollama embeddings or an installed embedder plugin id.',
+    visibility: 'advanced', resourceEffect: 'high', restartRequired: false, reindexRequired: true,
+    environment: 'QUIZZER_EMBEDDER_PLUGIN',
   },
   {
     key: 'jobs.continueInBackground', type: 'boolean', default: true,
@@ -121,6 +127,7 @@ export const HARDWARE_PROFILE_SETTINGS = Object.freeze({
     'extraction.ocr': false,
     'embeddings.enabled': false,
     'embeddings.model': 'all-minilm',
+    'embeddings.embedderPlugin': 'builtin',
   }),
   balanced: Object.freeze({
     'hardware.profile': 'balanced',
@@ -134,6 +141,7 @@ export const HARDWARE_PROFILE_SETTINGS = Object.freeze({
     'extraction.ocr': true,
     'embeddings.enabled': true,
     'embeddings.model': 'all-minilm',
+    'embeddings.embedderPlugin': 'builtin',
   }),
   max: Object.freeze({
     'hardware.profile': 'max',
@@ -147,6 +155,7 @@ export const HARDWARE_PROFILE_SETTINGS = Object.freeze({
     'extraction.ocr': true,
     'embeddings.enabled': true,
     'embeddings.model': 'all-minilm',
+    'embeddings.embedderPlugin': 'builtin',
   }),
 });
 

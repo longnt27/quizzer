@@ -66,6 +66,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const [status, setStatus] = useState<IntegrationStatus | null>(null);
   const [statusError, setStatusError] = useState('');
   const [externalPlugins, setExternalPlugins] = useState<ExternalPlugin[]>([]);
+  const [embedderPlugin, setEmbedderPlugin] = useState('builtin');
   const [externalError, setExternalError] = useState('');
   const [externalLoading, setExternalLoading] = useState(true);
   const [developerMode, setDeveloperMode] = useState(false);
@@ -75,6 +76,8 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const message = getMessageApi();
   const generatorPlugins = useMemo(() => externalPlugins.filter(plugin => plugin.status === 'installed' && plugin.enabled
     && plugin.compatible && plugin.capabilities?.includes('generator')), [externalPlugins]);
+  const embedderPlugins = useMemo(() => externalPlugins.filter(plugin => plugin.status === 'installed' && plugin.enabled
+    && plugin.compatible && plugin.capabilities?.includes('embedder')), [externalPlugins]);
 
   const refresh = useCallback(async () => {
     try {
@@ -97,6 +100,8 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       ]);
       setExternalPlugins(collection.plugins);
       setDeveloperMode(settings.values['plugins.developerMode'] === true);
+      setEmbedderPlugin(typeof settings.values['embeddings.embedderPlugin'] === 'string'
+        ? settings.values['embeddings.embedderPlugin'] : 'builtin');
       setExternalError('');
     } catch (error) {
       setExternalError(error instanceof Error ? error.message : 'Could not load external plugins');
@@ -229,6 +234,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
         'extraction.marker': enabledTools.marker,
         'extraction.ocr': enabledTools.ocr,
         'embeddings.enabled': enabledTools.embeddings,
+        'embeddings.embedderPlugin': embedderPlugin,
       } });
       setProviderSettings({ defaultProvider: selectedProvider, models, enabledProviders, enabledTools });
       window.dispatchEvent(new Event('quizzer:settings-changed'));
@@ -244,6 +250,8 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const markerWorking = status?.marker.job.state === 'working';
   const ocrWorking = status?.ocr?.job.state === 'working';
   const embeddingsWorking = status?.embeddings?.job.state === 'working';
+  const selectedEmbedder = embedderPlugins.find(plugin => plugin.id === embedderPlugin);
+  const embeddingReady = embedderPlugin === 'builtin' ? Boolean(status?.embeddings?.installed) : Boolean(selectedEmbedder);
   const configuredProviderOptions = PROVIDERS.filter(provider => enabledProviders[provider.id] && (provider.kind === 'api'
     ? Boolean(apiKeys[provider.id]?.trim())
     : provider.kind === 'plugin'
@@ -310,16 +318,23 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
 
         <section className="plugin-card">
           <div className="plugin-card-heading">
-            <div><Typography.Title level={5}>Semantic duplicate filter</Typography.Title><Typography.Text type="secondary">Uses the lightweight all-minilm model locally. Exact and token-based filtering remain active without it.</Typography.Text></div>
-            {statusTag(Boolean(status?.embeddings?.installed), Boolean(embeddingsWorking), 'Installed')}
+            <div><Typography.Title level={5}>Dense embeddings</Typography.Title><Typography.Text type="secondary">Uses built-in Ollama or an installed embedder plugin for hybrid retrieval and semantic duplicate filtering.</Typography.Text></div>
+            {statusTag(embeddingReady, embedderPlugin === 'builtin' && Boolean(embeddingsWorking), embedderPlugin === 'builtin' ? 'Installed' : 'Plugin ready')}
           </div>
-          {!status?.embeddings?.installed && !embeddingsWorking && <Button icon={<CloudDownloadOutlined />}
+          <Select aria-label="Dense embedding component" value={embedderPlugin} onChange={setEmbedderPlugin} style={{ width: '100%' }}
+            options={[
+              { value: 'builtin', label: 'Built-in · Ollama all-minilm' },
+              ...embedderPlugins.map(plugin => ({ value: plugin.id, label: `${plugin.name ?? plugin.id} · ${plugin.id}` })),
+            ]} />
+          {embedderPlugin === 'builtin' && !status?.embeddings?.installed && !embeddingsWorking && <Button icon={<CloudDownloadOutlined />}
             onClick={() => void runAction('/api/integrations/embeddings/install')}>
             {status?.embeddings?.runtimeInstalled ? 'Install all-minilm' : 'Install Ollama + all-minilm'}
           </Button>}
-          {status?.embeddings?.installed && <Space><Switch checked={enabledTools.embeddings} onChange={value => setEnabledTools(current => ({ ...current, embeddings: value }))} /><Typography.Text>Enabled</Typography.Text></Space>}
-          {embeddingsWorking && <Space><Spin size="small" /> Installing semantic filter…</Space>}
-          {status?.embeddings?.job.message && status.embeddings.job.state !== 'idle' && <pre className="plugin-output">{status.embeddings.job.message}</pre>}
+          {embeddingReady && <Space><Switch checked={enabledTools.embeddings} onChange={value => setEnabledTools(current => ({ ...current, embeddings: value }))} /><Typography.Text>Enabled</Typography.Text></Space>}
+          {embedderPlugin === 'builtin' && embeddingsWorking && <Space><Spin size="small" /> Installing semantic filter…</Space>}
+          {embedderPlugin === 'builtin' && status?.embeddings?.job.message && status.embeddings.job.state !== 'idle' && <pre className="plugin-output">{status.embeddings.job.message}</pre>}
+          {embedderPlugin !== 'builtin' && !selectedEmbedder && <Alert type="warning" showIcon message="Selected embedder is unavailable"
+            description="Choose an enabled, compatible embedder plugin or switch back to built-in Ollama before indexing." />}
         </section>
 
         <Divider orientation="left" plain>Signed-in agents</Divider>

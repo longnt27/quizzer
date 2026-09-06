@@ -132,6 +132,7 @@ test('exposes settings schema, precedence, and validated updates', async () => {
   assert.equal(schema.schema.additionalProperties, false);
   assert.ok(schema.registry.some(item => item.key === 'retrieval.mode'));
   assert.ok(schema.registry.some(item => item.key === 'embeddings.model'));
+  assert.ok(schema.registry.some(item => item.key === 'embeddings.embedderPlugin'));
   assert.ok(schema.registry.some(item => item.key === 'retrieval.rerankerPlugin'));
   assert.equal(schema.profiles.balanced['generation.concurrency'], 3);
 
