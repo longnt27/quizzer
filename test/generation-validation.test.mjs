@@ -40,6 +40,15 @@ test('validates complete generation snapshots and provider policy metadata', () 
   assert.equal(validateProviderRoute(pluginOptions.routeChain[0]), pluginOptions.routeChain[0]);
   assert.throws(() => validateGenerationOptions({ ...pluginOptions, model: undefined, routeChain: undefined }), /requires an installed generator plugin id/);
   assert.throws(() => validateProviderRoute({ ...pluginOptions.routeChain[0], model: undefined }), /routes require an installed generator plugin id/);
+  const ollamaOptions = {
+    ...value,
+    provider: 'ollama', model: 'qwen3:4b',
+    routeChain: [{ provider: 'ollama', model: 'qwen3:4b', privacy: 'local', paid: false, approved: true }],
+  };
+  assert.equal(validateGenerationOptions(ollamaOptions), ollamaOptions);
+  assert.equal(validateProviderRoute(ollamaOptions.routeChain[0]), ollamaOptions.routeChain[0]);
+  assert.throws(() => validateGenerationOptions({ ...ollamaOptions, model: undefined, routeChain: undefined }), /Ollama model/);
+  assert.throws(() => validateProviderRoute({ ...ollamaOptions.routeChain[0], privacy: 'remote-api' }), /privacy and cost policy/);
   assert.throws(() => validateGenerationOptions({
     ...value, questionCounts: { multipleChoice: 1, fillBlank: 0, reasoning: 0, coding: 0 },
   }), /sum to questionCount/);

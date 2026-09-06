@@ -126,7 +126,7 @@ const baseSettings = [
   },
 ];
 
-const providerConcurrencySettings = Object.entries(PROVIDER_POLICIES).map(([provider, policy]) => ({
+const providerConcurrencySettings = Object.entries(PROVIDER_POLICIES).filter(([, policy]) => policy.configurableConcurrency !== false).map(([provider, policy]) => ({
   key: providerConcurrencySettingKey(provider), type: 'integer', minimum: 1, maximum: 10, default: policy.defaultConcurrency,
   title: `${policy.label} concurrency`,
   description: `Maximum simultaneous generation jobs using ${policy.label}. This cap applies across every connected Quizzer window.`,

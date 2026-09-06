@@ -30,6 +30,7 @@ import { runGeneratorPlugin } from './server/plugin-generation.mjs';
 import { resolveEmbeddingProvider } from './server/plugin-embeddings.mjs';
 import { resolveVectorIndexProvider } from './server/plugin-vector-index.mjs';
 import { resolveDocumentExtractor, resolveOcrProvider } from './server/plugin-extraction.mjs';
+import { listOllamaModels, runOllamaGeneration, validateOllamaModelName } from './server/ollama-generation.mjs';
 
 const configuredPortValue = process.env.QUIZZER_SERVICE_PORT ?? '8787';
 const configuredPort = Number(configuredPortValue);
@@ -202,6 +203,7 @@ const integrationJobs = {
   codex: { state: 'idle', message: '' },
   'claude-agent': { state: 'idle', message: '' },
   'antigravity-agent': { state: 'idle', message: '' },
+  ollama: { state: 'idle', message: '' },
   embeddings: { state: 'idle', message: '' },
   ocr: { state: 'idle', message: '' },
 };
@@ -418,14 +420,14 @@ const managedOcrWorks = async () => {
 
 const integrationStatus = async () => {
   const ollamaExecutable = await ollamaCommand();
-  const [codexInstalled, codexConnected, claudeInstalled, claudeConnected, antigravityInstalled, ollamaInstalled, ollamaModels, managedMarker, systemMarker, managedOcr] = await Promise.all([
+  const [codexInstalled, codexConnected, claudeInstalled, claudeConnected, antigravityInstalled, ollamaInstalled, ollama, managedMarker, systemMarker, managedOcr] = await Promise.all([
     commandWorks('codex', ['--version']),
     commandWorks('codex', ['login', 'status']),
     commandWorks('claude', ['--version']),
     commandWorks('claude', ['auth', 'status']),
     commandWorks('agy', ['--version']),
     commandWorks(ollamaExecutable, ['--version']),
-    runCommand(ollamaExecutable, ['list'], { timeout: 8_000 }).catch(() => ''),
+    listOllamaModels(globalThis.fetch, AbortSignal.timeout(3_000)).catch(() => ({ serverReady: false, models: [] })),
     managedMarkerWorks(),
     hasSystemMarker(),
     managedOcrWorks(),
@@ -444,9 +446,15 @@ const integrationStatus = async () => {
     openai: { available: true },
     openrouter: { available: true },
     deepseek: { available: true },
+    ollama: {
+      installed: ollamaInstalled || ollama.serverReady,
+      serverReady: ollama.serverReady,
+      models: ollama.models,
+      job: integrationJobs.ollama,
+    },
     embeddings: {
-      installed: /(?:^|\s)all-minilm(?::\S+)?(?:\s|$)/mi.test(ollamaModels),
-      runtimeInstalled: ollamaInstalled,
+      installed: ollama.models.some(model => /^all-minilm(?::\S+)?$/i.test(model.name)),
+      runtimeInstalled: ollamaInstalled || ollama.serverReady,
       job: integrationJobs.embeddings,
     },
     ocr: { installed: managedOcr, managed: managedOcr, job: integrationJobs.ocr },
@@ -593,33 +601,66 @@ const installAgent = (provider, url) => {
     .catch(error => { integrationJobs[provider] = { state: 'error', message: error instanceof Error ? error.message : 'Agent installation failed' }; });
 };
 
+const ensureOllamaRuntime = async update => {
+  let executable = await ollamaCommand();
+  if (!await commandWorks(executable, ['--version'])) {
+    if (process.platform === 'darwin') {
+      try {
+        await runCommand('brew', ['install', 'ollama'], { timeout: 15 * 60_000, onOutput: update });
+      } catch {
+        update('Homebrew needs repair or updated package metadata. Updating Homebrew, then retrying Ollama…');
+        await runCommand('brew', ['update'], { timeout: 15 * 60_000, onOutput: update });
+        await runCommand('brew', ['install', 'ollama'], { timeout: 15 * 60_000, onOutput: update });
+      }
+    }
+    else if (process.platform === 'linux') await downloadAndRunScript('https://ollama.com/install.sh', [], update);
+    else if (process.platform === 'win32') await downloadAndRunPowerShell('https://ollama.com/install.ps1', update);
+    else throw new Error('Automatic Ollama installation is not supported on this operating system.');
+    executable = await ollamaCommand();
+    if (!await commandWorks(executable, ['--version'])) throw new Error('Ollama installation finished, but its command could not be found. Restart Quizzer and retry.');
+  }
+  if (!await commandWorks(executable, ['list'], 5_000)) {
+    const server = spawn(executable, ['serve'], { detached: true, stdio: 'ignore', env: process.env });
+    server.unref();
+    await new Promise(resolve => setTimeout(resolve, 2_000));
+  }
+  return executable;
+};
+
+const installOllama = () => {
+  if (integrationJobs.ollama.state === 'working' || integrationJobs.embeddings.state === 'working') return;
+  integrationJobs.ollama = { state: 'working', message: 'Installing the local Ollama runtime…' };
+  void (async () => {
+    const update = output => { integrationJobs.ollama.message = output || integrationJobs.ollama.message; };
+    await ensureOllamaRuntime(update);
+    integrationJobs.ollama = { state: 'complete', message: 'Ollama is installed and its local service is ready.' };
+  })().catch(error => {
+    integrationJobs.ollama = { state: 'error', message: error instanceof Error ? error.message : 'Ollama installation failed' };
+  });
+};
+
+const pullOllamaModel = model => {
+  const modelName = validateOllamaModelName(model);
+  if (integrationJobs.ollama.state === 'working' || integrationJobs.embeddings.state === 'working') return false;
+  integrationJobs.ollama = { state: 'working', message: `Preparing to download ${modelName}…` };
+  void (async () => {
+    const update = output => { integrationJobs.ollama.message = output || integrationJobs.ollama.message; };
+    const executable = await ensureOllamaRuntime(update);
+    integrationJobs.ollama.message = `Downloading ${modelName}. The required disk space depends on the selected model…`;
+    await runCommand(executable, ['pull', modelName], { timeout: 60 * 60_000, onOutput: update });
+    integrationJobs.ollama = { state: 'complete', message: `${modelName} is installed and ready for local generation.` };
+  })().catch(error => {
+    integrationJobs.ollama = { state: 'error', message: error instanceof Error ? error.message : 'Ollama model download failed' };
+  });
+  return true;
+};
+
 const installEmbeddings = () => {
-  if (integrationJobs.embeddings.state === 'working') return;
+  if (integrationJobs.embeddings.state === 'working' || integrationJobs.ollama.state === 'working') return;
   integrationJobs.embeddings = { state: 'working', message: 'Preparing the local embedding runtime…' };
   void (async () => {
     const update = output => { integrationJobs.embeddings.message = output || integrationJobs.embeddings.message; };
-    let executable = await ollamaCommand();
-    if (!await commandWorks(executable, ['--version'])) {
-      if (process.platform === 'darwin') {
-        try {
-          await runCommand('brew', ['install', 'ollama'], { timeout: 15 * 60_000, onOutput: update });
-        } catch {
-          integrationJobs.embeddings.message = 'Homebrew needs repair or updated package metadata. Updating Homebrew, then retrying Ollama…';
-          await runCommand('brew', ['update'], { timeout: 15 * 60_000, onOutput: update });
-          await runCommand('brew', ['install', 'ollama'], { timeout: 15 * 60_000, onOutput: update });
-        }
-      }
-      else if (process.platform === 'linux') await downloadAndRunScript('https://ollama.com/install.sh', [], update);
-      else if (process.platform === 'win32') await downloadAndRunPowerShell('https://ollama.com/install.ps1', update);
-      else throw new Error('Automatic Ollama installation is not supported on this operating system.');
-      executable = await ollamaCommand();
-      if (!await commandWorks(executable, ['--version'])) throw new Error('Ollama installation finished, but its command could not be found. Restart Quizzer and retry.');
-    }
-    if (!await commandWorks(executable, ['list'], 5_000)) {
-      const server = spawn(executable, ['serve'], { detached: true, stdio: 'ignore', env: process.env });
-      server.unref();
-      await new Promise(resolve => setTimeout(resolve, 2_000));
-    }
+    const executable = await ensureOllamaRuntime(update);
     integrationJobs.embeddings.message = 'Downloading all-minilm…';
     await runCommand(executable, ['pull', 'all-minilm'], { timeout: 30 * 60_000, onOutput: update });
     integrationJobs.embeddings = { state: 'complete', message: 'all-minilm is installed and semantic duplicate filtering is ready.' };
@@ -869,6 +910,7 @@ const runAnthropic = async ({ prompt, schema, model, images = [], apiKey }, sign
 
 const providerRunners = {
   plugin: (body, signal) => runGeneratorPlugin(body, signal, { loadManager: getPluginManager }),
+  ollama: runOllamaGeneration,
   codex: runCodex,
   'claude-agent': runClaudeAgent,
   'antigravity-agent': runAntigravityAgent,
@@ -1544,6 +1586,30 @@ const serviceServer = createServer(async (request, response) => {
   if (request.method === 'POST' && request.url === '/api/integrations/antigravity-agent/install') {
     installAgent('antigravity-agent', 'https://antigravity.google/cli/install.sh');
     return send(response, 202, { ok: true });
+  }
+  if (request.method === 'POST' && request.url === '/api/integrations/ollama/install') {
+    if (!request.headers['content-type']?.startsWith('application/json')) return send(response, 415, { error: 'JSON request required' });
+    try {
+      const body = await readJson(request);
+      if (body?.confirmed !== true) throw new Error('Explicit confirmation is required before installing Ollama');
+      installOllama();
+      return send(response, 202, { ok: true });
+    } catch (error) {
+      return send(response, 400, { error: error instanceof Error ? error.message : 'Invalid Ollama installation request' });
+    }
+  }
+  if (request.method === 'POST' && request.url === '/api/integrations/ollama/pull') {
+    if (!request.headers['content-type']?.startsWith('application/json')) return send(response, 415, { error: 'JSON request required' });
+    try {
+      const body = await readJson(request);
+      if (body?.confirmed !== true) throw new Error('Explicit confirmation is required before downloading an Ollama model');
+      const started = pullOllamaModel(body?.model);
+      return send(response, started ? 202 : 409, started
+        ? { ok: true }
+        : { error: 'Another Ollama installation or model download is already running' });
+    } catch (error) {
+      return send(response, 400, { error: error instanceof Error ? error.message : 'Invalid Ollama model' });
+    }
   }
   if (request.method === 'POST' && request.url === '/api/integrations/embeddings/install') {
     installEmbeddings();

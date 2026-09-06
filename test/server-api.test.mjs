@@ -12,11 +12,32 @@ const token = 'quizzer-test-token-0123456789abcdef';
 let slowEmbeddingStarted;
 let slowEmbeddingCancelled;
 const embeddingServer = createServer((request, response) => {
+  if (request.method === 'GET' && request.url === '/api/version') {
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({ version: '0.12.0-test' }));
+    return;
+  }
+  if (request.method === 'GET' && request.url === '/api/tags') {
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({ models: [{ name: 'qwen3:4b', model: 'qwen3:4b', size: 2_500_000_000 }] }));
+    return;
+  }
+  if (request.method !== 'POST' || !['/api/embed', '/api/generate'].includes(request.url ?? '')) {
+    response.writeHead(404);
+    response.end();
+    return;
+  }
   let body = '';
   request.setEncoding('utf8');
   request.on('data', chunk => { body += chunk; });
   request.on('end', () => {
-    const input = JSON.parse(body).input;
+    const payload = JSON.parse(body);
+    if (request.url === '/api/generate') {
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ model: payload.model, response: '{"questions":[]}', done: true }));
+      return;
+    }
+    const input = payload.input;
     const respond = () => {
       const embeddings = input.map(text => {
         const normalized = text.toLocaleLowerCase();
@@ -121,10 +142,33 @@ test('requires authentication for every sensitive service endpoint', async () =>
   const capabilities = await (await authorized('/api/v1/capabilities')).json();
   assert.equal(capabilities.providerPolicies.codex.maxConcurrency, 1);
   assert.equal(capabilities.providerPolicies.openai.billing, 'usage-based');
+  assert.deepEqual(capabilities.providerPolicies.ollama, { billing: 'local', privacy: 'local', maxConcurrency: 1 });
   const contract = await authorized('/api/v1/openapi.yaml');
   assert.equal(contract.status, 200);
   assert.match(contract.headers.get('content-type'), /application\/yaml/);
   assert.match(await contract.text(), /openapi: 3\.1\.0[\s\S]*\/jobs\/\{jobId\}\/resume:/);
+});
+
+test('reports and invokes local Ollama only after explicit setup confirmation', async () => {
+  const integrations = await (await authorized('/api/integrations')).json();
+  assert.equal(integrations.ollama.serverReady, true);
+  assert.equal(integrations.ollama.models[0].name, 'qwen3:4b');
+
+  const unconfirmedInstall = await authorized('/api/integrations/ollama/install', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+  });
+  assert.equal(unconfirmedInstall.status, 400);
+  const unconfirmedPull = await authorized('/api/integrations/ollama/pull', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'qwen3:4b' }),
+  });
+  assert.equal(unconfirmedPull.status, 400);
+
+  const generated = await authorized('/api/generate', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider: 'ollama', model: 'qwen3:4b', prompt: 'Create a question', schema: { type: 'object' } }),
+  });
+  assert.equal(generated.status, 200);
+  assert.deepEqual(await generated.json(), { output: '{"questions":[]}' });
 });
 
 test('exposes settings schema, precedence, and validated updates', async () => {

@@ -1,4 +1,5 @@
 import { PROVIDER_POLICIES } from './provider-policy.mjs';
+import { validateOllamaModelName } from './ollama-generation.mjs';
 import { validateSettings } from './settings.mjs';
 import { isDeepStrictEqual } from 'node:util';
 
@@ -77,6 +78,7 @@ export const validateProviderRoute = input => {
   if (route.provider === 'plugin' && !pluginIdPattern.test(route.model ?? '')) {
     throw new Error('Plugin provider routes require an installed generator plugin id as their model');
   }
+  if (route.provider === 'ollama') validateOllamaModelName(route.model);
   if (typeof route.paid !== 'boolean' || typeof route.approved !== 'boolean') throw new Error('Provider route approval and cost flags must be boolean');
   const expected = expectedRouteMetadata(route.provider);
   if (route.privacy !== expected.privacy || route.paid !== expected.paid) {
@@ -118,6 +120,7 @@ export const validateGenerationOptions = (input, { requireSnapshots = false, req
   if (options.provider === 'plugin' && !pluginIdPattern.test(options.model ?? '')) {
     throw new Error('Plugin generation requires an installed generator plugin id as its model');
   }
+  if (options.provider === 'ollama') validateOllamaModelName(options.model);
   boundedInteger(options.questionCount, 1, 200, 'Generation question count must be an integer from 1 to 200');
   if (options.questionCounts !== undefined) {
     const counts = requireObject(options.questionCounts, 'Generation question counts must be an object');

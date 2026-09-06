@@ -33,6 +33,8 @@ test('resolves profile, user, environment, CLI, and job settings in order', () =
   assert.equal(resolved.values['providers.openai.maxConcurrency'], 4);
   assert.equal(resolved.sources['providers.openai.maxConcurrency'], 'environment');
   assert.equal(providerConcurrencyLimits(resolved.values).openai, 4);
+  assert.equal(providerConcurrencyLimits(resolved.values).ollama, 1);
+  assert.equal('providers.ollama.maxConcurrency' in resolved.values, false);
   assert.deepEqual(publicProviderPolicies(resolved.values).openai, {
     billing: 'usage-based', privacy: 'remote-api', maxConcurrency: 4,
   });
