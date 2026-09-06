@@ -16,6 +16,22 @@ const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
 for await (const line of lines) {
   const request = JSON.parse(line);
   if (request.method === 'plugin.wait') await new Promise(resolve => setTimeout(resolve, 5000));
+  if (request.method === 'plugin.exit') {
+    process.stderr.write('deliberate plugin exit');
+    process.exit(7);
+  }
+  if (request.method === 'plugin.error' || request.method === 'plugin.empty-error') {
+    const error = request.method === 'plugin.error' ? { message: 'deliberate plugin error' } : {};
+    process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: request.id, error }) + '\\n');
+    continue;
+  }
+  if (request.method === 'plugin.output-limit') {
+    process.stdout.write('x'.repeat(10 * 1024 * 1024 + 1));
+    continue;
+  }
+  if (request.method === 'plugin.noise') {
+    process.stdout.write('\\nnot-json\\n' + JSON.stringify({ jsonrpc: '2.0', id: 'wrong-id', result: null }) + '\\n');
+  }
   const result = request.method === 'plugin.health'
     ? { status: 'ready', version: process.env.PLUGIN_VERSION }
     : {
@@ -24,6 +40,8 @@ for await (const line of lines) {
         temporaryDirectory: request.context.temporaryDirectory,
         allowedSecret: process.env.TEST_PLUGIN_KEY,
         hiddenSecret: process.env.UNDECLARED_PLUGIN_KEY,
+        retainedPath: Boolean(process.env.PATH),
+        hiddenNodeOptions: process.env.NODE_OPTIONS,
       };
   process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }) + '\\n');
 }
@@ -71,6 +89,8 @@ test('runs JSON-RPC with scoped files, explicit secrets, limits, and cancellatio
   assert.deepEqual(invocation.result.configuration, { mode: 'test' });
   assert.equal(invocation.result.allowedSecret, 'allowed');
   assert.equal(invocation.result.hiddenSecret, undefined);
+  assert.equal(invocation.result.retainedPath, true);
+  assert.equal(invocation.result.hiddenNodeOptions, undefined);
   await assert.rejects(stat(invocation.result.temporaryDirectory), /ENOENT/);
 
   const controller = new AbortController();
@@ -79,6 +99,39 @@ test('runs JSON-RPC with scoped files, explicit secrets, limits, and cancellatio
   });
   setTimeout(() => controller.abort(), 40);
   await assert.rejects(waiting, error => error.name === 'AbortError');
+});
+
+test('isolates malformed plugin responses and bounded process failures', async () => {
+  const { pluginDirectory, manifest } = await createPlugin('1.0.1', 'failures');
+  const invoke = (method, options = {}) => invokePluginProcess({
+    appDataDirectory, directory: pluginDirectory, manifest, method, ...options,
+  });
+
+  assert.deepEqual((await invoke('plugin.noise')).result.params, {});
+  await assert.rejects(invoke('plugin.error'), /deliberate plugin error/);
+  await assert.rejects(invoke('plugin.empty-error'), /Plugin dev\.quizzer\.runtime-test failed/);
+  await assert.rejects(invoke('plugin.exit'), /deliberate plugin exit/);
+  await assert.rejects(invoke('plugin.wait', { timeoutMs: 30 }), /timed out after 30 ms/);
+  await assert.rejects(invoke('plugin.output-limit'), /exceeded the output limit/);
+
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(invoke('plugin.echo', { signal: controller.signal }), error => error.name === 'AbortError');
+
+  await assert.rejects(invokePluginProcess({
+    appDataDirectory,
+    directory: pluginDirectory,
+    manifest: { ...manifest, entrypoint: 'missing-plugin-executable' },
+    method: 'plugin.echo',
+  }), /ENOENT/);
+});
+
+test('rejects invalid plugin invocation inputs before spawning', async () => {
+  const { pluginDirectory, manifest } = await createPlugin('1.0.2', 'validation');
+  const common = { appDataDirectory, directory: pluginDirectory, manifest };
+  await assert.rejects(invokePluginProcess({ ...common, method: '' }), /method is required/);
+  await assert.rejects(invokePluginProcess({ ...common, method: 'plugin.echo', params: [] }), /parameters must be an object/);
+  await assert.rejects(invokePluginProcess({ ...common, method: 'plugin.echo', configuration: null }), /configuration must be an object/);
 });
 
 test('installs, blocks, enables, checks, upgrades, rolls back, and removes plugins', async () => {
