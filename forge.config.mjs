@@ -2,6 +2,8 @@ import { MakerDeb } from '@electron-forge/maker-deb';
 import { MakerRpm } from '@electron-forge/maker-rpm';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
+import { FusesPlugin } from '@electron-forge/plugin-fuses';
+import { FuseVersion, FuseV1Options } from '@electron/fuses';
 
 const platformIcon = process.platform === 'darwin'
   ? 'assets/icons/quizzer.icns'
@@ -51,5 +53,18 @@ export default {
     new MakerZIP({}, ['darwin', 'linux']),
     new MakerDeb({ options: { name: 'quizzer', productName: 'Quizzer', icon: 'assets/icons/quizzer.png', categories: ['Education'] } }),
     new MakerRpm({ options: { name: 'quizzer', productName: 'Quizzer', icon: 'assets/icons/quizzer.png', categories: ['Education'] } }),
+  ],
+  plugins: [
+    new FusesPlugin({
+      version: FuseVersion.V1,
+      [FuseV1Options.RunAsNode]: false,
+      [FuseV1Options.EnableCookieEncryption]: true,
+      [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
+      [FuseV1Options.EnableNodeCliInspectArguments]: false,
+      [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
+      [FuseV1Options.OnlyLoadAppFromAsar]: true,
+      [FuseV1Options.LoadBrowserProcessSpecificV8Snapshot]: false,
+      [FuseV1Options.GrantFileProtocolExtraPrivileges]: false,
+    }),
   ],
 };

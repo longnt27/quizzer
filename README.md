@@ -293,6 +293,8 @@ Do not upload confidential material unless the selected provider and your accoun
 
 Source development uses loopback port 8787 so Vite can proxy API requests. The packaged desktop app asks the operating system for an unused ephemeral loopback port, waits for an authenticated utility-process ready message, and only then opens the renderer; set `QUIZZER_DESKTOP_SERVICE_PORT` only for a managed desktop deployment that requires a fixed port.
 
+Release packages keep application code in an ASAR archive and lock Electron's production fuses. Run-as-Node, `NODE_OPTIONS`, command-line inspection, alternate V8 snapshots, and elevated `file:` protocol behavior are disabled; embedded ASAR integrity validation, ASAR-only loading, and cookie encryption are enabled. `npm run package:desktop` applies these settings after copying the application and before code signing.
+
 ## Troubleshooting
 
 ### Quizzer asks for an API key
