@@ -1,3 +1,13 @@
+export const MAX_DESKTOP_PACKAGE_SIZE = 1024 * 1024 * 1024; // 1 GiB
+
+export const isValidArtifactName = name => {
+  if (typeof name !== 'string' || !name || name.length > 128) return false;
+  if (name.includes('/') || name.includes('\\') || name.includes('..')) return false;
+  if (name.startsWith('.') || name.endsWith('.')) return false;
+  if (/[\x00-\x1f\x7f-\x9f]/.test(name)) return false;
+  return /^[a-zA-Z0-9](?:[a-zA-Z0-9_.-]{0,126}[a-zA-Z0-9])?$/.test(name);
+};
+
 const platforms = new Set(['windows', 'macos', 'linux']);
 const architectures = new Set(['x64', 'arm64']);
 const formats = new Set(['exe', 'msi', 'dmg', 'zip', 'appimage', 'deb', 'rpm', 'tar.gz', 'sea']);
@@ -26,12 +36,16 @@ export const validateReleaseManifest = manifest => {
   for (const [index, artifact] of (Array.isArray(manifest.artifacts) ? manifest.artifacts : []).entries()) {
     const prefix = `artifacts[${index}]`;
     if (!artifact || typeof artifact !== 'object') { errors.push(`${prefix} must be an object`); continue; }
-    if (typeof artifact.name !== 'string' || !artifact.name) errors.push(`${prefix}.name is required`);
+    if (!isValidArtifactName(artifact.name)) {
+      errors.push(`${prefix}.name is invalid: must be a safe filename without path separators, traversal, or control characters, up to 128 characters`);
+    }
     if (!platforms.has(artifact.platform)) errors.push(`${prefix}.platform is unsupported`);
     if (!architectures.has(artifact.architecture)) errors.push(`${prefix}.architecture is unsupported`);
     if (!formats.has(artifact.format)) errors.push(`${prefix}.format is unsupported`);
     if (!trustedReleaseUrl(artifact.url)) errors.push(`${prefix}.url must be a Quizzer GitHub Release URL`);
-    if (!Number.isSafeInteger(artifact.size) || artifact.size < 1) errors.push(`${prefix}.size must be a positive integer`);
+    if (!Number.isSafeInteger(artifact.size) || artifact.size < 1 || artifact.size > MAX_DESKTOP_PACKAGE_SIZE) {
+      errors.push(`${prefix}.size must be a positive integer not exceeding ${MAX_DESKTOP_PACKAGE_SIZE} bytes`);
+    }
     if (!/^[a-f0-9]{64}$/.test(artifact.sha256 ?? '')) errors.push(`${prefix}.sha256 must be lowercase SHA-256`);
     if (typeof artifact.minimumOs !== 'string' || !artifact.minimumOs) errors.push(`${prefix}.minimumOs is required`);
     const target = `${artifact.platform}:${artifact.architecture}:${artifact.format}`;

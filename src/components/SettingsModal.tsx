@@ -8,6 +8,7 @@ import { setGenerationBatchSize, setGenerationConcurrency } from '../utils/gener
 import { getProviderSettings, PROVIDERS, setProviderSettings } from '../utils/providerSettings';
 import { getMessageApi } from '../utils/messageProvider';
 import { serviceJson, serviceRequest } from '../utils/serviceApi';
+import UpdaterStatusView from './UpdaterStatus';
 
 type SettingValue = string | number | boolean;
 type SettingsValues = Record<string, SettingValue>;
@@ -254,6 +255,7 @@ export default function SettingsModal({ profile, onClose }: Props) {
         <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
           Search every Quizzer setting, see where its value comes from, and understand resource or indexing impact before saving.
         </Typography.Paragraph>
+        <UpdaterStatusView />
         <Input allowClear prefix={<SearchOutlined />} value={query} onChange={event => setQuery(event.target.value)}
           aria-label="Search settings" placeholder="Search settings, descriptions, keys, or environment variables" />
         {error && <Alert type="error" showIcon message={error} action={<Button size="small" icon={<ReloadOutlined />} onClick={() => void load()}>Retry</Button>} />}

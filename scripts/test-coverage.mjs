@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
-const coverageRoots = ['server/*.mjs', 'plugin-sdk/*.mjs', 'release/*.mjs'];
+const coverageRoots = ['server/*.mjs', 'plugin-sdk/*.mjs', 'release/*.mjs', 'desktop/updater.mjs', 'desktop/updater-ipc.mjs'];
 const testFiles = (await readdir('test'))
   .filter(name => name.endsWith('.test.mjs'))
   .sort()

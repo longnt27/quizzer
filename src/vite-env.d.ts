@@ -20,5 +20,6 @@ interface Window {
       readonly set: (provider: import('./types').GenerationProvider, value: string) => Promise<{ ok: true }>;
       readonly delete: (provider: import('./types').GenerationProvider) => Promise<{ ok: true }>;
     };
+    readonly updater: import('./types/updater').QuizzerDesktopUpdaterApi;
   };
 }

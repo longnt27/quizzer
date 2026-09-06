@@ -24,6 +24,18 @@ irm https://github.com/Somethings1/quizzer/releases/latest/download/install.ps1 
 
 These installers do not require Node.js, Python, or Git. They select the current x64 or arm64 artifacts, verify the canonical Ed25519 release metadata and SHA-256 checksum, require Quizzer's pinned Apple Team ID or Windows signing-certificate SHA-256 before executing a downloaded verifier, install `quizzer` on the user PATH, register the desktop application, and launch onboarding. Existing application directories are retained with a timestamped `.previous-*` name on Unix-like systems for rollback.
 
+### Signed desktop updates and verified staging
+
+Quizzer includes an in-app signed update workflow designed for safety and defense-in-depth:
+
+- **Stable and Beta channels:** Configure update channel preferences directly in Settings; channel preferences persist atomically in `userData`. Stable tracks general releases (`releases/latest`); Beta discovers actual prereleases through the canonical GitHub Releases API with strict tag syntax validation.
+- **Canonical GitHub Releases metadata:** Update checks fetch metadata strictly over HTTPS from canonical Quizzer release locations (`https://github.com/Somethings1/quizzer/releases/...` and `https://api.github.com/repos/Somethings1/quizzer/releases`). Renderer IPC never accepts repository or manifest URLs.
+- **Ed25519 signature verification:** Release manifests must be signed with an Ed25519 key matching an explicitly configured or embedded release key ID. The signature is checked against canonicalized JSON and the schema is validated before any artifact URL is trusted.
+- **Hardened artifacts and bounded sizes:** Artifact filenames are strictly validated against directory traversal, path separators, control characters, and length limits. Package downloads are bounded to a 1 GiB defensible desktop maximum, and metadata responses are bounded to 1 MiB.
+- **Scoped staging and integrity verification:** Updates stream into private staging (`userData/updates/staging`, mode `0700`). The updater continuously verifies that received bytes match the declared size and SHA-256 digest before promoting the artifact. Absolute staging paths are never exposed to renderer IPC.
+- **Untrusted local staging and re-verification:** `staged-update.json` stores the complete signed manifest. During apply, the Ed25519 signature and schema are reverified from scratch, the exact host artifact is reselected, and its safe path is derived inside staging and rehashed without trusting any stored path or hash.
+- **Verified staged package and installer handoff:** Quizzer verifies and stages update packages safely. It does not execute arbitrary shell commands or perform destructive in-place binary replacement without a tested, explicit platform adapter. Installer handoff remains pending, and staged packages can be discarded cleanly at any time.
+
 ## Screenshots
 
 | Document library | Quiz creation |
