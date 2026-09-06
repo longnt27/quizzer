@@ -5,9 +5,9 @@ const PROVIDER_SETTINGS_KEY = 'quizzer.providerSettings';
 const API_KEY_PREFIX = 'quizzer.apiKey.';
 let rememberedApiKeys: Partial<Record<GenerationProvider, string>> = {};
 
-export type ProviderKind = 'agent' | 'api' | 'plugin';
+export type ProviderKind = 'agent' | 'api' | 'local' | 'plugin';
 export type AgentProvider = 'codex' | 'claude-agent' | 'antigravity-agent';
-export type ApiProvider = Exclude<GenerationProvider, AgentProvider | 'plugin'>;
+export type ApiProvider = Exclude<GenerationProvider, AgentProvider | 'ollama' | 'plugin'>;
 
 export interface ProviderDefinition {
   id: GenerationProvider;
@@ -20,6 +20,7 @@ export interface ProviderDefinition {
 
 export const PROVIDERS: readonly ProviderDefinition[] = [
   { id: 'plugin', label: 'Local generator – Plugin', kind: 'plugin', description: 'Runs an installed generator plugin out of process on this device.', defaultModel: '' },
+  { id: 'ollama', label: 'Ollama – Local', kind: 'local', description: 'Runs an installed Ollama model entirely on this device.', defaultModel: '' },
   { id: 'codex', label: 'Codex – Agent', kind: 'agent', description: 'Uses the Codex CLI and your ChatGPT sign-in.', defaultModel: '' },
   { id: 'claude-agent', label: 'Claude – Agent', kind: 'agent', description: 'Uses the Claude Code CLI and its signed-in account.', defaultModel: '' },
   { id: 'antigravity-agent', label: 'Antigravity – Agent', kind: 'agent', description: 'Uses the Antigravity CLI and its signed-in account.', defaultModel: '' },
@@ -34,12 +35,16 @@ export const API_PROVIDERS = PROVIDERS.filter(provider => provider.kind === 'api
 export const AGENT_PROVIDERS = PROVIDERS.filter(provider => provider.kind === 'agent') as readonly (ProviderDefinition & { id: AgentProvider })[];
 export const getProviderDefinition = (id: GenerationProvider) => PROVIDERS.find(provider => provider.id === id) ?? PROVIDERS[0];
 
+export const ollamaModelMatches = (installed: string, configured: string) => installed === configured
+  || (!configured.includes(':') && installed === `${configured}:latest`)
+  || (!installed.includes(':') && configured === `${installed}:latest`);
+
 export const getProviderRoute = (provider: GenerationProvider, model?: string, approved = false): ProviderRoute => {
   const definition = getProviderDefinition(provider);
   return {
     provider,
     model: model?.trim() || undefined,
-    privacy: definition.kind === 'plugin' ? 'local' : definition.kind === 'agent' ? 'signed-in-agent' : 'remote-api',
+    privacy: definition.kind === 'plugin' || definition.kind === 'local' ? 'local' : definition.kind === 'agent' ? 'signed-in-agent' : 'remote-api',
     paid: definition.kind === 'api',
     approved,
   };

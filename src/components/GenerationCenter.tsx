@@ -96,7 +96,8 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
         {!!configured.providers.length && <Alert type={providerDefinition.kind === 'api' ? 'warning' : 'info'} showIcon
           message={providerDefinition.kind === 'api'
             ? 'Remote API route · charges and provider data handling may apply'
-            : providerDefinition.kind === 'plugin' ? 'Local generator plugin route' : 'Signed-in agent route'}
+            : providerDefinition.kind === 'plugin' ? 'Local generator plugin route'
+              : providerDefinition.kind === 'local' ? 'Local model route' : 'Signed-in agent route'}
           description={providerDefinition.kind === 'plugin'
             ? 'Continuing runs only unfinished source batches through the selected local, out-of-process plugin.'
             : 'Continuing explicitly approves this route for only the unfinished questions. Existing accepted questions are retained.'} />}

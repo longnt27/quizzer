@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import type { GenerationProvider } from '../types';
-import { getApiKey, getProviderSettings, PROVIDERS, type AgentProvider, type ProviderDefinition } from './providerSettings';
+import { getApiKey, getProviderSettings, ollamaModelMatches, PROVIDERS, type AgentProvider, type ProviderDefinition } from './providerSettings';
 import { serviceFetch } from './serviceApi';
 
 interface IntegrationStatus {
   codex?: { connected?: boolean };
   'claude-agent'?: { connected?: boolean };
   'antigravity-agent'?: { connected?: boolean };
+  ollama?: { serverReady?: boolean; models?: Array<{ name?: string }> };
 }
 
 interface PluginCollection {
@@ -31,6 +32,8 @@ export const useConfiguredProviders = () => {
           for (const provider of PROVIDERS) {
             if (provider.kind === 'agent' && status[provider.id as AgentProvider]?.connected) available.add(provider.id);
           }
+          if (status.ollama?.serverReady && status.ollama.models?.some(model => model.name
+            && ollamaModelMatches(model.name, settings.models.ollama))) available.add('ollama');
         }
       } catch { /* API providers remain usable if the status check is temporarily unavailable. */ }
       try {

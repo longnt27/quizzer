@@ -65,7 +65,7 @@ Quizzer includes an in-app signed update workflow designed for safety and defens
 - Automatic recovery of unfinished test and practice sessions
 - In-app Plugins & models panel for setup and defaults
 - Codex, Claude Code, and Antigravity agent integrations using existing CLI authentication
-- Gemini, Anthropic Claude, OpenAI, OpenRouter, and DeepSeek API integrations
+- Local Ollama generation plus Gemini, Anthropic Claude, OpenAI, OpenRouter, and DeepSeek API integrations
 - Structured provider output and runtime question validation
 - Live generation progress by test, question type, and retry round
 - Persistent background generation queue, usable while you take completed tests
@@ -99,10 +99,10 @@ PDF / Markdown / text
                                       │
                          ┌────────────┴────────────┐
                          ▼                         ▼
-                  Signed-in agents            API providers
-             Codex · Claude · Antigravity   Gemini · Claude · OpenAI
-                                            OpenRouter · DeepSeek
-                         └────────────┬────────────┘
+           Local models          Signed-in agents            API providers
+              Ollama        Codex · Claude · Antigravity   Gemini · Claude · OpenAI
+                                                         OpenRouter · DeepSeek
+                 └────────────────────┬──────────────────────────┘
                                       ▼
                          validate + reject duplicates
                                       ▼
@@ -121,7 +121,7 @@ All variant rankings are fused by stable source-span ID before reranking and max
 
 - Node.js 20 or newer
 - npm
-- At least one configured generation provider (a signed-in agent or an API key)
+- At least one configured generation provider (a local Ollama model, signed-in agent, or API key)
 
 Marker, image OCR, and the local semantic duplicate filter are optional and installable from Quizzer. None is required for the basic document and quiz flow.
 
@@ -192,10 +192,16 @@ Open **Plugins & models** at the bottom of the sidebar. This panel is the centra
 - install and check Marker;
 - install and connect supported CLI agents;
 - enter keys for Gemini, Anthropic Claude, OpenAI, OpenRouter, or DeepSeek;
-- install Ollama and the lightweight `all-minilm` semantic filter;
+- install Ollama, explicitly choose any local generation-model download, and optionally install the lightweight `all-minilm` semantic filter;
 - save the default provider and model for each provider.
 
 The Create Test dialog starts with those defaults and lets you choose a different provider or model for an individual test.
+
+### Ollama local generation
+
+Choose an already installed Ollama model or enter a model name under **Plugins & models → Local generation**. Quizzer asks for confirmation before installing Ollama or downloading a model, shows live pull progress, and never chooses a model download automatically. Local requests go only to Ollama's loopback service, use JSON Schema structured output with deterministic temperature, and can include up to six bounded source images for a compatible vision model. If the runtime stops or the selected model is unavailable, the durable job pauses with its accepted questions intact so another approved route can continue only the unfinished slots.
+
+The source CLI uses the same route with `quizzer test create ... --provider ollama --model qwen3:4b`. The model is required and must already be installed; the CLI never downloads one implicitly.
 
 ### Codex Agent
 

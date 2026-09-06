@@ -1027,7 +1027,7 @@ components:
       required: [provider, privacy, paid, approved]
       additionalProperties: false
       properties:
-        provider: { type: string, enum: [plugin, codex, claude-agent, antigravity-agent, gemini, anthropic, openai, openrouter, deepseek] }
+        provider: { type: string, enum: [plugin, ollama, codex, claude-agent, antigravity-agent, gemini, anthropic, openai, openrouter, deepseek] }
         model: { type: string, minLength: 1, maxLength: 200 }
         privacy: { type: string, enum: [local, signed-in-agent, remote-api] }
         paid: { type: boolean }
@@ -1046,7 +1046,7 @@ components:
       required: [provider, questionCount]
       additionalProperties: false
       properties:
-        provider: { type: string, enum: [plugin, codex, claude-agent, antigravity-agent, gemini, anthropic, openai, openrouter, deepseek] }
+        provider: { type: string, enum: [plugin, ollama, codex, claude-agent, antigravity-agent, gemini, anthropic, openai, openrouter, deepseek] }
         model: { type: string, minLength: 1, maxLength: 200 }
         questionCount: { type: integer, minimum: 1, maximum: 200 }
         questionCounts:

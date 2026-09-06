@@ -1,23 +1,31 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Button, Divider, Input, Modal, Select, Space, Spin, Switch, Tag, Typography } from 'antd';
+import { Alert, AutoComplete, Button, Divider, Input, Modal, Select, Space, Spin, Switch, Tag, Typography } from 'antd';
 import { ApiOutlined, CheckCircleOutlined, CloudDownloadOutlined, DeleteOutlined, FolderOpenOutlined, LoginOutlined, ReloadOutlined, RollbackOutlined } from '@ant-design/icons';
 import type { GenerationProvider, InterfaceMode } from '../types';
 import {
   AGENT_PROVIDERS, API_PROVIDERS, PROVIDERS, getApiKey, getProviderSettings,
   forgetRememberedApiKey, loadRememberedApiKeys, migrateLegacyGeminiKey, rememberApiKey,
-  setApiKey, setProviderSettings, type AgentProvider,
+  ollamaModelMatches, setApiKey, setProviderSettings, type AgentProvider,
 } from '../utils/providerSettings';
 import { getMessageApi } from '../utils/messageProvider';
 import { serviceFetch, serviceJson, serviceRequest } from '../utils/serviceApi';
 
 type JobState = 'idle' | 'working' | 'complete' | 'error';
 type AgentStatus = { installed: boolean; connected: boolean; job: { state: JobState; message: string } };
+interface OllamaModel {
+  name: string;
+  model: string;
+  size: number;
+  modifiedAt?: string;
+  details?: { family?: string; parameterSize?: string; quantization?: string };
+}
 interface IntegrationStatus {
   marker: { installed: boolean; managed: boolean; job: { state: JobState; message: string } };
   ocr: { installed: boolean; managed: boolean; job: { state: JobState; message: string } };
   codex: AgentStatus;
   'claude-agent': AgentStatus;
   'antigravity-agent': AgentStatus;
+  ollama: { installed: boolean; serverReady: boolean; models: OllamaModel[]; job: { state: JobState; message: string } };
   embeddings: { installed: boolean; runtimeInstalled: boolean; job: { state: JobState; message: string } };
 }
 
@@ -132,6 +140,11 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       ? current : { ...current, plugin: generatorPlugins[0].id });
   }, [generatorPlugins]);
   useEffect(() => {
+    const first = status?.ollama?.models[0]?.name;
+    if (!first) return;
+    setModels(current => current.ollama ? current : { ...current, ollama: first });
+  }, [status?.ollama?.models]);
+  useEffect(() => {
     if (!window.quizzerDesktop) return;
     let active = true;
     void Promise.all([window.quizzerDesktop.credentials.status(), loadRememberedApiKeys()]).then(([storage, remembered]) => {
@@ -146,7 +159,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   }, []);
   useEffect(() => {
     if (!status) return;
-    const jobs = [status.marker.job, status.ocr?.job, status.embeddings?.job, ...AGENT_PROVIDERS.map(provider => status[provider.id]?.job)].filter(Boolean);
+    const jobs = [status.marker.job, status.ocr?.job, status.embeddings?.job, status.ollama?.job, ...AGENT_PROVIDERS.map(provider => status[provider.id]?.job)].filter(Boolean);
     if (!jobs.some(job => job.state === 'working')) return;
     const timer = window.setInterval(() => void refresh(), 1500);
     return () => window.clearInterval(timer);
@@ -164,6 +177,40 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const runAction = async (path: string) => {
     try { await start(path); }
     catch (error) { message.error((error as Error).message); }
+  };
+
+  const installOllama = () => Modal.confirm({
+    title: 'Install the Ollama runtime?',
+    content: 'Quizzer will download and install Ollama from its official distribution. No generation model is downloaded until you choose one separately.',
+    okText: 'Install Ollama',
+    onOk: async () => {
+      try {
+        await serviceJson('/api/integrations/ollama/install', 'POST', { confirmed: true });
+        await refresh();
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : 'Could not install Ollama');
+        throw error;
+      }
+    },
+  });
+
+  const pullOllamaModel = () => {
+    const model = models.ollama?.trim();
+    if (!model) return message.warning('Enter an Ollama model name first');
+    Modal.confirm({
+      title: `Download ${model}?`,
+      content: 'Model downloads can require several gigabytes of disk space. The model stays on this device and Quizzer will not send document content to a remote provider.',
+      okText: 'Download model',
+      onOk: async () => {
+        try {
+          await serviceJson('/api/integrations/ollama/pull', 'POST', { model, confirmed: true });
+          await refresh();
+        } catch (error) {
+          message.error(error instanceof Error ? error.message : 'Could not download the Ollama model');
+          throw error;
+        }
+      },
+    });
   };
 
   const installExternalPlugin = async () => {
@@ -232,6 +279,8 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const save = async () => {
     const available = PROVIDERS.filter(provider => enabledProviders[provider.id] && (provider.kind === 'api'
       ? Boolean(apiKeys[provider.id]?.trim())
+      : provider.kind === 'local'
+        ? Boolean(status?.ollama?.serverReady && status.ollama.models.some(model => ollamaModelMatches(model.name, models.ollama)))
       : provider.kind === 'plugin'
         ? generatorPlugins.some(plugin => plugin.id === models.plugin)
         : Boolean(status?.[provider.id as AgentProvider]?.connected)));
@@ -268,6 +317,8 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const markerWorking = status?.marker.job.state === 'working';
   const ocrWorking = status?.ocr?.job.state === 'working';
   const embeddingsWorking = status?.embeddings?.job.state === 'working';
+  const ollamaWorking = status?.ollama?.job.state === 'working';
+  const selectedOllamaModel = status?.ollama?.models.find(model => ollamaModelMatches(model.name, models.ollama));
   const selectedExtractor = extractorPlugins.find(plugin => plugin.id === extractorPlugin);
   const selectedOcr = ocrPlugins.find(plugin => plugin.id === ocrPlugin);
   const selectedEmbedder = embedderPlugins.find(plugin => plugin.id === embedderPlugin);
@@ -275,6 +326,8 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const embeddingReady = embedderPlugin === 'builtin' ? Boolean(status?.embeddings?.installed) : Boolean(selectedEmbedder);
   const configuredProviderOptions = PROVIDERS.filter(provider => enabledProviders[provider.id] && (provider.kind === 'api'
     ? Boolean(apiKeys[provider.id]?.trim())
+    : provider.kind === 'local'
+      ? Boolean(status?.ollama?.serverReady && status.ollama.models.some(model => ollamaModelMatches(model.name, models.ollama)))
     : provider.kind === 'plugin'
       ? generatorPlugins.some(plugin => plugin.id === models.plugin)
       : Boolean(status?.[provider.id as AgentProvider]?.connected)));
@@ -380,6 +433,35 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
           {embedderPlugin === 'builtin' && status?.embeddings?.job.message && status.embeddings.job.state !== 'idle' && <pre className="plugin-output">{status.embeddings.job.message}</pre>}
           {embedderPlugin !== 'builtin' && !selectedEmbedder && <Alert type="warning" showIcon message="Selected embedder is unavailable"
             description="Choose an enabled, compatible embedder plugin or switch back to built-in Ollama before indexing." />}
+        </section>
+
+        <Divider orientation="left" plain>Local generation</Divider>
+        <section className="plugin-card">
+          <div className="plugin-card-heading">
+            <div><Typography.Title level={5}>Ollama local model</Typography.Title><Typography.Text type="secondary">Generate quizzes on this device without sending source content to a remote provider.</Typography.Text></div>
+            {statusTag(Boolean(status?.ollama?.serverReady && selectedOllamaModel), Boolean(ollamaWorking), 'Ready')}
+          </div>
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <AutoComplete value={models.ollama} onChange={value => setModels(current => ({ ...current, ollama: value }))}
+              options={(status?.ollama?.models ?? []).map(model => ({
+                value: model.name,
+                label: `${model.name}${model.details?.parameterSize ? ` · ${model.details.parameterSize}` : ''}${model.size ? ` · ${(model.size / (1024 ** 3)).toFixed(1)} GB` : ''}`,
+              }))} style={{ width: '100%' }} filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())}>
+              <Input aria-label="Default Ollama model" addonBefore="Default model" placeholder="For example: qwen3:4b" />
+            </AutoComplete>
+            {!status?.ollama?.installed && !ollamaWorking && <Button icon={<CloudDownloadOutlined />} onClick={installOllama}>Install Ollama runtime</Button>}
+            {status?.ollama?.installed && !status.ollama.serverReady && !ollamaWorking && <Alert type="warning" showIcon message="Ollama service is not running"
+              description="Start Ollama, or choose Download model below and Quizzer will start the local service before the confirmed download." />}
+            {!!models.ollama?.trim() && !selectedOllamaModel && !ollamaWorking && <Button icon={<CloudDownloadOutlined />} onClick={pullOllamaModel}>Download model</Button>}
+            {selectedOllamaModel && status?.ollama?.serverReady && <Space><Switch checked={enabledProviders.ollama}
+              onChange={value => setEnabledProviders(current => ({ ...current, ollama: value }))} /><Typography.Text>Enabled for generation</Typography.Text></Space>}
+            {ollamaWorking && <Space><Spin size="small" /> Preparing local generation…</Space>}
+            {status?.ollama?.job.message && status.ollama.job.state !== 'idle' && (
+              <Alert showIcon type={status.ollama.job.state === 'error' ? 'error' : status.ollama.job.state === 'complete' ? 'success' : 'info'}
+                message={status.ollama.job.state === 'working' ? 'Local setup in progress' : status.ollama.job.state === 'complete' ? 'Local generation ready' : 'Local setup failed'}
+                description={<pre className="plugin-output">{status.ollama.job.message}</pre>} />
+            )}
+          </Space>
         </section>
 
         <Divider orientation="left" plain>Signed-in agents</Divider>
