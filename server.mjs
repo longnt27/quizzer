@@ -136,6 +136,7 @@ const retrievalDocumentFingerprint = record => createHash('sha256').update(JSON.
   id: record.id,
   contentHash: record.data.contentHash || createHash('sha256').update(record.data.content).digest('hex'),
   parserVersion: record.data.parserVersion || 'unknown',
+  extractionContentHash: record.data.extractionContentHash || createHash('sha256').update(record.data.content).digest('hex'),
   length: record.data.content.length,
 })).digest('hex');
 

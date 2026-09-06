@@ -16,6 +16,12 @@ const bundlePath = join(buildDirectory, 'quizzer-bundle.mjs');
 const configPath = join(buildDirectory, 'sea-config.json');
 const betterSqliteEntry = require.resolve('better-sqlite3');
 const betterSqliteAddon = resolve(dirname(betterSqliteEntry), '..', 'build', 'Release', 'better_sqlite3.node');
+const lanceDbTarget = process.platform === 'darwin'
+  ? `@lancedb/lancedb-darwin-${process.arch}`
+  : process.platform === 'win32'
+    ? `@lancedb/lancedb-win32-${process.arch}-msvc`
+    : `@lancedb/lancedb-linux-${process.arch}-gnu`;
+const lanceDbAddon = require.resolve(lanceDbTarget);
 
 const [major] = process.versions.node.split('.').map(Number);
 if (major < 26) throw new Error('Building the Quizzer executable requires Node.js 26 or newer');
@@ -67,6 +73,7 @@ await writeFile(configPath, `${JSON.stringify({
   execArgvExtension: 'none',
   assets: {
     'better_sqlite3.node': betterSqliteAddon,
+    'lancedb.node': lanceDbAddon,
     'openapi/quizzer-v1.yaml': join(projectDirectory, 'openapi', 'quizzer-v1.yaml'),
     'package.json': join(projectDirectory, 'package.json'),
     'plugin-sdk/quizzer.plugin.schema.json': join(projectDirectory, 'plugin-sdk', 'quizzer.plugin.schema.json'),

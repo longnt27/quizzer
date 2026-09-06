@@ -42,7 +42,12 @@ const packageNameFrom = lockPath => {
 const installedLicense = async (projectDirectory, lockPath) => {
   try {
     const packageManifest = JSON.parse(await readFile(join(projectDirectory, lockPath, 'package.json'), 'utf8'));
-    return typeof packageManifest.license === 'string' ? packageManifest.license : packageManifest.license?.type;
+    if (typeof packageManifest.license === 'string') return packageManifest.license;
+    if (typeof packageManifest.license?.type === 'string') return packageManifest.license.type;
+    const legacyLicenses = Array.isArray(packageManifest.licenses)
+      ? packageManifest.licenses.map(item => typeof item === 'string' ? item : item?.type).filter(Boolean)
+      : [];
+    return legacyLicenses.length ? [...new Set(legacyLicenses)].join(' OR ') : undefined;
   } catch (error) {
     if (error?.code === 'ENOENT') return undefined;
     throw new Error(`Could not inspect ${lockPath}: ${error instanceof Error ? error.message : String(error)}`);

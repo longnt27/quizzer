@@ -33,6 +33,7 @@ const breadcrumbAt = (headings, offset) => {
 const documentVersionHash = document => sha256(JSON.stringify({
   contentHash: document.contentHash || sha256(document.content),
   parserVersion: document.parserVersion || 'unknown',
+  extractionContentHash: document.extractionContentHash || sha256(document.content),
   length: document.content.length,
 }));
 

@@ -11,3 +11,4 @@ export const defaultAppDataDirectory = ({ platform = process.platform, environme
 export const databasePathFor = appDataDirectory => join(appDataDirectory, 'data', 'quizzer.sqlite');
 
 export const sparseIndexPathFor = appDataDirectory => join(appDataDirectory, 'indexes', 'sparse.sqlite');
+export const denseIndexPathFor = appDataDirectory => join(appDataDirectory, 'indexes', 'dense.lance');

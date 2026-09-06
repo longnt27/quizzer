@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
@@ -39,6 +39,24 @@ test('explains missing and malformed lockfiles', async () => {
     await assert.rejects(scanProjectLicenses(directory), /Could not read/);
     await writeFile(join(directory, 'package-lock.json'), JSON.stringify({ packages: [] }));
     await assert.rejects(scanProjectLicenses(directory), /does not contain npm package metadata/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('reads legacy package license arrays when lock metadata omits SPDX fields', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'quizzer-legacy-license-test-'));
+  try {
+    await writeFile(join(directory, 'package-lock.json'), JSON.stringify({
+      packages: { 'node_modules/legacy-license': { version: '1.0.0' } },
+    }));
+    await mkdir(join(directory, 'node_modules', 'legacy-license'), { recursive: true });
+    await writeFile(join(directory, 'node_modules', 'legacy-license', 'package.json'), JSON.stringify({
+      name: 'legacy-license', version: '1.0.0', licenses: [{ type: 'MIT' }, { type: 'MIT' }],
+    }));
+    const result = await scanProjectLicenses(directory);
+    assert.deepEqual(result.licenses, { MIT: 1 });
+    assert.deepEqual(result.violations, []);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

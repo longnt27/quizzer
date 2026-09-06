@@ -38,6 +38,10 @@ Remote state and locking prevent teammates from writing state concurrently.`, ['
   assert.equal(indexed.reused, false);
   assert.ok(indexed.chunks >= 2);
   assert.equal(index.indexDocument(terraform).reused, true);
+  assert.equal(index.indexDocument({
+    ...terraform,
+    data: { ...terraform.data, extractionContentHash: 'changed-extraction'.padEnd(64, '0') },
+  }).reused, false);
   assert.equal(index.status().documentCount, 1);
 });
 

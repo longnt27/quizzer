@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { databasePathFor, defaultAppDataDirectory, sparseIndexPathFor } from '../server/paths.mjs';
+import { databasePathFor, defaultAppDataDirectory, denseIndexPathFor, sparseIndexPathFor } from '../server/paths.mjs';
 
 test('uses native per-user application data paths on every platform', () => {
   assert.equal(defaultAppDataDirectory({ platform: 'darwin', environment: {}, home: '/Users/test' }), '/Users/test/Library/Application Support/Quizzer');
@@ -9,4 +9,5 @@ test('uses native per-user application data paths on every platform', () => {
   assert.equal(defaultAppDataDirectory({ environment: { QUIZZER_APP_DATA_DIR: '/custom' } }), '/custom');
   assert.equal(databasePathFor('/custom'), '/custom/data/quizzer.sqlite');
   assert.equal(sparseIndexPathFor('/custom'), '/custom/indexes/sparse.sqlite');
+  assert.equal(denseIndexPathFor('/custom'), '/custom/indexes/dense.lance');
 });
