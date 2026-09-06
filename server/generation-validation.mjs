@@ -1,4 +1,5 @@
 import { PROVIDER_POLICIES } from './provider-policy.mjs';
+import { validateSettings } from './settings.mjs';
 
 const generationProviders = new Set(Object.keys(PROVIDER_POLICIES));
 const questionTypes = new Set(['multiple-choice', 'fill-blank', 'reasoning', 'coding']);
@@ -88,7 +89,7 @@ const validateRagProfile = input => {
 const routeMatchesOptions = (route, options) => route.provider === options.provider
   && (route.model ?? undefined) === (options.model ?? undefined);
 
-export const validateGenerationOptions = (input, { requireSnapshots = false } = {}) => {
+export const validateGenerationOptions = (input, { requireSnapshots = false, requireCompleteSettings = false } = {}) => {
   const options = requireObject(input, 'Generation options must be an object');
   rejectUnknown(options, new Set([
     'provider', 'model', 'questionCount', 'questionCounts', 'multipleChoiceMode', 'coverageStrategy',
@@ -131,6 +132,15 @@ export const validateGenerationOptions = (input, { requireSnapshots = false } = 
     requireObject(options.resolvedSettings, 'Resolved generation settings must be an object');
     validateJsonValue(options.resolvedSettings, 'Resolved generation settings');
     if (JSON.stringify(options.resolvedSettings).length > 100_000) throw new Error('Resolved generation settings are too large');
+    if (requireCompleteSettings) {
+      validateSettings(options.resolvedSettings, { partial: false });
+      if (options.ragProfile && (options.resolvedSettings['hardware.profile'] !== options.ragProfile.id
+        || options.resolvedSettings['retrieval.mode'] !== options.ragProfile.retrieval
+        || options.resolvedSettings['retrieval.contextBudget'] !== options.ragProfile.contextBudget
+        || options.resolvedSettings['retrieval.rerank'] !== options.ragProfile.rerank)) {
+        throw new Error('RAG profile must match the complete resolved settings snapshot');
+      }
+    }
   }
   if (requireSnapshots) {
     if (!options.ragProfile) throw new Error('New generation jobs require a RAG profile snapshot');
@@ -218,7 +228,7 @@ export const validateNewGenerationJob = input => {
     || job.documentIds.some(id => !boundedText(id, 1, 500)) || new Set(job.documentIds).size !== job.documentIds.length) {
     throw new Error('Generation job document ids are invalid');
   }
-  validateGenerationOptions(job.options, { requireSnapshots: true });
+  validateGenerationOptions(job.options, { requireSnapshots: true, requireCompleteSettings: true });
   if (!Array.isArray(job.questions) || job.questions.length) throw new Error('New generation jobs must start without questions');
   if (job.rejected !== 0) throw new Error('New generation jobs must start without rejected questions');
   if (!isObject(job.rounds) || Object.keys(job.rounds).length) throw new Error('New generation jobs must start without generation rounds');

@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { resolveSettings } from '../server/settings.mjs';
 
 const directory = await mkdtemp(join(tmpdir(), 'quizzer-storage-test-'));
 process.env.QUIZZER_DATABASE_PATH = join(directory, 'quizzer.sqlite');
@@ -17,6 +18,7 @@ const fingerprint = changes => sha256(changes.map(change => ({
   key: `${change.collection}:${change.id}`,
   payloadHash: sha256(JSON.stringify(change)),
 })).sort((left, right) => left.key.localeCompare(right.key)).map(item => `${item.key}:${item.payloadHash}\n`).join(''));
+const resolvedSettings = resolveSettings({ environment: {} }).values;
 const generationOptions = (provider = 'codex') => ({
   provider,
   questionCount: 1,
@@ -27,7 +29,7 @@ const generationOptions = (provider = 'codex') => ({
     paid: !(provider.endsWith('-agent') || provider === 'codex'),
     approved: true,
   }],
-  resolvedSettings: { 'hardware.profile': 'lite' },
+  resolvedSettings,
 });
 
 test.after(async () => rm(directory, { recursive: true, force: true }));

@@ -10,11 +10,12 @@ import { pumpGenerationQueue } from '../utils/generationQueue';
 import { getProviderDefinition, getProviderRoute, getProviderSettings } from '../utils/providerSettings';
 import { useConfiguredProviders } from '../utils/useConfiguredProviders';
 import { BUILT_IN_PROMPT_PROFILE, snapshotPromptProfile } from '../utils/promptProfiles';
-import { serviceJson } from '../utils/serviceApi';
+import { serviceJson, serviceRequest } from '../utils/serviceApi';
 
 interface Props { onClose: () => void; onManagePlugins: () => void; onOpenPromptStudio: () => void; profile: StoredAppProfile; }
 type CreationMode = 'combined' | 'separate';
 type QuizPreset = 'quick' | 'balanced' | 'deep';
+type ResolvedSettings = { profile: string; values: Record<string, string | number | boolean> };
 
 const presets: Record<QuizPreset, { label: string; description: string; counts: [number, number, number, number] }> = {
   quick: { label: 'Quick review · 10 questions', description: 'Fast recall with a small reasoning check.', counts: [8, 1, 1, 0] },
@@ -89,6 +90,17 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
     if (!configured.providers.some(item => item.id === provider)) return message.error('Connect an AI provider in Plugins & models first');
     setSaving(true);
     try {
+      await syncNow();
+      const resolved = await serviceRequest<ResolvedSettings>('/api/v1/settings');
+      const hardwareProfile = resolved.values['hardware.profile'];
+      const retrievalMode = resolved.values['retrieval.mode'];
+      const contextBudget = resolved.values['retrieval.contextBudget'];
+      const rerank = resolved.values['retrieval.rerank'];
+      if (typeof hardwareProfile !== 'string' || !['lite', 'balanced', 'max'].includes(hardwareProfile)
+        || (retrievalMode !== 'sparse' && retrievalMode !== 'hybrid')
+        || typeof contextBudget !== 'number' || typeof rerank !== 'boolean') {
+        throw new Error('The resolved retrieval settings are invalid. Review Settings and try again.');
+      }
       const options: GenerationOptions = {
         provider, model: model.trim() || undefined, questionCount,
         questionCounts: { multipleChoice: multipleChoiceCount, fillBlank: fillBlankCount, reasoning: reasoningCount, coding: codingCount },
@@ -96,14 +108,12 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
         coverageStrategy: mode === 'combined' ? coverageStrategy : 'balanced',
         customInstruction: customInstruction.trim() || undefined,
         promptProfileSnapshot: snapshotPromptProfile(promptProfile),
-        ragProfile: profile.hardwareProfile === 'lite'
-          ? { id: 'lite', retrieval: 'sparse', contextBudget: 12_000, rerank: false }
-          : { id: profile.hardwareProfile, retrieval: 'hybrid', contextBudget: profile.hardwareProfile === 'max' ? 28_000 : 18_000, rerank: true },
+        ragProfile: { id: hardwareProfile, retrieval: retrievalMode, contextBudget, rerank },
         routeChain: [
           getProviderRoute(provider, model, true),
           ...failoverProviders.filter(item => item !== provider).map(item => getProviderRoute(item, settings.models[item], true)),
         ],
-        resolvedSettings: { interfaceMode: profile.interfaceMode, hardwareProfile: profile.hardwareProfile },
+        resolvedSettings: resolved.values,
       };
       const requestedSources = mode === 'combined'
         ? [{ name: name.trim() || 'Combined quiz', documentIds: selected.map(document => document.id) }]
@@ -120,7 +130,6 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
         createdAt: now + index, updatedAt: now, status: 'queued', options,
         questions: [], rejected: 0, rounds: {},
       }));
-      await syncNow();
       const created = await serviceJson<{ jobs: StoredGenerationJob[] }>('/api/v1/jobs', 'POST', { jobs });
       await Promise.all(created.jobs.map(job => applyServiceRecord('generationJobs', job.id, job)));
       void pumpGenerationQueue();

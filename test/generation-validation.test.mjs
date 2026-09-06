@@ -4,6 +4,9 @@ import {
   validateActiveRoute, validateCoveragePlan, validateGenerationOptions, validateGenerationProgress,
   validateNewGenerationJob, validateProviderAttempts, validateProviderRoute,
 } from '../server/generation-validation.mjs';
+import { resolveSettings } from '../server/settings.mjs';
+
+const resolvedSettings = resolveSettings({ profile: 'balanced', environment: {} }).values;
 
 const options = () => ({
   provider: 'openai',
@@ -15,7 +18,7 @@ const options = () => ({
   customInstruction: 'Focus on operational tradeoffs.',
   ragProfile: { id: 'balanced', retrieval: 'hybrid', contextBudget: 8_192, rerank: true },
   routeChain: [{ provider: 'openai', model: 'gpt-5-mini', privacy: 'remote-api', paid: true, approved: true }],
-  resolvedSettings: { 'hardware.profile': 'balanced', nested: { enabled: true } },
+  resolvedSettings,
 });
 
 test('validates complete generation snapshots and provider policy metadata', () => {
@@ -60,11 +63,10 @@ test('bounds prompt, route, instruction, and resolved-setting snapshots', () => 
     ...value, routeChain: [{ ...value.routeChain[0], approved: false }],
   }), /explicitly approved/);
 
-  assert.doesNotThrow(() => validateGenerationOptions({ ...value, resolvedSettings: { routes: [true, null, 1, 'safe'] } }));
-  assert.throws(() => validateGenerationOptions({ ...value, resolvedSettings: { invalid: undefined } }), /JSON-compatible/);
-  assert.throws(() => validateGenerationOptions({ ...value, resolvedSettings: { '': true } }), /invalid field name/);
-  assert.throws(() => validateGenerationOptions({ ...value, resolvedSettings: { values: Array.from({ length: 1_001 }) } }), /too many values/);
-  assert.throws(() => validateGenerationOptions({ ...value, resolvedSettings: { value: 'x'.repeat(100_001) } }), /too large/);
+  assert.throws(() => validateGenerationOptions({ ...value, resolvedSettings: { ...resolvedSettings, 'hardware.profile': undefined } }), /JSON-compatible/);
+  assert.throws(() => validateGenerationOptions({ ...value, resolvedSettings: { ...resolvedSettings, '': true } }), /invalid field name/);
+  assert.throws(() => validateGenerationOptions({ ...value, resolvedSettings: { ...resolvedSettings, 'hardware.profile': Array.from({ length: 1_001 }) } }), /too many values/);
+  assert.throws(() => validateGenerationOptions({ ...value, resolvedSettings: { ...resolvedSettings, 'generation.defaultProvider': 'x'.repeat(100_001) } }), /too large/);
   let deeplyNested = {};
   for (let index = 0; index < 10; index += 1) deeplyNested = { nested: deeplyNested };
   assert.throws(() => validateGenerationOptions({ ...value, resolvedSettings: deeplyNested }), /nested too deeply/);
@@ -75,6 +77,12 @@ test('bounds prompt, route, instruction, and resolved-setting snapshots', () => 
   const withoutSettings = { ...value };
   delete withoutSettings.resolvedSettings;
   assert.throws(() => validateGenerationOptions(withoutSettings, { requireSnapshots: true }), /require resolved settings/);
+  assert.throws(() => validateGenerationOptions({
+    ...value, resolvedSettings: { 'hardware.profile': 'balanced' },
+  }, { requireCompleteSettings: true }), /Missing setting/);
+  assert.throws(() => validateGenerationOptions({
+    ...value, resolvedSettings: { ...resolvedSettings, 'retrieval.contextBudget': 4_096 },
+  }, { requireCompleteSettings: true }), /RAG profile must match/);
 });
 
 test('accepts only pristine queued jobs at the creation boundary', () => {

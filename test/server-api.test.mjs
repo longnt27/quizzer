@@ -210,13 +210,14 @@ test('provides onboarding, document, job, and event operations', async () => {
   });
   assert.equal(sync.status, 200);
 
+  const creationSettings = await (await authorized('/api/v1/settings')).json();
   const generationOptions = {
     provider: 'gemini', model: 'gemini-2.5-flash', questionCount: 1,
     questionCounts: { multipleChoice: 1, fillBlank: 0, reasoning: 0, coding: 0 },
     multipleChoiceMode: 'single', coverageStrategy: 'balanced',
     ragProfile: { id: 'balanced', retrieval: 'hybrid', contextBudget: 8_192, rerank: true },
     routeChain: [{ provider: 'gemini', model: 'gemini-2.5-flash', privacy: 'remote-api', paid: true, approved: true }],
-    resolvedSettings: { 'hardware.profile': 'balanced' },
+    resolvedSettings: creationSettings.values,
   };
   const createdJobs = await authorized('/api/v1/jobs', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },

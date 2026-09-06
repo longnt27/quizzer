@@ -446,7 +446,10 @@ const validateGenerationPatch = (patch, job = {}) => {
     throw new Error('Generation rounds are invalid');
   }
   const options = patch.options ?? job.options;
-  if (patch.options !== undefined) validateGenerationOptions(patch.options, { requireSnapshots: isModernGenerationOptions(job.options) });
+  if (patch.options !== undefined) validateGenerationOptions(patch.options, {
+    requireSnapshots: isModernGenerationOptions(job.options),
+    requireCompleteSettings: Boolean(job.creationFingerprint),
+  });
   if (isModernGenerationOptions(options)) validateActiveRoute(patch.activeRouteIndex ?? job.activeRouteIndex ?? 0, options);
   else if (patch.activeRouteIndex !== undefined) validateActiveRoute(patch.activeRouteIndex, options);
   if (patch.providerAttempts !== undefined) validateProviderAttempts(patch.providerAttempts, options);
@@ -521,7 +524,10 @@ export const controlGenerationJob = (id, action, changes = {}, now = Date.now())
   const existing = getRecord('generationJobs', id);
   if (!existing) throw new Error('Generation job not found');
   const options = changes.options ?? existing.data.options;
-  if (changes.options !== undefined) validateGenerationOptions(changes.options, { requireSnapshots: isModernGenerationOptions(existing.data.options) });
+  if (changes.options !== undefined) validateGenerationOptions(changes.options, {
+    requireSnapshots: isModernGenerationOptions(existing.data.options),
+    requireCompleteSettings: Boolean(existing.data.creationFingerprint),
+  });
   if (isModernGenerationOptions(options)) validateActiveRoute(changes.activeRouteIndex ?? existing.data.activeRouteIndex ?? 0, options);
   else if (changes.activeRouteIndex !== undefined) validateActiveRoute(changes.activeRouteIndex, options);
   if (changes.providerAttempts !== undefined) validateProviderAttempts(changes.providerAttempts, options);
