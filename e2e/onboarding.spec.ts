@@ -110,6 +110,8 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await page.getByText('coordination', { exact: true }).click();
   await page.getByText('Balanced learning · 20 questions').click();
   await page.getByText('Quick review · 10 questions').click();
+  await expect(page.getByRole('button', { name: 'Queue combined test' })).toBeDisabled();
+  await page.getByRole('checkbox', { name: /I approve sending selected excerpts/ }).check();
   await page.getByRole('button', { name: 'Queue combined test' }).click();
 
   await expect(page.getByText('Your quiz is being generated')).toBeVisible({ timeout: 15_000 });
@@ -159,6 +161,8 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await page.getByText('coordination', { exact: true }).click();
   await page.getByText('Balanced learning · 20 questions').click();
   await page.getByText('Quick review · 10 questions').click();
+  await expect(page.getByRole('button', { name: 'Queue combined test' })).toBeDisabled();
+  await page.getByRole('checkbox', { name: /I approve sending selected excerpts/ }).check();
   await page.getByRole('button', { name: 'Queue combined test' }).click();
 
   await page.getByRole('button', { name: /need attention/ }).click();

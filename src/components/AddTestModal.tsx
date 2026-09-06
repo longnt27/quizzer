@@ -58,6 +58,7 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
   const [customInstruction, setCustomInstruction] = useState(profile.defaultLearningInstruction ?? '');
   const [preset, setPreset] = useState<QuizPreset>('balanced');
   const [promptProfileId, setPromptProfileId] = useState(BUILT_IN_PROMPT_PROFILE.id);
+  const [approvedRouteSignature, setApprovedRouteSignature] = useState('');
   const [query, setQuery] = useState('');
   const [saving, setSaving] = useState(false);
   const message = getMessageApi();
@@ -66,6 +67,15 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
   const promptProfiles = [BUILT_IN_PROMPT_PROFILE, ...customPromptProfiles];
   const promptProfile = promptProfiles.find(item => item.id === promptProfileId) ?? BUILT_IN_PROMPT_PROFILE;
   const selected = documents.filter(document => selectedIds.includes(document.id));
+  const proposedRoutes = [
+    getProviderRoute(provider, model, false),
+    ...failoverProviders.filter(item => item !== provider).map(item => getProviderRoute(item, settings.models[item], false)),
+  ];
+  const routeSignature = JSON.stringify(proposedRoutes.map(route => ({
+    provider: route.provider, model: route.model, privacy: route.privacy, paid: route.paid,
+  })));
+  const requiresRouteApproval = proposedRoutes.some(route => route.privacy !== 'local');
+  const routesApproved = !requiresRouteApproval || approvedRouteSignature === routeSignature;
   const visible = (() => {
     const needle = query.trim().toLowerCase();
     return documents.filter(document => !needle || document.name.toLowerCase().includes(needle)
@@ -94,6 +104,7 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
     if (!selected.length) return;
     if (questionCount < 1 || questionCount > 200) return message.error('Choose between 1 and 200 questions in total');
     if (!configured.providers.some(item => item.id === provider)) return message.error('Connect an AI provider in Plugins & models first');
+    if (!routesApproved) return message.error('Approve the selected AI routes before queueing this test');
     setSaving(true);
     try {
       await syncNow();
@@ -115,10 +126,7 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
         customInstruction: customInstruction.trim() || undefined,
         promptProfileSnapshot: snapshotPromptProfile(promptProfile),
         ragProfile: { id: hardwareProfile, retrieval: retrievalMode, contextBudget, rerank },
-        routeChain: [
-          getProviderRoute(provider, model, true),
-          ...failoverProviders.filter(item => item !== provider).map(item => getProviderRoute(item, settings.models[item], true)),
-        ],
+        routeChain: proposedRoutes.map(route => ({ ...route, approved: true })),
         resolvedSettings: resolved.values,
       };
       const requestedSources = mode === 'combined'
@@ -153,7 +161,7 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
       {!saving && <CancelBtn />}
       {saving ? <Space><Spin size="small" /> Queueing tests…</Space>
         : selected.length > 0 && questionCount >= 1 && questionCount <= 200 && configured.providers.length > 0
-          ? <Button type="primary" onClick={() => void create()}>{mode === 'combined' ? 'Queue combined test' : `Queue ${selected.length} separate test(s)`}</Button>
+          ? <Button type="primary" disabled={!routesApproved} onClick={() => void create()}>{mode === 'combined' ? 'Queue combined test' : `Queue ${selected.length} separate test(s)`}</Button>
           : null}
     </>}>
       {!documents.length ? <Empty description="Add documents to your library before creating a test" /> : (
@@ -237,9 +245,18 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
             <Input.TextArea rows={3} maxLength={2000} showCount value={customInstruction} onChange={event => setCustomInstruction(event.target.value)}
               placeholder="For example: coding questions about Terraform only" style={{ marginTop: 8 }} />
           </div>
-          {!!configured.providers.length && profile.interfaceMode === 'simple' && <Alert type="info" showIcon
-            message={`Privacy & cost review · ${selectedProvider.label}`}
-            description={<span>Quizzer sends only selected source excerpts and, when supported, relevant images to this route. Provider charges and data handling may apply. <Button type="link" size="small" onClick={onManagePlugins}>Change AI</Button></span>} />}
+          {!!configured.providers.length && <Alert type={proposedRoutes.some(route => route.paid) ? 'warning' : 'info'} showIcon
+            message="Data-sharing & cost approval"
+            description={<Space direction="vertical" size="small">
+              <Typography.Text>Only selected source excerpts and relevant images are sent. Review every route before approving:</Typography.Text>
+              <Space wrap>{proposedRoutes.map(route => <Tag color={route.paid ? 'warning' : 'blue'} key={`${route.provider}:${route.model ?? ''}`}>
+                {getProviderDefinition(route.provider).label} · {route.privacy === 'remote-api' ? 'remote API / usage charges may apply' : 'signed-in agent'}
+              </Tag>)}</Space>
+              <Checkbox checked={routesApproved} onChange={event => setApprovedRouteSignature(event.target.checked ? routeSignature : '')}>
+                I approve sending selected excerpts and relevant images to these routes{proposedRoutes.some(route => route.paid) ? ' and understand usage charges may apply' : ''}.
+              </Checkbox>
+              {profile.interfaceMode === 'simple' && <Button type="link" size="small" onClick={onManagePlugins}>Change AI</Button>}
+            </Space>} />}
           {!saving && <Typography.Text type="secondary">Provider defaults are saved in <Button type="link" size="small" onClick={onManagePlugins}>Plugins & models</Button>. You can override the model for this job.</Typography.Text>}
           <Input.Search value={query} onChange={event => setQuery(event.target.value)} placeholder="Filter documents by name or tag" />
           <List bordered size="small" style={{ maxHeight: 290, overflowY: 'auto' }} dataSource={visible}

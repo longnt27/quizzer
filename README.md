@@ -215,7 +215,8 @@ Scanned or visually complex documents can still require manual review. Always in
 8. For multiple-choice questions, require either exactly one or multiple correct answers.
 9. For a combined test, choose balanced, proportional, AI-selected, or cross-document coverage.
 10. Select a provider and optional provider-specific model.
-11. Queue generation and continue using Quizzer.
+11. Review every primary and automatic-failover route, then explicitly approve sending the selected excerpts and images. Usage-based routes are labeled before approval.
+12. Queue generation and continue using Quizzer.
 
 If a requested test name already exists, Quizzer keeps both tests by adding a numeric postfix such as `(2)` or `(3)`.
 
