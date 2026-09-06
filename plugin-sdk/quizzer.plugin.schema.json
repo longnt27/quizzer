@@ -77,7 +77,7 @@
       "required": ["network", "filesystem", "secrets", "subprocess"],
       "properties": {
         "network": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
-        "filesystem": { "type": "array", "uniqueItems": true, "items": { "enum": ["scoped-temp", "document-read", "model-read"] } },
+        "filesystem": { "type": "array", "uniqueItems": true, "items": { "enum": ["scoped-temp", "document-read", "model-read", "persistent-data"] } },
         "secrets": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,63}$" } },
         "subprocess": { "type": "boolean" }
       }
@@ -114,5 +114,22 @@
         "value": { "type": "string", "minLength": 40 }
       }
     }
-  }
+  },
+  "allOf": [{
+    "if": { "properties": { "capabilities": { "contains": { "const": "vector-index" } } } },
+    "then": {
+      "properties": {
+        "permissions": {
+          "properties": {
+            "filesystem": {
+              "allOf": [
+                { "contains": { "const": "scoped-temp" } },
+                { "contains": { "const": "persistent-data" } }
+              ]
+            }
+          }
+        }
+      }
+    }
+  }]
 }

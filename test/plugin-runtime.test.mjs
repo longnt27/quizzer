@@ -40,6 +40,8 @@ for await (const line of lines) {
         params: request.params,
         configuration: request.context.configuration,
         temporaryDirectory: request.context.temporaryDirectory,
+        persistentDataDirectory: request.context.persistentDataDirectory,
+        persistentDataEnvironment: process.env.QUIZZER_PLUGIN_DATA_DIR,
         scopedFiles: request.context.scopedFiles,
         scopedContents: await Promise.all(request.context.scopedFiles.map(file => readFile(join(request.context.temporaryDirectory, file.path), 'utf8'))),
         allowedSecret: process.env.TEST_PLUGIN_KEY,
@@ -98,7 +100,20 @@ test('runs JSON-RPC with scoped files, explicit secrets, limits, and cancellatio
   assert.equal(invocation.result.hiddenNodeOptions, undefined);
   assert.deepEqual(invocation.result.scopedFiles, [{ path: join('sources', 'context.txt'), size: 22 }]);
   assert.deepEqual(invocation.result.scopedContents, ['bounded source context']);
+  assert.equal(invocation.result.persistentDataDirectory, undefined);
+  assert.equal(invocation.result.persistentDataEnvironment, undefined);
   await assert.rejects(stat(invocation.result.temporaryDirectory), /ENOENT/);
+
+  const persistentManifest = {
+    ...manifest,
+    permissions: { ...manifest.permissions, filesystem: ['scoped-temp', 'persistent-data'] },
+  };
+  const persistent = await invokePluginProcess({
+    appDataDirectory, directory: pluginDirectory, manifest: persistentManifest, method: 'plugin.echo',
+  });
+  assert.equal(persistent.result.persistentDataDirectory, join(appDataDirectory, 'plugins', 'data', manifest.id));
+  assert.equal(persistent.result.persistentDataEnvironment, persistent.result.persistentDataDirectory);
+  assert.equal((await stat(persistent.result.persistentDataDirectory)).isDirectory(), true);
 
   const controller = new AbortController();
   const waiting = invokePluginProcess({
