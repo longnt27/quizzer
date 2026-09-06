@@ -70,7 +70,8 @@ test('scoped staging streams, verifies size and SHA-256, and atomically promotes
 
     const downloadStatus = await updater.downloadUpdate();
     assert.equal(downloadStatus.state, 'downloaded');
-    assert.ok(downloadStatus.stagedPath);
+    assert.equal(downloadStatus.stagedPath, undefined);
+    assert.equal(downloadStatus.stagedArtifactName, 'quizzer-1.2.0-macos-arm64.zip');
 
     const stagingDir = join(env.directory, 'updates', 'staging');
     const stagingFiles = await readdir(stagingDir);
@@ -78,10 +79,11 @@ test('scoped staging streams, verifies size and SHA-256, and atomically promotes
     assert.ok(stagingFiles.includes('staged-update.json'));
     assert.ok(!stagingFiles.some(f => f.endsWith('.tmp') || f.endsWith('.download')));
 
-    const stagedManifest = JSON.parse(await readFile(join(stagingDir, 'staged-update.json'), 'utf8'));
-    assert.equal(stagedManifest.version, '1.2.0');
-    assert.equal(stagedManifest.sha256, env.sha256);
-    assert.equal(stagedManifest.size, env.artifactContent.length);
+    const stagedPayload = JSON.parse(await readFile(join(stagingDir, 'staged-update.json'), 'utf8'));
+    assert.ok(stagedPayload.manifest);
+    assert.equal(stagedPayload.manifest.version, '1.2.0');
+    assert.equal(stagedPayload.manifest.signature, env.signed.signature);
+    assert.equal(stagedPayload.selectedArtifactName, 'quizzer-1.2.0-macos-arm64.zip');
 
     const stagedFileContent = await readFile(join(stagingDir, 'quizzer-1.2.0-macos-arm64.zip'));
     assert.deepEqual(stagedFileContent, env.artifactContent);

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync } from 'node:crypto';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -38,7 +38,7 @@ const setupRollbackEnv = async () => {
   return { directory, keyPair, signed, content, sha256 };
 };
 
-test('retains recoverable prior version metadata upon applying an update', async () => {
+test('apply reverifies signed manifest, never returns applied true, and marks installer handoff pending', async () => {
   const env = await setupRollbackEnv();
   try {
     const updater = new DesktopUpdater({
@@ -58,25 +58,18 @@ test('retains recoverable prior version metadata upon applying an update', async
     await updater.checkForUpdates();
     await updater.downloadUpdate();
     const applyResult = await updater.applyUpdate();
-    assert.equal(applyResult.applied, true);
 
-    const rollbackMetaPath = join(env.directory, 'updates', 'rollback', 'rollback-metadata.json');
-    const rollbackMeta = JSON.parse(await readFile(rollbackMetaPath, 'utf8'));
-    assert.equal(rollbackMeta.status, 'available');
-    assert.equal(rollbackMeta.currentVersion, '1.0.0');
-    assert.equal(rollbackMeta.targetVersion, '1.2.0');
-    assert.equal(rollbackMeta.stagedArtifactName, 'quizzer-1.2.0-macos-arm64.zip');
-
-    const rollbackInfo = await updater.getRollbackInfo();
-    assert.equal(rollbackInfo.available, true);
-    assert.equal(rollbackInfo.version, '1.0.0');
-    assert.equal(rollbackInfo.targetVersion, '1.2.0');
+    // Honest semantics: apply does not install binary; it stages and verifies
+    assert.equal(applyResult.applied, false);
+    assert.equal(applyResult.handoffPending, true);
+    assert.equal(applyResult.status.state, 'installer-handoff-pending');
+    assert.match(applyResult.message, /installer handoff/i);
   } finally {
     await rm(env.directory, { recursive: true, force: true });
   }
 });
 
-test('apply rejects staged file if tampered on disk before apply', async () => {
+test('apply reverifies Ed25519 signature on staged-update.json and rejects tampered signature', async () => {
   const env = await setupRollbackEnv();
   try {
     const updater = new DesktopUpdater({
@@ -96,20 +89,93 @@ test('apply rejects staged file if tampered on disk before apply', async () => {
     await updater.checkForUpdates();
     await updater.downloadUpdate();
 
-    // Tamper with file in staging before apply
-    const stagedFilePath = join(env.directory, 'updates', 'staging', 'quizzer-1.2.0-macos-arm64.zip');
-    await writeFile(stagedFilePath, 'tampered content instead');
+    // Tamper with signature in staged-update.json
+    const stagedMetaPath = join(env.directory, 'updates', 'staging', 'staged-update.json');
+    const stagedData = JSON.parse(await readFile(stagedMetaPath, 'utf8'));
+    stagedData.manifest.signature = 'dGVzdC1mYWtlLXNpZ25hdHVyZS10aGF0LWlzLWxvbmctZW5vdWdoLXRvLXZhbGlkYXRl';
+    await writeFile(stagedMetaPath, JSON.stringify(stagedData, null, 2));
 
     await assert.rejects(
       updater.applyUpdate(),
-      /Staged artifact file size tampered/,
+      /Release manifest signature verification failed/,
     );
   } finally {
     await rm(env.directory, { recursive: true, force: true });
   }
 });
 
-test('rollback transitions metadata to restored and prevents double rollback', async () => {
+test('apply rejects path-substitution in staged-update.json and derives path safely', async () => {
+  const env = await setupRollbackEnv();
+  try {
+    const updater = new DesktopUpdater({
+      userDataDir: env.directory,
+      currentVersion: '1.0.0',
+      platform: 'macos',
+      architecture: 'arm64',
+      trustedKeys: { 'quizzer-release-test': env.keyPair.publicKey },
+      fetch: async url => {
+        if (url.endsWith('release-manifest.json')) {
+          return { ok: true, text: async () => JSON.stringify(env.signed) };
+        }
+        return { ok: true, arrayBuffer: async () => env.content };
+      },
+    });
+
+    await updater.checkForUpdates();
+    await updater.downloadUpdate();
+
+    // Attacker modifies staged-update.json to point stagedPath to a sensitive file
+    const stagedMetaPath = join(env.directory, 'updates', 'staging', 'staged-update.json');
+    const stagedData = JSON.parse(await readFile(stagedMetaPath, 'utf8'));
+    stagedData.stagedPath = '/etc/passwd';
+    stagedData.sha256 = 'abc';
+    await writeFile(stagedMetaPath, JSON.stringify(stagedData, null, 2));
+
+    // Updater must derive path from the reverified manifest artifact name, ignoring stagedPath
+    const result = await updater.applyUpdate();
+    assert.equal(result.applied, false);
+    assert.equal(result.handoffPending, true);
+    assert.equal(result.status.state, 'installer-handoff-pending');
+  } finally {
+    await rm(env.directory, { recursive: true, force: true });
+  }
+});
+
+test('apply rejects staged file if content is tampered on disk before apply', async () => {
+  const env = await setupRollbackEnv();
+  try {
+    const updater = new DesktopUpdater({
+      userDataDir: env.directory,
+      currentVersion: '1.0.0',
+      platform: 'macos',
+      architecture: 'arm64',
+      trustedKeys: { 'quizzer-release-test': env.keyPair.publicKey },
+      fetch: async url => {
+        if (url.endsWith('release-manifest.json')) {
+          return { ok: true, text: async () => JSON.stringify(env.signed) };
+        }
+        return { ok: true, arrayBuffer: async () => env.content };
+      },
+    });
+
+    await updater.checkForUpdates();
+    await updater.downloadUpdate();
+
+    // Tamper with file content on disk while preserving length
+    const stagedFilePath = join(env.directory, 'updates', 'staging', 'quizzer-1.2.0-macos-arm64.zip');
+    const tampered = Buffer.from('X'.repeat(env.content.length));
+    await writeFile(stagedFilePath, tampered);
+
+    await assert.rejects(
+      updater.applyUpdate(),
+      /Staged artifact checksum tampered/,
+    );
+  } finally {
+    await rm(env.directory, { recursive: true, force: true });
+  }
+});
+
+test('discardUpdate removes staged files and resets state to idle without fake rollback', async () => {
   const env = await setupRollbackEnv();
   try {
     const updater = new DesktopUpdater({
@@ -130,43 +196,26 @@ test('rollback transitions metadata to restored and prevents double rollback', a
     await updater.downloadUpdate();
     await updater.applyUpdate();
 
+    const stagingDir = join(env.directory, 'updates', 'staging');
+    const filesBefore = await readdir(stagingDir);
+    assert.ok(filesBefore.length > 0);
+
+    const discardResult = await updater.discardUpdate();
+    assert.equal(discardResult.discarded, true);
+    assert.equal(discardResult.status.state, 'idle');
+
+    const filesAfter = await readdir(stagingDir);
+    assert.equal(filesAfter.length, 0);
+
     const rollbackResult = await updater.rollbackUpdate();
-    assert.equal(rollbackResult.rolledBack, true);
-    assert.equal(rollbackResult.restoredVersion, '1.0.0');
-    assert.equal(rollbackResult.status.state, 'rolled-back');
-
-    const rollbackInfo = await updater.getRollbackInfo();
-    assert.equal(rollbackInfo.available, false);
-    assert.equal(rollbackInfo.status, 'restored');
-
-    // Attempting a second rollback should fail
-    await assert.rejects(
-      updater.rollbackUpdate(),
-      /Cannot rollback: rollback status is "restored"/,
-    );
+    assert.equal(rollbackResult.discarded, true);
+    assert.equal(rollbackResult.status.state, 'idle');
   } finally {
     await rm(env.directory, { recursive: true, force: true });
   }
 });
 
-test('rollback reports honest error when no rollback metadata exists', async () => {
-  const env = await setupRollbackEnv();
-  try {
-    const updater = new DesktopUpdater({
-      userDataDir: env.directory,
-      currentVersion: '1.0.0',
-    });
-
-    await assert.rejects(
-      updater.rollbackUpdate(),
-      /No rollback metadata available/,
-    );
-  } finally {
-    await rm(env.directory, { recursive: true, force: true });
-  }
-});
-
-test('applyUpdate in packaged mode reports staged-ready mechanism and restartRequested', async () => {
+test('applyUpdate in packaged mode reports staged-ready mechanism, handoffPending, and restartRequested', async () => {
   const env = await setupRollbackEnv();
   try {
     const updater = new DesktopUpdater({
@@ -187,12 +236,12 @@ test('applyUpdate in packaged mode reports staged-ready mechanism and restartReq
     await updater.checkForUpdates();
     await updater.downloadUpdate();
     const result = await updater.applyUpdate({ restart: true });
-    assert.equal(result.applied, true);
+    assert.equal(result.applied, false);
+    assert.equal(result.handoffPending, true);
     assert.equal(result.mechanism, 'staged-ready');
     assert.equal(result.restartRequested, true);
-    assert.match(result.message, /staged for application on restart/);
+    assert.match(result.message, /Installer handoff pending/);
   } finally {
     await rm(env.directory, { recursive: true, force: true });
   }
 });
-

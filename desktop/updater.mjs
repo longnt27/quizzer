@@ -1,11 +1,13 @@
 import { createHash, createPublicKey, KeyObject } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { copyFile, mkdir, open, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { canonicalizeManifest, verifyReleaseManifestSignature } from '../release/manifest.mjs';
-import { validateReleaseManifest } from '../server/release-manifest.mjs';
+import { isValidArtifactName, MAX_DESKTOP_PACKAGE_SIZE, validateReleaseManifest } from '../server/release-manifest.mjs';
 
 export const SUPPORTED_CHANNELS = Object.freeze(['stable', 'beta']);
 export const CANONICAL_REPOSITORY = 'Somethings1/quizzer';
+export const MAX_METADATA_BYTES = 1024 * 1024; // 1 MiB
 
 export const detectPlatform = (platform = process.platform) => {
   if (platform === 'darwin' || platform === 'macos') return 'macos';
@@ -84,6 +86,13 @@ export const resolveReleaseChannel = (version, explicitChannel) => {
   return 'stable';
 };
 
+export const isValidReleaseTag = tag => {
+  if (typeof tag !== 'string' || !tag || tag.length > 64) return false;
+  if (tag.includes('/') || tag.includes('\\') || tag.includes('..')) return false;
+  if (/[\x00-\x1f\x7f-\x9f]/.test(tag)) return false;
+  return /^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(tag);
+};
+
 export const validateCanonicalReleaseUrl = (urlValue, repository = CANONICAL_REPOSITORY) => {
   try {
     const url = new URL(urlValue);
@@ -102,6 +111,47 @@ export const validateCanonicalReleaseUrl = (urlValue, repository = CANONICAL_REP
   } catch {
     return false;
   }
+};
+
+export const fetchBoundedText = async (fetchFn, url, options = {}, maxBytes = MAX_METADATA_BYTES) => {
+  const response = await fetchFn(url, options);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch metadata from ${url}: HTTP ${response.status}`);
+  }
+  const contentLength = response.headers?.get?.('content-length');
+  if (contentLength && Number(contentLength) > maxBytes) {
+    throw new Error(`Response from ${url} exceeded maximum metadata size (${contentLength} > ${maxBytes})`);
+  }
+  if (response.body && typeof response.body.getReader === 'function') {
+    const reader = response.body.getReader();
+    const chunks = [];
+    let received = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.byteLength;
+      if (received > maxBytes) {
+        throw new Error(`Response from ${url} exceeded maximum metadata size of ${maxBytes} bytes`);
+      }
+      chunks.push(value);
+    }
+    return Buffer.concat(chunks).toString('utf8');
+  }
+  if (typeof response.text === 'function') {
+    const text = await response.text();
+    if (Buffer.byteLength(text, 'utf8') > maxBytes) {
+      throw new Error(`Response from ${url} exceeded maximum metadata size of ${maxBytes} bytes`);
+    }
+    return text;
+  }
+  if (typeof response.arrayBuffer === 'function') {
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length > maxBytes) {
+      throw new Error(`Response from ${url} exceeded maximum metadata size of ${maxBytes} bytes`);
+    }
+    return buffer.toString('utf8');
+  }
+  throw new Error('Unsupported response body format');
 };
 
 const FORMAT_PREFERENCES = {
@@ -170,10 +220,11 @@ export class DesktopUpdater {
     this.currentVersion = options.currentVersion || '1.0.0-beta.1';
     this.platform = detectPlatform(options.platform || process.platform);
     this.architecture = detectArch(options.architecture || process.arch);
-    this.repository = options.repository || CANONICAL_REPOSITORY;
+    this.repository = CANONICAL_REPOSITORY;
     this.isPackaged = options.isPackaged ?? false;
     this.fetch = options.fetch || globalThis.fetch;
-    this.channel = resolveReleaseChannel(this.currentVersion, options.channel);
+
+    this.channel = this.loadPersistedChannelSync(options.channel);
 
     this.trustedKeys = new Map();
     if (options.trustedKeys) {
@@ -200,8 +251,36 @@ export class DesktopUpdater {
     this.state = 'idle';
     this.updateInfo = null;
     this.downloadProgress = null;
-    this.stagedPath = null;
+    this.stagedArtifactName = null;
+    this.rawVerifiedManifest = null;
     this.lastError = null;
+  }
+
+  loadPersistedChannelSync(fallbackOptionChannel) {
+    if (this.userDataDir) {
+      try {
+        const channelFile = join(this.userDataDir, 'updates', 'channel.json');
+        const content = readFileSync(channelFile, 'utf8');
+        const parsed = JSON.parse(content);
+        if (parsed && SUPPORTED_CHANNELS.includes(parsed.channel)) {
+          return parsed.channel;
+        }
+      } catch {
+        // Fall back to configured channel or version default
+      }
+    }
+    return resolveReleaseChannel(this.currentVersion, fallbackOptionChannel);
+  }
+
+  async persistChannel(channel) {
+    if (!this.userDataDir) return;
+    const updatesDir = join(this.userDataDir, 'updates');
+    await mkdir(updatesDir, { recursive: true, mode: 0o700 });
+    const channelFile = join(updatesDir, 'channel.json');
+    const tempFile = `${channelFile}.${process.pid}.${Date.now()}.tmp`;
+    const payload = JSON.stringify({ channel, updatedAt: new Date().toISOString() }, null, 2);
+    await writeFile(tempFile, `${payload}\n`, { mode: 0o600 });
+    await rename(tempFile, channelFile);
   }
 
   resolvePublicKey(publicKeyId) {
@@ -232,11 +311,12 @@ export class DesktopUpdater {
     };
   }
 
-  setChannel(channel) {
+  async setChannel(channel) {
     if (!SUPPORTED_CHANNELS.includes(channel)) {
       throw new Error(`Invalid channel "${channel}". Supported channels: ${SUPPORTED_CHANNELS.join(', ')}`);
     }
     this.channel = channel;
+    await this.persistChannel(channel);
     this.state = 'idle';
     this.updateInfo = null;
     this.lastError = null;
@@ -244,26 +324,10 @@ export class DesktopUpdater {
   }
 
   async getRollbackInfo() {
-    if (!this.userDataDir) return { available: false };
-    const metadataPath = join(this.userDataDir, 'updates', 'rollback', 'rollback-metadata.json');
-    try {
-      const content = await readFile(metadataPath, 'utf8');
-      const data = JSON.parse(content);
-      return {
-        available: data.status === 'available',
-        version: data.currentVersion,
-        targetVersion: data.targetVersion,
-        timestamp: data.timestamp,
-        status: data.status,
-        artifactName: data.stagedArtifactName,
-      };
-    } catch {
-      return { available: false };
-    }
+    return { available: false };
   }
 
   async getStatus() {
-    const rollbackInfo = await this.getRollbackInfo();
     const keyStatus = this.getKeyStatus();
 
     return {
@@ -279,8 +343,7 @@ export class DesktopUpdater {
       supported: Boolean(this.userDataDir),
       updateInfo: this.updateInfo ? { ...this.updateInfo } : undefined,
       downloadProgress: this.downloadProgress ? { ...this.downloadProgress } : undefined,
-      rollbackInfo,
-      stagedPath: this.stagedPath,
+      stagedArtifactName: this.stagedArtifactName || undefined,
       error: this.lastError || undefined,
     };
   }
@@ -333,33 +396,76 @@ export class DesktopUpdater {
     this.lastError = null;
 
     try {
-      const channel = resolveReleaseChannel(this.currentVersion, options.channel || this.channel);
-      const repository = options.repository || this.repository;
+      if (options.channel && options.channel !== this.channel) {
+        await this.setChannel(options.channel);
+      }
 
-      let manifestUrl = options.manifestUrl;
-      if (!manifestUrl) {
-        if (options.tag) {
-          manifestUrl = `https://github.com/${repository}/releases/download/${options.tag}/release-manifest.json`;
-        } else if (channel === 'stable') {
-          manifestUrl = `https://github.com/${repository}/releases/latest/download/release-manifest.json`;
-        } else {
-          manifestUrl = `https://github.com/${repository}/releases/latest/download/release-manifest.json`;
+      const channel = this.channel;
+      const repository = CANONICAL_REPOSITORY;
+
+      let manifestUrl;
+      if (options.tag) {
+        if (!isValidReleaseTag(options.tag)) {
+          throw new Error(`Invalid release tag syntax: "${options.tag}"`);
         }
+        manifestUrl = `https://github.com/${repository}/releases/download/${encodeURIComponent(options.tag)}/release-manifest.json`;
+      } else if (channel === 'stable') {
+        manifestUrl = `https://github.com/${repository}/releases/latest/download/release-manifest.json`;
+      } else {
+        // Beta must discover actual prereleases through canonical GitHub Releases API
+        const apiUrl = `https://api.github.com/repos/${repository}/releases`;
+        if (!validateCanonicalReleaseUrl(apiUrl, repository)) {
+          throw new Error(`Untrusted release API URL: ${apiUrl}`);
+        }
+
+        const releasesJson = await fetchBoundedText(
+          this.fetch,
+          apiUrl,
+          { headers: { 'User-Agent': `Quizzer-Desktop-Updater/${this.currentVersion}`, Accept: 'application/vnd.github+json' } },
+          MAX_METADATA_BYTES,
+        );
+
+        let releases;
+        try {
+          releases = JSON.parse(releasesJson);
+        } catch (err) {
+          throw new Error(`Invalid GitHub Releases API response JSON: ${err.message}`);
+        }
+        if (!Array.isArray(releases)) {
+          throw new Error('GitHub Releases API response must be an array');
+        }
+
+        const prereleases = releases.filter(r =>
+          r &&
+          typeof r === 'object' &&
+          r.prerelease === true &&
+          !r.draft &&
+          typeof r.tag_name === 'string' &&
+          isValidReleaseTag(r.tag_name),
+        );
+
+        if (!prereleases.length) {
+          throw new Error('No valid prerelease found on beta channel');
+        }
+
+        prereleases.sort((a, b) => compareSemver(b.tag_name, a.tag_name));
+        const selectedTag = prereleases[0].tag_name;
+        manifestUrl = `https://github.com/${repository}/releases/download/${encodeURIComponent(selectedTag)}/release-manifest.json`;
       }
 
       if (!validateCanonicalReleaseUrl(manifestUrl, repository)) {
         throw new Error(`Untrusted release metadata URL: ${manifestUrl}`);
       }
 
-      const response = await this.fetch(manifestUrl, {
-        headers: { 'User-Agent': `Quizzer-Desktop-Updater/${this.currentVersion}` },
-      });
-      if (!response.ok) {
-        throw new Error(`Failed to fetch release metadata: HTTP ${response.status}`);
-      }
+      const manifestText = await fetchBoundedText(
+        this.fetch,
+        manifestUrl,
+        { headers: { 'User-Agent': `Quizzer-Desktop-Updater/${this.currentVersion}` } },
+        MAX_METADATA_BYTES,
+      );
 
-      const manifestText = await response.text();
       const verifiedManifest = await this.verifyManifest(manifestText);
+      this.rawVerifiedManifest = verifiedManifest;
 
       if (channel === 'stable' && verifiedManifest.channel !== 'stable') {
         this.state = 'up-to-date';
@@ -377,6 +483,13 @@ export class DesktopUpdater {
         this.state = 'unsupported';
         this.lastError = `No supported desktop artifact found for ${this.platform}/${this.architecture} in release ${verifiedManifest.version}`;
         return this.getStatus();
+      }
+
+      if (!isValidArtifactName(targetArtifact.name)) {
+        throw new Error(`Target artifact name is invalid: "${targetArtifact.name}"`);
+      }
+      if (targetArtifact.size > MAX_DESKTOP_PACKAGE_SIZE) {
+        throw new Error(`Target artifact size exceeds maximum allowable package size (${targetArtifact.size} > ${MAX_DESKTOP_PACKAGE_SIZE})`);
       }
 
       const comparison = compareSemver(verifiedManifest.version, this.currentVersion);
@@ -418,12 +531,22 @@ export class DesktopUpdater {
       throw new Error(this.lastError);
     }
 
+    const artifact = this.updateInfo.artifact;
+    if (!isValidArtifactName(artifact.name)) {
+      throw new Error(`Invalid artifact name: "${artifact.name}"`);
+    }
+    if (artifact.size > MAX_DESKTOP_PACKAGE_SIZE) {
+      throw new Error(`Artifact size exceeds maximum allowable package size (${artifact.size} > ${MAX_DESKTOP_PACKAGE_SIZE})`);
+    }
+
     const stagingDir = join(this.userDataDir, 'updates', 'staging');
     await mkdir(stagingDir, { recursive: true, mode: 0o700 });
 
-    const artifact = this.updateInfo.artifact;
     const tempPath = join(stagingDir, `download-${Date.now()}-${artifact.name}.tmp`);
     const finalPath = join(stagingDir, artifact.name);
+    if (dirname(finalPath) !== stagingDir) {
+      throw new Error(`Artifact destination path escapes staging directory: ${artifact.name}`);
+    }
 
     let fileHandle;
     try {
@@ -484,21 +607,18 @@ export class DesktopUpdater {
 
       await rename(tempPath, finalPath);
 
-      const stagedManifest = {
-        version: this.updateInfo.version,
-        channel: this.updateInfo.channel,
-        publishedAt: this.updateInfo.publishedAt,
-        publicKeyId: this.updateInfo.publicKeyId,
-        artifact: this.updateInfo.artifact,
-        stagedPath: finalPath,
-        size: bytesReceived,
-        sha256: calculatedSha256,
+      const stagedPayload = {
         stagedAt: new Date().toISOString(),
+        manifest: this.rawVerifiedManifest,
+        selectedArtifactName: artifact.name,
       };
-      await writeFile(join(stagingDir, 'staged-update.json'), JSON.stringify(stagedManifest, null, 2), { mode: 0o600 });
+      const stagedMetadataPath = join(stagingDir, 'staged-update.json');
+      const tempMetaPath = `${stagedMetadataPath}.${process.pid}.${Date.now()}.tmp`;
+      await writeFile(tempMetaPath, `${JSON.stringify(stagedPayload, null, 2)}\n`, { mode: 0o600 });
+      await rename(tempMetaPath, stagedMetadataPath);
 
       this.state = 'downloaded';
-      this.stagedPath = finalPath;
+      this.stagedArtifactName = artifact.name;
       return this.getStatus();
     } catch (error) {
       if (fileHandle) {
@@ -512,7 +632,7 @@ export class DesktopUpdater {
   }
 
   async applyUpdate(options = {}) {
-    if (this.state !== 'downloaded' || !this.stagedPath) {
+    if (this.state !== 'downloaded' && !this.stagedArtifactName) {
       throw new Error('No verified update is ready to apply');
     }
 
@@ -520,46 +640,70 @@ export class DesktopUpdater {
     this.lastError = null;
 
     try {
+      if (!this.userDataDir) {
+        throw new Error('User data directory not configured');
+      }
+
       const stagingDir = join(this.userDataDir, 'updates', 'staging');
       const stagedManifestPath = join(stagingDir, 'staged-update.json');
-      const stagedManifestContent = await readFile(stagedManifestPath, 'utf8');
-      const stagedManifest = JSON.parse(stagedManifestContent);
-
-      const stagedFileStat = await stat(stagedManifest.stagedPath);
-      if (stagedFileStat.size !== stagedManifest.size) {
-        throw new Error(`Staged artifact file size tampered: expected ${stagedManifest.size}, found ${stagedFileStat.size}`);
-      }
-      const actualFileBytes = await readFile(stagedManifest.stagedPath);
-      const actualSha = createHash('sha256').update(actualFileBytes).digest('hex');
-      if (actualSha !== stagedManifest.sha256) {
-        throw new Error(`Staged artifact checksum tampered: expected ${stagedManifest.sha256}, found ${actualSha}`);
+      let stagedData;
+      try {
+        const content = await readFile(stagedManifestPath, 'utf8');
+        stagedData = JSON.parse(content);
+      } catch (err) {
+        throw new Error(`Failed to read staged update manifest: ${err.message}`);
       }
 
-      const rollbackDir = join(this.userDataDir, 'updates', 'rollback');
-      await mkdir(rollbackDir, { recursive: true, mode: 0o700 });
+      const manifestToVerify = stagedData.manifest || stagedData;
+      const reverifiedManifest = await this.verifyManifest(manifestToVerify);
 
-      const rollbackMetadata = {
-        status: 'available',
-        currentVersion: this.currentVersion,
-        targetVersion: stagedManifest.version,
-        timestamp: new Date().toISOString(),
-        stagedArtifactName: stagedManifest.artifact.name,
-        stagedPath: stagedManifest.stagedPath,
+      const targetArtifact = selectTargetArtifact(reverifiedManifest.artifacts, {
         platform: this.platform,
         architecture: this.architecture,
-      };
+        preferredFormat: options.preferredFormat,
+      });
 
-      await writeFile(join(rollbackDir, 'rollback-metadata.json'), JSON.stringify(rollbackMetadata, null, 2), { mode: 0o600 });
+      if (!targetArtifact) {
+        throw new Error(`No matching host artifact for ${this.platform}/${this.architecture} in reverified manifest`);
+      }
 
-      this.state = 'applied';
+      if (!isValidArtifactName(targetArtifact.name)) {
+        throw new Error(`Invalid artifact name in reverified manifest: "${targetArtifact.name}"`);
+      }
+
+      const safeArtifactPath = join(stagingDir, targetArtifact.name);
+      if (dirname(safeArtifactPath) !== stagingDir) {
+        throw new Error('Derived artifact path escapes staging directory');
+      }
+
+      let fileStat;
+      try {
+        fileStat = await stat(safeArtifactPath);
+      } catch (err) {
+        throw new Error(`Staged artifact file not found: ${err.message}`);
+      }
+
+      if (fileStat.size !== targetArtifact.size) {
+        throw new Error(`Staged artifact file size tampered: expected ${targetArtifact.size}, found ${fileStat.size}`);
+      }
+
+      const actualFileBytes = await readFile(safeArtifactPath);
+      const actualSha = createHash('sha256').update(actualFileBytes).digest('hex');
+      if (actualSha !== targetArtifact.sha256) {
+        throw new Error(`Staged artifact checksum tampered: expected ${targetArtifact.sha256}, found ${actualSha}`);
+      }
+
+      this.state = 'installer-handoff-pending';
+      this.stagedArtifactName = targetArtifact.name;
+
       return {
-        applied: true,
+        applied: false,
+        handoffPending: true,
         restartRequested: options.restart ?? false,
         mechanism: this.isPackaged ? 'staged-ready' : 'staged-development',
         message: this.isPackaged
-          ? 'Update staged for application on restart.'
-          : 'Update verified and staged. In unpacked development mode, binary replacement is simulated.',
-        stagedPath: this.stagedPath,
+          ? 'Update package cryptographically verified and staged. Installer handoff pending.'
+          : 'Update verified and staged. In unpacked development mode, installer handoff is pending without binary execution.',
         status: await this.getStatus(),
       };
     } catch (error) {
@@ -569,35 +713,35 @@ export class DesktopUpdater {
     }
   }
 
-  async rollbackUpdate() {
-    if (!this.userDataDir) {
-      throw new Error('User data directory not configured');
+  async discardUpdate() {
+    if (this.userDataDir) {
+      const stagingDir = join(this.userDataDir, 'updates', 'staging');
+      try {
+        const files = await readdir(stagingDir);
+        for (const file of files) {
+          await rm(join(stagingDir, file), { recursive: true, force: true }).catch(() => {});
+        }
+      } catch {
+        // Staging directory may not exist
+      }
+      const rollbackDir = join(this.userDataDir, 'updates', 'rollback');
+      await rm(rollbackDir, { recursive: true, force: true }).catch(() => {});
     }
 
-    const rollbackDir = join(this.userDataDir, 'updates', 'rollback');
-    const metadataPath = join(rollbackDir, 'rollback-metadata.json');
+    this.state = 'idle';
+    this.updateInfo = null;
+    this.downloadProgress = null;
+    this.stagedArtifactName = null;
+    this.rawVerifiedManifest = null;
+    this.lastError = null;
 
-    let metadata;
-    try {
-      const content = await readFile(metadataPath, 'utf8');
-      metadata = JSON.parse(content);
-    } catch {
-      throw new Error('No rollback metadata available');
-    }
-
-    if (metadata.status !== 'available') {
-      throw new Error(`Cannot rollback: rollback status is "${metadata.status}"`);
-    }
-
-    metadata.status = 'restored';
-    metadata.restoredAt = new Date().toISOString();
-    await writeFile(metadataPath, JSON.stringify(metadata, null, 2), { mode: 0o600 });
-
-    this.state = 'rolled-back';
     return {
-      rolledBack: true,
-      restoredVersion: metadata.currentVersion,
+      discarded: true,
       status: await this.getStatus(),
     };
+  }
+
+  async rollbackUpdate() {
+    return this.discardUpdate();
   }
 }

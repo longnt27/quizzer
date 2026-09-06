@@ -169,10 +169,20 @@ test('channel filtering respects stable and beta releases', async () => {
     currentVersion: '1.0.0',
     channel: 'stable',
     trustedKeys: { 'quizzer-release-test': keyPair.publicKey },
-    fetch: async () => ({
-      ok: true,
-      text: async () => JSON.stringify(betaManifest),
-    }),
+    fetch: async url => {
+      if (url.includes('/repos/Somethings1/quizzer/releases')) {
+        return {
+          ok: true,
+          text: async () => JSON.stringify([
+            { tag_name: 'v1.1.0-beta.1', prerelease: true, draft: false },
+          ]),
+        };
+      }
+      return {
+        ok: true,
+        text: async () => JSON.stringify(betaManifest),
+      };
+    },
   });
 
   // Checking on stable channel should ignore beta release
@@ -181,10 +191,94 @@ test('channel filtering respects stable and beta releases', async () => {
   assert.equal(status.updateInfo, undefined);
 
   // Switch to beta channel and re-check
-  updater.setChannel('beta');
+  await updater.setChannel('beta');
   const betaStatus = await updater.checkForUpdates();
   assert.equal(betaStatus.state, 'available');
   assert.equal(betaStatus.updateInfo.version, '1.1.0-beta.1');
+});
+
+test('beta channel discovers prereleases through GitHub Releases API and validates tag syntax', async () => {
+  const keyPair = generateKeyPairSync('ed25519');
+  const { signed: betaManifest } = await createSignedManifest({
+    version: '1.2.0-beta.2',
+    channel: 'beta',
+    keyPair,
+  });
+
+  let apiUrlCalled = false;
+  let manifestUrlFetched = null;
+
+  const updater = new DesktopUpdater({
+    currentVersion: '1.0.0',
+    channel: 'beta',
+    trustedKeys: { 'quizzer-release-test': keyPair.publicKey },
+    fetch: async url => {
+      if (url.includes('/repos/Somethings1/quizzer/releases')) {
+        apiUrlCalled = true;
+        return {
+          ok: true,
+          text: async () => JSON.stringify([
+            { tag_name: 'v1.1.0', prerelease: false, draft: false },
+            { tag_name: 'v1.2.0-beta.1', prerelease: true, draft: false },
+            { tag_name: 'v1.2.0-beta.2', prerelease: true, draft: false },
+            { tag_name: 'v1.3.0-draft', prerelease: true, draft: true },
+          ]),
+        };
+      }
+      manifestUrlFetched = url;
+      return {
+        ok: true,
+        text: async () => JSON.stringify(betaManifest),
+      };
+    },
+  });
+
+  const status = await updater.checkForUpdates();
+  assert.equal(apiUrlCalled, true);
+  assert.ok(manifestUrlFetched.includes('v1.2.0-beta.2'));
+  assert.equal(status.state, 'available');
+  assert.equal(status.updateInfo.version, '1.2.0-beta.2');
+});
+
+test('beta channel rejects releases with malformed or malicious tag syntax', async () => {
+  const keyPair = generateKeyPairSync('ed25519');
+  const updater = new DesktopUpdater({
+    currentVersion: '1.0.0',
+    channel: 'beta',
+    trustedKeys: { 'quizzer-release-test': keyPair.publicKey },
+    fetch: async () => ({
+      ok: true,
+      text: async () => JSON.stringify([
+        { tag_name: '../../traversal', prerelease: true, draft: false },
+        { tag_name: 'v1.0.0/slash', prerelease: true, draft: false },
+        { tag_name: 'v1.0.0\0null', prerelease: true, draft: false },
+      ]),
+    }),
+  });
+
+  const status = await updater.checkForUpdates();
+  assert.equal(status.state, 'error');
+  assert.match(status.error, /No valid prerelease found on beta channel/);
+});
+
+test('metadata fetch bounds response sizes and rejects oversized API responses', async () => {
+  const keyPair = generateKeyPairSync('ed25519');
+  const oversizedText = 'A'.repeat(1024 * 1024 + 10);
+
+  const updater = new DesktopUpdater({
+    currentVersion: '1.0.0',
+    channel: 'beta',
+    trustedKeys: { 'quizzer-release-test': keyPair.publicKey },
+    fetch: async () => ({
+      ok: true,
+      headers: new Map([['content-length', String(oversizedText.length)]]),
+      text: async () => oversizedText,
+    }),
+  });
+
+  const status = await updater.checkForUpdates();
+  assert.equal(status.state, 'error');
+  assert.match(status.error, /exceeded maximum metadata size/);
 });
 
 test('normalizePublicKey handles PEM, base64 DER SPKI, JWK, and rejects invalid keys', () => {

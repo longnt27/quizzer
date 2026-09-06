@@ -68,12 +68,14 @@ test('state machine transitions properly through full update lifecycle', async (
     // Download
     const downloadStatus = await updater.downloadUpdate();
     assert.equal(downloadStatus.state, 'downloaded');
-    assert.ok(downloadStatus.stagedPath);
+    assert.equal(downloadStatus.stagedPath, undefined);
+    assert.equal(downloadStatus.stagedArtifactName, 'quizzer-1.2.0-macos-arm64.zip');
 
-    // Apply
+    // Apply (verifies staged package and marks installer handoff pending)
     const applyResult = await updater.applyUpdate({ restart: false });
-    assert.equal(applyResult.applied, true);
-    assert.equal(applyResult.status.state, 'applied');
+    assert.equal(applyResult.applied, false);
+    assert.equal(applyResult.handoffPending, true);
+    assert.equal(applyResult.status.state, 'installer-handoff-pending');
   } finally {
     await rm(env.directory, { recursive: true, force: true });
   }
@@ -166,11 +168,65 @@ test('channel switching resets state and clears previous update info', async () 
     assert.equal(resetStatus.channel, 'beta');
     assert.equal(resetStatus.updateInfo, undefined);
 
-    assert.throws(
-      () => updater.setChannel('nightly'),
+    await assert.rejects(
+      updater.setChannel('nightly'),
       /Invalid channel "nightly"/,
     );
   } finally {
     await rm(env.directory, { recursive: true, force: true });
   }
 });
+
+test('channel selection persists in userData atomically and survives restart', async () => {
+  const env = await setupTestEnv('1.2.0');
+  try {
+    const updater = new DesktopUpdater({
+      userDataDir: env.directory,
+      currentVersion: '1.0.0',
+    });
+
+    assert.equal(updater.channel, 'stable');
+    await updater.setChannel('beta');
+    assert.equal(updater.channel, 'beta');
+
+    // Simulate restart with a new updater instance on the same userDataDir
+    const restarted = new DesktopUpdater({
+      userDataDir: env.directory,
+      currentVersion: '1.0.0',
+    });
+    assert.equal(restarted.channel, 'beta');
+  } finally {
+    await rm(env.directory, { recursive: true, force: true });
+  }
+});
+
+test('discardUpdate clears staging files and resets state to idle', async () => {
+  const env = await setupTestEnv('1.2.0');
+  try {
+    const updater = new DesktopUpdater({
+      userDataDir: env.directory,
+      currentVersion: '1.0.0',
+      platform: 'macos',
+      architecture: 'arm64',
+      trustedKeys: { 'quizzer-release-test': env.keyPair.publicKey },
+      fetch: async url => {
+        if (url.endsWith('release-manifest.json')) {
+          return { ok: true, text: async () => JSON.stringify(env.signed) };
+        }
+        return { ok: true, arrayBuffer: async () => env.content };
+      },
+    });
+
+    await updater.checkForUpdates();
+    await updater.downloadUpdate();
+    assert.equal(updater.state, 'downloaded');
+
+    const discardResult = await updater.discardUpdate();
+    assert.equal(discardResult.discarded, true);
+    assert.equal(discardResult.status.state, 'idle');
+    assert.equal(updater.stagedArtifactName, null);
+  } finally {
+    await rm(env.directory, { recursive: true, force: true });
+  }
+});
+
