@@ -41,11 +41,24 @@ test('validates types, ranges, unknown settings, and secret-like keys', () => {
   assert.deepEqual(validateSettings({ 'extraction.ocr': true }), { 'extraction.ocr': true });
   assert.deepEqual(validateSettings({ 'embeddings.embedderPlugin': 'dev.quizzer.embedder' }), { 'embeddings.embedderPlugin': 'dev.quizzer.embedder' });
   assert.deepEqual(validateSettings({ 'extraction.extractorPlugin': 'dev.quizzer.extractor' }), { 'extraction.extractorPlugin': 'dev.quizzer.extractor' });
+  assert.deepEqual(validateSettings({ 'retrieval.planning': 'multi-query' }), { 'retrieval.planning': 'multi-query' });
+  assert.throws(() => validateSettings({ 'retrieval.planning': 'remote-model' }), /must be one of/);
   assert.throws(() => validateSettings({ 'generation.concurrency': 99 }), /from 1 to 10/);
   assert.throws(() => validateSettings({ 'providers.codex.maxConcurrency': 0 }), /from 1 to 10/);
   assert.throws(() => validateSettings({ 'unknown.value': true }), /Unknown setting/);
   assert.throws(() => validateSettings({ 'provider.apiKey': 'secret' }), /Secrets cannot be stored/);
   assert.equal(SETTINGS_SCHEMA.additionalProperties, false);
+});
+
+test('uses progressively stronger bounded query planning across hardware profiles', () => {
+  const lite = resolveSettings({ profile: 'lite', environment: {} });
+  const balanced = resolveSettings({ profile: 'balanced', environment: {} });
+  const max = resolveSettings({ profile: 'max', environment: {} });
+  assert.equal(lite.values['retrieval.planning'], 'none');
+  assert.equal(balanced.values['retrieval.planning'], 'multi-query');
+  assert.equal(max.values['retrieval.planning'], 'hyde');
+  assert.equal(SETTINGS_SCHEMA.properties['retrieval.planning'].enum.join(','), 'none,multi-query,hyde');
+  assert.equal(SETTINGS_SCHEMA.properties['retrieval.planning']['x-quizzer-reindex-required'], false);
 });
 
 test('persists validated user overrides and reads JSONC comments', async () => {

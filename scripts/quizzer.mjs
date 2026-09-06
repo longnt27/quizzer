@@ -396,9 +396,14 @@ const runRetrieve = async () => {
       limit: Number(flag('limit', '10')),
     });
     if (indexingError) retrieval.indexingError = indexingError;
-    writeResult(retrieval, retrieval.results.length
+    const planning = retrieval.planningTrace;
+    const planningSummary = planning
+      ? `Query planning: ${planning.mode} · ${planning.variants.length} bounded variant${planning.variants.length === 1 ? '' : 's'}${planning.fallback ? ` · fallback: ${planning.reason}` : ''}`
+      : 'Query planning: unavailable';
+    const evidence = retrieval.results.length
       ? retrieval.results.map(result => `${result.documentName}${result.page ? ` p.${result.page}` : ''}  ${result.sourceSpanId}\n${result.excerpt}`).join('\n\n')
-      : retrieval.refusal);
+      : retrieval.refusal;
+    writeResult(retrieval, `${planningSummary}\n\n${evidence}`);
   } finally {
     await index.close();
   }

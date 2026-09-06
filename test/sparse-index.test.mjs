@@ -76,6 +76,37 @@ test('runs one corrective pass and clearly refuses without evidence', () => {
   const refused = index.retrieve({ query: 'zyxwvutsrqponmlkjihgfedcba' });
   assert.equal(refused.confidence, 'low');
   assert.match(refused.refusal, /sufficient indexed evidence/);
+  const uncorrected = index.retrieve({ query: 'locking nonexistentterm', limit: 2, allowCorrectivePass: false });
+  assert.equal(uncorrected.correctivePass, false);
+  assert.equal(uncorrected.results.length, 0);
+});
+
+test('hydrates final stable spans only after ranking and selection', () => {
+  const candidate = index.retrieve({
+    query: 'remote state locking teammates', documentIds: ['doc-terraform'], limit: 3, includeNeighbors: false,
+  }).results[0];
+  assert.deepEqual(candidate.neighbors, []);
+  const [hydrated] = index.hydrateResults([{ sourceSpanId: candidate.sourceSpanId, score: 0.99 }]);
+  assert.equal(hydrated.documentId, 'doc-terraform');
+  assert.equal(hydrated.score, 0.99);
+  assert.match(hydrated.parentContent, /Remote state/);
+  assert.ok(hydrated.neighbors.length > 0);
+
+  const [withoutNeighbors] = index.hydrateResults([candidate], { includeNeighbors: false });
+  assert.deepEqual(withoutNeighbors.neighbors, []);
+  assert.deepEqual(index.hydrateResults([{
+    sourceSpanId: 'removed:span',
+    excerpt: 'cached evidence',
+    score: 0.5,
+  }]), [{
+    sourceSpanId: 'removed:span',
+    content: 'cached evidence',
+    excerpt: 'cached evidence',
+    score: 0.5,
+    neighbors: [],
+    parentContent: 'cached evidence',
+  }]);
+  assert.throws(() => index.hydrateResults([{}]), /stable source span ids/);
 });
 
 test('removes all derived chunks for a deleted document', () => {

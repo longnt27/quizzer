@@ -1,13 +1,66 @@
 import { DenseDocumentIndex } from './dense-index.mjs';
 import { embedTextsWithOllama } from './embeddings.mjs';
-import { buildHybridRetrieval } from './hybrid-retrieval.mjs';
+import { fuseHybridRankings, reciprocalRankFusion } from './hybrid-retrieval.mjs';
 import { SparseDocumentIndex } from './sparse-index.mjs';
 import { rerankRetrieval } from './reranking.mjs';
+import { condenseQuery, decomposeQuery, normalizeQuery } from './query-planning.mjs';
 
 const errorMessage = error => error instanceof Error ? error.message : String(error);
+const refusal = 'Quizzer could not find sufficient indexed evidence for this query.';
+
+const throwIfAborted = signal => {
+  if (signal?.aborted) throw signal.reason ?? Object.assign(new Error('Retrieval cancelled'), { name: 'AbortError' });
+};
+
+/** Applies limit and contextBudget to a flat results array, returning capped results and token estimate. */
+const applyBudget = (results, { limit = 10, contextBudget = 4096 } = {}) => {
+  const boundedLimit = Math.max(1, Math.min(50, Math.floor(Number(limit) || 10)));
+  const boundedBudget = Math.max(256, Math.min(65_536, Math.floor(Number(contextBudget) || 4096)));
+  const capped = [];
+  let estimatedContextTokens = 0;
+  for (const result of results) {
+    const tokens = Math.ceil((result.content ?? result.excerpt ?? '').length / 4);
+    if (capped.length && estimatedContextTokens + tokens > boundedBudget) continue;
+    capped.push(result);
+    estimatedContextTokens += tokens;
+    if (capped.length >= boundedLimit) break;
+  }
+  return { results: capped, estimatedContextTokens };
+};
+
+const sparseConfidence = previews => previews.some(preview => preview.confidence === 'high')
+  ? 'high'
+  : previews.some(preview => preview.confidence === 'medium') ? 'medium' : 'low';
+
+const fuseSparsePreviews = (previews, planningTrace) => {
+  const base = previews[0];
+  const confidence = sparseConfidence(previews);
+  const results = previews.length === 1
+    ? base.results
+    : reciprocalRankFusion(previews.map(preview => preview.results)).map(candidate => ({
+        ...candidate.records.find(Boolean),
+        score: Number(candidate.score.toFixed(6)),
+      }));
+  return {
+    ...base,
+    correctivePass: previews.some(preview => preview.correctivePass),
+    confidence,
+    results,
+    planningTrace,
+    ...(confidence === 'low' ? { refusal } : { refusal: undefined }),
+  };
+};
+
+const hybridConfidence = (previews, results) => {
+  const top = results[0];
+  if (!top) return 'low';
+  if (sparseConfidence(previews) === 'high' || top.retrievalChannels.length > 1) return 'high';
+  if (sparseConfidence(previews) === 'medium' || (top.denseScore ?? 0) >= 0.55) return 'medium';
+  return 'low';
+};
 
 export class RetrievalIndex {
-  constructor({ sparsePath, densePath, loadSettings, embed = embedTextsWithOllama, resolveEmbedding, invokeReranker, onDenseIssue = () => {} }) {
+  constructor({ sparsePath, densePath, loadSettings, embed = embedTextsWithOllama, resolveEmbedding, invokeReranker, invokeLocalHyde, onDenseIssue = () => {} }) {
     if (typeof loadSettings !== 'function') throw new Error('Retrieval index requires a settings loader');
     if (typeof embed !== 'function') throw new Error('Retrieval index requires an embedding provider');
     this.sparse = new SparseDocumentIndex(sparsePath);
@@ -16,6 +69,7 @@ export class RetrievalIndex {
     this.embed = embed;
     this.resolveEmbedding = resolveEmbedding;
     this.invokeReranker = invokeReranker;
+    this.invokeLocalHyde = invokeLocalHyde;
     this.onDenseIssue = onDenseIssue;
     this.denseUsed = false;
   }
@@ -98,40 +152,119 @@ export class RetrievalIndex {
 
   async retrieve(options = {}) {
     const { settings, embeddings, embeddingModel, embedding, retrievalMode } = await this.configuration();
+    throwIfAborted(options.signal);
     const retrievalOptions = {
       ...options,
       contextBudget: options.contextBudget ?? settings.values['retrieval.contextBudget'],
     };
-    const sparse = this.sparse.retrieve(retrievalOptions);
-    let preview = sparse;
+    const planningMode = settings.values['retrieval.planning'] || 'none';
+    const baseQuery = normalizeQuery(options.query || '');
+    let queryVariants = planningMode === 'none' ? [baseQuery] : decomposeQuery(baseQuery);
+    if (!queryVariants.length) queryVariants = [baseQuery];
+    const planningTrace = {
+      mode: planningMode,
+      condensedQuery: condenseQuery(baseQuery),
+      variants: [...queryVariants],
+      fallback: false,
+      hyde: false,
+    };
+
+    if (planningMode === 'hyde') {
+      if (typeof this.invokeLocalHyde !== 'function') {
+        planningTrace.fallback = true;
+        planningTrace.reason = 'No approved local HyDE callback is configured; multi-query fallback used.';
+      } else {
+        try {
+          const hypothetical = normalizeQuery(await this.invokeLocalHyde(baseQuery, {
+            signal: options.signal,
+            localOnly: true,
+          }));
+          throwIfAborted(options.signal);
+          if (hypothetical && !queryVariants.some(variant => variant.toLocaleLowerCase() === hypothetical.toLocaleLowerCase())) {
+            queryVariants.push(hypothetical);
+            planningTrace.variants.push(hypothetical);
+            planningTrace.hyde = true;
+          } else {
+            planningTrace.fallback = true;
+            planningTrace.reason = 'The local HyDE callback returned no distinct passage; multi-query fallback used.';
+          }
+        } catch (error) {
+          if (options.signal?.aborted || error?.name === 'AbortError') throw error;
+          planningTrace.fallback = true;
+          planningTrace.reason = 'The local HyDE callback failed; multi-query fallback used.';
+        }
+      }
+    }
+
+    const requestedLimit = Math.max(1, Math.min(50, Math.floor(Number(retrievalOptions.limit) || 10)));
+    const candidateOptions = planningMode === 'none'
+      ? retrievalOptions
+      : {
+          ...retrievalOptions,
+          limit: Math.min(50, Math.max(10, requestedLimit * 4)),
+          contextBudget: 65_536,
+          includeNeighbors: false,
+        };
+    const sparsePreviews = [];
+    for (const [index, variant] of queryVariants.entries()) {
+      throwIfAborted(options.signal);
+      sparsePreviews.push(this.sparse.retrieve({
+        ...candidateOptions,
+        query: variant,
+        allowCorrectivePass: index === 0,
+      }));
+    }
+    let preview = fuseSparsePreviews(sparsePreviews, planningTrace);
+
     if (retrievalMode === 'hybrid' && embeddings) {
       try {
         this.denseUsed = true;
-        const [vector] = await embedding.embed([options.query], { signal: options.signal });
+        const vectors = await embedding.embed(queryVariants, { signal: options.signal });
+        throwIfAborted(options.signal);
+        if (!Array.isArray(vectors) || vectors.length !== queryVariants.length) {
+          throw new Error(`Embedding provider returned ${Array.isArray(vectors) ? vectors.length : 0} vectors for ${queryVariants.length} query variants`);
+        }
         const normalizedTags = (retrievalOptions.tags ?? []).map(tag => tag.toLocaleLowerCase());
-        const dense = (await this.dense.retrieve({
-          vector,
-          embeddingModel,
-          documentIds: retrievalOptions.documentIds,
-          limit: Math.min(100, Math.max(10, (Number(retrievalOptions.limit) || 10) * 4)),
-        })).filter(result => normalizedTags.every(tag => result.tags.map(value => String(value).toLocaleLowerCase()).includes(tag)));
+        const allDenseResults = [];
+        for (const vector of vectors) {
+          throwIfAborted(options.signal);
+          const dense = await this.dense.retrieve({
+            vector,
+            embeddingModel,
+            documentIds: retrievalOptions.documentIds,
+            limit: Math.min(100, Math.max(10, requestedLimit * 4)),
+          });
+          allDenseResults.push(dense.filter(result => normalizedTags.every(
+            tag => result.tags.map(value => String(value).toLocaleLowerCase()).includes(tag),
+          )));
+        }
+        const fused = fuseHybridRankings({
+          sparseRankings: sparsePreviews.map(item => item.results),
+          denseRankings: allDenseResults,
+        });
+        const confidence = hybridConfidence(sparsePreviews, fused);
         this.denseIssue = undefined;
         preview = {
-          ...buildHybridRetrieval({
-            sparse, denseResults: dense, limit: retrievalOptions.limit, contextBudget: retrievalOptions.contextBudget,
-          }),
-          dense: { status: 'ready', embeddingModel, candidates: dense.length },
+          query: baseQuery,
+          method: 'hybrid-rrf',
+          correctivePass: sparsePreviews.some(item => item.correctivePass),
+          confidence,
+          results: fused,
+          planningTrace,
+          ...(confidence === 'low' ? { refusal } : {}),
+          dense: { status: 'ready', embeddingModel, candidates: allDenseResults.reduce((sum, r) => sum + r.length, 0) },
         };
       } catch (error) {
         if (options.signal?.aborted || error?.name === 'AbortError') throw error;
         this.denseIssue = { model: embeddingModel, message: errorMessage(error), occurredAt: Date.now() };
         preview = {
-          ...sparse,
+          ...preview,
           requestedMethod: 'hybrid-rrf',
           dense: { status: 'unavailable', embeddingModel, error: this.denseIssue.message },
         };
       }
     }
+
     const reranked = await rerankRetrieval({
       query: options.query,
       results: preview.results,
@@ -140,7 +273,20 @@ export class RetrievalIndex {
       invokePlugin: this.invokeReranker,
       signal: options.signal,
     });
-    return { ...preview, results: reranked.results, reranking: reranked.metadata };
+    throwIfAborted(options.signal);
+    const budgeted = applyBudget(reranked.results, retrievalOptions);
+    const results = typeof this.sparse.hydrateResults === 'function'
+      ? this.sparse.hydrateResults(budgeted.results, { includeNeighbors: retrievalOptions.includeNeighbors !== false })
+      : budgeted.results;
+    const confidence = results.length ? preview.confidence : 'low';
+    return {
+      ...preview,
+      confidence,
+      estimatedContextTokens: budgeted.estimatedContextTokens,
+      results,
+      reranking: reranked.metadata,
+      ...(confidence === 'low' ? { refusal } : { refusal: undefined }),
+    };
   }
 
   async removeDocument(id) {

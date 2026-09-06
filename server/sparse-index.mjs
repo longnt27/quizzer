@@ -171,7 +171,10 @@ export class SparseDocumentIndex {
     `).all(match, ...documentIds, candidateLimit);
   }
 
-  retrieve({ query, documentIds = [], tags = [], limit = 10, contextBudget = 4096, includeNeighbors = true } = {}) {
+  retrieve({
+    query, documentIds = [], tags = [], limit = 10, contextBudget = 4096, includeNeighbors = true,
+    allowCorrectivePass = true,
+  } = {}) {
     const tokens = queryTokens(query);
     if (!tokens.length) throw new Error('Retrieval query must contain searchable words');
     if (!Array.isArray(documentIds) || documentIds.some(id => typeof id !== 'string')) throw new Error('documentIds must be an array of ids');
@@ -181,7 +184,7 @@ export class SparseDocumentIndex {
     const candidateLimit = Math.min(250, boundedLimit * 8);
     let rows = this.searchRows(tokens.map(quoteToken).join(' '), documentIds, candidateLimit);
     let correctivePass = false;
-    if (rows.length < Math.min(3, boundedLimit) && tokens.length > 1) {
+    if (allowCorrectivePass && rows.length < Math.min(3, boundedLimit) && tokens.length > 1) {
       correctivePass = true;
       const broader = this.searchRows(tokens.map(quoteToken).join(' OR '), documentIds, candidateLimit);
       const seen = new Set(rows.map(row => row.span_id));
@@ -258,6 +261,49 @@ export class SparseDocumentIndex {
       results,
       ...(confidence === 'low' ? { refusal: 'Quizzer could not find sufficient indexed evidence for this query.' } : {}),
     };
+  }
+
+  hydrateResults(results, { includeNeighbors = true } = {}) {
+    if (!Array.isArray(results) || results.some(result => typeof result?.sourceSpanId !== 'string')) {
+      throw new Error('Retrieval results with stable source span ids are required');
+    }
+    const rowStatement = this.database.prepare('SELECT * FROM rag_chunks WHERE span_id = ?');
+    const neighborStatement = this.database.prepare(`
+      SELECT span_id AS sourceSpanId, chunk_index AS chunkIndex, page, breadcrumb, content
+      FROM rag_chunks WHERE document_id = ? AND chunk_index BETWEEN ? AND ? AND span_id <> ? ORDER BY chunk_index
+    `);
+    const parentStatement = this.database.prepare('SELECT content FROM rag_chunks WHERE parent_id = ? ORDER BY chunk_index');
+    return results.map(result => {
+      const row = rowStatement.get(result.sourceSpanId);
+      if (!row) {
+        const content = result.content ?? result.excerpt ?? '';
+        return {
+          ...result,
+          content,
+          excerpt: result.excerpt ?? content.slice(0, 480),
+          neighbors: result.neighbors ?? [],
+          parentContent: result.parentContent ?? content,
+        };
+      }
+      const neighbors = includeNeighbors
+        ? neighborStatement.all(row.document_id, row.chunk_index - 1, row.chunk_index + 1, row.span_id)
+        : [];
+      return {
+        ...result,
+        sourceSpanId: row.span_id,
+        documentId: row.document_id,
+        documentName: row.document_name,
+        documentVersionHash: row.version_hash,
+        chunkIndex: row.chunk_index,
+        parentId: row.parent_id,
+        page: row.page ?? undefined,
+        breadcrumb: row.breadcrumb || undefined,
+        content: row.content,
+        excerpt: row.content.slice(0, 480),
+        neighbors,
+        parentContent: parentStatement.all(row.parent_id).map(item => item.content).join('\n\n'),
+      };
+    });
   }
 
   close() {

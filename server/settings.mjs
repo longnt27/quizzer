@@ -4,6 +4,13 @@ import { PROVIDER_POLICIES, providerConcurrencySettingKey } from './provider-pol
 
 const baseSettings = [
   {
+    key: 'retrieval.planning', type: 'string', enum: ['none', 'multi-query', 'hyde'], default: 'none',
+    title: 'Query planning', description: 'Uses bounded deterministic variants and, for HyDE, only an explicitly configured local callback.',
+    visibility: 'advanced', resourceEffect: 'medium', restartRequired: false, reindexRequired: false,
+    environment: 'QUIZZER_RETRIEVAL_PLANNING',
+  },
+
+  {
     key: 'interface.mode', type: 'string', enum: ['simple', 'advanced'], default: 'simple',
     title: 'Interface mode', description: 'Controls how many creation and settings controls are disclosed.',
     visibility: 'basic', resourceEffect: 'none', restartRequired: false, reindexRequired: false,
@@ -129,6 +136,7 @@ const secretName = /(api.?key|password|secret|token|credential)/i;
 export const HARDWARE_PROFILE_SETTINGS = Object.freeze({
   lite: Object.freeze({
     'hardware.profile': 'lite',
+    'retrieval.planning': 'none',
     'generation.concurrency': 1,
     'generation.batchSize': 10,
     'retrieval.mode': 'sparse',
@@ -145,6 +153,7 @@ export const HARDWARE_PROFILE_SETTINGS = Object.freeze({
   }),
   balanced: Object.freeze({
     'hardware.profile': 'balanced',
+    'retrieval.planning': 'multi-query',
     'generation.concurrency': 3,
     'generation.batchSize': 15,
     'retrieval.mode': 'hybrid',
@@ -161,6 +170,7 @@ export const HARDWARE_PROFILE_SETTINGS = Object.freeze({
   }),
   max: Object.freeze({
     'hardware.profile': 'max',
+    'retrieval.planning': 'hyde',
     'generation.concurrency': 5,
     'generation.batchSize': 20,
     'retrieval.mode': 'hybrid',

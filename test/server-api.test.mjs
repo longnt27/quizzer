@@ -131,6 +131,7 @@ test('exposes settings schema, precedence, and validated updates', async () => {
   const schema = await (await authorized('/api/v1/settings/schema')).json();
   assert.equal(schema.schema.additionalProperties, false);
   assert.ok(schema.registry.some(item => item.key === 'retrieval.mode'));
+  assert.ok(schema.registry.some(item => item.key === 'retrieval.planning'));
   assert.ok(schema.registry.some(item => item.key === 'embeddings.model'));
   assert.ok(schema.registry.some(item => item.key === 'embeddings.embedderPlugin'));
   assert.ok(schema.registry.some(item => item.key === 'retrieval.rerankerPlugin'));
@@ -312,6 +313,9 @@ test('provides onboarding, document, job, and event operations', async () => {
   assert.equal(evidence.dense.status, 'ready');
   assert.equal(evidence.reranking.component, 'builtin');
   assert.equal(evidence.reranking.diversity, 'maximal-marginal-relevance');
+  assert.equal(evidence.planningTrace.mode, 'multi-query');
+  assert.ok(evidence.planningTrace.variants.length >= 1);
+  assert.equal(evidence.planningTrace.fallback, false);
   assert.equal(evidence.results[0].documentId, 'doc-1');
   assert.match(evidence.results[0].sourceSpanId, /^doc-1:span:/);
   assert.deepEqual(evidence.results[0].retrievalChannels, ['sparse', 'dense']);
