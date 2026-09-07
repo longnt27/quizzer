@@ -70,13 +70,14 @@ const createHarness = (job, requestProvider) => {
   let timestamp = 10_000;
   let completion;
   const patches = [];
+  const retrievalCalls = [];
   return {
     dependencies: {
       leaseRenewMs: 0,
       now: () => timestamp++,
       loadDocuments: ids => ids.map(id => documents.find(document => document.id === id)).filter(Boolean),
       ensureIndexed: values => assert.equal(values.length, job.documentIds.length),
-      retrieve: ({ documentIds }) => ({ results: documentIds.map(id => {
+      retrieve: ({ documentIds, ...options }) => { retrievalCalls.push(options); return { results: documentIds.map(id => {
         const document = documents.find(item => item.id === id);
         return {
           sourceSpanId: `${id}:span:0:${id === 'doc-one' ? 'a' : 'b'}`,
@@ -84,7 +85,7 @@ const createHarness = (job, requestProvider) => {
           documentName: document.name,
           content: document.content,
         };
-      }) }),
+      }) }; },
       loadImage: () => undefined,
       requestProvider,
       update: (_leased, patch) => {
@@ -114,6 +115,7 @@ const createHarness = (job, requestProvider) => {
     },
     state: () => state,
     patches,
+    retrievalCalls,
     completion: () => completion,
   };
 };
@@ -142,6 +144,7 @@ test('service worker retrieves, validates, checkpoints, and atomically completes
   assert.ok(requests.every(request => request.prompt.includes('SECURITY RULES (protected by Quizzer')));
   assert.ok(requests.every(request => request.prompt.includes('Focus on leases and coordination.')));
   assert.ok(requests.every(request => request.prompt.includes('Target difficulty: advanced')));
+  assert.ok(harness.retrievalCalls.every(request => request.rerank === true));
   assert.ok(requests.every(request => request.prompt.includes('Source span: doc-')));
   assert.ok(requests.every(request => request.images.length === 0));
   assert.equal(harness.completion().test.questions.length, 4);

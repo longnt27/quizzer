@@ -249,6 +249,7 @@ const retrieveSlotEvidence = async ({ fallback, slot, options, retrieve, limit, 
     documentIds: slot.documentIds,
     limit,
     contextBudget,
+    ...(options.ragProfile?.rerank !== undefined ? { rerank: options.ragProfile.rerank } : {}),
     includeNeighbors: true,
     signal,
   });

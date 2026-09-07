@@ -323,7 +323,7 @@ export class RetrievalIndex {
     const reranked = await rerankRetrieval({
       query: options.query,
       results: preview.results,
-      enabled: settings.values['retrieval.rerank'],
+      enabled: options.rerank ?? settings.values['retrieval.rerank'],
       component: settings.values['retrieval.rerankerPlugin'],
       invokePlugin: this.invokeReranker,
       signal: options.signal,
