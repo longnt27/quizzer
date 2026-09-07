@@ -136,7 +136,7 @@ jobs:
       - name: Install Linux packaging tools
         if: matrix.platform == 'linux'
         shell: bash
-        run: sudo apt-get update && sudo apt-get install --yes fakeroot rpm
+        run: sudo apt-get update && sudo apt-get install --yes fakeroot rpm squashfs-tools
       - name: Import Apple signing identity
         if: matrix.platform == 'macos'
         shell: bash
@@ -307,6 +307,38 @@ jobs:
               throw "Unexpected signing certificate for $Target"
             }
           }
+      - name: Verify Linux packages and AppImage
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          require_single_artifact() {
+            local pattern="$1"
+            local count
+            count="$(find out/make -type f -iname "$pattern" | wc -l | tr -d '[:space:]')"
+            if [ "$count" -ne 1 ]; then
+              echo "Expected exactly one $pattern artifact, found ${count}" >&2
+              return 1
+            fi
+            find out/make -type f -iname "$pattern" -print -quit
+          }
+          DEB_PATH="$(require_single_artifact '*.deb')"
+          RPM_PATH="$(require_single_artifact '*.rpm')"
+          APPIMAGE_PATH="$(require_single_artifact '*.appimage')"
+          test -s "$DEB_PATH"
+          test -s "$RPM_PATH"
+          test -s "$APPIMAGE_PATH"
+          test -x "$APPIMAGE_PATH"
+          MAGIC="$(head -c 4 "$APPIMAGE_PATH")"
+          if [ "$MAGIC" != $'\x7fELF' ]; then
+            echo "AppImage is not a valid ELF binary" >&2
+            exit 1
+          fi
+          AI_MAGIC="$(dd if="$APPIMAGE_PATH" bs=1 skip=8 count=3 2>/dev/null)"
+          if [ "$AI_MAGIC" != $'AI\x02' ]; then
+            echo "AppImage does not contain type 2 magic bytes" >&2
+            exit 1
+          fi
       - name: Normalize release artifacts
         run: node scripts/collect-release-artifacts.mjs --platform ${{ matrix.platform }} --architecture ${{ matrix.architecture }}
       - name: Attest build provenance

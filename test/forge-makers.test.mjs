@@ -51,3 +51,40 @@ test('uses distinct application and installer signing identities', async () => {
     else process.env.APPLE_INSTALLER_IDENTITY = previousInstaller;
   }
 });
+
+test('configures deterministic Linux distributables including AppImage with platform gating', () => {
+  const makers = forgeConfig.makers;
+
+  const appImage = makers.find(m => m.name === 'AppImage');
+  assert.ok(appImage, 'MakerAppImage is configured');
+  assert.deepEqual(appImage.platformsToMakeOn, ['linux'], 'MakerAppImage is strictly bound to Linux');
+  assert.equal(appImage.configOrConfigFetcher.options.name, 'quizzer');
+  assert.equal(appImage.configOrConfigFetcher.options.productName, 'Quizzer');
+  assert.equal(appImage.configOrConfigFetcher.options.icon, 'assets/icons/quizzer.png');
+  assert.deepEqual(appImage.configOrConfigFetcher.options.categories, ['Education']);
+
+  const deb = makers.find(m => m.name === 'deb');
+  assert.ok(deb, 'MakerDeb is configured');
+  const rpm = makers.find(m => m.name === 'rpm');
+  assert.ok(rpm, 'MakerRpm is configured');
+  const zip = makers.find(m => m.name === 'zip');
+  assert.ok(zip, 'MakerZIP is configured');
+
+  const linuxMakers = makers.filter(m => {
+    const platforms = m.platformsToMakeOn || m.defaultPlatforms;
+    return platforms.includes('linux');
+  });
+  assert.equal(linuxMakers.length, 4, 'Linux distributables include deb, rpm, zip, and AppImage');
+
+  const darwinMakers = makers.filter(m => {
+    const platforms = m.platformsToMakeOn || m.defaultPlatforms;
+    return platforms.includes('darwin');
+  });
+  assert.equal(darwinMakers.some(m => m.name === 'AppImage'), false, 'AppImage is gated away from macOS');
+
+  const winMakers = makers.filter(m => {
+    const platforms = m.platformsToMakeOn || m.defaultPlatforms;
+    return platforms.includes('win32');
+  });
+  assert.equal(winMakers.some(m => m.name === 'AppImage'), false, 'AppImage is gated away from Windows');
+});

@@ -349,6 +349,13 @@ Source development uses loopback port 8787 so Vite can proxy API requests. The p
 
 Release packages keep application code in an ASAR archive and lock Electron's production fuses. Run-as-Node, `NODE_OPTIONS`, command-line inspection, alternate V8 snapshots, and elevated `file:` protocol behavior are disabled; embedded ASAR integrity validation, ASAR-only loading, cookie encryption, and WebAssembly trap handlers are enabled. Packaging requires an explicit value for every fuse known to the build library, applies the policy before code signing, and verifies the emitted executable in the release matrix. After packaging, CI independently verifies the CLI, desktop executable, and installer signatures against the pinned Apple Team ID or Windows certificate hash before artifacts can enter the signed manifest. Releases include separate CycloneDX SBOMs for the application and landing site.
 
+### Linux Distributables and Verification Limits
+
+Quizzer packages Linux desktop distributables for Debian/Ubuntu (`.deb`), Red Hat/Fedora (`.rpm`), standalone portable archives (`.zip`), and standalone type 2 AppImage bundles (`.AppImage` via `@reforged/maker-appimage`) across both `x64` and `arm64` architectures.
+
+- **Local verification limits:** Building Linux AppImage packages requires a Linux environment with `squashfs-tools` (specifically `mksquashfs`) installed. On non-Linux hosts (such as macOS or Windows development machines), `npm run make:desktop` builds only host-native distributables (`.dmg`/`.pkg` on macOS, Squirrel `.exe` on Windows). Linux maker configuration, platform gating, artifact normalization, and updater selection/handoff logic are verified on all platforms through automated tests (`test/forge-makers.test.mjs`, `test/release-artifacts.test.mjs`, `test/release-workflow.test.mjs`, and `test/desktop-updater-*.test.mjs`).
+- **CI verification limits:** In CI, native Linux runners (`ubuntu-24.04` for x64 and `ubuntu-24.04-arm` for arm64) install `squashfs-tools`, build the AppImage packages, and validate that exactly one AppImage artifact is produced per architecture. The workflow checks executable mode, confirms the ELF header (`\x7fELF`), and verifies type 2 AppImage magic bytes (`AI\x02` at offset 8) before artifact normalization, provenance attestation, and manifest signing. End-to-end graphical execution of the AppImage is not performed in CI due to headless runner and unprivileged FUSE environment constraints.
+
 ## Troubleshooting
 
 ### Quizzer asks for an API key

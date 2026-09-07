@@ -131,6 +131,121 @@ test('selectTargetArtifact filters for matching OS and architecture, excluding C
   assert.equal(selectTargetArtifact([], { platform: 'macos', architecture: 'arm64' }), null);
 });
 
+test('selectTargetArtifact deterministically handles Linux AppImage across x64 and arm64', () => {
+  const linuxArtifacts = [
+    {
+      name: 'quizzer-1.0.0-linux-x64.deb',
+      platform: 'linux',
+      architecture: 'x64',
+      format: 'deb',
+      url: 'https://github.com/Somethings1/quizzer/releases/download/v1.0.0/quizzer.deb',
+      size: 250,
+      sha256: 'a'.repeat(64),
+      minimumOs: 'Current 64-bit Ubuntu or Fedora',
+    },
+    {
+      name: 'quizzer-1.0.0-linux-x64.rpm',
+      platform: 'linux',
+      architecture: 'x64',
+      format: 'rpm',
+      url: 'https://github.com/Somethings1/quizzer/releases/download/v1.0.0/quizzer.rpm',
+      size: 260,
+      sha256: 'b'.repeat(64),
+      minimumOs: 'Current 64-bit Ubuntu or Fedora',
+    },
+    {
+      name: 'quizzer-1.0.0-linux-x64.appimage',
+      platform: 'linux',
+      architecture: 'x64',
+      format: 'appimage',
+      url: 'https://github.com/Somethings1/quizzer/releases/download/v1.0.0/quizzer.appimage',
+      size: 270,
+      sha256: 'c'.repeat(64),
+      minimumOs: 'Current 64-bit Ubuntu or Fedora',
+    },
+    {
+      name: 'quizzer-1.0.0-linux-x64.zip',
+      platform: 'linux',
+      architecture: 'x64',
+      format: 'zip',
+      url: 'https://github.com/Somethings1/quizzer/releases/download/v1.0.0/quizzer.zip',
+      size: 280,
+      sha256: 'd'.repeat(64),
+      minimumOs: 'Current 64-bit Ubuntu or Fedora',
+    },
+    {
+      name: 'quizzer-1.0.0-linux-arm64.appimage',
+      platform: 'linux',
+      architecture: 'arm64',
+      format: 'appimage',
+      url: 'https://github.com/Somethings1/quizzer/releases/download/v1.0.0/quizzer-arm64.appimage',
+      size: 275,
+      sha256: 'e'.repeat(64),
+      minimumOs: 'Current 64-bit Ubuntu or Fedora',
+    },
+    {
+      name: 'quizzer-1.0.0-linux-arm64.zip',
+      platform: 'linux',
+      architecture: 'arm64',
+      format: 'zip',
+      url: 'https://github.com/Somethings1/quizzer/releases/download/v1.0.0/quizzer-arm64.zip',
+      size: 285,
+      sha256: 'f'.repeat(64),
+      minimumOs: 'Current 64-bit Ubuntu or Fedora',
+    },
+  ];
+
+  // Explicitly preferred format selects AppImage on Linux x64
+  const preferredX64 = selectTargetArtifact(linuxArtifacts, {
+    platform: 'linux',
+    architecture: 'x64',
+    preferredFormat: 'appimage',
+  });
+  assert.equal(preferredX64.format, 'appimage');
+  assert.equal(preferredX64.name, 'quizzer-1.0.0-linux-x64.appimage');
+
+  // Explicitly preferred format selects AppImage on Linux arm64
+  const preferredArm64 = selectTargetArtifact(linuxArtifacts, {
+    platform: 'linux',
+    architecture: 'arm64',
+    preferredFormat: 'appimage',
+  });
+  assert.equal(preferredArm64.format, 'appimage');
+  assert.equal(preferredArm64.name, 'quizzer-1.0.0-linux-arm64.appimage');
+
+  // Fallback preference: when no deb/rpm exists (e.g. arm64 target with appimage and zip), AppImage is selected over zip
+  const fallbackArm64 = selectTargetArtifact(linuxArtifacts, {
+    platform: 'linux',
+    architecture: 'arm64',
+  });
+  assert.equal(fallbackArm64.format, 'appimage');
+  assert.equal(fallbackArm64.name, 'quizzer-1.0.0-linux-arm64.appimage');
+
+  // When deb is present and no preference specified, deb is deterministically selected first
+  const defaultX64 = selectTargetArtifact(linuxArtifacts, {
+    platform: 'linux',
+    architecture: 'x64',
+  });
+  assert.equal(defaultX64.format, 'deb');
+
+  // When deb is absent but rpm and appimage are present, rpm is deterministically selected first
+  const withoutDeb = linuxArtifacts.filter(a => a.format !== 'deb');
+  const defaultWithoutDeb = selectTargetArtifact(withoutDeb, {
+    platform: 'linux',
+    architecture: 'x64',
+  });
+  assert.equal(defaultWithoutDeb.format, 'rpm');
+
+  // When deb and rpm are absent, appimage is deterministically selected over zip
+  const appImageAndZipOnly = linuxArtifacts.filter(a => ['appimage', 'zip'].includes(a.format) && a.architecture === 'x64');
+  const selectedAppImage = selectTargetArtifact(appImageAndZipOnly, {
+    platform: 'linux',
+    architecture: 'x64',
+  });
+  assert.equal(selectedAppImage.format, 'appimage');
+  assert.equal(selectedAppImage.name, 'quizzer-1.0.0-linux-x64.appimage');
+});
+
 test('updater transitions to unsupported state when no target artifact matches user system', async () => {
   const keyPair = generateKeyPairSync('ed25519');
   const encodedPrivateKey = keyPair.privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64');

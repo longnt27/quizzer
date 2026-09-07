@@ -4,6 +4,7 @@ import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
 import { MakerDMG } from '@electron-forge/maker-dmg';
 import { MakerPKG } from '@electron-forge/maker-pkg';
+import { MakerAppImage } from '@reforged/maker-appimage';
 import { flipFuses, FuseVersion, FuseV1Options } from '@electron/fuses';
 import { join, resolve } from 'node:path';
 
@@ -94,5 +95,6 @@ export default {
     }, ['darwin'])] : []),
     new MakerDeb({ options: { name: 'quizzer', productName: 'Quizzer', icon: 'assets/icons/quizzer.png', categories: ['Education'] } }),
     new MakerRpm({ options: { name: 'quizzer', productName: 'Quizzer', icon: 'assets/icons/quizzer.png', categories: ['Education'] } }),
+    new MakerAppImage({ options: { name: 'quizzer', productName: 'Quizzer', icon: 'assets/icons/quizzer.png', categories: ['Education'] } }, ['linux']),
   ],
 };

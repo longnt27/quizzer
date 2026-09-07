@@ -227,3 +227,51 @@ test('applyUpdate bypasses handoff in development mode', async () => {
     await rm(env.directory, { recursive: true, force: true });
   }
 });
+
+test('applyUpdate succeeds for supported linux appimage on x64 and arm64 and invokes launcher via xdg-open', async () => {
+  for (const architecture of ['x64', 'arm64']) {
+    const env = await setupTestEnvironment('linux', 'appimage', architecture);
+    try {
+      let launcherCalled = false;
+      let launchedPath;
+      let launchedFormat;
+      let launchedPlatform;
+
+      const launcher = async (path, format, platform) => {
+        launcherCalled = true;
+        launchedPath = path;
+        launchedFormat = format;
+        launchedPlatform = platform;
+      };
+
+      const updater = new DesktopUpdater({
+        userDataDir: env.directory,
+        currentVersion: '1.0.0',
+        platform: 'linux',
+        architecture,
+        isPackaged: true,
+        trustedKeys: { 'quizzer-release-test': env.keyPair.publicKey },
+        launcher,
+      });
+
+      const handoffLaunch = resolveHandoffLaunch(join(env.directory, 'updates', 'staging', env.artifactName), 'appimage', 'linux');
+      assert.deepEqual(handoffLaunch, {
+        command: '/usr/bin/xdg-open',
+        args: [join(env.directory, 'updates', 'staging', env.artifactName)],
+      });
+
+      const result = await updater.applyUpdate({ restart: true });
+
+      assert.equal(launcherCalled, true);
+      assert.equal(launchedFormat, 'appimage');
+      assert.equal(launchedPlatform, 'linux');
+      assert.ok(launchedPath.endsWith(env.artifactName));
+      assert.equal(result.handoffPending, true);
+      assert.equal(result.mechanism, 'staged-ready');
+      assert.equal(result.restartRequested, true);
+      assert.equal(updater.state, 'installer-handoff-pending');
+    } finally {
+      await rm(env.directory, { recursive: true, force: true });
+    }
+  }
+});

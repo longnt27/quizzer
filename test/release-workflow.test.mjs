@@ -19,8 +19,13 @@ test('release verifies packaged signatures before collecting artifacts', async (
   ordered(workflow, 'Build signed desktop distributables', 'Notarize macOS distributables');
   ordered(workflow, 'Notarize macOS distributables', 'Verify Apple signatures and notarization');
   ordered(workflow, 'Build signed desktop distributables', 'Verify Windows signatures');
+  ordered(workflow, 'Build signed desktop distributables', 'Verify Linux packages and AppImage');
   ordered(workflow, 'Verify Apple signatures and notarization', 'Normalize release artifacts');
   ordered(workflow, 'Verify Windows signatures', 'Normalize release artifacts');
+  ordered(workflow, 'Verify Linux packages and AppImage', 'Normalize release artifacts');
+  assert.match(workflow, /sudo apt-get install --yes fakeroot rpm squashfs-tools/);
+  assert.match(workflow, /APPIMAGE_PATH="\$\(require_single_artifact '\*\.appimage'\)"/);
+  assert.match(workflow, /AI_MAGIC="\$\(dd if="\$APPIMAGE_PATH" bs=1 skip=8 count=3 2>\/dev\/null\)"/);
   assert.match(workflow, /codesign --verify --strict --verbose=2 out\/cli\/quizzer/);
   assert.match(workflow, /spctl --assess --type execute --verbose=4/);
   assert.match(workflow, /TeamIdentifier=\$APPLE_TEAM_ID/);
