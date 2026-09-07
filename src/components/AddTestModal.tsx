@@ -80,7 +80,9 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
   ];
   const routeSignature = JSON.stringify(proposedRoutes.map(route => ({
     provider: route.provider, model: route.model, privacy: route.privacy, paid: route.paid,
+    pricing: route.pricing, usage: route.usage,
   })));
+  const finiteCeilingPricingMessage = 'A finite cost ceiling requires explicit input and output pricing for every approved failover route; add prices in Advanced mode or leave the ceiling unlimited';
   const requiresRouteApproval = proposedRoutes.some(route => route.privacy !== 'local');
   const routesApproved = !requiresRouteApproval || approvedRouteSignature === routeSignature;
   const visible = (() => {
@@ -112,6 +114,7 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
     if (questionCount < 1 || questionCount > 200) return message.error('Choose between 1 and 200 questions in total');
     if (!configured.providers.some(item => item.id === provider)) return message.error('Connect an AI provider in Plugins & models first');
     if (!routesApproved) return message.error('Approve the selected AI routes before queueing this test');
+    if (costCeilingDollars !== null && proposedRoutes.some(route => !route.pricing)) return message.error(finiteCeilingPricingMessage);
     setSaving(true);
     try {
       await syncNow();
@@ -213,7 +216,7 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
           </div>}
           {profile.interfaceMode === 'advanced' && costCeilingDollars !== null && proposedRoutes.some(route => !route.pricing) && <Alert type="error" showIcon
             message="Finite ceiling needs pricing for every approved route"
-            description="At least one selected model has no verified release price. Enter both custom-model rates above, or remove that failover route before queueing this test." />}
+            description={finiteCeilingPricingMessage} />}
           {profile.interfaceMode === 'advanced' && provider && !primaryKnownPricing && getProviderDefinition(provider).kind === 'api' && <div>
             <Typography.Text strong>Custom model pricing <Typography.Text type="secondary">(USD per 1M tokens)</Typography.Text></Typography.Text>
             <Space wrap style={{ width: '100%', marginTop: 8 }}>
