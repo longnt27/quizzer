@@ -560,7 +560,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                       </div>
                     )}
                     {isEvaluatedWritten && 'referenceAnswer' in q && (
-                      <div className="written-answer-block">
+                      <div className="written-answer-block" data-onboarding-target={practice && submitted ? 'practice-feedback' : undefined}>
                         <Typography.Text strong>{questionType === 'coding' ? 'Your solution' : 'Your reasoning'}</Typography.Text>
                         {practice && submitted ? <Alert message="Your answer" description={answers[questionIndex]?.[0] || '(No answer)'} /> : <Input.TextArea ref={writtenAnswerRef} rows={7} value={answers[questionIndex]?.[0] ?? ''}
                           onChange={event => {

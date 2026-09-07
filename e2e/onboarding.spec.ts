@@ -41,6 +41,11 @@ const fulfillGeneration = async (route: Route) => {
   });
 };
 
+// This workflow intentionally proves durable state across reloads. A Playwright
+// retry would reuse the mutated service database and would not be an isolated
+// rerun, so failures must remain attributable to the original attempt.
+test.describe.configure({ retries: 0 });
+
 test('resumes real onboarding and finishes through durable quiz practice', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   let simulateQuota = false;
