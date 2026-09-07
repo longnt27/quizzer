@@ -17,9 +17,9 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
-    { name: 'webkit', use: { ...devices['Desktop Safari'] } },
+    { name: 'chromium', testMatch: /.*\.spec\.ts/, use: { ...devices['Desktop Chrome'] } },
+    { name: 'firefox', testMatch: /cross-browser-smoke\.spec\.ts/, use: { ...devices['Desktop Firefox'] } },
+    { name: 'webkit', testMatch: /cross-browser-smoke\.spec\.ts/, use: { ...devices['Desktop Safari'] } },
   ],
   webServer: {
     command: 'node scripts/e2e-dev.mjs',

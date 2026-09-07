@@ -36,9 +36,16 @@ const signedManifest = () => {
 };
 
 const failManifest = (page: Page) => page.route(manifestUrl, route => route.abort());
+const stubClipboard = (page: Page) => page.addInitScript(() => {
+  let value = '';
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText: async (next: string) => { value = next; }, readText: async () => value },
+  });
+});
 
-test('detects the platform, exposes every installer, and copies the selected command', async ({ context, page }) => {
-  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+test('detects the platform, exposes every installer, and copies the selected command', async ({ page }) => {
+  await stubClipboard(page);
   await failManifest(page);
   await page.goto('/');
 
@@ -105,8 +112,8 @@ test('updates the client-only quiz preview without contacting an AI provider', a
   expect(externalRequests).toEqual([manifestUrl]);
 });
 
-test('keeps mobile content within the viewport and supports keyboard controls', async ({ context, page }) => {
-  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+test('keeps mobile content within the viewport and supports keyboard controls', async ({ page }) => {
+  await stubClipboard(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await failManifest(page);
   await page.goto('/');
