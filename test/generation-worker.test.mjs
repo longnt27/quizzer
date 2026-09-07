@@ -120,6 +120,10 @@ const createHarness = (job, requestProvider) => {
 
 test('service worker retrieves, validates, checkpoints, and atomically completes every question type', async () => {
   const options = optionsFor();
+  options.generationProfile = {
+    difficulty: 'advanced', batchSize: 5,
+    validation: { maxRounds: 3, minGroundingScore: 0, minInstructionMatches: 0 },
+  };
   const job = {
     id: 'job-complete', testId: 'test-complete', name: 'Service quiz', status: 'running',
     workerId: 'service-worker', leaseId: 'lease-complete', createdAt: 1, updatedAt: 1,
@@ -137,9 +141,12 @@ test('service worker retrieves, validates, checkpoints, and atomically completes
   assert.deepEqual(requests.map(request => request.type), ['multiple-choice', 'fill-blank', 'reasoning', 'coding']);
   assert.ok(requests.every(request => request.prompt.includes('SECURITY RULES (protected by Quizzer')));
   assert.ok(requests.every(request => request.prompt.includes('Focus on leases and coordination.')));
+  assert.ok(requests.every(request => request.prompt.includes('Target difficulty: advanced')));
   assert.ok(requests.every(request => request.prompt.includes('Source span: doc-')));
   assert.ok(requests.every(request => request.images.length === 0));
   assert.equal(harness.completion().test.questions.length, 4);
+  assert.deepEqual(harness.completion().test.generationOptions.generationProfile, options.generationProfile);
+  assert.equal(harness.patches.find(patch => patch.progress)?.progress.maxRounds, 3);
   assert.deepEqual(harness.completion().test.questions.map(question => question.provenance.coverageSlot), [0, 1, 2, 3]);
   assert.equal(harness.completion().test.fileContent.includes('Coordination two'), true);
   assert.equal(harness.completion().patch.providerAttempts.at(-1).outcome, 'completed');
@@ -148,6 +155,25 @@ test('service worker retrieves, validates, checkpoints, and atomically completes
   assert.deepEqual(requestedQuestionCounts(options), {
     'multiple-choice': 1, 'fill-blank': 1, reasoning: 1, coding: 1,
   });
+});
+
+test('service worker enforces per-test validation thresholds and round limits', async () => {
+  const options = optionsFor({ questionCounts: { multipleChoice: 1, fillBlank: 0, reasoning: 0, coding: 0 } });
+  options.generationProfile = {
+    difficulty: 'introductory', batchSize: 5,
+    validation: { maxRounds: 1, minGroundingScore: 0.9, minInstructionMatches: 0 },
+  };
+  const job = {
+    id: 'job-threshold', testId: 'test-threshold', name: 'Threshold quiz', status: 'running',
+    workerId: 'service-worker', leaseId: 'lease-threshold', createdAt: 1, updatedAt: 1,
+    documentIds: ['doc-one'], options, questions: [], rejected: 0, rounds: {}, activeRouteIndex: 0,
+  };
+  const harness = createHarness(job, () => JSON.stringify({ questions: [candidateFor('multiple-choice')] }));
+  const result = await executeGenerationJob(job, harness.dependencies);
+  assert.equal(result.status, 'error');
+  assert.equal(result.errorCode, 'validation_exhausted');
+  assert.equal(result.progress.maxRounds, 1);
+  assert.equal(result.rejections[0].reason, 'ungrounded');
 });
 
 test('service worker continues only unfinished slots through a pre-approved route', async () => {
