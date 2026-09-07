@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { readdir } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import { isRetryableCoverageFailure } from './coverage-retry.mjs';
+import { isRetryableCoverageFailure, MAX_COVERAGE_ATTEMPTS } from './coverage-retry.mjs';
 
 const testFiles = (await readdir('test'))
   .filter(name => name.endsWith('.test.mjs'))
@@ -52,13 +52,13 @@ const runTestsOnce = (args, label) => new Promise((resolve, reject) => {
 });
 
 const runTests = async (args, label) => {
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
+  for (let attempt = 1; attempt <= MAX_COVERAGE_ATTEMPTS; attempt += 1) {
     const result = await runTestsOnce(args, label);
     if (!result.signal && result.code === 0) return result.output;
 
     const retryable = isRetryableCoverageFailure({ attempt, signal: result.signal, output: result.output });
     if (retryable) {
-      process.stderr.write(`${label}: Node produced an incomplete experimental coverage report; retrying once.\n`);
+      process.stderr.write(`${label}: Node produced an incomplete experimental coverage report; retrying (${attempt}/${MAX_COVERAGE_ATTEMPTS}).\n`);
       continue;
     }
 
