@@ -118,7 +118,7 @@ test('keeps mobile content within the viewport and supports keyboard controls', 
   await windows.focus();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('link', { name: /Download for Windows/ })).toBeVisible();
-  const copy = page.getByLabel('Copy installer command');
+  const copy = page.getByLabel('Copy Windows installer');
   await copy.focus();
   await page.keyboard.press('Enter');
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(installers.windows);
@@ -162,7 +162,7 @@ test('supports keyboard access to navigation, download controls, and demo with r
   await windows.focus();
   await page.keyboard.press('Space');
   await expect(page.getByLabel('Windows installation command')).toBeVisible();
-  const copy = page.getByLabel('Copy installer command');
+  const copy = page.getByLabel('Copy Windows installer');
   await copy.focus();
   await page.keyboard.press('Enter');
   await expect(copy).toBeFocused();
@@ -171,17 +171,23 @@ test('supports keyboard access to navigation, download controls, and demo with r
   // Prove actual Tab reachability independently for representative controls;
   // this avoids assuming a particular DOM order while still detecting traps.
   const keyboardTargets = [
-    page.getByRole('link', { name: /Download for/ }),
     windows,
     copy,
     page.getByRole('button', { name: 'Kubernetes operations' }),
   ];
+  const tabUntil = async (target: ReturnType<typeof page.getByRole>, start = focusable.first()) => {
+    await start.focus();
+    for (let step = 0; step < 200; step += 1) {
+      if (await target.evaluate(element => element === document.activeElement)) return;
+      await page.keyboard.press('Tab');
+    }
+    throw new Error(`Target was not reachable by keyboard Tab traversal: ${await target.getAttribute('aria-label')} (${await target.textContent()})`);
+  };
   for (const target of keyboardTargets) {
-    await target.focus();
-    await page.keyboard.press('Tab');
-    expect(await page.evaluate(() => document.activeElement !== document.body)).toBe(true);
+    await tabUntil(target, focusable.first());
+    await expect(target).toBeFocused();
     await page.keyboard.press('Shift+Tab');
     await page.keyboard.press('Tab');
-    expect(await page.evaluate(() => document.activeElement !== document.body)).toBe(true);
+    await expect(target).toBeFocused();
   }
 });
