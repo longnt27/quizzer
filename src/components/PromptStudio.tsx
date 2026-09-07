@@ -4,6 +4,7 @@ import { CopyOutlined, DeleteOutlined, DownloadOutlined, ExperimentOutlined, Rel
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db, type StoredPromptProfile } from '../db/db';
+import { queueServerChange, syncNow } from '../db/serverSync';
 import type { PromptProfile, PromptTemplateKind } from '../types';
 import {
   BUILT_IN_PROMPT_PROFILE, promptTemplateErrors, renderGenerationPrompt, renderTemplate, validatePromptProfile,
@@ -29,6 +30,14 @@ const cloneProfile = (profile: PromptProfile): PromptProfile => ({
   ...profile,
   templates: { ...profile.templates },
 });
+
+const flushPromptProfileChange = async (id: string, deleted = false) => {
+  await queueServerChange('promptProfiles', id, deleted);
+  // Dexie's table hook also records the mutation on the next task. Let that
+  // marker settle before syncing so a successful edit cannot be left pending.
+  await new Promise<void>(resolve => window.setTimeout(resolve, 0));
+  await syncNow();
+};
 
 const previewFor = (kind: PromptTemplateKind, profile: PromptProfile) => {
   if (kind === 'generation') return renderGenerationPrompt({
@@ -91,6 +100,7 @@ export default function PromptStudio({ onClose }: Props) {
       updatedAt: now,
     };
     await db.promptProfiles.add(copy);
+    await flushPromptProfileChange(copy.id);
     setSelectedId(copy.id);
     message.success('Editable prompt profile created');
   };
@@ -111,6 +121,7 @@ export default function PromptStudio({ onClose }: Props) {
       };
       validatePromptProfile(next);
       await db.promptProfiles.put(next);
+      await flushPromptProfileChange(next.id);
       message.success(`${next.name} saved as version ${next.version}`);
     } catch (error) {
       message.error(error instanceof Error ? error.message : 'Could not save prompt profile');
@@ -128,6 +139,7 @@ export default function PromptStudio({ onClose }: Props) {
       okButtonProps: { danger: true },
       onOk: async () => {
         await db.promptProfiles.delete(selected.id);
+        await flushPromptProfileChange(selected.id, true);
         setSelectedId(BUILT_IN_PROMPT_PROFILE.id);
         message.success('Prompt profile deleted');
       },
@@ -162,6 +174,7 @@ export default function PromptStudio({ onClose }: Props) {
       };
       validatePromptProfile(candidate);
       await db.promptProfiles.add(candidate);
+      await flushPromptProfileChange(candidate.id);
       setSelectedId(candidate.id);
       message.success(`${candidate.name} imported`);
     } catch (error) {

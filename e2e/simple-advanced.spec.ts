@@ -33,7 +33,7 @@ test('immediate reversible Simple/Advanced disclosure with stored data retained'
 
   await advancedToggle.click();
   await studioButton.click();
-  await expect(page.getByRole('button', { name: 'Mode-safe profile' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Mode-safe profile' }).first()).toBeVisible();
 });
 
 test('Advanced creation submits explicit per-test generation and RAG overrides', async ({ page }) => {
