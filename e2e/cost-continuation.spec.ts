@@ -23,8 +23,7 @@ test('durable cost continuation requires ordered authorization, preserves checkp
   let connected = true;
   let failFirstCeilingResume = true;
   let blockClaims = false;
-  const accountingRequests: string[] = [];
-  const resumeRequests: string[] = [];
+  const events: Array<{ kind: 'ceiling-accounting' | 'recovery-accounting' | 'ceiling-resume' | 'recovery-resume'; body: unknown }> = [];
 
   await page.route('**/api/integrations', route => route.fulfill({
     contentType: 'application/json',
@@ -40,7 +39,6 @@ test('durable cost continuation requires ordered authorization, preserves checkp
   }));
   await page.route('**/api/generate', generationResponse);
   await page.route('**/api/v1/jobs/e2e-cost-ceiling/resume', async route => {
-    resumeRequests.push(route.request().url());
     if (failFirstCeilingResume) {
       failFirstCeilingResume = false;
       await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'temporary queue failure' }) });
@@ -49,7 +47,6 @@ test('durable cost continuation requires ordered authorization, preserves checkp
     await route.continue();
   });
   await page.route('**/api/v1/jobs/e2e-cost-recovery/resume', async route => {
-    resumeRequests.push(route.request().url());
     await route.continue();
   });
   await page.route('**/api/v1/jobs/claim', async route => {
@@ -59,9 +56,14 @@ test('durable cost continuation requires ordered authorization, preserves checkp
     }
     await route.continue();
   });
-  await page.on('request', request => {
+  page.on('request', request => {
     const url = new URL(request.url());
-    if (url.pathname.includes('/accounting/')) accountingRequests.push(url.pathname);
+    let kind: typeof events[number]['kind'] | undefined;
+    if (url.pathname === '/api/v1/jobs/e2e-cost-ceiling/accounting/ceiling') kind = 'ceiling-accounting';
+    else if (url.pathname === '/api/v1/jobs/e2e-cost-recovery/accounting/recovery') kind = 'recovery-accounting';
+    else if (url.pathname === '/api/v1/jobs/e2e-cost-ceiling/resume') kind = 'ceiling-resume';
+    else if (url.pathname === '/api/v1/jobs/e2e-cost-recovery/resume') kind = 'recovery-resume';
+    if (kind) events.push({ kind, body: request.postDataJSON() });
   });
   await page.addInitScript(() => {
     if (sessionStorage.getItem('quizzer.disable-fixture-gemini') !== '1') {
@@ -90,7 +92,7 @@ test('durable cost continuation requires ordered authorization, preserves checkp
   await unpricedModal.getByRole('checkbox', { name: /higher spend/ }).check();
   await unpricedModal.getByRole('button', { name: 'Confirm and continue' }).click();
   await expect(page.locator('#cost-validation-e2e-cost-ceiling')).toContainText(/no verified pricing/i);
-  expect(accountingRequests).toEqual([]);
+  expect(events).toEqual([]);
   await unpricedModal.getByRole('button', { name: 'Cancel' }).click();
   await provider.click();
   await page.getByText('Codex – Agent', { exact: true }).last().click();
@@ -110,8 +112,12 @@ test('durable cost continuation requires ordered authorization, preserves checkp
   await confirm.click();
 
   await expect(page.getByText(/authorization recorded, but resume could not be queued/i)).toBeVisible();
-  expect(accountingRequests).toEqual(['/api/v1/jobs/e2e-cost-ceiling/accounting/ceiling']);
-  expect(resumeRequests).toHaveLength(1);
+  expect(events.map(event => event.kind)).toEqual(['ceiling-accounting', 'ceiling-resume']);
+  expect(events[0]).toEqual({
+    kind: 'ceiling-accounting',
+    body: { newCeilingMicroUsd: 2_000_000, reason: 'Resume only the unfinished checkpointed question.', confirmed: true },
+  });
+  expect(events[1].kind).toBe('ceiling-resume');
   await expect(ceiling.getByText('1/2', { exact: true })).toBeVisible();
 
   // Reloading picks up the durable authorization. The retry sends only the
@@ -126,8 +132,8 @@ test('durable cost continuation requires ordered authorization, preserves checkp
   await reloadedCeiling.getByRole('button', { name: 'Resume' }).click();
   await expect(reloadedCeiling.getByText(/queued|running/, { exact: false })).toBeVisible();
   await expect(reloadedCeiling.getByText('1/2', { exact: true })).toBeVisible();
-  expect(accountingRequests).toEqual(['/api/v1/jobs/e2e-cost-ceiling/accounting/ceiling']);
-  expect(resumeRequests).toHaveLength(2);
+  expect(events.map(event => event.kind)).toEqual(['ceiling-accounting', 'ceiling-resume', 'ceiling-resume']);
+  expect(events.filter(event => event.kind === 'ceiling-accounting')).toHaveLength(1);
 
   // A disconnected provider prevents the accounting approval from being
   // attempted at all, while the paused job remains available for retry.
@@ -143,7 +149,7 @@ test('durable cost continuation requires ordered authorization, preserves checkp
   await expect(recoveryDisconnected.getByText('paused', { exact: true })).toBeVisible();
   await expect(recoveryDisconnected.getByText('No AI provider is configured')).toBeVisible();
   await expect(recoveryDisconnected.getByRole('button', { name: 'Continue' })).toHaveCount(0);
-  expect(accountingRequests).toEqual(['/api/v1/jobs/e2e-cost-ceiling/accounting/ceiling']);
+  expect(events.filter(event => event.kind.endsWith('accounting'))).toHaveLength(1);
 
   connected = true;
   await page.reload();
@@ -160,10 +166,12 @@ test('durable cost continuation requires ordered authorization, preserves checkp
   await recoveryModal.getByRole('button', { name: 'Confirm and continue' }).click();
   await expect(recovery.getByText(/queued|running/, { exact: false })).toBeVisible();
   await expect(recovery.getByText('1/2', { exact: true })).toBeVisible();
-  expect(accountingRequests).toContain('/api/v1/jobs/e2e-cost-recovery/accounting/recovery');
-  expect(resumeRequests).toHaveLength(3);
-  expect(accountingRequests.indexOf('/api/v1/jobs/e2e-cost-recovery/accounting/recovery'))
-    .toBeLessThan(accountingRequests.length);
+  const recoveryIndex = events.findIndex(event => event.kind === 'recovery-accounting');
+  expect(recoveryIndex).toBeGreaterThanOrEqual(0);
+  expect(events.slice(recoveryIndex, recoveryIndex + 2)).toEqual([
+    { kind: 'recovery-accounting', body: { reason: 'Retry after reviewing possible duplicate provider billing.', confirmed: true } },
+    expect.objectContaining({ kind: 'recovery-resume' }),
+  ]);
 
   // A historical over-ceiling marker is informational only; it must not open
   // the accounting confirmation dialog or issue an accounting mutation.
@@ -172,6 +180,5 @@ test('durable cost continuation requires ordered authorization, preserves checkp
   await historical.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('dialog').filter({ hasText: 'Raise ceiling and continue' })).toHaveCount(0);
   await expect(page.getByRole('dialog').filter({ hasText: 'Confirm cost recovery' })).toHaveCount(0);
-  expect(accountingRequests).not.toContain('/api/v1/jobs/e2e-cost-history/accounting/ceiling');
-  expect(accountingRequests).not.toContain('/api/v1/jobs/e2e-cost-history/accounting/recovery');
+  expect(events.filter(event => event.kind.endsWith('accounting'))).toHaveLength(2);
 });
