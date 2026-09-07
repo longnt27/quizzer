@@ -22,6 +22,7 @@
     "lint": "eslint .",
     "test": "node --test test/*.test.mjs",
     "test:e2e": "playwright test",
+    "test:e2e:cost": "playwright test --config=playwright.cost.config.ts --project=chromium",
     "test:coverage": "node scripts/test-coverage.mjs",
     "eval:rag": "node scripts/evaluate-rag.mjs",
     "license:check": "node scripts/check-licenses.mjs",

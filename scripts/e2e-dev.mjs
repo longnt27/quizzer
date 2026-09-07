@@ -31,7 +31,10 @@ const environment = {
   VITE_QUIZZER_API_TOKEN: serviceToken,
   QUIZZER_DISABLE_SERVICE_GENERATION: '1',
   VITE_QUIZZER_RENDERER_WORKER: '1',
+  QUIZZER_E2E_SEED_COST: process.env.QUIZZER_E2E_SEED_COST ?? '0',
 };
+Object.assign(process.env, environment);
+if (environment.QUIZZER_E2E_SEED_COST === '1') await import('./e2e-seed-cost.mjs');
 const children = [
   spawn(process.execPath, ['server.mjs'], { stdio: 'inherit', env: environment }),
   spawn('npm', ['exec', '--', 'vite', '--host', '127.0.0.1', '--port', String(webPort)], { stdio: 'inherit', env: environment }),
