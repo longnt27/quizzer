@@ -518,3 +518,48 @@ test('does not replay a provider request after an accounting attempt was recorde
   assert.equal(reserves, 0);
   assert.equal(replay.patches.some(patch => patch.errorCode === 'cost_recovery'), true);
 });
+
+test('pauses finite-ceiling jobs for both reserved and finalized replay attempts', async () => {
+  const options = {
+    ...optionsFor({ questionCounts: { multipleChoice: 1, fillBlank: 0, reasoning: 0, coding: 0 } }),
+    costCeilingMicroUsd: 10_000_000,
+  };
+  const base = {
+    id: 'job-finite-recovery', testId: 'test-finite-recovery', name: 'Finite recovery quiz', status: 'running',
+    workerId: 'service-worker', leaseId: 'lease-finite-recovery', createdAt: 1, updatedAt: 1,
+    documentIds: ['doc-one'], options, questions: [], rejected: 0, rounds: {}, providerAttempts: [],
+  };
+  for (const event of ['reserved', 'finalized']) {
+    const calls = [];
+    const first = createHarness(base, () => {
+      calls.push('request');
+      return JSON.stringify({ questions: [candidateFor('multiple-choice')] });
+    });
+    first.dependencies.reserveGenerationAttempt = (_id, params) => {
+      calls.push('reserve');
+      first.dependencies.reserveGenerationAttempt.lastAttemptId = params.attemptId;
+      return { ...base, usageAudit: [{ attemptId: params.attemptId, event: 'reserved' }] };
+    };
+    first.dependencies.finalizeGenerationAttempt = (_id, params) => {
+      calls.push('finalize');
+      return { ...base, usageAudit: [{ attemptId: params.attemptId, event: 'finalized' }] };
+    };
+    const completed = await executeGenerationJob(base, first.dependencies);
+    assert.equal(completed.status, 'completed');
+    assert.deepEqual(calls, ['reserve', 'request', 'finalize']);
+    const attemptId = first.dependencies.reserveGenerationAttempt.lastAttemptId;
+
+    const replayCalls = [];
+    const replay = createHarness({ ...base, usageAudit: [{ attemptId, event }] }, () => {
+      replayCalls.push('request');
+      throw new Error('must not dispatch');
+    });
+    replay.dependencies.reserveGenerationAttempt = () => { replayCalls.push('reserve'); throw new Error('must not reserve'); };
+    replay.dependencies.finalizeGenerationAttempt = () => { replayCalls.push('finalize'); throw new Error('must not finalize'); };
+    const result = await executeGenerationJob({ ...base, usageAudit: [{ attemptId, event }] }, replay.dependencies);
+    assert.equal(result.status, 'paused');
+    assert.equal(result.errorCode, 'cost_recovery');
+    assert.deepEqual(replayCalls, []);
+    assert.match(result.error, /may have been charged.*not checkpointed/i);
+  }
+});
