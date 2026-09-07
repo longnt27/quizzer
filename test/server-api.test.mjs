@@ -142,6 +142,7 @@ test('requires authentication for every sensitive service endpoint', async () =>
   assert.equal((await fetch(`${origin}/api/health`)).status, 200);
   assert.equal((await authorized('/api/system/capabilities')).status, 200);
   assert.equal((await authorized('/api/v1/health')).status, 200);
+  assert.equal((await fetch(`${origin}/api/v1/jobs/job-1/accounting`)).status, 401);
   const capabilities = await (await authorized('/api/v1/capabilities')).json();
   assert.equal(capabilities.providerPolicies.codex.maxConcurrency, 1);
   assert.equal(capabilities.providerPolicies.openai.billing, 'usage-based');
@@ -150,6 +151,7 @@ test('requires authentication for every sensitive service endpoint', async () =>
   assert.equal(contract.status, 200);
   assert.match(contract.headers.get('content-type'), /application\/yaml/);
   assert.match(await contract.text(), /openapi: 3\.1\.0[\s\S]*\/jobs\/\{jobId\}\/resume:/);
+  assert.match(await (await authorized('/api/v1/openapi.yaml')).text(), /accounting\/ceiling/);
 });
 
 test('reports and invokes local Ollama only after explicit setup confirmation', async () => {
@@ -539,6 +541,53 @@ test('provides onboarding, document, job, and event operations', async () => {
   });
   assert.equal((await repeatedCompletion.json()).job.revision, completedPayload.job.revision);
   assert.equal((await authorized('/api/v1/jobs/job-1/cancel', { method: 'POST' })).status, 400);
+
+  const cappedJob = {
+    id: 'cost-api-job', testId: 'cost-api-test', name: 'Cost API test', status: 'queued', createdAt: 3, updatedAt: 3,
+    documentIds: ['doc-1'], options: { ...generationOptions, provider: 'codex', model: undefined, costCeilingMicroUsd: 1_000_000,
+      routeChain: [{ ...generationOptions.routeChain[0], provider: 'codex', model: undefined, privacy: 'signed-in-agent', paid: false,
+        pricing: { inputMicroUsdPerMillionTokens: 1_000_000, outputMicroUsdPerMillionTokens: 1_000_000 } }] },
+    questions: [], rejected: 0, rounds: {},
+  };
+  const cappedCreate = await authorized('/api/v1/jobs', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jobs: [cappedJob] }),
+  });
+  assert.equal(cappedCreate.status, 201);
+  const cappedClaim = await authorized('/api/v1/jobs/claim', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workerId: 'cost-api-worker', leaseMs: 10_000 }),
+  });
+  const cappedLeased = (await cappedClaim.json()).job;
+  const paused = await authorized('/api/v1/jobs/cost-api-job', {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workerId: 'cost-api-worker', leaseId: cappedLeased.leaseId, patch: { status: 'paused' } }),
+  });
+  assert.equal(paused.status, 200);
+  assert.equal((await fetch(`${origin}/api/v1/jobs/cost-api-job/accounting`)).status, 401);
+  const accounting = await authorized('/api/v1/jobs/cost-api-job/accounting');
+  assert.equal(accounting.status, 200);
+  assert.equal((await accounting.json()).accounting.summary.finalizedCostMicroUsd, 0);
+  assert.equal((await authorized('/api/v1/jobs/missing-cost-job/accounting')).status, 404);
+  const zeroRaise = await authorized('/api/v1/jobs/cost-api-job/accounting/ceiling', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newCeilingMicroUsd: 0, reason: 'Invalid', confirmed: true }),
+  });
+  assert.equal(zeroRaise.status, 400);
+  const decreasingRaise = await authorized('/api/v1/jobs/cost-api-job/accounting/ceiling', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newCeilingMicroUsd: 999_999, reason: 'Invalid', confirmed: true }),
+  });
+  assert.equal(decreasingRaise.status, 400);
+  const unconfirmed = await authorized('/api/v1/jobs/cost-api-job/accounting/ceiling', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newCeilingMicroUsd: 2_000_000, reason: 'Need more coverage', confirmed: false }),
+  });
+  assert.equal(unconfirmed.status, 400);
+  const raised = await authorized('/api/v1/jobs/cost-api-job/accounting/ceiling', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newCeilingMicroUsd: 2_000_000, reason: 'Need more coverage', confirmed: true }),
+  });
+  assert.equal(raised.status, 200);
+  assert.equal((await raised.json()).accounting.audit.at(-1).event, 'ceiling-raised');
 
   const events = await authorized('/api/v1/events');
   assert.match(events.headers.get('content-type'), /^text\/event-stream/);

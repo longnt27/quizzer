@@ -5,8 +5,8 @@ import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promi
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import {
-  backupDatabase, beginLegacyMigration, claimGenerationJob, completeGenerationJob, controlGenerationJob, createGenerationJobs, deleteRecord, finalizeGenerationAttempt, finalizeLegacyMigration, getRecord, listLegacyMigrations,
-  listRecords, putRecord, renewGenerationJobLease, reserveGenerationAttempt, storageInfo, subscribeStorageChanges, syncStorage, updateGenerationJobWithLease,
+  backupDatabase, beginLegacyMigration, claimGenerationJob, completeGenerationJob, controlGenerationJob, createGenerationJobs, deleteRecord, finalizeGenerationAttempt, finalizeLegacyMigration, getGenerationAccounting, getRecord, listLegacyMigrations,
+  listRecords, putRecord, raiseGenerationCostCeiling, renewGenerationJobLease, reserveGenerationAttempt, storageInfo, subscribeStorageChanges, syncStorage, updateGenerationJobWithLease,
 } from './server/storage.mjs';
 import { detectHardwareCapabilities } from './server/hardware-profile.mjs';
 import { ensureServiceToken, isAuthorizedRequest } from './server/auth.mjs';
@@ -1412,6 +1412,25 @@ const handleVersionedApi = async (request, response, url) => {
       const jobs = createGenerationJobs(body?.jobs).map(publicRecord);
       generationWorker?.poke();
       send(response, 201, { jobs });
+      return true;
+    }
+    const accountingMatch = /^\/api\/v1\/jobs\/([^/]+)\/accounting$/.exec(url.pathname);
+    if (accountingMatch && request.method === 'GET') {
+      const id = decodeURIComponent(accountingMatch[1]);
+      const job = getRecord('generationJobs', id);
+      if (!job) { send(response, 404, { error: 'Job not found' }); return true; }
+      send(response, 200, { job: publicRecord(job), accounting: getGenerationAccounting(id) });
+      return true;
+    }
+    const ceilingMatch = /^\/api\/v1\/jobs\/([^/]+)\/accounting\/ceiling$/.exec(url.pathname);
+    if (ceilingMatch && request.method === 'POST') {
+      const body = await readJson(request);
+      const job = raiseGenerationCostCeiling(decodeURIComponent(ceilingMatch[1]), {
+        newCeilingMicroUsd: body?.newCeilingMicroUsd,
+        reason: body?.reason,
+        confirmed: body?.confirmed,
+      });
+      send(response, 200, { job: publicRecord(job), accounting: getGenerationAccounting(job.id) });
       return true;
     }
     if (request.method === 'POST' && url.pathname === '/api/v1/jobs/claim') {
