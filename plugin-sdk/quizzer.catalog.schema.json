@@ -51,7 +51,8 @@
           "platforms",
           "resources",
           "permissions",
-          "manifestUrl"
+          "manifestUrl",
+          "downloadSize"
         ],
         "properties": {
           "id": {
@@ -199,15 +200,16 @@
           },
           "downloadSize": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 0,
+            "maximum": 268435456
           },
           "files": {
             "type": "array",
             "items": {
               "type": "object",
+              "additionalProperties": false,
               "required": [
-                "path",
-                "sha256"
+                "path"
               ],
               "properties": {
                 "path": {
@@ -223,7 +225,8 @@
                 },
                 "size": {
                   "type": "integer",
-                  "minimum": 0
+                  "minimum": 0,
+                  "maximum": 67108864
                 }
               }
             }

@@ -1,5 +1,5 @@
 import { createHash, createPrivateKey, createPublicKey, KeyObject, sign, verify } from "node:crypto";
-import { PLUGIN_CAPABILITIES } from "./manifest.mjs";
+import { PLUGIN_CAPABILITIES, validatePluginPath } from "./manifest.mjs";
 
 export const CATALOG_SCHEMA_VERSION = 1;
 export const CANONICAL_REPOSITORY = "Somethings1/quizzer";
@@ -106,15 +106,81 @@ export const normalizePublicKey = value => {
 
 export const validateCanonicalPluginReleaseUrl = (urlValue, repository = CANONICAL_REPOSITORY) => {
   if (typeof urlValue !== "string") return false;
-  if (urlValue.includes("..") || urlValue.includes("\\") || /%2[ee]/i.test(urlValue)) return false;
+  if (urlValue.includes("?") || urlValue.includes("#") || urlValue.includes("..") || urlValue.includes("\\")) {
+    return false;
+  }
+  if (/%2[ee]/i.test(urlValue) || /%2[ff]/i.test(urlValue) || /%5[cc]/i.test(urlValue)) {
+    return false;
+  }
   try {
     const url = new URL(urlValue);
     if (url.protocol !== "https:") return false;
     if (url.username || url.password) return false;
     if (url.hostname !== "github.com") return false;
+    if (url.port !== "" && url.port !== "443") return false;
+    if (url.search || url.hash) return false;
+
     const prefix = `/${repository}/releases/download/`;
-    const latestPrefix = `/${repository}/releases/latest/download/`;
-    if (!url.pathname.startsWith(prefix) && !url.pathname.startsWith(latestPrefix)) return false;
+    if (!url.pathname.startsWith(prefix)) return false;
+
+    const subpath = url.pathname.slice(prefix.length);
+    if (subpath.startsWith("latest/") || subpath === "latest") return false;
+
+    const parts = subpath.split("/").filter(Boolean);
+    if (parts.length < 2) return false;
+    if (parts.some(p => p === "." || p === ".." || p === "latest")) return false;
+
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const validateCanonicalPluginDownloadBaseUrl = (urlValue, repository = CANONICAL_REPOSITORY) => {
+  if (typeof urlValue !== "string") return false;
+  if (!urlValue.endsWith("/")) return false;
+  if (urlValue.includes("?") || urlValue.includes("#") || urlValue.includes("..") || urlValue.includes("\\")) {
+    return false;
+  }
+  if (/%2[ee]/i.test(urlValue) || /%2[ff]/i.test(urlValue) || /%5[cc]/i.test(urlValue)) {
+    return false;
+  }
+  try {
+    const url = new URL(urlValue);
+    if (url.protocol !== "https:") return false;
+    if (url.username || url.password) return false;
+    if (url.hostname !== "github.com") return false;
+    if (url.port !== "" && url.port !== "443") return false;
+    if (url.search || url.hash) return false;
+
+    const prefix = `/${repository}/releases/download/`;
+    if (!url.pathname.startsWith(prefix)) return false;
+
+    const subpath = url.pathname.slice(prefix.length);
+    if (subpath.startsWith("latest/") || subpath === "latest") return false;
+
+    const parts = subpath.split("/").filter(Boolean);
+    if (parts.length < 1) return false;
+    if (parts.some(p => p === "." || p === ".." || p === "latest")) return false;
+
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const validateRedirectTargetUrl = (targetUrlValue) => {
+  if (typeof targetUrlValue !== "string") return false;
+  if (targetUrlValue.includes("..") || targetUrlValue.includes("\\")) return false;
+  if (/%2[ee]/i.test(targetUrlValue) || /%2[ff]/i.test(targetUrlValue) || /%5[cc]/i.test(targetUrlValue)) {
+    return false;
+  }
+  try {
+    const url = new URL(targetUrlValue);
+    if (url.protocol !== "https:") return false;
+    if (url.username || url.password) return false;
+    if (url.hostname !== "release-assets.githubusercontent.com") return false;
+    if (url.port !== "" && url.port !== "443") return false;
     if (url.pathname.includes("..") || url.pathname.includes("\\")) return false;
     return true;
   } catch {
@@ -199,21 +265,33 @@ export const validateRegistryCatalog = catalog => {
 
     requireString(entry.manifestUrl, `Registry entry ${entry.id} manifestUrl`, 2000);
     if (!validateCanonicalPluginReleaseUrl(entry.manifestUrl)) {
-      throw new Error(`Registry entry ${entry.id} manifestUrl must be a canonical credential-free HTTPS Quizzer GitHub Release URL`);
+      throw new Error(`Registry entry ${entry.id} manifestUrl must be a canonical versioned credential-free HTTPS Quizzer GitHub Release URL`);
     }
-    if (entry.downloadBaseUrl && !validateCanonicalPluginReleaseUrl(entry.downloadBaseUrl)) {
-      throw new Error(`Registry entry ${entry.id} downloadBaseUrl must be a canonical credential-free HTTPS Quizzer GitHub Release URL`);
+    if (entry.downloadBaseUrl && !validateCanonicalPluginDownloadBaseUrl(entry.downloadBaseUrl)) {
+      throw new Error(`Registry entry ${entry.id} downloadBaseUrl must be a canonical versioned credential-free HTTPS Quizzer GitHub Release URL ending with /`);
+    }
+    if (typeof entry.downloadSize !== "number" || !Number.isSafeInteger(entry.downloadSize) || entry.downloadSize < 0 || entry.downloadSize > MAX_TOTAL_PLUGIN_SIZE) {
+      throw new Error(`Registry entry ${entry.id} downloadSize must be a safe integer between 0 and ${MAX_TOTAL_PLUGIN_SIZE}`);
     }
     if (entry.files) {
       if (!Array.isArray(entry.files)) throw new Error(`Registry entry ${entry.id} files must be an array`);
+      const seenFilePaths = new Set();
       for (const file of entry.files) {
         requireObject(file, `Registry entry ${entry.id} file`);
         requireString(file.path, "File path");
+        validatePluginPath(file.path);
+        if (seenFilePaths.has(file.path)) {
+          throw new Error(`Duplicate file path in catalog entry ${entry.id}: ${file.path}`);
+        }
+        seenFilePaths.add(file.path);
         if (file.url && !validateCanonicalPluginReleaseUrl(file.url)) {
-          throw new Error(`Registry entry ${entry.id} file ${file.path} url must be a canonical credential-free HTTPS Quizzer GitHub Release URL`);
+          throw new Error(`Registry entry ${entry.id} file ${file.path} url must be a canonical versioned credential-free HTTPS Quizzer GitHub Release URL`);
         }
         if (file.sha256 && !sha256Regex.test(file.sha256)) {
           throw new Error(`Registry entry ${entry.id} file ${file.path} sha256 is invalid`);
+        }
+        if (file.size !== undefined && (!Number.isSafeInteger(file.size) || file.size < 0 || file.size > MAX_INDIVIDUAL_FILE_SIZE)) {
+          throw new Error(`Registry entry ${entry.id} file ${file.path} size must be a safe integer between 0 and ${MAX_INDIVIDUAL_FILE_SIZE}`);
         }
       }
     }
@@ -259,62 +337,129 @@ export const verifyRegistryCatalogSignature = (catalog, trustedRegistryKeys) => 
   return true;
 };
 
-export const fetchBoundedBuffer = async (fetchFn, url, options = {}, maxBytes = MAX_CATALOG_SIZE) => {
-  if (!validateCanonicalPluginReleaseUrl(url)) {
-    throw new Error(`Untrusted plugin download URL: ${url}. Must be a canonical credential-free HTTPS Quizzer GitHub Release URL.`);
+export const fetchBoundedBuffer = async (fetchFn, initialUrl, options = {}, maxBytes = MAX_CATALOG_SIZE) => {
+  if (!validateCanonicalPluginReleaseUrl(initialUrl)) {
+    throw new Error(`Untrusted plugin download URL: ${initialUrl}. Must be a canonical versioned credential-free HTTPS Quizzer GitHub Release URL.`);
   }
 
-  const response = await fetchFn(url, {
-    ...options,
-    redirect: "error",
-  });
-
-  if (response.status >= 300 && response.status < 400) {
-    throw new Error(`Redirects are disabled for plugin downloads from ${url}: HTTP ${response.status}`);
-  }
-  if (!response.ok) {
-    throw new Error(`Failed to fetch from ${url}: HTTP ${response.status}`);
+  const signal = options.signal;
+  if (signal?.aborted) {
+    const err = signal.reason || new Error("The operation was aborted");
+    if (!err.name) err.name = "AbortError";
+    throw err;
   }
 
-  const contentLength = response.headers?.get?.("content-length");
-  if (contentLength && Number(contentLength) > maxBytes) {
-    throw new Error(`Response from ${url} exceeded maximum allowable size (${contentLength} > ${maxBytes})`);
+  const timeoutMs = options.timeoutMs ?? 30_000;
+  let timer;
+  let timeoutController;
+  let combinedSignal = signal;
+  if (!signal) {
+    timeoutController = new AbortController();
+    combinedSignal = timeoutController.signal;
+    timer = setTimeout(() => {
+      const err = new Error(`Request to ${initialUrl} timed out after ${timeoutMs} ms`);
+      err.name = "TimeoutError";
+      timeoutController.abort(err);
+    }, timeoutMs);
+  } else {
+    timeoutController = new AbortController();
+    const abortListener = () => {
+      timeoutController.abort(signal.reason);
+    };
+    signal.addEventListener("abort", abortListener, { once: true });
+    timer = setTimeout(() => {
+      const err = new Error(`Request to ${initialUrl} timed out after ${timeoutMs} ms`);
+      err.name = "TimeoutError";
+      timeoutController.abort(err);
+    }, timeoutMs);
+    combinedSignal = timeoutController.signal;
   }
 
-  if (response.body && typeof response.body.getReader === "function") {
-    const reader = response.body.getReader();
-    const chunks = [];
-    let received = 0;
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      received += value.byteLength;
-      if (received > maxBytes) {
-        throw new Error(`Response from ${url} exceeded maximum allowable size of ${maxBytes} bytes`);
+  try {
+    const fetchOptions = {
+      ...options,
+      redirect: "manual",
+      signal: combinedSignal,
+    };
+
+    let response = await fetchFn(initialUrl, fetchOptions);
+
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers?.get?.("location") || response.headers?.get?.("Location");
+      if (!location || typeof location !== "string" || !location.trim()) {
+        throw new Error(`Redirect from ${initialUrl} missing Location header (HTTP ${response.status})`);
       }
-      chunks.push(Buffer.from(value));
-    }
-    return Buffer.concat(chunks);
-  }
 
-  if (typeof response.arrayBuffer === "function") {
-    const buffer = Buffer.from(await response.arrayBuffer());
-    if (buffer.length > maxBytes) {
-      throw new Error(`Response from ${url} exceeded maximum allowable size of ${maxBytes} bytes`);
-    }
-    return buffer;
-  }
+      let targetUrl;
+      try {
+        targetUrl = new URL(location, initialUrl).href;
+      } catch {
+        throw new Error(`Invalid redirect Location: ${location}`);
+      }
 
-  if (typeof response.text === "function") {
-    const text = await response.text();
-    const buffer = Buffer.from(text, "utf8");
-    if (buffer.length > maxBytes) {
-      throw new Error(`Response from ${url} exceeded maximum allowable size of ${maxBytes} bytes`);
-    }
-    return buffer;
-  }
+      if (!validateRedirectTargetUrl(targetUrl)) {
+        throw new Error(`Invalid redirect target URL: ${targetUrl}. Only credential-free release-assets.githubusercontent.com on default port is permitted.`);
+      }
 
-  throw new Error("Unsupported response body format");
+      const hopResponse = await fetchFn(targetUrl, fetchOptions);
+      if (hopResponse.status >= 300 && hopResponse.status < 400) {
+        throw new Error(`Second redirect hop is prohibited (HTTP ${hopResponse.status} from ${targetUrl})`);
+      }
+      response = hopResponse;
+    }
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch from ${initialUrl}: HTTP ${response.status}`);
+    }
+
+    const contentLength = response.headers?.get?.("content-length") || response.headers?.get?.("Content-Length");
+    if (contentLength && Number(contentLength) > maxBytes) {
+      throw new Error(`Response from ${initialUrl} exceeded maximum allowable size (${contentLength} > ${maxBytes})`);
+    }
+
+    if (response.body && typeof response.body.getReader === "function") {
+      const reader = response.body.getReader();
+      const chunks = [];
+      let received = 0;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          received += value.byteLength;
+          if (received > maxBytes) {
+            await reader.cancel().catch(() => {});
+            throw new Error(`Response from ${initialUrl} exceeded maximum allowable size of ${maxBytes} bytes`);
+          }
+          chunks.push(Buffer.from(value));
+        }
+        return Buffer.concat(chunks);
+      } catch (err) {
+        await reader.cancel().catch(() => {});
+        throw err;
+      }
+    }
+
+    if (typeof response.arrayBuffer === "function") {
+      const buffer = Buffer.from(await response.arrayBuffer());
+      if (buffer.length > maxBytes) {
+        throw new Error(`Response from ${initialUrl} exceeded maximum allowable size of ${maxBytes} bytes`);
+      }
+      return buffer;
+    }
+
+    if (typeof response.text === "function") {
+      const text = await response.text();
+      const buffer = Buffer.from(text, "utf8");
+      if (buffer.length > maxBytes) {
+        throw new Error(`Response from ${initialUrl} exceeded maximum allowable size of ${maxBytes} bytes`);
+      }
+      return buffer;
+    }
+
+    throw new Error("Unsupported response body format");
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 };
 
 export const fetchBoundedText = async (fetchFn, url, options = {}, maxBytes = MAX_CATALOG_SIZE) => {

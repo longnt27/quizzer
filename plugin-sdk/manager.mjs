@@ -145,7 +145,8 @@ export class PluginManager {
     }
     const registryUrl = options.registryUrl || this.registryUrl;
     const fetchFn = options.fetch || this.fetch;
-    const rawCatalog = options.catalog || JSON.parse(await fetchBoundedText(fetchFn, registryUrl, {}, MAX_CATALOG_SIZE));
+    const fetchOpts = { signal: options.signal, timeoutMs: options.timeoutMs };
+    const rawCatalog = options.catalog || JSON.parse(await fetchBoundedText(fetchFn, registryUrl, fetchOpts, MAX_CATALOG_SIZE));
     verifyRegistryCatalogSignature(rawCatalog, this.trustedRegistryKeys);
     const catalog = validateRegistryCatalog(rawCatalog);
 
@@ -266,7 +267,8 @@ export class PluginManager {
     await this.prepare();
     const registryUrl = options.registryUrl || this.registryUrl;
     const fetchFn = options.fetch || this.fetch;
-    const rawCatalog = options.catalog || JSON.parse(await fetchBoundedText(fetchFn, registryUrl, {}, MAX_CATALOG_SIZE));
+    const fetchOpts = { signal: options.signal, timeoutMs: options.timeoutMs };
+    const rawCatalog = options.catalog || JSON.parse(await fetchBoundedText(fetchFn, registryUrl, fetchOpts, MAX_CATALOG_SIZE));
     verifyRegistryCatalogSignature(rawCatalog, this.trustedRegistryKeys);
     const catalog = validateRegistryCatalog(rawCatalog);
 
@@ -284,7 +286,7 @@ export class PluginManager {
       // Not installed or broken
     }
 
-    const manifestText = await fetchBoundedText(fetchFn, entry.manifestUrl, {}, MAX_MANIFEST_SIZE);
+    const manifestText = await fetchBoundedText(fetchFn, entry.manifestUrl, fetchOpts, MAX_MANIFEST_SIZE);
     let manifest;
     try {
       manifest = JSON.parse(manifestText);
@@ -303,6 +305,19 @@ export class PluginManager {
 
     if (!isPluginCompatible(manifest, { platform: this.platform, architecture: this.architecture })) {
       throw new Error(`Plugin ${manifest.id} does not support ${this.platform}/${this.architecture}`);
+    }
+
+    if (entry.files) {
+      const manifestFileMap = new Map(manifest.files.map(f => [f.path, f]));
+      for (const catFile of entry.files) {
+        const manFile = manifestFileMap.get(catFile.path);
+        if (!manFile) {
+          throw new Error(`Catalog file "${catFile.path}" is not declared in signed plugin manifest for ${id}`);
+        }
+        if (catFile.sha256 && catFile.sha256 !== manFile.sha256) {
+          throw new Error(`Catalog sha256 mismatch for "${catFile.path}" in ${id}: catalog declared ${catFile.sha256}, manifest declared ${manFile.sha256}`);
+        }
+      }
     }
 
     const estimatedSize = entry.downloadSize || 0;
@@ -325,11 +340,11 @@ export class PluginManager {
       for (const file of manifest.files) {
         const relative = validatePluginPath(file.path);
         let fileUrl;
+        const catFile = entry.files?.find(f => f.path === file.path);
         if (file.url) {
           fileUrl = file.url;
-        } else if (entry.files) {
-          const match = entry.files.find(f => f.path === file.path);
-          if (match?.url) fileUrl = match.url;
+        } else if (catFile?.url) {
+          fileUrl = catFile.url;
         }
         if (!fileUrl) {
           if (entry.downloadBaseUrl) {
@@ -343,10 +358,14 @@ export class PluginManager {
         const target = join(staging, relative);
         await mkdir(dirname(target), { recursive: true, mode: 0o700 });
 
-        const fileBuffer = await fetchBoundedBuffer(fetchFn, fileUrl, {}, MAX_INDIVIDUAL_FILE_SIZE);
+        const fileBuffer = await fetchBoundedBuffer(fetchFn, fileUrl, fetchOpts, MAX_INDIVIDUAL_FILE_SIZE);
         totalBytesReceived += fileBuffer.length;
         if (totalBytesReceived > MAX_TOTAL_PLUGIN_SIZE) {
           throw new Error(`Total plugin size exceeded limit of ${MAX_TOTAL_PLUGIN_SIZE} bytes`);
+        }
+
+        if (catFile?.size !== undefined && fileBuffer.length !== catFile.size) {
+          throw new Error(`Downloaded file size mismatch for ${file.path}: expected ${catFile.size}, got ${fileBuffer.length}`);
         }
 
         const fileHash = createHash('sha256').update(fileBuffer).digest('hex');
@@ -355,6 +374,10 @@ export class PluginManager {
         }
 
         await writeFile(target, fileBuffer, { mode: 0o700 });
+      }
+
+      if (totalBytesReceived !== entry.downloadSize) {
+        throw new Error(`Downloaded payload size mismatch for ${id}: expected ${entry.downloadSize} bytes, received ${totalBytesReceived} bytes`);
       }
 
       const stagedManifest = await loadPluginManifest(staging, { verifyFiles: true });
@@ -402,7 +425,8 @@ export class PluginManager {
     const installed = await this.installedPlugin(id);
     const registryUrl = options.registryUrl || this.registryUrl;
     const fetchFn = options.fetch || this.fetch;
-    const rawCatalog = options.catalog || JSON.parse(await fetchBoundedText(fetchFn, registryUrl, {}, MAX_CATALOG_SIZE));
+    const fetchOpts = { signal: options.signal, timeoutMs: options.timeoutMs };
+    const rawCatalog = options.catalog || JSON.parse(await fetchBoundedText(fetchFn, registryUrl, fetchOpts, MAX_CATALOG_SIZE));
     verifyRegistryCatalogSignature(rawCatalog, this.trustedRegistryKeys);
     const catalog = validateRegistryCatalog(rawCatalog);
 
@@ -469,10 +493,16 @@ export class PluginManager {
   async rollback(id) {
     await this.prepare();
     const current = await this.installedPlugin(id);
-    const candidates = (await readdir(this.rollbackRoot, { withFileTypes: true }))
-      .filter(entry => entry.isDirectory() && entry.name.startsWith(`${id}--`))
-      .map(entry => entry.name)
-      .sort().reverse();
+    const entries = (await readdir(this.rollbackRoot, { withFileTypes: true }))
+      .filter(entry => entry.isDirectory() && entry.name.startsWith(`${id}--`));
+    const candidates = entries
+      .map(entry => {
+        const parts = entry.name.split('--');
+        const timestamp = Number(parts[parts.length - 1]);
+        return { name: entry.name, timestamp: Number.isFinite(timestamp) ? timestamp : 0 };
+      })
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .map(entry => entry.name);
     if (!candidates.length) throw new Error(`No rollback version is available for ${id}`);
     const previous = join(this.rollbackRoot, candidates[0]);
     const currentBackup = join(this.rollbackRoot, `${id}--${current.manifest.version}--${Date.now()}`);

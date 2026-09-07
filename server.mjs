@@ -1262,12 +1262,34 @@ const handleVersionedApi = async (request, response, url) => {
     }
     if (request.method === 'POST' && url.pathname === '/api/v1/plugins/install') {
       const body = await readJson(request);
+      if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        throw new Error('Install request body must be an object');
+      }
+      const allowedKeys = new Set(['path', 'id', 'confirmed']);
+      const unknownKeys = Object.keys(body).filter(k => !allowedKeys.has(k));
+      if (unknownKeys.length > 0) {
+        throw new Error(`Unknown field(s) in install request: ${unknownKeys.join(', ')}`);
+      }
+      if (body.path !== undefined && body.id !== undefined) {
+        throw new Error('Install request cannot specify both path and id');
+      }
+      if (body.path === undefined && body.id === undefined) {
+        throw new Error('Install request must specify exactly one of path or id');
+      }
+      if (body.confirmed !== undefined && typeof body.confirmed !== 'boolean') {
+        throw new Error('confirmed must be a boolean');
+      }
       const manager = await getPluginManager();
-      if (body?.id) {
+      if (body.id !== undefined) {
+        if (typeof body.id !== 'string' || !/^[a-z0-9][a-z0-9.-]*$/.test(body.id)) {
+          throw new Error(`Invalid plugin id: ${body.id}`);
+        }
         send(response, 201, { plugin: await manager.installFromRegistry(body.id, { confirmed: body.confirmed === true }) });
         return true;
       }
-      if (typeof body?.path !== 'string' || !body.path) throw new Error('A local plugin directory path or registry id is required');
+      if (typeof body.path !== 'string' || !body.path.trim()) {
+        throw new Error('Plugin path must be a non-empty string');
+      }
       send(response, 201, { plugin: await manager.install(body.path) });
       return true;
     }
@@ -1275,7 +1297,6 @@ const handleVersionedApi = async (request, response, url) => {
     if (pluginActionMatch && request.method === 'POST') {
       const id = decodeURIComponent(pluginActionMatch[1]);
       const action = pluginActionMatch[2];
-      const body = await readJson(request).catch(() => ({}));
       const manager = await getPluginManager();
       let result;
       if (action === 'health') {
@@ -1283,6 +1304,22 @@ const handleVersionedApi = async (request, response, url) => {
       } else if (action === 'rollback') {
         result = { plugin: await manager.rollback(id) };
       } else if (action === 'update') {
+        const hasBody = request.headers['content-length'] !== undefined && request.headers['content-length'] !== '0';
+        let body = {};
+        if (hasBody) {
+          body = await readJson(request);
+          if (!body || typeof body !== 'object' || Array.isArray(body)) {
+            throw new Error('Update request body must be an object');
+          }
+          const allowedKeys = new Set(['confirmed']);
+          const unknownKeys = Object.keys(body).filter(k => !allowedKeys.has(k));
+          if (unknownKeys.length > 0) {
+            throw new Error(`Unknown field(s) in update request: ${unknownKeys.join(', ')}`);
+          }
+          if (body.confirmed !== undefined && typeof body.confirmed !== 'boolean') {
+            throw new Error('confirmed must be a boolean');
+          }
+        }
         result = { plugin: await manager.update(id, { confirmed: body?.confirmed === true }) };
       } else {
         result = { plugin: await manager.setEnabled(id, action === 'enable') };

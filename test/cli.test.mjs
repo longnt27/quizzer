@@ -339,4 +339,3 @@ test('supports plugin registry listing and update CLI commands', async () => {
   await assert.rejects(cli('plugins', 'update'), /requires a plugin id/);
   await assert.rejects(cli('plugins', 'update', 'nonexistent-plugin'), /quizzer\.plugin\.json|ENOENT/);
 });
-
