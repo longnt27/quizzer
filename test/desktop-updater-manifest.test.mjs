@@ -168,6 +168,8 @@ test('channel filtering respects stable and beta releases', async () => {
   const updater = new DesktopUpdater({
     currentVersion: '1.0.0',
     channel: 'stable',
+    platform: 'darwin',
+    architecture: 'arm64',
     trustedKeys: { 'quizzer-release-test': keyPair.publicKey },
     fetch: async url => {
       if (url.includes('/repos/Somethings1/quizzer/releases')) {
@@ -211,6 +213,8 @@ test('beta channel discovers prereleases through GitHub Releases API and validat
   const updater = new DesktopUpdater({
     currentVersion: '1.0.0',
     channel: 'beta',
+    platform: 'darwin',
+    architecture: 'arm64',
     trustedKeys: { 'quizzer-release-test': keyPair.publicKey },
     fetch: async url => {
       if (url.includes('/repos/Somethings1/quizzer/releases')) {
@@ -331,4 +335,3 @@ test('updater configures trusted key from QUIZZER_RELEASE_PUBLIC_KEY environment
     delete process.env.QUIZZER_RELEASE_PUBLIC_KEY;
   }
 });
-

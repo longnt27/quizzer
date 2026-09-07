@@ -26,6 +26,14 @@ const fakeProcess = () => {
   return process;
 };
 
+const waitFor = async (predicate, timeoutMs = 1_000) => {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error('Timed out waiting for runtime state');
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+};
+
 test('validates bounded managed runtime options and paths', async () => {
   const { executable, model } = await files();
   assert.deepEqual(validateRuntimeOptions({ port: 9000, contextSize: 8192, batchSize: 128, threads: 6 }).port, 9000);
@@ -170,7 +178,7 @@ test('windows forced stop waits for the child after tree-kill is spawned', async
   await runtime.start({ confirmed: true });
   let stopped = false;
   const stopping = runtime.stop({ force: true }).then(() => { stopped = true; });
-  await new Promise(resolve => setTimeout(resolve, 20));
+  await waitFor(() => treeKills.length === 1);
   assert.equal(stopped, false);
   assert.deepEqual(treeKills, [4242]);
   assert.deepEqual(child.killed, []);

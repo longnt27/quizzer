@@ -17,11 +17,13 @@ const version = required('version').replace(/^v/, '');
 const channel = required('channel');
 const descriptorPath = required('artifacts');
 const outputPath = flag('output') || 'release-manifest.json';
-const repository = flag('repository') || process.env.GITHUB_REPOSITORY || 'Somethings1/quizzer';
+const canonicalRepository = 'Somethings1/quizzer';
+const repository = flag('repository') || canonicalRepository;
 const tag = flag('tag') || `v${version}`;
 const publicKeyId = flag('public-key-id') || process.env.QUIZZER_RELEASE_PUBLIC_KEY_ID;
 if (!publicKeyId) throw new Error('--public-key-id or QUIZZER_RELEASE_PUBLIC_KEY_ID is required');
 if (channel !== 'stable' && channel !== 'beta') throw new Error('--channel must be stable or beta');
+if (repository !== canonicalRepository) throw new Error(`--repository must be ${canonicalRepository}`);
 
 const artifacts = JSON.parse(await readFile(descriptorPath, 'utf8'));
 if (!Array.isArray(artifacts) || !artifacts.length) throw new Error('Artifact descriptor must be a non-empty JSON array');

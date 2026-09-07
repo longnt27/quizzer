@@ -68,7 +68,7 @@ test.describe('Packaged Quizzer desktop shell', () => {
     ], {
       detached: process.platform !== 'win32',
       windowsHide: process.platform === 'win32',
-      stdio: 'ignore',
+      stdio: ['ignore', 'pipe', 'pipe'],
       env: {
         ...process.env,
         ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
@@ -80,6 +80,8 @@ test.describe('Packaged Quizzer desktop shell', () => {
         QUIZZER_EXTERNAL_SERVICE_PORT: '',
       },
     });
+    appProcess.stdout.pipe(process.stdout);
+    appProcess.stderr.pipe(process.stderr);
     await expect.poll(async () => {
       if (appProcess.exitCode !== null) return false;
       return fetch(`http://127.0.0.1:${debugPort}/json/version`).then(response => response.ok).catch(() => false);
