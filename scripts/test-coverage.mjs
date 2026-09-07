@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { readdir } from 'node:fs/promises';
 import { basename, join } from 'node:path';
+import { isRetryableCoverageFailure } from './coverage-retry.mjs';
 
 const testFiles = (await readdir('test'))
   .filter(name => name.endsWith('.test.mjs'))
@@ -27,17 +28,30 @@ const criticalModules = [
   { module: 'server/generation-worker.mjs', baseline: [80, 60] }, // job transitions
 ];
 
-const runTests = (args, label) => new Promise((resolve, reject) => {
+const runTestsOnce = (args, label) => new Promise((resolve, reject) => {
   const child = spawn(process.execPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
   let output = '';
   child.stdout.on('data', chunk => { output += chunk; });
   child.stderr.on('data', chunk => { output += chunk; });
   child.once('error', error => reject(new Error(`${label}: could not start tests: ${error.message}`)));
-  child.once('exit', (code, signal) => {
-    if (signal || code !== 0) reject(new Error(`${label} failed${signal ? ` (${signal})` : ''}:\n${output}`));
-    else resolve(output);
-  });
+  child.once('exit', (code, signal) => resolve({ code, signal, output }));
 });
+
+const runTests = async (args, label) => {
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const result = await runTestsOnce(args, label);
+    if (!result.signal && result.code === 0) return result.output;
+
+    const retryable = isRetryableCoverageFailure({ attempt, signal: result.signal, output: result.output });
+    if (retryable) {
+      process.stderr.write(`${label}: Node produced an incomplete experimental coverage report; retrying once.\n`);
+      continue;
+    }
+
+    throw new Error(`${label} failed${result.signal ? ` (${result.signal})` : ''}:\n${result.output}`);
+  }
+  throw new Error(`${label} failed after retry`);
+};
 
 const runModule = entry => new Promise((resolve, reject) => {
   const args = ['--test', '--experimental-test-coverage',
