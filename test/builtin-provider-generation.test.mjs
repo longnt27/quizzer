@@ -29,3 +29,29 @@ test('built-in runners bound, reject malformed responses, cancel, and sanitize p
   await assert.rejects(runAnthropic(input, undefined, async () => new Response('{', { status: 200 })), /malformed JSON/);
   await assert.rejects(runOpenAICompatible(input, undefined, { label: 'Test', endpoint: 'https://example.test', defaultModel: 'x' }, async () => new Response(JSON.stringify({ error: { message: 'secret' } }), { status: 401 })), error => error.status === 401 && !error.message.includes('secret'));
 });
+
+test('propagates mid-stream cancellation and cancels the response reader', async () => {
+  const controller = new AbortController();
+  let cancelled = false;
+  let reads = 0;
+  const body = {
+    getReader() {
+      return {
+        async read() {
+          reads += 1;
+          if (reads === 1) return { done: false, value: new Uint8Array([123]) };
+          return new Promise(() => {});
+        },
+        cancel() { cancelled = true; },
+        releaseLock() {},
+      };
+    },
+  };
+  const pending = runGemini(input, controller.signal, async () => ({
+    status: 200, ok: true, headers: new Headers(), body,
+  }));
+  await new Promise(resolve => setImmediate(resolve));
+  controller.abort();
+  await assert.rejects(pending, error => error.name === 'AbortError');
+  assert.equal(cancelled, true);
+});
