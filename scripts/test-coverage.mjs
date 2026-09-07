@@ -8,6 +8,7 @@ const testFiles = (await readdir('test'))
   .map(name => join('test', name));
 
 if (!testFiles.length) throw new Error('No test files were found');
+const coverageRoots = ['server/*.mjs', 'plugin-sdk/*.mjs', 'release/*.mjs', 'desktop/updater.mjs', 'desktop/updater-ipc.mjs'];
 
 // Keep critical modules isolated: aggregate coverage can mask an untested
 // sibling. Baselines are measured floors at introduction; raise them as gaps
@@ -26,16 +27,22 @@ const criticalModules = [
   { module: 'server/generation-worker.mjs', baseline: [80, 60] }, // job transitions
 ];
 
-const runModule = entry => new Promise((resolve, reject) => {
-  const args = ['--test', '--experimental-test-coverage',
-    `--test-coverage-include=${entry.module}`, '--test-coverage-lines=0', '--test-coverage-branches=0', ...testFiles];
+const runTests = (args, label) => new Promise((resolve, reject) => {
   const child = spawn(process.execPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
   let output = '';
   child.stdout.on('data', chunk => { output += chunk; });
   child.stderr.on('data', chunk => { output += chunk; });
-  child.once('error', reject);
-  child.once('exit', code => {
-    if (code !== 0) return reject(new Error(`${entry.module} test suite failed`));
+  child.once('error', error => reject(new Error(`${label}: could not start tests: ${error.message}`)));
+  child.once('exit', (code, signal) => {
+    if (signal || code !== 0) reject(new Error(`${label} failed${signal ? ` (${signal})` : ''}:\n${output}`));
+    else resolve(output);
+  });
+});
+
+const runModule = entry => new Promise((resolve, reject) => {
+  const args = ['--test', '--experimental-test-coverage',
+    `--test-coverage-include=${entry.module}`, '--test-coverage-lines=0', '--test-coverage-branches=0', ...testFiles];
+  runTests(args, entry.module).then(output => {
     const file = basename(entry.module).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const match = output.match(new RegExp(`#\\s+${file}\\s+\\|\\s+([\\d.]+)\\s+\\|\\s+([\\d.]+)`));
     if (!match) return reject(new Error(`Coverage report did not include ${entry.module}`));
@@ -49,10 +56,16 @@ const runModule = entry => new Promise((resolve, reject) => {
       `RATCHET: ${entry.module} is ${lines}% lines / ${branches}% branches; target is 90% / 80%.\n`,
     );
     resolve();
-  });
+  }).catch(reject);
 });
 
 try {
+  await runTests([
+    '--test', '--experimental-test-coverage',
+    ...coverageRoots.map(pattern => `--test-coverage-include=${pattern}`),
+    '--test-coverage-lines=90', '--test-coverage-branches=80', ...testFiles,
+  ], 'Aggregate coverage gate');
+  process.stdout.write('Aggregate coverage gate: passed (90% lines / 80% branches)\n');
   for (const entry of criticalModules) await runModule(entry);
 } catch (error) {
   process.stderr.write(`Coverage gate failed: ${error.message}\n`);
