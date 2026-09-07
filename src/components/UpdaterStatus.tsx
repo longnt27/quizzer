@@ -244,7 +244,7 @@ export default function UpdaterStatusView() {
         {state === 'downloading' && (
           <div>
             <Typography.Text strong>Downloading update...</Typography.Text>
-            <Progress percent={status?.downloadProgress?.percent || 0} status="active" />
+            <Progress aria-label="Update download progress" percent={status?.downloadProgress?.percent || 0} status="active" />
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
               {formatBytes(status?.downloadProgress?.bytesDownloaded)} of {formatBytes(status?.downloadProgress?.totalBytes)}
             </Typography.Text>

@@ -183,7 +183,11 @@ export default function App() {
   return (
     <ConfigProvider theme={{
       algorithm: dark ? theme.darkAlgorithm : theme.defaultAlgorithm,
-      token: { colorPrimary: '#1677ff', borderRadius: 8 },
+      token: dark ? {
+        colorPrimary: '#69b1ff', colorLink: '#69b1ff', colorTextLightSolid: '#101214', colorTextSecondary: '#b7c0cd', colorTextDescription: '#b7c0cd', borderRadius: 8,
+      } : {
+        colorPrimary: '#0050b3', colorLink: '#0050b3', colorTextSecondary: '#595959', colorTextDescription: '#595959', colorTextDisabled: '#666666', borderRadius: 8,
+      },
     }}>
       <AntdApp>
         <AppShell dark={dark} onToggleTheme={() => setDark(value => !value)} />

@@ -200,7 +200,7 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
       {job.documentIds.length > 1 && <Typography.Text type="secondary">
         {job.documentIds.length} documents · {(job.options.coverageStrategy ?? 'balanced').replace('-', ' ')} coverage · bounded source chunks
       </Typography.Text>}
-      <Progress percent={percent} status={job.status === 'error' ? 'exception' : job.status === 'completed' ? 'success' : 'active'}
+      <Progress aria-label={`Generation progress for ${job.name}`} percent={percent} status={job.status === 'error' ? 'exception' : job.status === 'completed' ? 'success' : 'active'}
         format={() => `${accepted}/${target}`} />
       {job.progress && !terminalStatuses.has(job.status) && <Typography.Text type="secondary">
         {job.progress.phase === 'requesting' ? 'Requesting' : 'Checking'} {job.progress.currentType?.replaceAll('-', ' ')} · round {job.progress.round}/{job.progress.maxRounds} · {job.rejected} rejected
@@ -329,7 +329,7 @@ function IndexJobItem({ job }: { job: StoredIndexJob }) {
         </div>
         <Tag color={indexStatusColor[job.status]}>{job.status}</Tag>
       </div>
-      <Progress percent={percent} status={job.status === 'failed' ? 'exception' : job.status === 'completed' ? 'success' : 'active'}
+      <Progress aria-label="Document indexing progress" percent={percent} status={job.status === 'failed' ? 'exception' : job.status === 'completed' ? 'success' : 'active'}
         format={() => `${completed}/${total}`} />
       <Typography.Text type="secondary">
         Checkpointed after every document · {job.remainingDocumentIds.length} remaining

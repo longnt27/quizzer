@@ -1,4 +1,5 @@
 import { sign } from 'node:crypto';
+import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { releasePrivateKey } from './release-key';
 
@@ -207,6 +208,29 @@ test('publishes accessible document and social metadata', async ({ page }) => {
   await expect(page.locator('meta[name="description"]')).toHaveAttribute('content', /source-grounded quizzes/);
   await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', /\/og\.png$/);
   await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute('content', 'summary_large_image');
+});
+
+test('passes automated WCAG 2.2 AA checks at desktop and mobile widths', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await failManifest(page);
+  await page.goto('/');
+  await expect(page.getByText('Verified release unavailable')).toBeVisible();
+
+  const tags = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22a', 'wcag22aa'];
+  const audit = async () => {
+    const { violations } = await new AxeBuilder({ page }).withTags(tags).analyze();
+    expect(violations.map(({ id, impact, help, nodes }) => ({
+      id,
+      impact,
+      help,
+      targets: nodes.map(node => node.target),
+      summaries: nodes.map(node => node.failureSummary),
+    }))).toEqual([]);
+  };
+
+  await audit();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await audit();
 });
 
 test('supports keyboard access to navigation, download controls, and demo with reduced motion', async ({ page }) => {

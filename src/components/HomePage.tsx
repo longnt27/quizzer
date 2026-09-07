@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Badge, Button, Card, Col, Empty, List, Progress, Row, Segmented, Space, Statistic, Tag, Typography } from 'antd';
+import { Alert, Badge, Button, Card, Col, Empty, List, Progress, Radio, Row, Space, Statistic, Tag, Typography } from 'antd';
 import { ApiOutlined, DatabaseOutlined, FileAddOutlined, FormOutlined, PlayCircleOutlined, ReloadOutlined, RocketOutlined, SafetyCertificateOutlined, SyncOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type StoredAppProfile } from '../db/db';
@@ -81,7 +81,7 @@ export default function HomePage({ profile, onAddDocument, onAddTest, onOpenGene
         <Typography.Title level={2}>Welcome to Quizzer</Typography.Title>
         <Typography.Paragraph type="secondary">Turn your own documents into focused, source-grounded practice.</Typography.Paragraph>
       </div>
-      <Segmented data-onboarding-target="mode" aria-label="Interface mode" value={profile.interfaceMode} onChange={value => void setInterfaceMode(value as InterfaceMode)}
+      <Radio.Group data-onboarding-target="mode" aria-label="Interface mode" optionType="button" buttonStyle="solid" value={profile.interfaceMode} onChange={event => void setInterfaceMode(event.target.value as InterfaceMode)}
         options={[{ label: 'Simple', value: 'simple' }, { label: 'Advanced', value: 'advanced' }]} />
     </div>
 
@@ -95,7 +95,7 @@ export default function HomePage({ profile, onAddDocument, onAddTest, onOpenGene
         <div><Typography.Title level={4}>Finish setting up Quizzer</Typography.Title><Typography.Text type="secondary">Your walkthrough is saved and can continue after a restart.</Typography.Text></div>
         <Button type="primary" onClick={onOpenTutorial}>Resume setup</Button>
       </div>
-      <Progress percent={completion} />
+      <Progress aria-label="Onboarding completion" percent={completion} />
     </Card>}
 
     <Row gutter={[16, 16]}>

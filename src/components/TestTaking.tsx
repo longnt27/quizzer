@@ -641,7 +641,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
             <Modal open={Boolean(judgeProgress)} closable={false} maskClosable={false} title="Grading written answers" footer={
               <Button danger onClick={() => judgeControllerRef.current?.abort()}>Cancel grading</Button>
             }>
-              <Progress percent={judgeProgress ? Math.round(judgeProgress.completed / Math.max(judgeProgress.total, 1) * 100) : 0} status="active" />
+              <Progress aria-label="Written-answer grading progress" percent={judgeProgress ? Math.round(judgeProgress.completed / Math.max(judgeProgress.total, 1) * 100) : 0} status="active" />
               <Typography.Text type="secondary">
                 {judgeProgress?.batches ? `Batch ${Math.max(1, judgeProgress.batch)} of ${judgeProgress.batches} · ` : ''}
                 {judgeProgress?.completed ?? 0} of {judgeProgress?.total ?? 0} written answers graded
