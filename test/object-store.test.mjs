@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm, utimes } from 'node:fs/promises';
+import { mkdtemp, open, readFile, readdir, rm, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
@@ -30,6 +30,29 @@ test('rejects a mismatched id before making an object visible', async () => {
   const wrong = '0'.repeat(64);
   await assert.rejects(store.putStream(Readable.from([data]), wrong, { contentLength: data.length }), /hash mismatch/);
   await assert.rejects(store.stat(wrong), /ENOENT/);
+});
+
+test('cleans partial uploads after disk-full writes and remains usable', async () => {
+  assert.throws(() => new ObjectStore(directory, { openFile: null }), /Invalid object file opener/);
+  let failedPath = '';
+  const diskFullStore = new ObjectStore(directory, {
+    maxObjectBytes: 1024,
+    openFile: async (...arguments_) => {
+      const file = await open(...arguments_);
+      failedPath = arguments_[0];
+      return {
+        write: async () => { throw Object.assign(new Error('disk is full'), { code: 'ENOSPC' }); },
+        sync: (...syncArguments) => file.sync(...syncArguments),
+        close: (...closeArguments) => file.close(...closeArguments),
+      };
+    },
+  });
+  await assert.rejects(diskFullStore.putBuffer(Buffer.from('cannot persist')), error => error.code === 'ENOSPC');
+  await assert.rejects(readFile(failedPath), /ENOENT/);
+  assert.deepEqual(await readdir(join(diskFullStore.root, '.incoming')), []);
+
+  const recovered = await store.putBuffer(Buffer.from('write after recovery'));
+  assert.equal(await readFile(store.pathFor(recovered.sha256), 'utf8'), 'write after recovery');
 });
 
 test('materializes legacy serialized blobs without retaining base64 in records', async () => {

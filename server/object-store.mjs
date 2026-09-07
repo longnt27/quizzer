@@ -27,11 +27,13 @@ const referenceFor = (sha256, size, metadata) => ({
 });
 
 export class ObjectStore {
-  constructor(appDataDirectory, { maxObjectBytes = DEFAULT_MAX_OBJECT_BYTES } = {}) {
+  constructor(appDataDirectory, { maxObjectBytes = DEFAULT_MAX_OBJECT_BYTES, openFile = open } = {}) {
     if (typeof appDataDirectory !== 'string' || !appDataDirectory) throw new Error('Object storage requires an application-data directory');
     if (!Number.isSafeInteger(maxObjectBytes) || maxObjectBytes <= 0) throw new Error('Invalid object size limit');
+    if (typeof openFile !== 'function') throw new Error('Invalid object file opener');
     this.root = join(appDataDirectory, 'objects', 'sha256');
     this.maxObjectBytes = maxObjectBytes;
+    this.openFile = openFile;
   }
 
   pathFor(sha256) {
@@ -57,7 +59,7 @@ export class ObjectStore {
     const temporaryDirectory = join(this.root, '.incoming');
     await mkdir(temporaryDirectory, { recursive: true, mode: 0o700 });
     const temporaryPath = join(temporaryDirectory, `${process.pid}-${randomUUID()}.tmp`);
-    const file = await open(temporaryPath, 'wx', 0o600);
+    const file = await this.openFile(temporaryPath, 'wx', 0o600);
     const digest = createHash('sha256');
     let size = 0;
     try {
