@@ -18,6 +18,8 @@ const criticalModules = [
   { module: 'server/index-jobs.mjs', baseline: [100, 87] }, // indexing
   { module: 'server/retrieval-index.mjs', baseline: [93, 80] }, // retrieval
   { module: 'server/plugin-generation.mjs', baseline: [100, 88] }, // plugins
+  { module: 'server/builtin-provider-generation.mjs', baseline: [100, 65] }, // provider routing
+  { module: 'server/provider-policy.mjs', baseline: [90, 70] }, // provider policy
   { module: 'server/openai-compatible-generation.mjs', baseline: [92, 84] }, // provider adapter
   { module: 'server/generation-validation.mjs', baseline: [80, 60] }, // validators
   { module: 'server/generation-cost.mjs', baseline: [83, 72] }, // cost/accounting
