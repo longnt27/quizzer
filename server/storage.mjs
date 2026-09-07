@@ -431,6 +431,7 @@ export const renewGenerationJobLease = (id, { workerId, leaseId, leaseMs = 45_00
 const generationPatchKeys = new Set([
   'activeRouteIndex', 'coveragePlan', 'error', 'errorCode', 'nextAttemptAt', 'options',
   'progress', 'providerAttempts', 'questions', 'rejected', 'rejections', 'rounds', 'status',
+  'usageSummary', 'usageAudit',
 ]);
 const workerStatuses = new Set(['running', 'waiting', 'paused', 'error']);
 const generationQuestionTypes = new Set(['multiple-choice', 'fill-blank', 'reasoning', 'coding']);
@@ -448,6 +449,19 @@ const validateGenerationPatch = (patch, job = {}) => {
     throw new Error('Rejected question count must be a non-negative integer');
   }
   if (patch.rejections !== undefined) validateGenerationRejectionTransition(patch.rejections, job.rejections);
+  if (patch.usageSummary !== undefined) {
+    if (!patch.usageSummary || typeof patch.usageSummary !== 'object' || Array.isArray(patch.usageSummary)) throw new Error('Generation usage summary is invalid');
+    for (const key of ['inputTokens', 'outputTokens', 'totalTokens', 'finalizedCostMicroUsd', 'reservedCostMicroUsd']) {
+      if (!Number.isSafeInteger(patch.usageSummary[key]) || patch.usageSummary[key] < 0) throw new Error(`Generation usage ${key} is invalid`);
+    }
+  }
+  if (patch.usageAudit !== undefined) {
+    const prior = job.usageAudit ?? [];
+    if (!Array.isArray(patch.usageAudit) || patch.usageAudit.length < prior.length || patch.usageAudit.length > 1000
+      || prior.some((item, index) => JSON.stringify(item) !== JSON.stringify(patch.usageAudit[index]))) {
+      throw new Error('Generation usage audit is append-only');
+    }
+  }
   if (patch.rounds !== undefined && (!patch.rounds || typeof patch.rounds !== 'object' || Array.isArray(patch.rounds)
     || Object.entries(patch.rounds).some(([type, round]) => !generationQuestionTypes.has(type) || !Number.isSafeInteger(round) || round < 0 || round > 5))) {
     throw new Error('Generation rounds are invalid');

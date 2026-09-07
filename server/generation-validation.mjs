@@ -3,6 +3,7 @@ import { validateOllamaModelName } from './ollama-generation.mjs';
 import { validateOpenAICompatibleModel, validateOpenAICompatibleEndpoint } from './openai-compatible-generation.mjs';
 import { validateSettings } from './settings.mjs';
 import { isDeepStrictEqual } from 'node:util';
+import { validateCostCeiling, routePricing } from './generation-cost.mjs';
 
 const generationProviders = new Set(Object.keys(PROVIDER_POLICIES));
 const questionTypes = new Set(['multiple-choice', 'fill-blank', 'reasoning', 'coding']);
@@ -73,7 +74,7 @@ const expectedRouteMetadata = provider => {
 
 export const validateProviderRoute = input => {
   const route = requireObject(input, 'Provider route must be an object');
-  rejectUnknown(route, new Set(['provider', 'model', 'privacy', 'paid', 'approved']), 'Provider route');
+  rejectUnknown(route, new Set(['provider', 'model', 'privacy', 'paid', 'approved', 'pricing', 'usage']), 'Provider route');
   if (!generationProviders.has(route.provider)) throw new Error(`Unsupported generation provider: ${route.provider}`);
   if (route.model !== undefined && !boundedText(route.model, 1, 200)) throw new Error('Provider route model is invalid');
   if (route.provider === 'plugin' && !pluginIdPattern.test(route.model ?? '')) {
@@ -82,6 +83,8 @@ export const validateProviderRoute = input => {
   if (route.provider === 'ollama') validateOllamaModelName(route.model);
   if (route.provider === 'openai-compatible') validateOpenAICompatibleModel(route.model);
   if (typeof route.paid !== 'boolean' || typeof route.approved !== 'boolean') throw new Error('Provider route approval and cost flags must be boolean');
+  if (route.pricing !== undefined) routePricing(route);
+  if (route.usage !== undefined && !['provider-reported', 'unavailable'].includes(route.usage)) throw new Error('Provider route usage capability is invalid');
   const expected = expectedRouteMetadata(route.provider);
   if (route.privacy !== expected.privacy || route.paid !== expected.paid) {
     throw new Error(`Provider route metadata does not match the ${route.provider} privacy and cost policy`);
@@ -108,7 +111,7 @@ const routeIdentity = route => ({
 });
 const immutableGenerationOptionKeys = [
   'questionCount', 'questionCounts', 'multipleChoiceMode', 'coverageStrategy', 'customInstruction',
-  'promptProfileSnapshot', 'ragProfile', 'resolvedSettings',
+  'promptProfileSnapshot', 'ragProfile', 'resolvedSettings', 'costCeilingMicroUsd',
 ];
 
 export const validateGenerationOptions = (input, { requireSnapshots = false, requireCompleteSettings = false } = {}) => {
@@ -116,6 +119,7 @@ export const validateGenerationOptions = (input, { requireSnapshots = false, req
   rejectUnknown(options, new Set([
     'provider', 'model', 'questionCount', 'questionCounts', 'multipleChoiceMode', 'coverageStrategy',
     'customInstruction', 'promptProfileSnapshot', 'ragProfile', 'routeChain', 'resolvedSettings',
+    'costCeilingMicroUsd',
   ]), 'Generation options');
   if (!generationProviders.has(options.provider)) throw new Error(`Unsupported generation provider: ${options.provider}`);
   if (options.model !== undefined && !boundedText(options.model, 1, 200)) throw new Error('Generation model is invalid');
@@ -144,6 +148,7 @@ export const validateGenerationOptions = (input, { requireSnapshots = false, req
   if (options.customInstruction !== undefined && !boundedText(options.customInstruction, 1, 2_000)) {
     throw new Error('Custom learning instruction must contain 1-2000 characters');
   }
+  if (options.costCeilingMicroUsd !== undefined) validateCostCeiling(options.costCeilingMicroUsd);
   if (options.promptProfileSnapshot !== undefined) validatePromptSnapshot(options.promptProfileSnapshot);
   if (options.ragProfile !== undefined) validateRagProfile(options.ragProfile);
   if (options.routeChain !== undefined) {
@@ -336,6 +341,7 @@ export const validateNewGenerationJob = input => {
   const job = requireObject(input, 'Generation job must be an object');
   rejectUnknown(job, new Set([
     'id', 'testId', 'name', 'createdAt', 'updatedAt', 'status', 'documentIds', 'options', 'questions', 'rejected', 'rounds',
+    'costCeilingMicroUsd', 'usageSummary', 'usageAudit',
   ]), 'New generation job');
   for (const key of ['id', 'testId']) if (!boundedText(job[key], 1, 100)) throw new Error(`Generation job ${key} is invalid`);
   if (!boundedText(job.name, 1, 200)) throw new Error('Generation job name must contain 1-200 characters');
@@ -346,6 +352,14 @@ export const validateNewGenerationJob = input => {
     throw new Error('Generation job document ids are invalid');
   }
   validateGenerationOptions(job.options, { requireSnapshots: true, requireCompleteSettings: true });
+  if (job.costCeilingMicroUsd !== undefined) validateCostCeiling(job.costCeilingMicroUsd);
+  if (job.usageSummary !== undefined) {
+    requireObject(job.usageSummary, 'Generation usage summary must be an object');
+    for (const key of ['inputTokens', 'outputTokens', 'totalTokens', 'finalizedCostMicroUsd', 'reservedCostMicroUsd']) {
+      boundedInteger(job.usageSummary[key], 0, Number.MAX_SAFE_INTEGER, `Generation usage ${key} is invalid`);
+    }
+  }
+  if (job.usageAudit !== undefined && (!Array.isArray(job.usageAudit) || job.usageAudit.length > 1000)) throw new Error('Generation usage audit is invalid');
   if (!Array.isArray(job.questions) || job.questions.length) throw new Error('New generation jobs must start without questions');
   if (job.rejected !== 0) throw new Error('New generation jobs must start without rejected questions');
   if (!isObject(job.rounds) || Object.keys(job.rounds).length) throw new Error('New generation jobs must start without generation rounds');
