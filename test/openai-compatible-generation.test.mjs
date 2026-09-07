@@ -255,7 +255,7 @@ test("keeps cancellation and timeout active while consuming the response body", 
   let cancelCalled = false;
 
   const cancellation = runOpenAICompatibleGeneration(
-    remoteParams({ timeoutMs: 5_000 }),
+    remoteParams({ timeoutMs: 5_000, includeUsage: true }),
     controller.signal,
     async () => ({
       status: 200,
@@ -415,4 +415,28 @@ test("normalizes fenced and prose-wrapped JSON and rejects array roots", async (
     )),
     error => error.code === "provider_unavailable" && /non-JSON/.test(error.message),
   );
+});
+
+test("supports opt-in usage, output caps, and explicit unknown usage", async () => {
+  let body;
+  const enveloped = await runOpenAICompatibleGeneration(remoteParams({ includeUsage: true, maxOutputTokens: 17 }), undefined, async (_url, options) => {
+    body = JSON.parse(options.body);
+    return new Response(JSON.stringify({ choices: [{ message: { content: '{"questions":[]}' } }], usage: {
+      prompt_tokens: 4, completion_tokens: 3, total_tokens: 7, cost: 999,
+    } }));
+  });
+  assert.deepEqual(enveloped, { output: '{"questions":[]}', usage: { inputTokens: 4, outputTokens: 3, totalTokens: 7 } });
+  assert.equal(body.max_tokens, 17);
+
+  const legacy = await runOpenAICompatibleGeneration(remoteParams(), undefined, async () => (
+    new Response(JSON.stringify({ choices: [{ message: { content: '{"questions":[]}' } }], usage: {} }))
+  ));
+  assert.equal(legacy, '{"questions":[]}');
+  const unknown = await runOpenAICompatibleGeneration(remoteParams({ includeUsage: true }), undefined, async () => (
+    new Response(JSON.stringify({ choices: [{ message: { content: '{"questions":[]}' } }], usage: { prompt_tokens: '4' } }))
+  ));
+  assert.deepEqual(unknown.usage, { unknown: true, reason: 'malformed' });
+  let called = false;
+  await assert.rejects(runOpenAICompatibleGeneration(remoteParams({ maxOutputTokens: 0 }), undefined, async () => { called = true; }), /maxOutputTokens/);
+  assert.equal(called, false);
 });

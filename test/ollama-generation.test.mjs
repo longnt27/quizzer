@@ -101,10 +101,32 @@ test('turns local runtime and model failures into resumable provider errors', as
 test('preserves request cancellation', async () => {
   const controller = new AbortController();
   const aborted = Object.assign(new Error('cancelled'), { name: 'AbortError' });
-  await assert.rejects(runOllamaGeneration({ prompt: 'Prompt', schema, model: 'qwen3:4b' }, controller.signal, async (_url, options) => {
+  await assert.rejects(runOllamaGeneration({ prompt: 'Prompt', schema, model: 'qwen3:4b', includeUsage: true }, controller.signal, async (_url, options) => {
     controller.abort(aborted);
     throw options.signal.reason;
   }), error => error === aborted);
+});
+
+test('supports opt-in usage, output caps, and explicit unknown usage', async () => {
+  let body;
+  const enveloped = await runOllamaGeneration({ prompt: 'Prompt', schema, model: 'qwen3:4b', includeUsage: true, maxOutputTokens: 17 }, undefined, async (_url, options) => {
+    body = JSON.parse(options.body);
+    return new Response(JSON.stringify({ response: '{"questions":[]}', done: true, prompt_eval_count: 4, eval_count: 3, total_duration: 999 }));
+  });
+  assert.deepEqual(enveloped, { output: '{"questions":[]}', usage: { inputTokens: 4, outputTokens: 3, totalTokens: 7 } });
+  assert.equal(body.options.num_predict, 17);
+
+  const legacy = await runOllamaGeneration({ prompt: 'Prompt', schema, model: 'qwen3:4b' }, undefined, async () => (
+    new Response(JSON.stringify({ response: '{"questions":[]}', done: true }))
+  ));
+  assert.equal(legacy, '{"questions":[]}');
+  const unknown = await runOllamaGeneration({ prompt: 'Prompt', schema, model: 'qwen3:4b', includeUsage: true }, undefined, async () => (
+    new Response(JSON.stringify({ response: '{"questions":[]}', done: true, prompt_eval_count: '4', eval_count: 3 }))
+  ));
+  assert.deepEqual(unknown.usage, { unknown: true, reason: 'malformed' });
+  let called = false;
+  await assert.rejects(runOllamaGeneration({ prompt: 'Prompt', schema, model: 'qwen3:4b', maxOutputTokens: 0 }, undefined, async () => { called = true; }), /maxOutputTokens/);
+  assert.equal(called, false);
 });
 
 test('refuses non-loopback Ollama hosts so local privacy metadata remains truthful', async () => {

@@ -1,3 +1,5 @@
+import { normalizeProviderUsage } from "./provider-usage.mjs";
+
 export const DEFAULT_OPENAI_COMPATIBLE_ENDPOINT = "https://api.openai.com/v1";
 const MAX_PROMPT_CHARACTERS = 2_000_000;
 const MAX_SCHEMA_BYTES = 100_000;
@@ -6,6 +8,7 @@ const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
 const MAX_API_KEY_CHARACTERS = 16_384;
 const DEFAULT_TIMEOUT_MS = 120_000;
+const MAX_OUTPUT_TOKENS = 10_000_000;
 
 const imagePattern = /^data:image\/(?:png|jpeg|webp|gif);base64,([A-Za-z0-9+/]+={0,2})$/;
 
@@ -107,6 +110,14 @@ export const validateOpenAICompatibleModel = model => {
     throw new Error("OpenAI-compatible model name must not exceed 200 characters");
   }
   return trimmed;
+};
+
+export const validateMaxOutputTokens = value => {
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || value < 1 || value > MAX_OUTPUT_TOKENS) {
+    throw new Error(`maxOutputTokens must be an integer between 1 and ${MAX_OUTPUT_TOKENS}`);
+  }
+  return value;
 };
 
 const validateSchema = schema => {
@@ -251,6 +262,7 @@ const safeProviderMessage = (message, apiKey, fallback) => {
 
 export const runOpenAICompatibleGeneration = async ({
   prompt, schema, model, endpoint, apiKey, images = [], timeoutMs = DEFAULT_TIMEOUT_MS,
+  includeUsage = false, maxOutputTokens,
 }, signal, fetchImpl = globalThis.fetch) => {
   if (typeof prompt !== "string" || !prompt.trim() || prompt.length > MAX_PROMPT_CHARACTERS) {
     throw new Error("OpenAI-compatible generation prompt is invalid or too large");
@@ -258,6 +270,7 @@ export const runOpenAICompatibleGeneration = async ({
   const modelName = validateOpenAICompatibleModel(model);
   const serializedSchema = validateSchema(schema);
   const validatedImages = validateImages(images);
+  const validatedMaxOutputTokens = validateMaxOutputTokens(maxOutputTokens);
   const completionsUrl = resolveChatCompletionsUrl(endpoint || DEFAULT_OPENAI_COMPATIBLE_ENDPOINT);
   const normalizedApiKey = validateOpenAICompatibleApiKey(apiKey, {
     required: !isLoopbackHost(new URL(completionsUrl).hostname),
@@ -295,6 +308,7 @@ export const runOpenAICompatibleGeneration = async ({
     messages: [{ role: "user", content: userContent }],
     response_format: { type: "json_object" },
     temperature: 0,
+    ...(validatedMaxOutputTokens === undefined ? {} : { max_tokens: validatedMaxOutputTokens }),
   });
 
   try {
@@ -383,7 +397,10 @@ export const runOpenAICompatibleGeneration = async ({
       );
     }
 
-    return JSON.stringify(candidateJson);
+    const result = JSON.stringify(candidateJson);
+    return includeUsage
+      ? { output: result, usage: normalizeProviderUsage("openai-compatible", payload) }
+      : result;
   } catch (error) {
     if (signal?.aborted) throw signal.reason ?? error;
     if (controller.signal.aborted) {
