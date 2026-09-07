@@ -74,6 +74,9 @@ jobs:
       - name: Install Linux headless display
         if: matrix.platform == 'linux'
         run: sudo apt-get update && sudo apt-get install --yes xvfb
+      - name: Permit Chromium sandbox user namespaces on Ubuntu
+        if: matrix.platform == 'linux'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Install Playwright browser (Linux)
         if: matrix.platform == 'linux'
         run: npx playwright install --with-deps chromium
