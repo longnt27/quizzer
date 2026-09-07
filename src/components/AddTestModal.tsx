@@ -278,7 +278,7 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
           {questionCount > 200 && <Alert type="error" showIcon message="A test can contain at most 200 questions." />}
           <div>
             <Typography.Text strong>Custom learning instruction <Typography.Text type="secondary">(optional)</Typography.Text></Typography.Text>
-            <Input.TextArea rows={3} maxLength={2000} showCount value={customInstruction} onChange={event => setCustomInstruction(event.target.value)}
+            <Input.TextArea data-onboarding-target="learning-instruction" rows={3} maxLength={2000} showCount value={customInstruction} onChange={event => setCustomInstruction(event.target.value)}
               placeholder="For example: coding questions about Terraform only" style={{ marginTop: 8 }} />
           </div>
           {!!configured.providers.length && <Alert type={proposedRoutes.some(route => route.paid) ? 'warning' : 'info'} showIcon

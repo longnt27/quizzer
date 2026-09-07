@@ -79,7 +79,7 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
           { key: 'documents', label: 'Documents', icon: <FileTextOutlined /> },
         ]} />
       <div className="sidebar-controls">
-        <Button block type="primary" icon={<PlusOutlined />} onClick={() => {
+        <Button data-onboarding-target={tab === 'tests' ? 'create-test' : 'document'} block type="primary" icon={<PlusOutlined />} onClick={() => {
           if (tab === 'tests') onAddTest();
           else onAddDocument();
         }}>
@@ -120,7 +120,7 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
           {sync.status === 'offline' ? 'Offline — saved locally' : sync.lastSyncedAt ? 'Saved on server' : 'Syncing library'}
         </Button>
         <Button type="text" icon={<SyncOutlined />} onClick={onOpenGeneration}>Activity</Button>
-        <Button type="text" icon={<ApiOutlined />} onClick={onOpenPlugins}>Plugins & models</Button>
+        <Button data-onboarding-target="provider" type="text" icon={<ApiOutlined />} onClick={onOpenPlugins}>Plugins & models</Button>
         <Button type="text" icon={<SettingOutlined />} onClick={onOpenSettings}>Settings</Button>
         {profile?.interfaceMode === 'advanced' && <Button type="text" icon={<ExperimentOutlined />} onClick={onOpenPromptStudio}>Prompt Studio</Button>}
         <Button type="text" icon={<MacCommandOutlined />} onClick={onOpenCommandPalette}>Command palette <span className="sidebar-shortcut">⌘/Ctrl K</span></Button>

@@ -30,6 +30,83 @@ const profileDetails: Record<HardwareProfileId, string> = {
   max: 'Enables heavier visual extraction, reranking, and optional local generation.',
 };
 
+const coachmarkCopy: Partial<Record<OnboardingStep, { selector: string; title: string; body: string }>> = {
+  provider: { selector: '[data-onboarding-target="provider"]', title: 'Set up an AI route', body: 'Use this real control to connect or review the provider used for generation.' },
+  document: { selector: '[data-onboarding-target="document"]', title: 'Import your source', body: 'Add a readable PDF, text, or Markdown document here. The step completes only after it is saved.' },
+  instruction: { selector: '[data-onboarding-target="learning-instruction"], [data-onboarding-target="create-test"]', title: 'Shape the first quiz', body: 'Your learning goal is carried into the real test-creation form when you create the quiz.' },
+  generate: { selector: '[data-onboarding-target="create-test"]', title: 'Create the quiz', body: 'Open the real creation form, choose the source, review the route, and queue the test.' },
+  practice: { selector: '[data-onboarding-target="practice-feedback"], [data-onboarding-target="citations"], [data-onboarding-target="ask-ai"], [data-onboarding-target="practice"]', title: 'Practice and inspect evidence', body: 'Answer, check the feedback, then review citations or ask AI about this answer.' },
+};
+
+const isVisibleTarget = (element: Element) => {
+  const node = element as HTMLElement;
+  const rect = node.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0 && getComputedStyle(node).visibility !== 'hidden' && getComputedStyle(node).display !== 'none';
+};
+
+function OnboardingCoachMark({ step, open }: { step: OnboardingStep; open: boolean }) {
+  const copy = coachmarkCopy[step];
+  const [target, setTarget] = useState<HTMLElement>();
+  const [rect, setRect] = useState<DOMRect>();
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => { setDismissed(false); }, [open, step]);
+  useEffect(() => {
+    if (!copy || (!open && step !== 'practice') || dismissed) { setTarget(undefined); setRect(undefined); return undefined; }
+    let frame = 0;
+    let targetObserver: ResizeObserver | undefined;
+    let observedTarget: HTMLElement | undefined;
+    const refreshObservedRect = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        if (observedTarget && document.contains(observedTarget)) setRect(observedTarget.getBoundingClientRect());
+        else locate();
+      });
+    };
+    const locate = () => {
+      const next = [...document.querySelectorAll(copy.selector)].find(isVisibleTarget) as HTMLElement | undefined;
+      setTarget(next);
+      setRect(next?.getBoundingClientRect());
+      if (next !== observedTarget) {
+        targetObserver?.disconnect();
+        targetObserver = undefined;
+        observedTarget = next;
+      }
+      if (next && !targetObserver && 'ResizeObserver' in window) {
+        targetObserver = new ResizeObserver(refreshObservedRect);
+        targetObserver.observe(next);
+      }
+    };
+    const refresh = () => { window.cancelAnimationFrame(frame); frame = window.requestAnimationFrame(locate); };
+    refresh();
+    window.addEventListener('resize', refresh);
+    window.addEventListener('scroll', refresh, true);
+    const observer = new MutationObserver(refresh);
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'aria-hidden'] });
+    const keyboard = (event: KeyboardEvent) => { if (event.key === 'Escape') setDismissed(true); };
+    window.addEventListener('keydown', keyboard);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      targetObserver?.disconnect();
+      window.removeEventListener('resize', refresh);
+      window.removeEventListener('scroll', refresh, true);
+      window.removeEventListener('keydown', keyboard);
+      observer.disconnect();
+    };
+  }, [copy, dismissed, open, step]);
+
+  if (!copy || dismissed || !target || !rect || (!open && step !== 'practice')) return null;
+  const top = Math.max(12, Math.min(window.innerHeight - 150, rect.bottom + 12));
+  const left = Math.max(12, Math.min(window.innerWidth - 332, rect.left));
+  return <>
+    <div className="onboarding-coach-highlight" aria-hidden="true" style={{ top: rect.top - 5, left: rect.left - 5, width: rect.width + 10, height: rect.height + 10 }} />
+    <aside className="onboarding-coachmark" role="region" aria-label="Onboarding hint" style={{ top, left }}>
+      <div aria-live="polite"><strong>{copy.title}</strong><p>{copy.body}</p></div>
+      <Button type="text" size="small" aria-label="Dismiss walkthrough hint" onClick={() => setDismissed(true)}>Dismiss</Button>
+    </aside>
+  </>;
+}
+
 export default function OnboardingGuide({ open, profile, onPause, onFinish, onOpenPlugins, onAddDocument, onAddTest, onOpenTest }: Props) {
   const configured = useConfiguredProviders();
   const library = useLiveQuery(async () => {
@@ -93,7 +170,9 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
     onOk: async () => { await skipOnboarding(); onFinish(); },
   });
 
-  return <Drawer className="onboarding-drawer" title="Set up Quizzer" width={440} open={open} mask={index === 0} closable onClose={onPause}
+  return <>
+  <OnboardingCoachMark step={step} open={open} />
+  <Drawer className="onboarding-drawer" title="Set up Quizzer" width={440} open={open} mask={index === 0} closable onClose={onPause}
     extra={<Button type="text" onClick={confirmSkip}>Skip</Button>}
     footer={<div className="onboarding-footer">
       <Button disabled={index === 0} onClick={() => void goToOnboardingStep(ONBOARDING_STEPS[index - 1])}>Back</Button>
@@ -183,5 +262,6 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
       <Typography.Title level={3}>You’re ready</Typography.Title>
       <Typography.Paragraph>Your setup, profile, and progress are saved. Head Home to add more sources, resume work, or create another test.</Typography.Paragraph>
     </Card>}
-  </Drawer>;
+  </Drawer>
+  </>;
 }
