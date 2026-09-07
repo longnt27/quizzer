@@ -417,3 +417,53 @@ test('durably accounts reservations, unknown usage, replay mismatches, over-ceil
   raiseGenerationCostCeiling(job.id, { newCeilingMicroUsd: 10, reason: 'approved extension', confirmed: true, now: 106 });
   assert.equal(getRecord('generationJobs', job.id).data.options.costCeilingMicroUsd, 10);
 });
+
+test('covers storage validation branches around sync, migration, leases, and completion', async () => {
+  assert.throws(() => syncStorage({ cursor: -1 }), /Invalid storage sync request/);
+  assert.throws(() => syncStorage({ migration: { id: 'bad-migration-0001', expectedRecords: 0, expectedHash: '0'.repeat(64) } }), /requires bootstrap/);
+  await assert.rejects(
+    beginLegacyMigration({ id: 'migration-success-0001', expectedRecords: 99, expectedHash: '0'.repeat(64) }),
+    /contents changed/,
+  );
+  const successfulMigration = {
+    id: 'migration-success-0001', expectedRecords: 2,
+    expectedHash: fingerprint([
+      { collection: 'documents', id: 'legacy-doc', data: { id: 'legacy-doc', name: 'Legacy.md', content: 'Migrated content' } },
+      { collection: 'tests', id: 'legacy-test', data: { id: 'legacy-test', name: 'Legacy quiz', questions: [], attempts: [] } },
+    ]),
+  };
+  assert.equal((await beginLegacyMigration(successfulMigration)).id, successfulMigration.id);
+  assert.throws(() => claimGenerationJob({ workerId: 'coverage-worker', providerConcurrency: [] }), /limits must be an object/);
+  assert.throws(() => claimGenerationJob({ workerId: 'coverage-worker', defaultProviderConcurrency: 11 }), /Default provider concurrency/);
+  assert.throws(() => claimGenerationJob({ workerId: 'coverage-worker', providerConcurrency: { codex: 0 } }), /limits must be integers/);
+  assert.throws(() => syncStorage({ changes: [{ collection: 'generationJobs', id: 'accounting-job', data: {
+    id: 'accounting-job', usageSummary: { finalizedCostMicroUsd: 0 },
+  } }] , bootstrap: true }), /service-owned/);
+  assert.throws(() => updateGenerationJobWithLease('accounting-job', { workerId: 'accounting-worker', leaseId: 'missing', patch: {} }), /patch is required/);
+  assert.throws(() => completeGenerationJob('accounting-job', { completionId: 'bad-completion', test: null }), /completed test record/);
+  assert.throws(() => completeGenerationJob('accounting-job', { completionId: 'valid-completion', test: { id: 'x', questions: [] }, patch: [] }), /completion patch/);
+  const edgeJob = { id: 'coverage-edge-job', testId: 'coverage-edge-test', name: 'Coverage edge', createdAt: 20, updatedAt: 20,
+    status: 'queued', documentIds: ['accounting-doc'], options: { ...generationOptions(), routeChain: [{ ...generationOptions().routeChain[0],
+      pricing: { inputMicroUsdPerMillionTokens: 1, outputMicroUsdPerMillionTokens: 1 } }] }, questions: [], rejected: 0, rounds: {} };
+  createGenerationJobs([edgeJob]);
+  const edgeClaim = claimGenerationJob({ workerId: 'coverage-edge-worker', leaseMs: 10_000, now: 200, providerConcurrency: { codex: 10 } });
+  assert.throws(() => finalizeGenerationAttempt(edgeJob.id, { workerId: 'coverage-edge-worker', leaseId: edgeClaim.data.leaseId,
+    attemptId: 'coverage-missing-attempt', usage: { inputTokens: 1, outputTokens: 1 }, now: 201 }), /no reservation/);
+  reserveGenerationAttempt(edgeJob.id, { workerId: 'coverage-edge-worker', leaseId: edgeClaim.data.leaseId,
+    attemptId: 'coverage-malformed-attempt', routeIndex: 0, maxInputTokens: 1, maxOutputTokens: 1, now: 202 });
+  finalizeGenerationAttempt(edgeJob.id, { workerId: 'coverage-edge-worker', leaseId: edgeClaim.data.leaseId,
+    attemptId: 'coverage-malformed-attempt', usage: { unsupported: true }, now: 203 });
+  assert.throws(() => completeGenerationJob(edgeJob.id, { workerId: 'coverage-edge-worker', leaseId: edgeClaim.data.leaseId,
+    completionId: 'coverage-mismatch-completion', test: { id: edgeJob.testId, questions: [{ type: 'coding' }] }, patch: { questions: [] }, now: 204 }), /must match the stored test/);
+  const edgeStored = getRecord('generationJobs', edgeJob.id);
+  putRecord('generationJobs', edgeJob.id, { ...edgeStored.data, options: { ...edgeStored.data.options, provider: 'other-provider' } });
+  reserveGenerationAttempt(edgeJob.id, { workerId: 'coverage-edge-worker', leaseId: edgeClaim.data.leaseId,
+    attemptId: 'coverage-failover-attempt', routeIndex: 0, maxInputTokens: 1, maxOutputTokens: 1, now: 205 });
+  const legacyCeiling = { id: 'legacy-ceiling-job', testId: 'legacy-ceiling-test', name: 'Legacy ceiling', createdAt: 1, updatedAt: 1,
+    status: 'waiting', documentIds: ['accounting-doc'], costCeilingMicroUsd: 5, options: generationOptions(), questions: [], rejected: 0, rounds: {} };
+  putRecord('generationJobs', legacyCeiling.id, legacyCeiling);
+  assert.throws(() => raiseGenerationCostCeiling(legacyCeiling.id, { newCeilingMicroUsd: 6, reason: 'no confirmation' }), /explicit confirmation/);
+  assert.throws(() => raiseGenerationCostCeiling(legacyCeiling.id, { newCeilingMicroUsd: 5, reason: 'not higher', confirmed: true }), /greater than/);
+  assert.equal(raiseGenerationCostCeiling(legacyCeiling.id, { newCeilingMicroUsd: 6, reason: 'legacy extension', confirmed: true }).data.options.costCeilingMicroUsd, 6);
+  assert.throws(() => getGenerationAccounting('missing-accounting-job'), /not found/);
+});

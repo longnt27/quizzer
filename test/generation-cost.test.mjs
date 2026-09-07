@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   addUsageSummary, assertCostWithinCeiling, estimateRouteCost, finalizeUsageCost,
-  normalizeProviderUsage, routePricing,
+  normalizeProviderUsage, routePricing, costWithinCeiling,
 } from '../server/generation-cost.mjs';
 
 const route = { pricing: { inputMicroUsdPerMillionTokens: 1_500_001, outputMicroUsdPerMillionTokens: 2_000_001 } };
@@ -29,4 +29,23 @@ test('missing usage leaves an unresolved conservative reservation and ceilings i
   assert.deepEqual(summary, { inputTokens: 0, outputTokens: 0, totalTokens: 0, finalizedCostMicroUsd: 0, reservedCostMicroUsd: 9 });
   assert.throws(() => assertCostWithinCeiling(10, 2, 9), /ceiling/);
   assert.equal(assertCostWithinCeiling(undefined, Number.MAX_SAFE_INTEGER, 0), true);
+  assert.equal(costWithinCeiling(10, 2, 8), true);
+  assert.equal(costWithinCeiling(1, 2, 0), false);
+  assert.throws(() => costWithinCeiling(-1, 0, 0), /Cost ceiling/);
+});
+
+test('covers strict route metadata, cumulative usage, and ceiling predicates', () => {
+  assert.throws(() => routePricing({ pricing: { inputMicroUsdPerMillionTokens: 1 } }), /include input and output/);
+  assert.throws(() => routePricing({ pricing: { outputMicroUsdPerMillionTokens: 1 } }), /include input and output/);
+  assert.deepEqual(addUsageSummary(undefined, { inputTokens: 2, outputTokens: 3 }), {
+    inputTokens: 2, outputTokens: 3, totalTokens: 5, finalizedCostMicroUsd: 0, reservedCostMicroUsd: 0,
+  });
+  assert.equal(assertCostWithinCeiling(10, 2, 8), true);
+  assert.equal(assertCostWithinCeiling(undefined, 2, 8), true);
+  assert.equal((() => {
+    try { assertCostWithinCeiling(1, 2, 0); return true; } catch { return false; }
+  })(), false);
+  assert.equal((() => {
+    try { assertCostWithinCeiling(-1, 0, 0); return true; } catch { return false; }
+  })(), false);
 });
