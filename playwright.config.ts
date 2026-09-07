@@ -19,8 +19,8 @@ export default defineConfig({
   projects: [
     { name: 'chromium', testMatch: /.*\.spec\.ts/, use: { ...devices['Desktop Chrome'] } },
     { name: 'firefox', testMatch: /cross-browser-smoke\.spec\.ts/, use: { ...devices['Desktop Firefox'] } },
-    // The Electron-oriented application shell does not boot under Playwright
-    // WebKit in CI/local Vite (landing WebKit coverage remains enabled).
+    // WebKit coverage for the Vite-served app is deferred pending an
+    // unresolved boot incompatibility; Electron itself remains Chromium.
   ],
   webServer: {
     command: 'node scripts/e2e-dev.mjs',
