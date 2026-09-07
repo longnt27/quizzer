@@ -30,7 +30,7 @@ import { runGeneratorPlugin } from './server/plugin-generation.mjs';
 import { resolveEmbeddingProvider } from './server/plugin-embeddings.mjs';
 import { resolveVectorIndexProvider } from './server/plugin-vector-index.mjs';
 import { resolveDocumentExtractor, resolveOcrProvider } from './server/plugin-extraction.mjs';
-import { listOllamaModels, runOllamaGeneration, validateOllamaModelName } from './server/ollama-generation.mjs';
+import { listOllamaModels, runOllamaGeneration, runOllamaHyde, validateOllamaModelName } from './server/ollama-generation.mjs';
 
 const configuredPortValue = process.env.QUIZZER_SERVICE_PORT ?? '8787';
 const configuredPort = Number(configuredPortValue);
@@ -105,6 +105,11 @@ const retrievalIndex = new RetrievalIndex({
       throw new Error(`Reranker plugin ${id} is not installed, enabled, and compatible`);
     }
     return (await manager.invoke(id, 'rag.rerank', params, options)).result;
+  },
+  invokeLocalHyde: async (query, options) => {
+    if (options?.localOnly !== true) throw new Error('HyDE generation requires local-only routing');
+    const settings = await loadResolvedSettings(appDataDirectory);
+    return runOllamaHyde({ query, model: settings.values['retrieval.hydeModel'] }, options.signal);
   },
   onDenseIssue: (issue, record) => process.stderr.write(
     `Dense indexing unavailable for ${record.id}; sparse retrieval remains ready: ${issue.message}\n`,

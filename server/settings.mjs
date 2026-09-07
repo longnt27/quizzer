@@ -5,9 +5,16 @@ import { PROVIDER_POLICIES, providerConcurrencySettingKey } from './provider-pol
 const baseSettings = [
   {
     key: 'retrieval.planning', type: 'string', enum: ['none', 'multi-query', 'hyde'], default: 'none',
-    title: 'Query planning', description: 'Uses bounded deterministic variants and, for HyDE, only an explicitly configured local callback.',
+    title: 'Query planning', description: 'Uses bounded deterministic variants and, for HyDE, an installed local Ollama model only.',
     visibility: 'advanced', resourceEffect: 'medium', restartRequired: false, reindexRequired: false,
     environment: 'QUIZZER_RETRIEVAL_PLANNING',
+  },
+  {
+    key: 'retrieval.hydeModel', type: 'string', default: 'qwen3:4b',
+    pattern: '^(?:[A-Za-z0-9][A-Za-z0-9._-]{0,63}/){0,4}[A-Za-z0-9][A-Za-z0-9._-]{0,127}(?::[A-Za-z0-9][A-Za-z0-9._-]{0,99})?$',
+    title: 'Local HyDE model', description: 'Installed Ollama model used to write hypothetical retrieval passages. Quizzer never downloads it automatically or sends these requests remotely.',
+    visibility: 'advanced', resourceEffect: 'high', restartRequired: false, reindexRequired: false,
+    environment: 'QUIZZER_HYDE_MODEL',
   },
 
   {
@@ -143,6 +150,7 @@ export const HARDWARE_PROFILE_SETTINGS = Object.freeze({
   lite: Object.freeze({
     'hardware.profile': 'lite',
     'retrieval.planning': 'none',
+    'retrieval.hydeModel': 'qwen3:4b',
     'generation.concurrency': 1,
     'generation.batchSize': 10,
     'retrieval.mode': 'sparse',
@@ -161,6 +169,7 @@ export const HARDWARE_PROFILE_SETTINGS = Object.freeze({
   balanced: Object.freeze({
     'hardware.profile': 'balanced',
     'retrieval.planning': 'multi-query',
+    'retrieval.hydeModel': 'qwen3:4b',
     'generation.concurrency': 3,
     'generation.batchSize': 15,
     'retrieval.mode': 'hybrid',
@@ -179,6 +188,7 @@ export const HARDWARE_PROFILE_SETTINGS = Object.freeze({
   max: Object.freeze({
     'hardware.profile': 'max',
     'retrieval.planning': 'hyde',
+    'retrieval.hydeModel': 'qwen3:4b',
     'generation.concurrency': 5,
     'generation.batchSize': 20,
     'retrieval.mode': 'hybrid',
@@ -203,6 +213,9 @@ const validateValue = (definition, value) => {
   }
   if (definition.type === 'boolean' && typeof value !== 'boolean') throw new Error(`${definition.key} must be true or false`);
   if (definition.type === 'string' && (typeof value !== 'string' || !value.trim())) throw new Error(`${definition.key} must be a non-empty string`);
+  if (definition.pattern && typeof value === 'string' && !new RegExp(definition.pattern, 'u').test(value.trim())) {
+    throw new Error(`${definition.key} has an invalid value`);
+  }
   if (definition.enum && !definition.enum.includes(value)) throw new Error(`${definition.key} must be one of: ${definition.enum.join(', ')}`);
   return value;
 };
@@ -336,6 +349,7 @@ export const SETTINGS_SCHEMA = Object.freeze({
     description: definition.description,
     default: definition.default,
     ...(definition.enum ? { enum: definition.enum } : {}),
+    ...(definition.pattern ? { pattern: definition.pattern } : {}),
     ...(definition.minimum !== undefined ? { minimum: definition.minimum } : {}),
     ...(definition.maximum !== undefined ? { maximum: definition.maximum } : {}),
     'x-quizzer-visibility': definition.visibility,
