@@ -55,3 +55,61 @@ test('propagates mid-stream cancellation and cancels the response reader', async
   await assert.rejects(pending, error => error.name === 'AbortError');
   assert.equal(cancelled, true);
 });
+
+test('validates runner inputs, caps, images, and provider defaults', async () => {
+  const runners = [
+    [runGemini, { apiKey: 'Gemini', model: undefined }],
+    [runOpenAI, { apiKey: 'OpenAI', model: undefined }],
+    [runAnthropic, { apiKey: 'Anthropic', model: undefined }],
+  ];
+  for (const [runner, extra] of runners) {
+    await assert.rejects(runner({ ...input, ...extra, prompt: '' }), /prompt is invalid/);
+    await assert.rejects(runner({ ...input, ...extra, schema: [] }), /schema is invalid/);
+    await assert.rejects(runner({ ...input, ...extra, model: 42 }), /model is invalid/);
+    await assert.rejects(runner({ ...input, ...extra, apiKey: ' ' }), /API key/);
+    await assert.rejects(runner({ ...input, ...extra, maxOutputTokens: 0 }), /maxOutputTokens/);
+    await assert.rejects(runner({ ...input, ...extra, maxOutputTokens: 10_000_001 }), /maxOutputTokens/);
+  }
+  await assert.rejects(runOpenAICompatible(input, undefined, { label: 'Test', endpoint: 'https://example.test', defaultModel: 'x' }, async () => response({ choices: [] })), /empty response/);
+  await assert.rejects(runGemini({ ...input, images: ['not-data'] }, undefined, async () => response({})), /Invalid image/);
+  await assert.rejects(runAnthropic({ ...input, images: ['data:text/plain;base64,QQ=='] }, undefined, async () => response({})), /Invalid image/);
+  let sent;
+  await runOpenAI({ ...input, model: undefined, images: ['data:image/png;base64,QQ=='] }, undefined, async (_url, options) => { sent = JSON.parse(options.body); return response({ output: [{ content: [{ type: 'output_text', text: '{}' }] }], usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } }); });
+  assert.equal(sent.input[0].content[1].type, 'input_image');
+});
+
+test('handles non-stream responses, redirects, status classes, and bounded headers', async () => {
+  const config = { label: 'Custom', endpoint: 'https://example.test', defaultModel: 'x', jsonSchema: false, supportsImages: false };
+  const nonStream = { status: 200, ok: true, headers: new Headers(), text: async () => JSON.stringify({ choices: [{ message: { content: '{}' } }] }) };
+  assert.equal((await runOpenAICompatible(input, undefined, config, async () => nonStream)).output, '{}');
+  for (const status of [301, 401, 402, 403, 429, 500, 400]) {
+    const result = new Response(JSON.stringify({ error: { message: 'do not leak' } }), { status, headers: { 'content-type': 'application/json' } });
+    await assert.rejects(runOpenAICompatible(input, undefined, config, async () => result), error => {
+      assert.equal(error.status, status === 301 ? 502 : status);
+      assert.match(error.code, /provider_/);
+      assert.doesNotMatch(error.message, /leak/);
+      return true;
+    });
+  }
+  await assert.rejects(runOpenAICompatible(input, undefined, config, async () => new Response('{}', { status: 200, headers: { 'content-length': 'abc' } })), /oversized/);
+  await assert.rejects(runOpenAICompatible(input, undefined, config, async () => new Response('{}', { status: 200, headers: { 'content-length': String(16 * 1024 * 1024 + 1) } })), /oversized/);
+  await assert.rejects(runOpenAICompatible(input, undefined, config, async () => new Response('{}', { status: 200, headers: { 'content-length': '100' } })), /truncated/);
+});
+
+test('supports image-capable compatible routes and usage failure/abort paths', async () => {
+  const config = { label: 'Custom', endpoint: 'https://example.test', defaultModel: 'x', jsonSchema: true, supportsImages: true, providerRouting: true };
+  let sent;
+  const result = await runOpenAICompatible({ ...input, images: ['data:image/png;base64,QQ=='] }, undefined, config, async (_url, options) => { sent = JSON.parse(options.body); return response({ choices: [{ message: { content: '{}' } }] }); });
+  assert.equal(result.output, '{}');
+  assert.equal(sent.provider.require_parameters, true);
+  assert.equal(sent.messages[0].content[1].type, 'image_url');
+  const missingUsage = await runOpenAICompatible({ ...input, includeUsage: true }, undefined, config, async () => response({ choices: [{ message: { content: '{}' } }] }));
+  assert.deepEqual(missingUsage.usage, { unknown: true, reason: 'missing' });
+  const controller = new AbortController(); controller.abort();
+  await assert.rejects(runOpenAICompatible(input, controller.signal, config, async (_url, options) => {
+    assert.equal(options.signal.aborted, true);
+    throw new DOMException('The operation was aborted', 'AbortError');
+  }), /aborted|AbortError/);
+  const throwing = async () => { throw new TypeError('network down'); };
+  await assert.rejects(runGemini(input, undefined, throwing), /network down/);
+});
