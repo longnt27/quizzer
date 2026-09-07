@@ -139,6 +139,83 @@ paths:
           $ref: '#/components/responses/InvalidRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /integrations/llama-cpp/runtime:
+    get:
+      operationId: getLlamaCppRuntime
+      summary: Read the durable managed llama.cpp runtime status
+      description: Paths are intentionally represented by basenames only. Manual endpoint mode remains available through /integrations/llama-cpp/configure.
+      responses:
+        '200':
+          description: Runtime status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [runtime]
+                properties:
+                  runtime: { $ref: '#/components/schemas/LlamaCppRuntimeStatus' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /integrations/llama-cpp/runtime/configure:
+    post:
+      operationId: configureLlamaCppRuntime
+      summary: Confirm and persist installed llama.cpp executable and model paths
+      description: Both paths must be absolute existing regular files. Symlinks, control characters, PATH lookup, downloads, and arbitrary command strings are rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [executablePath, modelPath, confirmed]
+              properties:
+                executablePath: { type: string, minLength: 1, maxLength: 4096 }
+                modelPath: { type: string, minLength: 1, maxLength: 4096 }
+                confirmed: { type: boolean, const: true }
+      responses:
+        '200':
+          description: Runtime configuration saved
+          content:
+            application/json:
+              schema: { type: object, required: [runtime], properties: { runtime: { $ref: '#/components/schemas/LlamaCppRuntimeStatus' } } }
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /integrations/llama-cpp/runtime/start:
+    post:
+      operationId: startLlamaCppRuntime
+      summary: Confirm and start the bounded local llama.cpp process
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirmed]
+              properties: { confirmed: { type: boolean, const: true } }
+      responses:
+        '200':
+          description: Runtime started and health-checked
+          content:
+            application/json:
+              schema: { type: object, required: [runtime], properties: { runtime: { $ref: '#/components/schemas/LlamaCppRuntimeStatus' } } }
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /integrations/llama-cpp/runtime/stop:
+    post:
+      operationId: stopLlamaCppRuntime
+      summary: Stop the managed llama.cpp process
+      responses:
+        '200':
+          description: Runtime stopped
+          content:
+            application/json:
+              schema: { type: object, required: [runtime], properties: { runtime: { $ref: '#/components/schemas/LlamaCppRuntimeStatus' } } }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /provider-credentials:
     get:
       operationId: getProviderCredentialStatus
@@ -1311,6 +1388,24 @@ components:
         totalTokens: { type: integer, minimum: 0 }
         reservedCostMicroUsd: { type: integer, minimum: 0 }
         finalizedCostMicroUsd: { type: integer, minimum: 0 }
+    LlamaCppRuntimeStatus:
+      type: object
+      required: [mode, state, configured, serverReady, host, port]
+      additionalProperties: false
+      properties:
+        mode: { type: string, enum: [manual, managed] }
+        state: { type: string, enum: [idle, starting, running, stopping, error] }
+        configured: { type: boolean }
+        serverReady: { type: boolean }
+        host: { type: string, enum: [127.0.0.1] }
+        port: { type: integer, minimum: 1024, maximum: 65535 }
+        executableName: { type: string, maxLength: 160 }
+        modelName: { type: string, maxLength: 160 }
+        pid: { type: integer, minimum: 1 }
+        startedAt: { type: integer, minimum: 0 }
+        stoppedAt: { type: integer, minimum: 0 }
+        lastError: { type: string, maxLength: 1000 }
+        output: { type: string, maxLength: 12000 }
     GenerationAccounting:
       type: object
       required: [summary, audit]

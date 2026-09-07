@@ -154,6 +154,7 @@ test('requires authentication for every sensitive service endpoint', async () =>
   assert.equal((await authorized('/api/v1/health')).status, 200);
   assert.equal((await fetch(`${origin}/api/v1/jobs/job-1/accounting`)).status, 401);
   assert.equal((await fetch(`${origin}/api/v1/jobs/job-1/accounting/recovery`)).status, 401);
+  assert.equal((await fetch(`${origin}/api/v1/integrations/llama-cpp/runtime`)).status, 401);
   const capabilities = await (await authorized('/api/v1/capabilities')).json();
   assert.equal(capabilities.providerPolicies.codex.maxConcurrency, 1);
   assert.equal(capabilities.providerPolicies.openai.billing, 'usage-based');
@@ -169,6 +170,7 @@ test('requires authentication for every sensitive service endpoint', async () =>
   const openApi = await (await authorized('/api/v1/openapi.yaml')).text();
   assert.match(openApi, /\/settings:\n(?:.|\n)*?\n    patch:\n      operationId: updateSettings/);
   assert.match(openApi, /\/integrations\/llama-cpp\/configure:\n    post:/);
+  assert.match(openApi, /\/integrations\/llama-cpp\/runtime\/start:/);
 });
 
 test('reports and invokes local Ollama only after explicit setup confirmation', async () => {
@@ -177,6 +179,17 @@ test('reports and invokes local Ollama only after explicit setup confirmation', 
   assert.equal(integrations.ollama.models[0].name, 'qwen3:4b');
   assert.equal(integrations['openai-compatible'].available, true);
   assert.equal(integrations['llama-cpp'].configured, true);
+  const runtime = await (await authorized('/api/v1/integrations/llama-cpp/runtime')).json();
+  assert.equal(runtime.runtime.mode, 'manual');
+  const unconfirmedRuntime = await authorized('/api/v1/integrations/llama-cpp/runtime/configure', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ executablePath: '/tmp/llama-server', modelPath: '/tmp/model.gguf' }),
+  });
+  assert.equal(unconfirmedRuntime.status, 400);
+  const invalidRuntimeStart = await authorized('/api/v1/integrations/llama-cpp/runtime/start', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmed: true }),
+  });
+  assert.equal(invalidRuntimeStart.status, 400);
 
   const unconfirmedInstall = await authorized('/api/integrations/ollama/install', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',

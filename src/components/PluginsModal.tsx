@@ -27,7 +27,10 @@ interface IntegrationStatus {
   'claude-agent': AgentStatus;
   'antigravity-agent': AgentStatus;
   ollama: { installed: boolean; serverReady: boolean; models: OllamaModel[]; job: { state: JobState; message: string } };
-  'llama-cpp': { configured: boolean; serverReady: boolean; models: Array<{ id: string }>; capabilities: string[]; error?: string };
+  'llama-cpp': { configured: boolean; serverReady: boolean; models: Array<{ id: string }>; capabilities: string[]; error?: string; runtime?: {
+    mode: 'manual' | 'managed'; state: 'idle' | 'starting' | 'running' | 'stopping' | 'error'; configured: boolean; serverReady: boolean; host: string; port: number;
+    executableName?: string; modelName?: string; pid?: number; lastError?: string; output?: string;
+  } };
   embeddings: { installed: boolean; runtimeInstalled: boolean; job: { state: JobState; message: string } };
 }
 
@@ -105,6 +108,8 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const [vectorIndexPlugin, setVectorIndexPlugin] = useState('builtin');
   const [openaiCompatibleEndpoint, setOpenaiCompatibleEndpoint] = useState('https://api.openai.com/v1');
   const [llamaCppEndpoint, setLlamaCppEndpoint] = useState('http://127.0.0.1:8080/v1');
+  const [llamaCppExecutablePath, setLlamaCppExecutablePath] = useState('');
+  const [llamaCppModelPath, setLlamaCppModelPath] = useState('');
   const [externalError, setExternalError] = useState('');
   const [externalLoading, setExternalLoading] = useState(true);
   const [developerMode, setDeveloperMode] = useState(false);
@@ -163,6 +168,8 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       if (typeof settings.values['providers.llama-cpp.model'] === 'string') {
         setModels(current => ({ ...current, 'llama-cpp': settings.values['providers.llama-cpp.model'] as string }));
       }
+      if (typeof settings.values['providers.llama-cpp.executablePath'] === 'string') setLlamaCppExecutablePath(settings.values['providers.llama-cpp.executablePath']);
+      if (typeof settings.values['providers.llama-cpp.modelPath'] === 'string') setLlamaCppModelPath(settings.values['providers.llama-cpp.modelPath']);
       setExternalError('');
     } catch (error) {
       setExternalError(error instanceof Error ? error.message : 'Could not load external plugins');
@@ -198,7 +205,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   useEffect(() => {
     if (!status) return;
     const jobs = [status.marker.job, status.ocr?.job, status.embeddings?.job, status.ollama?.job, ...AGENT_PROVIDERS.map(provider => status[provider.id]?.job)].filter(Boolean);
-    if (!jobs.some(job => job.state === 'working')) return;
+    if (!jobs.some(job => job.state === 'working') && !['starting', 'stopping'].includes(status['llama-cpp']?.runtime?.state ?? 'idle')) return;
     const timer = window.setInterval(() => void refresh(), 1500);
     return () => window.clearInterval(timer);
   }, [refresh, status]);
@@ -215,6 +222,36 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const runAction = async (path: string) => {
     try { await start(path); }
     catch (error) { message.error((error as Error).message); }
+  };
+
+  const configureManagedRuntime = () => getModalApi().confirm({
+    title: 'Save managed llama.cpp paths?',
+    content: 'Quizzer will remember these absolute paths and use them only after you explicitly confirm a start. It will not download or search for binaries or models.',
+    okText: 'Save paths',
+    onOk: async () => {
+      try {
+        await serviceJson('/api/v1/integrations/llama-cpp/runtime/configure', 'POST', {
+          executablePath: llamaCppExecutablePath.trim(), modelPath: llamaCppModelPath.trim(), confirmed: true,
+        });
+        await refresh();
+        message.success('Managed llama.cpp paths saved');
+      } catch (error) { message.error(error instanceof Error ? error.message : 'Could not save llama.cpp paths'); throw error; }
+    },
+  });
+
+  const startManagedRuntime = () => getModalApi().confirm({
+    title: 'Start the managed llama.cpp server?',
+    content: 'Quizzer will run the already-installed executable with the selected model on 127.0.0.1 using bounded resource settings. No files will be downloaded.',
+    okText: 'Start local server',
+    onOk: async () => {
+      try { await serviceJson('/api/v1/integrations/llama-cpp/runtime/start', 'POST', { confirmed: true }); await refresh(); }
+      catch (error) { message.error(error instanceof Error ? error.message : 'Could not start llama.cpp'); throw error; }
+    },
+  });
+
+  const stopManagedRuntime = async () => {
+    try { await serviceJson('/api/v1/integrations/llama-cpp/runtime/stop', 'POST', {}); await refresh(); }
+    catch (error) { message.error(error instanceof Error ? error.message : 'Could not stop llama.cpp'); }
   };
 
   const installOllama = () => getModalApi().confirm({
@@ -613,6 +650,26 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
             {status?.['llama-cpp']?.serverReady && isNumericLoopbackEndpoint(llamaCppEndpoint) && Boolean(models['llama-cpp']?.trim()) && <Space><Switch checked={enabledProviders['llama-cpp']} onChange={value => setEnabledProviders(current => ({ ...current, 'llama-cpp': value }))} /><Typography.Text>Enabled for generation</Typography.Text></Space>}
           </Space>
         </section>
+
+        {interfaceMode === 'advanced' && <section className="plugin-card">
+          <div className="plugin-card-heading">
+            <div><Typography.Title level={5}>Managed llama.cpp runtime</Typography.Title><Typography.Text type="secondary">Use an already-installed llama.cpp server and GGUF model. Paths are validated as absolute regular files, stored only after confirmation, and never downloaded by Quizzer.</Typography.Text></div>
+            {statusTag(status?.['llama-cpp']?.runtime?.state === 'running', ['starting', 'stopping'].includes(status?.['llama-cpp']?.runtime?.state ?? ''), status?.['llama-cpp']?.runtime?.state === 'error' ? 'Needs attention' : 'Running')}
+          </div>
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <Input aria-label="llama.cpp executable path" value={llamaCppExecutablePath} onChange={event => setLlamaCppExecutablePath(event.target.value)} addonBefore="Executable" placeholder="/absolute/path/to/llama-server" />
+            <Input aria-label="llama.cpp model file path" value={llamaCppModelPath} onChange={event => setLlamaCppModelPath(event.target.value)} addonBefore="GGUF model" placeholder="/absolute/path/to/model.gguf" />
+            <Typography.Text type="secondary">Managed server: 127.0.0.1:{status?.['llama-cpp']?.runtime?.port ?? 8080}. Context, batch, and CPU-thread limits come from Advanced settings and detected hardware.</Typography.Text>
+            {status?.['llama-cpp']?.runtime?.lastError && <Alert type="error" showIcon message="Managed llama.cpp runtime error" description={status['llama-cpp'].runtime.lastError} />}
+            {status?.['llama-cpp']?.runtime?.output && <pre className="plugin-output">{status['llama-cpp'].runtime.output}</pre>}
+            <Space wrap>
+              <Button onClick={configureManagedRuntime} disabled={!llamaCppExecutablePath.trim() || !llamaCppModelPath.trim()}>Save managed paths</Button>
+              {status?.['llama-cpp']?.runtime?.state === 'running' || status?.['llama-cpp']?.runtime?.state === 'starting'
+                ? <Button danger onClick={() => void stopManagedRuntime()}>Stop local server</Button>
+                : <Button type="primary" onClick={startManagedRuntime} disabled={!status?.['llama-cpp']?.runtime?.configured}>Start local server</Button>}
+            </Space>
+          </Space>
+        </section>}
 
         <Divider orientation="left" plain>Signed-in agents</Divider>
         {AGENT_PROVIDERS.map(provider => {

@@ -151,6 +151,42 @@ const baseSettings = [
     visibility: 'advanced', resourceEffect: 'high', restartRequired: false, reindexRequired: false,
     environment: 'QUIZZER_LLAMA_CPP_MODEL',
   },
+  {
+    key: 'providers.llama-cpp.executablePath', type: 'string', default: '', optional: true,
+    title: 'Managed llama.cpp executable path', description: 'Absolute path to an already-installed llama.cpp server executable. Quizzer never searches PATH or downloads this binary.',
+    visibility: 'advanced', resourceEffect: 'high', restartRequired: true, reindexRequired: false,
+    environment: 'QUIZZER_LLAMA_CPP_EXECUTABLE_PATH',
+  },
+  {
+    key: 'providers.llama-cpp.modelPath', type: 'string', default: '', optional: true,
+    title: 'Managed llama.cpp model path', description: 'Absolute path to an already-installed GGUF model file. Quizzer never downloads this model.',
+    visibility: 'advanced', resourceEffect: 'high', restartRequired: false, reindexRequired: false,
+    environment: 'QUIZZER_LLAMA_CPP_MODEL_PATH',
+  },
+  {
+    key: 'providers.llama-cpp.managedPort', type: 'integer', minimum: 1024, maximum: 65535, default: 8080,
+    title: 'Managed llama.cpp port', description: 'Loopback port used by the explicitly selected llama.cpp process.',
+    visibility: 'advanced', resourceEffect: 'high', restartRequired: true, reindexRequired: false,
+    environment: 'QUIZZER_LLAMA_CPP_MANAGED_PORT',
+  },
+  {
+    key: 'providers.llama-cpp.contextSize', type: 'integer', minimum: 512, maximum: 131072, default: 4096,
+    title: 'llama.cpp context size', description: 'Bounded context window passed to the managed llama.cpp process.',
+    visibility: 'advanced', resourceEffect: 'high', restartRequired: true, reindexRequired: false,
+    environment: 'QUIZZER_LLAMA_CPP_CONTEXT_SIZE',
+  },
+  {
+    key: 'providers.llama-cpp.batchSize', type: 'integer', minimum: 1, maximum: 2048, default: 512,
+    title: 'llama.cpp batch size', description: 'Bounded prompt batch size passed to the managed llama.cpp process.',
+    visibility: 'advanced', resourceEffect: 'high', restartRequired: true, reindexRequired: false,
+    environment: 'QUIZZER_LLAMA_CPP_BATCH_SIZE',
+  },
+  {
+    key: 'providers.llama-cpp.threads', type: 'integer', minimum: 1, maximum: 256, default: 4,
+    title: 'llama.cpp CPU threads', description: 'Upper bound for managed llama.cpp CPU threads; the runtime clamps it to detected CPU cores.',
+    visibility: 'advanced', resourceEffect: 'high', restartRequired: true, reindexRequired: false,
+    environment: 'QUIZZER_LLAMA_CPP_THREADS',
+  },
 ];
 
 const providerConcurrencySettings = Object.entries(PROVIDER_POLICIES).filter(([, policy]) => policy.configurableConcurrency !== false).map(([provider, policy]) => ({
@@ -232,7 +268,7 @@ const validateValue = (definition, value) => {
     throw new Error(`${definition.key} must be an integer from ${definition.minimum} to ${definition.maximum}`);
   }
   if (definition.type === 'boolean' && typeof value !== 'boolean') throw new Error(`${definition.key} must be true or false`);
-  if (definition.type === 'string' && (typeof value !== 'string' || !value.trim())) throw new Error(`${definition.key} must be a non-empty string`);
+  if (definition.type === 'string' && (typeof value !== 'string' || (!value.trim() && !definition.optional))) throw new Error(`${definition.key} must be a non-empty string`);
   if (definition.pattern && typeof value === 'string' && !new RegExp(definition.pattern, 'u').test(value.trim())) {
     throw new Error(`${definition.key} has an invalid value`);
   }
