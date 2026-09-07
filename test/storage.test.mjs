@@ -11,6 +11,7 @@ process.env.QUIZZER_DATABASE_PATH = join(directory, 'quizzer.sqlite');
 const {
   beginLegacyMigration, claimGenerationJob, completeGenerationJob, controlGenerationJob, createGenerationJobs, finalizeLegacyMigration, getRecord, listLegacyMigrations,
   listRecords, putRecord, renewGenerationJobLease, subscribeStorageChanges, syncStorage, updateGenerationJobWithLease,
+  reserveGenerationAttempt, finalizeGenerationAttempt, getGenerationAccounting, raiseGenerationCostCeiling,
 } = await import('../server/storage.mjs');
 
 const sha256 = value => createHash('sha256').update(value).digest('hex');
@@ -396,4 +397,23 @@ test('keeps the rollback backup when migration verification fails', async () => 
   assert.throws(() => finalizeLegacyMigration(migration.id), /verification failed.*Rollback backup/);
   assert.ok((await stat(prepared.backupPath)).size > 0);
   assert.equal(listLegacyMigrations().find(item => item.id === migration.id).status, 'failed');
+});
+
+test('durably accounts reservations, unknown usage, replay mismatches, over-ceiling spend, and explicit raises', () => {
+  const priced = { ...generationOptions(), costCeilingMicroUsd: 3 };
+  priced.routeChain = [{ ...priced.routeChain[0], pricing: { inputMicroUsdPerMillionTokens: 1_500_000, outputMicroUsdPerMillionTokens: 2_000_000 } }];
+  putRecord('documents', 'accounting-doc', { id: 'accounting-doc' });
+  const job = { id: 'accounting-job', testId: 'accounting-test', name: 'Accounting', createdAt: 10, updatedAt: 10, status: 'queued', documentIds: ['accounting-doc'], options: priced, questions: [], rejected: 0, rounds: {} };
+  createGenerationJobs([job]);
+  const claimed = claimGenerationJob({ workerId: 'accounting-worker', now: 100, leaseMs: 10_000, providerConcurrency: { codex: 10 } });
+  reserveGenerationAttempt(job.id, { workerId: 'accounting-worker', leaseId: claimed.data.leaseId, attemptId: 'accounting-attempt', routeIndex: 0, maxInputTokens: 1, maxOutputTokens: 0, now: 101 });
+  reserveGenerationAttempt(job.id, { workerId: 'accounting-worker', leaseId: claimed.data.leaseId, attemptId: 'accounting-attempt', routeIndex: 0, maxInputTokens: 1, maxOutputTokens: 0, now: 102 });
+  assert.throws(() => reserveGenerationAttempt(job.id, { workerId: 'accounting-worker', leaseId: claimed.data.leaseId, attemptId: 'accounting-attempt', routeIndex: 0, maxInputTokens: 2, maxOutputTokens: 0, now: 102 }), /replay parameters/);
+  finalizeGenerationAttempt(job.id, { workerId: 'accounting-worker', leaseId: claimed.data.leaseId, attemptId: 'accounting-attempt', usage: { unknown: true, reason: 'missing' }, now: 103 });
+  assert.equal(getGenerationAccounting(job.id).summary.reservedCostMicroUsd, 2);
+  finalizeGenerationAttempt(job.id, { workerId: 'accounting-worker', leaseId: claimed.data.leaseId, attemptId: 'accounting-attempt', usage: { unknown: true, reason: 'missing' }, now: 104 });
+  assert.throws(() => finalizeGenerationAttempt(job.id, { workerId: 'accounting-worker', leaseId: claimed.data.leaseId, attemptId: 'accounting-attempt', usage: { inputTokens: 1, outputTokens: 0 }, now: 104 }), /replay parameters/);
+  updateGenerationJobWithLease(job.id, { workerId: 'accounting-worker', leaseId: claimed.data.leaseId, patch: { status: 'paused' }, now: 105 });
+  raiseGenerationCostCeiling(job.id, { newCeilingMicroUsd: 10, reason: 'approved extension', confirmed: true, now: 106 });
+  assert.equal(getRecord('generationJobs', job.id).data.options.costCeilingMicroUsd, 10);
 });
