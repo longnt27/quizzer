@@ -13,8 +13,29 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
 type Platform = 'windows' | 'macos' | 'linux';
-type ReleaseArtifact = { platform: Platform; architecture?: string; url: string; sha256?: string; name?: string };
-type ReleaseManifest = { version: string; publishedAt?: string; signatureAlgorithm: 'ed25519'; publicKeyId: string; signature: string; artifacts: ReleaseArtifact[] };
+type Architecture = 'x64' | 'arm64';
+type ArtifactFormat = 'exe' | 'msi' | 'dmg' | 'pkg' | 'zip' | 'appimage' | 'deb' | 'rpm' | 'tar.gz' | 'sea';
+type ReleaseArtifact = {
+  name: string;
+  platform: Platform;
+  architecture: Architecture;
+  format: ArtifactFormat;
+  url: string;
+  size: number;
+  sha256: string;
+  minimumOs: string;
+  cli?: true;
+};
+type ReleaseManifest = {
+  schemaVersion: 1;
+  version: string;
+  channel: 'stable' | 'beta';
+  publishedAt: string;
+  signatureAlgorithm: 'ed25519';
+  publicKeyId: string;
+  signature: string;
+  artifacts: ReleaseArtifact[];
+};
 
 const manifestUrl = 'https://github.com/Somethings1/quizzer/releases/latest/download/release-manifest.json';
 const releasesUrl = 'https://github.com/Somethings1/quizzer/releases/latest';
@@ -24,6 +45,13 @@ const installers: Record<Platform, string> = {
   windows: 'irm https://github.com/Somethings1/quizzer/releases/latest/download/install.ps1 | iex',
 };
 const platformLabel: Record<Platform, string> = { windows: 'Windows', macos: 'macOS', linux: 'Linux' };
+const preferredFormats: Record<Platform, ArtifactFormat[]> = {
+  windows: ['exe', 'msi'],
+  macos: ['dmg', 'pkg'],
+  linux: ['appimage', 'deb', 'rpm'],
+};
+const supportedFormats = new Set<ArtifactFormat>(['exe', 'msi', 'dmg', 'pkg', 'zip', 'appimage', 'deb', 'rpm', 'tar.gz', 'sea']);
+const maximumArtifactSize = 1024 * 1024 * 1024;
 
 const samples = {
   terraform: { label: 'Terraform field guide', pages: 84, topics: ['State', 'Modules', 'Providers', 'Security'] },
@@ -39,11 +67,60 @@ function detectPlatform(): Platform {
   return 'linux';
 }
 
-function isTrustedArtifact(artifact: ReleaseArtifact) {
+function detectArchitecture(): Architecture | undefined {
+  const source = `${navigator.userAgent} ${navigator.platform}`.toLowerCase();
+  if (/\b(?:aarch64|arm64)\b/.test(source)) return 'arm64';
+  if (/\b(?:x86_64|x64|win64|amd64)\b/.test(source)) return 'x64';
+  return undefined;
+}
+
+function normalizeArchitecture(architecture: unknown, bitness: unknown): Architecture | undefined {
+  if (typeof architecture !== 'string') return undefined;
+  const normalized = architecture.toLowerCase();
+  if ((normalized === 'arm' || normalized === 'arm64' || normalized === 'aarch64') && (bitness === undefined || bitness === '64')) return 'arm64';
+  if ((normalized === 'x86' || normalized === 'x64' || normalized === 'x86_64' || normalized === 'amd64') && (bitness === undefined || bitness === '64')) return 'x64';
+  return undefined;
+}
+
+function isTrustedArtifactUrl(artifact: ReleaseArtifact) {
   try {
     const url = new URL(artifact.url);
-    return url.protocol === 'https:' && (url.hostname === 'github.com' || url.hostname.endsWith('.githubusercontent.com'));
+    const path = url.pathname.split('/');
+    return url.protocol === 'https:' && url.hostname === 'github.com' && url.port === ''
+      && url.username === '' && url.password === '' && url.search === '' && url.hash === ''
+      && path.length === 7 && path[1] === 'Somethings1' && path[2] === 'quizzer'
+      && path[3] === 'releases' && path[4] === 'download' && path[5].length > 0
+      && decodeURIComponent(path[6]) === artifact.name;
   } catch { return false; }
+}
+
+function isReleaseArtifact(value: unknown): value is ReleaseArtifact {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const artifact = value as Partial<ReleaseArtifact>;
+  return typeof artifact.name === 'string'
+    && artifact.name.length <= 128
+    && /^[a-zA-Z0-9](?:[a-zA-Z0-9_.-]{0,126}[a-zA-Z0-9])?$/.test(artifact.name)
+    && !artifact.name.includes('..')
+    && (artifact.platform === 'windows' || artifact.platform === 'macos' || artifact.platform === 'linux')
+    && (artifact.architecture === 'x64' || artifact.architecture === 'arm64')
+    && typeof artifact.format === 'string' && supportedFormats.has(artifact.format as ArtifactFormat)
+    && Number.isSafeInteger(artifact.size) && Number(artifact.size) >= 1 && Number(artifact.size) <= maximumArtifactSize
+    && typeof artifact.sha256 === 'string' && /^[a-f0-9]{64}$/.test(artifact.sha256)
+    && typeof artifact.minimumOs === 'string' && artifact.minimumOs.length > 0
+    && (artifact.cli === undefined || artifact.cli === true)
+    && typeof artifact.url === 'string'
+    && isTrustedArtifactUrl(artifact as ReleaseArtifact);
+}
+
+function selectArtifact(manifest: ReleaseManifest | undefined, platform: Platform, architecture: Architecture | undefined) {
+  if (!manifest || !architecture) return undefined;
+  const candidates = manifest.artifacts.filter(artifact => artifact.platform === platform
+    && artifact.architecture === architecture && artifact.cli !== true);
+  return preferredFormats[platform].map(format => candidates.find(artifact => artifact.format === format)).find(Boolean);
+}
+
+function formatArtifactSize(bytes: number) {
+  return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
 }
 
 function canonicalize(value: unknown): string {
@@ -64,17 +141,33 @@ function decodeBase64(value: string) {
 
 async function verifyReleaseManifest(value: Partial<ReleaseManifest>): Promise<ReleaseManifest> {
   const publicKey = process.env.NEXT_PUBLIC_QUIZZER_RELEASE_PUBLIC_KEY;
+  const publicKeyId = process.env.NEXT_PUBLIC_QUIZZER_RELEASE_PUBLIC_KEY_ID;
   if (!publicKey) throw new Error('Release signing key is not configured');
-  if (typeof value.version !== 'string' || value.signatureAlgorithm !== 'ed25519' || typeof value.publicKeyId !== 'string'
-    || typeof value.signature !== 'string' || !Array.isArray(value.artifacts)) throw new Error('Invalid release manifest');
+  if (!publicKeyId) throw new Error('Release signing key ID is not configured');
+  if (value.schemaVersion !== 1 || typeof value.version !== 'string'
+    || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(value.version)
+    || (value.channel !== 'stable' && value.channel !== 'beta')
+    || typeof value.publishedAt !== 'string' || !Number.isFinite(Date.parse(value.publishedAt))
+    || value.signatureAlgorithm !== 'ed25519' || value.publicKeyId !== publicKeyId
+    || typeof value.signature !== 'string' || value.signature.length < 40
+    || !Array.isArray(value.artifacts) || value.artifacts.length === 0
+    || !value.artifacts.every(isReleaseArtifact)) throw new Error('Invalid release manifest');
+  const targets = new Set<string>();
+  for (const artifact of value.artifacts) {
+    const target = `${artifact.platform}:${artifact.architecture}:${artifact.format}`;
+    if (targets.has(target)) throw new Error('Release manifest contains duplicate targets');
+    targets.add(target);
+  }
   const key = await crypto.subtle.importKey('raw', decodeBase64(publicKey), { name: 'Ed25519' }, false, ['verify']);
   const valid = await crypto.subtle.verify({ name: 'Ed25519' }, key, decodeBase64(value.signature), new TextEncoder().encode(canonicalize(value)));
   if (!valid) throw new Error('Release manifest signature is invalid');
-  return { ...value, version: value.version, signatureAlgorithm: 'ed25519', publicKeyId: value.publicKeyId, signature: value.signature, artifacts: value.artifacts.filter(isTrustedArtifact) };
+  return value as ReleaseManifest;
 }
 
 export default function Home() {
   const detectedPlatform = useSyncExternalStore(() => () => undefined, detectPlatform, () => 'macos' as Platform);
+  const fallbackArchitecture = useSyncExternalStore(() => () => undefined, detectArchitecture, () => undefined);
+  const [highEntropyArchitecture, setHighEntropyArchitecture] = useState<Architecture>();
   const [platformOverride, setPlatformOverride] = useState<Platform>();
   const [copied, setCopied] = useState<Platform | null>(null);
   const [manifest, setManifest] = useState<ReleaseManifest>();
@@ -83,6 +176,18 @@ export default function Home() {
   const [instruction, setInstruction] = useState('Coding questions about Terraform only');
 
   const platform = platformOverride ?? detectedPlatform;
+  const detectedArchitecture = highEntropyArchitecture ?? fallbackArchitecture;
+  useEffect(() => {
+    type UserAgentData = { getHighEntropyValues?: (hints: string[]) => Promise<{ architecture?: string; bitness?: string }> };
+    const userAgentData = (navigator as Navigator & { userAgentData?: UserAgentData }).userAgentData;
+    if (!userAgentData?.getHighEntropyValues) return;
+    let active = true;
+    void userAgentData.getHighEntropyValues(['architecture', 'bitness']).then(values => {
+      const architecture = normalizeArchitecture(values.architecture, values.bitness);
+      if (active && architecture) setHighEntropyArchitecture(architecture);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
   useEffect(() => {
     const controller = new AbortController();
     void fetch(manifestUrl, { signal: controller.signal }).then(async response => {
@@ -97,7 +202,7 @@ export default function Home() {
     setCopied(target);
     window.setTimeout(() => setCopied(null), 1800);
   };
-  const artifact = manifest?.artifacts.find(item => item.platform === platform);
+  const artifact = selectArtifact(manifest, platform, detectedArchitecture);
   const downloadUrl = artifact?.url ?? releasesUrl;
   const demo = useMemo(() => {
     const lower = instruction.toLowerCase();
@@ -206,11 +311,11 @@ export default function Home() {
         <div><p className="section-kicker">Get Quizzer</p><h2>One command. Your whole study workspace.</h2><p>Per-user installers verify checksums, add the CLI to PATH, register the desktop app, and open onboarding.</p></div>
         <div className="download-status">{manifest ? <><Sparkles /><span><strong>Version {manifest.version}</strong><small>Verified release manifest · {manifest.artifacts.length} signed artifacts</small></span></> : manifestUnavailable ? <><RefreshCw /><span><strong>Verified release unavailable</strong><small>Downloads safely fall back to GitHub Releases.</small></span></> : <><RefreshCw className="spin" /><span><strong>Checking latest release</strong><small>Verifying artifacts and checksums…</small></span></>}</div>
         <div className="install-list">{(Object.keys(platformLabel) as Platform[]).map(item => {
-          const itemArtifact = manifest?.artifacts.find(candidate => candidate.platform === item);
+          const itemArtifact = selectArtifact(manifest, item, detectedArchitecture);
           return <article key={item}>
             <div><Terminal /><span><strong>{platformLabel[item]}</strong><small>{item === 'macos' ? 'macOS 13+ · Intel & Apple silicon' : item === 'windows' ? 'Windows 10/11 x64 · Windows 11 arm64' : 'Current Ubuntu/Fedora-class · x64 & arm64'}</small></span></div>
             <div className="command-row"><code>{installers[item]}</code><Button variant="ghost" size="icon" onClick={() => void copyInstaller(item)} aria-label={`Copy ${platformLabel[item]} installer`}>{copied === item ? <Check /> : <Clipboard />}</Button></div>
-            {itemArtifact?.sha256 && <small className="checksum">SHA-256 {itemArtifact.sha256}</small>}
+            {itemArtifact && <><small className="artifact-details">{itemArtifact.name} · {formatArtifactSize(itemArtifact.size)} · {itemArtifact.minimumOs}</small><small className="checksum">SHA-256 {itemArtifact.sha256}</small></>}
           </article>;
         })}</div>
         <p className="alternatives">Prefer a package manager? Homebrew, winget, AppImage, deb, and rpm builds are published alongside standalone installers. <a href={releasesUrl}>See all releases <ArrowRight /></a></p>

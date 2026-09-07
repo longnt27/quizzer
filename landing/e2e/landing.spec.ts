@@ -22,14 +22,20 @@ const canonicalize = (value: unknown): string => {
 
 const signedManifest = () => {
   const manifest = {
+    schemaVersion: 1,
     version: '1.0.0-beta.1',
+    channel: 'beta',
     publishedAt: '2026-09-06T00:00:00.000Z',
     signatureAlgorithm: 'ed25519',
     publicKeyId: 'playwright-test-key',
     artifacts: [
-      { platform: 'windows', architecture: 'x64', url: 'https://github.com/Somethings1/quizzer/releases/download/v1.0.0-beta.1/quizzer-windows-x64.exe', sha256: '1'.repeat(64) },
-      { platform: 'macos', architecture: 'arm64', url: 'https://github.com/Somethings1/quizzer/releases/download/v1.0.0-beta.1/quizzer-macos-arm64.dmg', sha256: '2'.repeat(64) },
-      { platform: 'linux', architecture: 'x64', url: 'https://downloads.example.test/quizzer-linux-x64.AppImage', sha256: '3'.repeat(64) },
+      { name: 'quizzer-windows-x64.msi', platform: 'windows', architecture: 'x64', format: 'msi', url: 'https://github.com/Somethings1/quizzer/releases/download/v1.0.0-beta.1/quizzer-windows-x64.msi', size: 80 * 1024 * 1024, sha256: '1'.repeat(64), minimumOs: 'Windows 10' },
+      { name: 'quizzer-windows-x64.exe', platform: 'windows', architecture: 'x64', format: 'exe', url: 'https://github.com/Somethings1/quizzer/releases/download/v1.0.0-beta.1/quizzer-windows-x64.exe', size: 75 * 1024 * 1024, sha256: '2'.repeat(64), minimumOs: 'Windows 10 x64' },
+      { name: 'quizzer-windows-arm64.exe', platform: 'windows', architecture: 'arm64', format: 'exe', url: 'https://github.com/Somethings1/quizzer/releases/download/v1.0.0-beta.1/quizzer-windows-arm64.exe', size: 103, sha256: '3'.repeat(64), minimumOs: 'Windows 11' },
+      { name: 'quizzer-macos-x64.dmg', platform: 'macos', architecture: 'x64', format: 'dmg', url: 'https://github.com/Somethings1/quizzer/releases/download/v1.0.0-beta.1/quizzer-macos-x64.dmg', size: 104, sha256: '4'.repeat(64), minimumOs: 'macOS 13' },
+      { name: 'quizzer-macos-arm64.dmg', platform: 'macos', architecture: 'arm64', format: 'dmg', url: 'https://github.com/Somethings1/quizzer/releases/download/v1.0.0-beta.1/quizzer-macos-arm64.dmg', size: 105, sha256: '5'.repeat(64), minimumOs: 'macOS 13' },
+      { name: 'quizzer-linux-x64.AppImage', platform: 'linux', architecture: 'x64', format: 'appimage', url: 'https://github.com/Somethings1/quizzer/releases/download/v1.0.0-beta.1/quizzer-linux-x64.AppImage', size: 106, sha256: '6'.repeat(64), minimumOs: 'Current 64-bit Ubuntu or Fedora' },
+      { name: 'quizzer-cli-linux-x64', platform: 'linux', architecture: 'x64', format: 'sea', url: 'https://github.com/Somethings1/quizzer/releases/download/v1.0.0-beta.1/quizzer-cli-linux-x64', size: 107, sha256: '7'.repeat(64), minimumOs: 'Current 64-bit Ubuntu or Fedora', cli: true as const },
     ],
   };
   return { ...manifest, signature: Buffer.from(sign(null, Buffer.from(canonicalize(manifest)), releasePrivateKey)).toString('base64') };
@@ -43,6 +49,12 @@ const stubClipboard = (page: Page) => page.addInitScript(() => {
     value: { writeText: async (next: string) => { value = next; }, readText: async () => value },
   });
 });
+const stubArchitecture = (page: Page, architecture: 'x86' | 'arm') => page.addInitScript(value => {
+  Object.defineProperty(navigator, 'userAgentData', {
+    configurable: true,
+    value: { getHighEntropyValues: async () => ({ architecture: value, bitness: '64' }) },
+  });
+}, architecture);
 
 test('detects the platform, exposes every installer, and copies the selected command', async ({ page }) => {
   await stubClipboard(page);
@@ -68,17 +80,72 @@ test('detects the platform, exposes every installer, and copies the selected com
   await expect(page.getByText('Verified release unavailable')).toBeVisible();
 });
 
-test('uses only trusted artifacts from a valid signed release manifest', async ({ page }) => {
+test('selects the preferred format for the detected architecture from a complete signed manifest', async ({ page }) => {
+  await stubArchitecture(page, 'x86');
   await page.route(manifestUrl, route => route.fulfill({ json: signedManifest() }));
   await page.goto('/');
 
   await expect(page.getByText('Version 1.0.0-beta.1')).toBeVisible();
-  await expect(page.getByText('Verified release manifest · 2 signed artifacts')).toBeVisible();
+  await expect(page.getByText('Verified release manifest · 7 signed artifacts')).toBeVisible();
   await page.getByRole('button', { name: 'Windows', exact: true }).click();
   await expect(page.getByRole('link', { name: /Download for Windows/ })).toHaveAttribute('href', /quizzer-windows-x64\.exe$/);
+  await expect(page.getByText('quizzer-windows-x64.exe · 75 MB · Windows 10 x64')).toBeVisible();
   await page.getByRole('button', { name: 'Linux', exact: true }).click();
-  await expect(page.getByRole('link', { name: /Download for Linux/ })).toHaveAttribute('href', releasesUrl);
-  await expect(page.getByText(`SHA-256 ${'1'.repeat(64)}`)).toBeVisible();
+  await expect(page.getByRole('link', { name: /Download for Linux/ })).toHaveAttribute('href', /quizzer-linux-x64\.AppImage$/);
+  await expect(page.getByText(`SHA-256 ${'2'.repeat(64)}`)).toBeVisible();
+});
+
+test('falls back to the releases page when browser architecture is ambiguous', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Quizzer test browser' });
+    Object.defineProperty(navigator, 'platform', { configurable: true, value: 'Unknown' });
+    Object.defineProperty(navigator, 'userAgentData', { configurable: true, value: undefined });
+  });
+  await page.route(manifestUrl, route => route.fulfill({ json: signedManifest() }));
+  await page.goto('/');
+
+  await expect(page.getByText('Version 1.0.0-beta.1')).toBeVisible();
+  await page.getByRole('button', { name: 'Windows', exact: true }).click();
+  await expect(page.getByRole('link', { name: /Download for Windows/ })).toHaveAttribute('href', releasesUrl);
+  await expect(page.getByText(/quizzer-windows-x64\.exe/)).toHaveCount(0);
+});
+
+test('uses high-entropy architecture detection for arm64 artifacts', async ({ page }) => {
+  await stubArchitecture(page, 'arm');
+  await page.route(manifestUrl, route => route.fulfill({ json: signedManifest() }));
+  await page.goto('/');
+
+  await expect(page.getByText('Version 1.0.0-beta.1')).toBeVisible();
+  await page.getByRole('button', { name: 'Windows', exact: true }).click();
+  await expect(page.getByRole('link', { name: /Download for Windows/ })).toHaveAttribute('href', /quizzer-windows-arm64\.exe$/);
+  await page.getByRole('button', { name: 'macOS', exact: true }).click();
+  await expect(page.getByRole('link', { name: /Download for macOS/ })).toHaveAttribute('href', /quizzer-macos-arm64\.dmg$/);
+});
+
+test('rejects the entire manifest when any artifact violates the release schema', async ({ page }) => {
+  const signed = signedManifest();
+  const invalid = {
+    ...signed,
+    artifacts: signed.artifacts.map((artifact, index) => index === 0
+      ? { ...artifact, url: 'https://downloads.example.test/quizzer-windows-x64.msi' }
+      : artifact),
+  };
+  await page.route(manifestUrl, route => route.fulfill({ json: invalid }));
+  await page.goto('/');
+
+  await expect(page.getByText('Verified release unavailable')).toBeVisible();
+  await page.getByRole('button', { name: 'Windows', exact: true }).click();
+  await expect(page.getByRole('link', { name: /Download for Windows/ })).toHaveAttribute('href', releasesUrl);
+  await expect(page.locator('a[href*="downloads.example.test"]')).toHaveCount(0);
+});
+
+test('rejects a manifest signed under a different configured key ID', async ({ page }) => {
+  const signed = signedManifest();
+  await page.route(manifestUrl, route => route.fulfill({ json: { ...signed, publicKeyId: 'unexpected-key' } }));
+  await page.goto('/');
+
+  await expect(page.getByText('Verified release unavailable')).toBeVisible();
+  await expect(page.getByRole('link', { name: /Download for/ })).toHaveAttribute('href', releasesUrl);
 });
 
 test('rejects a tampered release manifest instead of exposing its download', async ({ page }) => {
