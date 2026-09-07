@@ -19,6 +19,11 @@ test('rejects unsafe usage and pricing arithmetic before it reaches Number overf
   assert.throws(() => routePricing({ pricing: { inputMicroUsdPerToken: 1, outputMicroUsdPerToken: 1 } }), /unsupported fields|include input and output/);
 });
 
+test('converts fractional token prices to integer micro-USD with round-up', () => {
+  assert.equal(estimateRouteCost({ pricing: { inputMicroUsdPerMillionTokens: 1, outputMicroUsdPerMillionTokens: 2 } }, { inputTokens: 1, outputTokens: 1 }), 2);
+  assert.equal(estimateRouteCost({ pricing: { inputMicroUsdPerMillionTokens: 1_500_001, outputMicroUsdPerMillionTokens: 0 } }, { inputTokens: 2, outputTokens: 0 }), 4);
+});
+
 test('missing usage leaves an unresolved conservative reservation and ceilings include reservations', () => {
   const summary = addUsageSummary(undefined, undefined, 0, 9);
   assert.deepEqual(summary, { inputTokens: 0, outputTokens: 0, totalTokens: 0, finalizedCostMicroUsd: 0, reservedCostMicroUsd: 9 });

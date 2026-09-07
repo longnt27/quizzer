@@ -1,5 +1,6 @@
 import type { GenerationProvider, ProviderRoute } from '../types';
 import { serviceJson } from './serviceApi';
+import { getKnownProviderRouteMetadata } from './providerPricing';
 
 const PROVIDER_SETTINGS_KEY = 'quizzer.providerSettings';
 const API_KEY_PREFIX = 'quizzer.apiKey.';
@@ -59,6 +60,7 @@ export const getProviderRoute = (provider: GenerationProvider, model?: string, a
     privacy: definition.kind === 'plugin' || definition.kind === 'local' ? 'local' : definition.kind === 'agent' ? 'signed-in-agent' : 'remote-api',
     paid: definition.kind === 'api',
     approved,
+    ...getKnownProviderRouteMetadata(provider, model?.trim() || undefined),
   };
 };
 

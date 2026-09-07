@@ -7,6 +7,7 @@ import {
   validateProviderAttemptTransition, validateProviderRoute,
 } from '../server/generation-validation.mjs';
 import { resolveSettings } from '../server/settings.mjs';
+import { getProviderPricing, getKnownProviderRouteMetadata } from '../server/provider-pricing.mjs';
 
 const resolvedSettings = resolveSettings({ profile: 'balanced', environment: {} }).values;
 
@@ -70,6 +71,23 @@ test('validates complete generation snapshots and provider policy metadata', () 
   assert.throws(() => validateGenerationOptions({
     ...value, resolvedSettings: { apiKey: 'must-not-be-snapshotted' },
   }), /cannot contain secrets/);
+});
+
+test('uses exact release pricing matches and rejects unknown failover pricing under a finite ceiling', () => {
+  assert.deepEqual(getProviderPricing('openai', 'gpt-5-mini'), {
+    inputMicroUsdPerMillionTokens: 250_000, outputMicroUsdPerMillionTokens: 2_000_000,
+  });
+  assert.equal(getProviderPricing('openai', 'gpt-5'), undefined);
+  assert.deepEqual(getKnownProviderRouteMetadata('ollama', 'qwen3:4b').pricing, {
+    inputMicroUsdPerMillionTokens: 0, outputMicroUsdPerMillionTokens: 0,
+  });
+  assert.throws(() => validateGenerationOptions({
+    ...options(), costCeilingMicroUsd: 1_000_000,
+    routeChain: [
+      { ...options().routeChain[0], pricing: getProviderPricing('openai', 'gpt-5-mini'), usage: 'provider-reported' },
+      { provider: 'openai', model: 'custom-model', privacy: 'remote-api', paid: true, approved: true, usage: 'provider-reported' },
+    ],
+  }), /finite cost ceiling requires explicit input and output pricing/);
 });
 
 test('bounds prompt, route, instruction, and resolved-setting snapshots', () => {
