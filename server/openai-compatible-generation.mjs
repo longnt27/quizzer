@@ -4,6 +4,7 @@ const MAX_SCHEMA_BYTES = 100_000;
 const MAX_IMAGES = 6;
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
+const MAX_API_KEY_CHARACTERS = 16_384;
 const DEFAULT_TIMEOUT_MS = 120_000;
 
 const imagePattern = /^data:image\/(?:png|jpeg|webp|gif);base64,([A-Za-z0-9+/]+={0,2})$/;
@@ -136,16 +137,103 @@ const validateImages = images => {
   });
 };
 
-const boundedResponseText = async response => {
-  const length = Number(response.headers?.get?.("content-length"));
-  if (Number.isFinite(length) && length > MAX_RESPONSE_BYTES) {
+const abortReason = signal => signal?.reason ?? Object.assign(new Error("OpenAI-compatible request was cancelled"), {
+  name: "AbortError",
+});
+
+const withAbort = (promise, signal) => {
+  if (!signal) return Promise.resolve(promise);
+  if (signal.aborted) return Promise.reject(abortReason(signal));
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      signal.removeEventListener("abort", onAbort);
+      reject(abortReason(signal));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    Promise.resolve(promise).then(
+      value => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      error => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+};
+
+const responseContentLength = response => {
+  const raw = response.headers?.get?.("content-length");
+  if (raw === null || raw === undefined || raw === "") return undefined;
+  const normalized = String(raw).trim();
+  if (!/^(?:0|[1-9]\d*)$/.test(normalized)) {
+    throw providerError("OpenAI-compatible provider returned an invalid Content-Length", 502, "provider_unavailable");
+  }
+  const length = Number(normalized);
+  if (!Number.isSafeInteger(length)) {
+    throw providerError("OpenAI-compatible provider returned an invalid Content-Length", 502, "provider_unavailable");
+  }
+  if (length > MAX_RESPONSE_BYTES) {
     throw providerError("OpenAI-compatible provider returned an oversized response", 502, "provider_unavailable");
   }
-  const text = await response.text();
-  if (Buffer.byteLength(text) > MAX_RESPONSE_BYTES) {
-    throw providerError("OpenAI-compatible provider returned an oversized response", 502, "provider_unavailable");
+  return length;
+};
+
+export const boundedResponseText = async (response, signal) => {
+  responseContentLength(response);
+  if (response.body && typeof response.body.getReader === "function") {
+    const reader = response.body.getReader();
+    const chunks = [];
+    let received = 0;
+    try {
+      while (true) {
+        const { done, value } = await withAbort(reader.read(), signal);
+        if (done) break;
+        if (!(value instanceof Uint8Array)) {
+          throw providerError("OpenAI-compatible provider returned an invalid response stream", 502, "provider_unavailable");
+        }
+        received += value.byteLength;
+        if (received > MAX_RESPONSE_BYTES) {
+          throw providerError("OpenAI-compatible provider returned an oversized response", 502, "provider_unavailable");
+        }
+        chunks.push(Buffer.from(value));
+      }
+    } catch (error) {
+      try {
+        const cancellation = reader.cancel(error);
+        Promise.resolve(cancellation).catch(() => {});
+      } catch { /* Ignore cancellation cleanup errors. */ }
+      throw error;
+    } finally {
+      try { reader.releaseLock?.(); } catch { /* The reader may still be cancelling. */ }
+    }
+    return Buffer.concat(chunks, received).toString("utf8");
   }
-  return text;
+
+  if (typeof response.arrayBuffer === "function") {
+    const buffer = Buffer.from(await withAbort(response.arrayBuffer(), signal));
+    if (buffer.length > MAX_RESPONSE_BYTES) {
+      throw providerError("OpenAI-compatible provider returned an oversized response", 502, "provider_unavailable");
+    }
+    return buffer.toString("utf8");
+  }
+
+  throw providerError("OpenAI-compatible provider returned an unreadable response", 502, "provider_unavailable");
+};
+
+export const validateOpenAICompatibleApiKey = (apiKey, { required = false } = {}) => {
+  const value = typeof apiKey === "string" ? apiKey.trim() : "";
+  if (!value) {
+    if (required) {
+      throw providerError("Enter an OpenAI-compatible API key in Quizzer", 401, "provider_auth");
+    }
+    return undefined;
+  }
+  if (value.length > MAX_API_KEY_CHARACTERS || /[^\x21-\x7e]/.test(value)) {
+    throw providerError("OpenAI-compatible API key contains invalid characters", 401, "provider_auth");
+  }
+  return value;
 };
 
 const mapHttpStatusToCode = status => {
@@ -153,6 +241,12 @@ const mapHttpStatusToCode = status => {
   if (status === 402 || status === 429) return "provider_limit";
   if (status >= 500) return "provider_unavailable";
   return "provider_unavailable";
+};
+
+const safeProviderMessage = (message, apiKey, fallback) => {
+  if (typeof message !== "string" || !message.trim()) return fallback;
+  const redacted = apiKey ? message.replaceAll(apiKey, "[redacted]") : message;
+  return redacted.replace(/[\r\n\t\0]+/g, " ").trim().slice(0, 2_000) || fallback;
 };
 
 export const runOpenAICompatibleGeneration = async ({
@@ -165,6 +259,9 @@ export const runOpenAICompatibleGeneration = async ({
   const serializedSchema = validateSchema(schema);
   const validatedImages = validateImages(images);
   const completionsUrl = resolveChatCompletionsUrl(endpoint || DEFAULT_OPENAI_COMPATIBLE_ENDPOINT);
+  const normalizedApiKey = validateOpenAICompatibleApiKey(apiKey, {
+    required: !isLoopbackHost(new URL(completionsUrl).hostname),
+  });
 
   const controller = new AbortController();
   const forwardAbort = () => controller.abort(signal.reason);
@@ -177,7 +274,6 @@ export const runOpenAICompatibleGeneration = async ({
       name: "TimeoutError",
     }));
   }, effectiveTimeout);
-  timeoutTimer.unref?.();
 
   const formattedPrompt = `${prompt}\n\nReturn JSON matching this schema exactly:\n${serializedSchema}`;
   const userContent = validatedImages.length
@@ -190,8 +286,8 @@ export const runOpenAICompatibleGeneration = async ({
   const requestHeaders = {
     "Content-Type": "application/json",
   };
-  if (typeof apiKey === "string" && apiKey.trim()) {
-    requestHeaders.Authorization = `Bearer ${apiKey.trim()}`;
+  if (normalizedApiKey) {
+    requestHeaders.Authorization = `Bearer ${normalizedApiKey}`;
   }
 
   const requestBody = JSON.stringify({
@@ -201,24 +297,104 @@ export const runOpenAICompatibleGeneration = async ({
     temperature: 0,
   });
 
-  let response;
   try {
-    response = await fetchImpl(completionsUrl, {
+    const response = await withAbort(fetchImpl(completionsUrl, {
       method: "POST",
       signal: controller.signal,
       headers: requestHeaders,
       body: requestBody,
       redirect: "manual",
-    });
+    }), controller.signal);
+
+    if (response.status >= 300 && response.status < 400) {
+      throw providerError(
+        "OpenAI-compatible endpoint redirected, which is not permitted",
+        502,
+        "provider_unavailable",
+      );
+    }
+
+    const text = await boundedResponseText(response, controller.signal);
+    let payload;
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      if (!response.ok) {
+        const code = mapHttpStatusToCode(response.status);
+        throw providerError(
+          `OpenAI-compatible provider failed (${response.status})`,
+          response.status,
+          code,
+        );
+      }
+      throw providerError(
+        "OpenAI-compatible provider returned invalid JSON response",
+        502,
+        "provider_unavailable",
+      );
+    }
+
+    if (!response.ok) {
+      const fallback = `OpenAI-compatible provider failed (${response.status})`;
+      const message = safeProviderMessage(payload?.error?.message || payload?.message, normalizedApiKey, fallback);
+      const code = mapHttpStatusToCode(response.status);
+      throw providerError(message, response.status, code);
+    }
+
+    const refusal = payload?.choices?.[0]?.message?.refusal;
+    if (typeof refusal === "string" && refusal.trim()) {
+      throw providerError(
+        `OpenAI-compatible provider refused request: ${safeProviderMessage(refusal, normalizedApiKey, "No reason supplied")}`,
+        502,
+        "provider_unavailable",
+      );
+    }
+
+    const output = payload?.choices?.[0]?.message?.content;
+    if (typeof output !== "string" || !output.trim()) {
+      throw providerError(
+        "OpenAI-compatible provider returned an empty or malformed completion response",
+        502,
+        "provider_unavailable",
+      );
+    }
+
+    let candidateJson;
+    try {
+      const fenced = output.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+      candidateJson = JSON.parse(fenced);
+    } catch {
+      try {
+        candidateJson = JSON.parse(output.slice(output.indexOf("{"), output.lastIndexOf("}") + 1));
+      } catch {
+        throw providerError(
+          "OpenAI-compatible provider returned malformed non-JSON output",
+          502,
+          "provider_unavailable",
+        );
+      }
+    }
+
+    if (!candidateJson || typeof candidateJson !== "object" || Array.isArray(candidateJson)) {
+      throw providerError(
+        "OpenAI-compatible provider returned malformed non-JSON output",
+        502,
+        "provider_unavailable",
+      );
+    }
+
+    return JSON.stringify(candidateJson);
   } catch (error) {
     if (signal?.aborted) throw signal.reason ?? error;
-    if (error?.name === "TimeoutError" || controller.signal.aborted) {
+    if (controller.signal.aborted) {
+      const reason = controller.signal.reason;
       throw providerError(
-        error instanceof Error ? error.message : "OpenAI-compatible request timed out",
+        reason instanceof Error ? reason.message : `OpenAI-compatible request timed out after ${effectiveTimeout} ms`,
         504,
         "provider_unavailable",
       );
     }
+    if (error instanceof ProviderError) throw error;
     throw providerError(
       `OpenAI-compatible provider unavailable: ${error instanceof Error ? error.message : "connection failed"}`,
       503,
@@ -228,82 +404,4 @@ export const runOpenAICompatibleGeneration = async ({
     clearTimeout(timeoutTimer);
     signal?.removeEventListener("abort", forwardAbort);
   }
-
-  if (response.status >= 300 && response.status < 400) {
-    throw providerError(
-      "OpenAI-compatible endpoint redirected, which is not permitted",
-      502,
-      "provider_unavailable",
-    );
-  }
-
-  const text = await boundedResponseText(response);
-  let payload;
-  try {
-    payload = JSON.parse(text);
-  } catch {
-    if (!response.ok) {
-      const code = mapHttpStatusToCode(response.status);
-      throw providerError(
-        `OpenAI-compatible provider failed (${response.status})`,
-        response.status,
-        code,
-      );
-    }
-    throw providerError(
-      "OpenAI-compatible provider returned invalid JSON response",
-      502,
-      "provider_unavailable",
-    );
-  }
-
-  if (!response.ok) {
-    const message = payload?.error?.message || payload?.message || `OpenAI-compatible provider failed (${response.status})`;
-    const code = mapHttpStatusToCode(response.status);
-    throw providerError(message, response.status, code);
-  }
-
-  const refusal = payload?.choices?.[0]?.message?.refusal;
-  if (typeof refusal === "string" && refusal.trim()) {
-    throw providerError(
-      `OpenAI-compatible provider refused request: ${refusal.trim()}`,
-      502,
-      "provider_unavailable",
-    );
-  }
-
-  const output = payload?.choices?.[0]?.message?.content;
-  if (typeof output !== "string" || !output.trim()) {
-    throw providerError(
-      "OpenAI-compatible provider returned an empty or malformed completion response",
-      502,
-      "provider_unavailable",
-    );
-  }
-
-  let candidateJson;
-  try {
-    const fenced = output.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-    candidateJson = JSON.parse(fenced);
-  } catch {
-    try {
-      candidateJson = JSON.parse(output.slice(output.indexOf("{"), output.lastIndexOf("}") + 1));
-    } catch {
-      throw providerError(
-        "OpenAI-compatible provider returned malformed non-JSON output",
-        502,
-        "provider_unavailable",
-      );
-    }
-  }
-
-  if (!candidateJson || typeof candidateJson !== "object") {
-    throw providerError(
-      "OpenAI-compatible provider returned malformed non-JSON output",
-      502,
-      "provider_unavailable",
-    );
-  }
-
-  return output;
 };

@@ -221,6 +221,10 @@ test('queues and controls a durable test generation job', async () => {
   await assert.rejects(cli(
     'test', 'create', '--document', documents.documents[0].id, '--provider', 'openai', '--model', 'gpt-5-mini',
   ), /--approve-paid/);
+  await assert.rejects(cli(
+    'test', 'create', '--document', documents.documents[0].id, '--provider', 'openai', '--model', 'gpt-5-mini',
+    '--endpoint', 'https://api.example.com/v1', '--approve-paid',
+  ), /require --provider openai-compatible/);
   const paidCreated = await cli(
     'test', 'create', '--document', documents.documents[0].id, '--name', 'Approved remote quiz',
     '--questions', '2', '--provider', 'openai', '--model', 'gpt-5-mini', '--approve-paid',
@@ -271,6 +275,14 @@ test('queues and controls a durable test generation job', async () => {
 
   await cli('jobs', 'cancel', created.job.id);
   await assert.rejects(cli('resume', created.job.id, '--model', 'gpt-5-mini'), /--model requires --provider/);
+  await assert.rejects(
+    cli('resume', created.job.id, '--endpoint', 'https://api.example.com/v1'),
+    /require --provider openai-compatible/,
+  );
+  await assert.rejects(cli(
+    'resume', created.job.id, '--provider', 'openai', '--model', 'gpt-5-mini',
+    '--endpoint', 'https://api.example.com/v1', '--approve-paid',
+  ), /require --provider openai-compatible/);
   await assert.rejects(cli(
     'resume', created.job.id, '--provider', 'openai', '--model', 'gpt-5-mini',
   ), /--approve-paid/);
@@ -282,6 +294,25 @@ test('queues and controls a durable test generation job', async () => {
   assert.equal(paidResume.job.providerAttempts.length, 2);
   assert.equal(paidResume.job.providerAttempts[1].model, 'gpt-5-mini');
   await cli('jobs', 'cancel', created.job.id);
+
+  const legacyJob = {
+    id: 'cli-legacy-generation-job', testId: 'cli-legacy-generation-test', name: 'Legacy quiz',
+    createdAt: 1, updatedAt: 2, status: 'cancelled', documentIds: [documents.documents[0].id],
+    options: { provider: 'codex', questionCount: 1 }, questions: [], rejected: 0, rounds: {},
+  };
+  await seedStorageRecord('generationJobs', legacyJob.id, legacyJob);
+  const legacyResume = await cli(
+    'resume', legacyJob.id, '--provider', 'openai-compatible', '--model', 'legacy-custom-model',
+    '--endpoint', 'http://127.0.0.1:11434/v1', '--approve-paid',
+  );
+  assert.equal(legacyResume.job.options.provider, 'openai-compatible');
+  assert.deepEqual(legacyResume.job.options.routeChain, [{
+    provider: 'openai-compatible', model: 'legacy-custom-model', privacy: 'remote-api', paid: true, approved: true,
+  }]);
+  assert.equal(legacyResume.job.options.resolvedSettings['providers.openai-compatible.endpoint'], 'http://127.0.0.1:11434/v1');
+  assert.equal(legacyResume.job.activeRouteIndex, 0);
+  assert.equal(legacyResume.job.providerAttempts[0].routeIndex, 0);
+  await cli('jobs', 'cancel', legacyJob.id);
 });
 
 test('manages unsigned local plugins only after explicit developer opt-in', async () => {

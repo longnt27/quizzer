@@ -445,6 +445,9 @@ const runTestCreate = async () => {
   };
   const settings = await loadResolvedSettings(appDataDirectory, { cli: cliOverrides });
   const provider = flag('provider', settings.values['generation.defaultProvider']);
+  if (explicitEndpoint && provider !== 'openai-compatible') {
+    fail('--endpoint and --base-endpoint require --provider openai-compatible');
+  }
   const policy = providerPolicy(provider);
   requirePaidApproval(provider, policy);
   const model = flag('model', undefined);
@@ -527,7 +530,11 @@ const runJobs = async (action, explicitId) => {
   if (action === 'resume') {
     const selectedProvider = flag('provider');
     const requestedModel = flag('model');
+    const explicitEndpoint = flag('endpoint', flag('base-endpoint', undefined));
     if (requestedModel && !selectedProvider) fail('--model requires --provider when resuming a generation job');
+    if (explicitEndpoint && selectedProvider !== 'openai-compatible') {
+      fail('--endpoint and --base-endpoint require --provider openai-compatible when resuming a generation job');
+    }
     if (selectedProvider) {
       const policy = providerPolicy(selectedProvider);
       requirePaidApproval(selectedProvider, policy);
@@ -537,7 +544,6 @@ const runJobs = async (action, explicitId) => {
       if (selectedProvider === 'openai-compatible' && (!selectedModel || !selectedModel.trim())) {
         fail('--model is required when resuming with openai-compatible');
       }
-      const explicitEndpoint = flag('endpoint', flag('base-endpoint', undefined));
       if (explicitEndpoint) validateOpenAICompatibleEndpoint(explicitEndpoint);
       const selectedRoute = {
         provider: selectedProvider,
@@ -574,8 +580,18 @@ const runJobs = async (action, explicitId) => {
         }];
         changes = { options, activeRouteIndex, providerAttempts, resetRounds: false };
       } else {
+        const options = {
+          ...generationRecord.data.options,
+          provider: selectedProvider,
+          ...(selectedModel ? { model: selectedModel } : {}),
+          routeChain: [selectedRoute],
+          resolvedSettings: {
+            ...(generationRecord.data.options.resolvedSettings ?? {}),
+            ...(explicitEndpoint ? { 'providers.openai-compatible.endpoint': explicitEndpoint } : {}),
+          },
+        };
         changes = {
-          options: { ...generationRecord.data.options, provider: selectedProvider, model: selectedModel },
+          options,
           activeRouteIndex: 0,
           providerAttempts: [...(generationRecord.data.providerAttempts ?? []), {
             provider: selectedProvider,

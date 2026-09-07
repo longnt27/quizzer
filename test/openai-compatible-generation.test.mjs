@@ -15,6 +15,15 @@ const schema = {
   properties: { questions: { type: "array" } },
 };
 
+const remoteParams = (overrides = {}) => ({
+  prompt: "test",
+  schema,
+  model: "gpt-4o",
+  endpoint: "https://api.example.com/v1",
+  apiKey: "sk-test-key",
+  ...overrides,
+});
+
 test("validates OpenAI-compatible endpoints according to security policy", () => {
   // Loopback HTTP allowed
   assert.equal(validateOpenAICompatibleEndpoint("http://127.0.0.1:11434/v1"), "http://127.0.0.1:11434/v1");
@@ -193,110 +202,185 @@ test("bounds request inputs (prompt, schema, images)", async () => {
 });
 
 test("bounds response sizes and rejects redirects", async () => {
-  // Reject oversized content-length header
   await assert.rejects(
-    runOpenAICompatibleGeneration({ prompt: "test", schema, model: "gpt-4o" }, undefined, async () => (
+    runOpenAICompatibleGeneration(remoteParams(), undefined, async () => (
       new Response("{}", { headers: { "content-length": String(17 * 1024 * 1024) } })
     )),
     error => error.code === "provider_unavailable" && /oversized/.test(error.message)
   );
 
-  // Reject manual redirects
   for (const status of [301, 302, 307, 308]) {
     await assert.rejects(
-      runOpenAICompatibleGeneration({ prompt: "test", schema, model: "gpt-4o" }, undefined, async () => (
+      runOpenAICompatibleGeneration(remoteParams(), undefined, async () => (
         new Response("", { status, headers: { location: "https://redirected.example.com" } })
       )),
       error => error.code === "provider_unavailable" && /redirected/i.test(error.message)
     );
   }
+
+  for (const contentLength of ["-1", "1.5", "not-a-number"]) {
+    await assert.rejects(
+      runOpenAICompatibleGeneration(remoteParams(), undefined, async () => ({
+        status: 200,
+        ok: true,
+        headers: { get: name => name === "content-length" ? contentLength : null },
+        arrayBuffer: async () => Buffer.from("{}"),
+      })),
+      error => error.code === "provider_unavailable" && /invalid Content-Length/.test(error.message),
+    );
+  }
+
+  const oversizedChunk = new Uint8Array(8 * 1024 * 1024 + 1);
+  let reads = 0;
+  let cancelled = false;
+  await assert.rejects(
+    runOpenAICompatibleGeneration(remoteParams(), undefined, async () => ({
+      status: 200,
+      ok: true,
+      headers: { get: () => null },
+      body: { getReader: () => ({
+        read: async () => reads++ < 2 ? { done: false, value: oversizedChunk } : { done: true },
+        cancel: async () => { cancelled = true; },
+        releaseLock: () => {},
+      }) },
+    })),
+    error => error.code === "provider_unavailable" && /oversized/.test(error.message),
+  );
+  assert.equal(cancelled, true);
 });
 
-test("propagates cancellation and timeouts", async () => {
+test("keeps cancellation and timeout active while consuming the response body", async () => {
   const controller = new AbortController();
   const abortedError = Object.assign(new Error("aborted generation"), { name: "AbortError" });
+  let cancelCalled = false;
 
-  await assert.rejects(
-    runOpenAICompatibleGeneration(
-      { prompt: "test", schema, model: "gpt-4o" },
-      controller.signal,
-      async (_url, options) => {
-        controller.abort(abortedError);
-        throw options.signal.reason;
-      }
-    ),
-    error => error === abortedError
+  const cancellation = runOpenAICompatibleGeneration(
+    remoteParams({ timeoutMs: 5_000 }),
+    controller.signal,
+    async () => ({
+      status: 200,
+      ok: true,
+      headers: { get: () => null },
+      body: { getReader: () => ({
+        read: () => new Promise(() => {}),
+        cancel: async () => { cancelCalled = true; },
+        releaseLock: () => {},
+      }) },
+    }),
   );
+  setTimeout(() => controller.abort(abortedError), 10);
+  await assert.rejects(cancellation, error => error === abortedError);
+  assert.equal(cancelCalled, true);
+
+  let timeoutCancelCalled = false;
+  await assert.rejects(
+    runOpenAICompatibleGeneration(remoteParams({ timeoutMs: 20 }), undefined, async () => ({
+      status: 200,
+      ok: true,
+      headers: { get: () => null },
+      body: { getReader: () => ({
+        read: () => new Promise(() => {}),
+        cancel: async () => { timeoutCancelCalled = true; },
+        releaseLock: () => {},
+      }) },
+    })),
+    error => error.code === "provider_unavailable"
+      && error.status === 504
+      && /timed out after 20 ms/.test(error.message),
+  );
+  assert.equal(timeoutCancelCalled, true);
+});
+
+test("requires safe credentials for remote endpoints without exposing them", async () => {
+  let fetchCalled = false;
+  await assert.rejects(
+    runOpenAICompatibleGeneration(remoteParams({ apiKey: undefined }), undefined, async () => {
+      fetchCalled = true;
+    }),
+    error => error.code === "provider_auth" && error.status === 401 && !error.message.includes("sk-"),
+  );
+  assert.equal(fetchCalled, false);
+
+  for (const apiKey of ["bad\nkey", "bad\rkey", "bad\0key", "x".repeat(16_385)]) {
+    await assert.rejects(
+      runOpenAICompatibleGeneration(remoteParams({ apiKey }), undefined, async () => {
+        fetchCalled = true;
+      }),
+      error => error.code === "provider_auth" && !error.message.includes(apiKey),
+    );
+  }
 });
 
 test("maps auth, quota, availability, and malformed responses into failover error codes", async () => {
-  // 401 Auth error
   await assert.rejects(
-    runOpenAICompatibleGeneration({ prompt: "test", schema, model: "gpt-4o" }, undefined, async () => (
+    runOpenAICompatibleGeneration(remoteParams(), undefined, async () => (
       new Response(JSON.stringify({ error: { message: "Invalid API key" } }), { status: 401 })
     )),
     error => error.code === "provider_auth" && error.status === 401 && /Invalid API key/.test(error.message)
   );
 
-  // 403 Forbidden -> provider_auth
+  const secret = "sk-never-persist-this-value";
   await assert.rejects(
-    runOpenAICompatibleGeneration({ prompt: "test", schema, model: "gpt-4o" }, undefined, async () => (
+    runOpenAICompatibleGeneration(remoteParams({ apiKey: secret }), undefined, async () => (
+      new Response(JSON.stringify({ error: { message: `Rejected credential ${secret}\nretry later` } }), { status: 401 })
+    )),
+    error => error.code === "provider_auth"
+      && !error.message.includes(secret)
+      && !error.message.includes("\n")
+      && /\[redacted\]/.test(error.message),
+  );
+
+  await assert.rejects(
+    runOpenAICompatibleGeneration(remoteParams(), undefined, async () => (
       new Response(JSON.stringify({ error: { message: "Forbidden access" } }), { status: 403 })
     )),
     error => error.code === "provider_auth" && error.status === 403
   );
 
-  // 429 Rate limit -> provider_limit
   await assert.rejects(
-    runOpenAICompatibleGeneration({ prompt: "test", schema, model: "gpt-4o" }, undefined, async () => (
+    runOpenAICompatibleGeneration(remoteParams(), undefined, async () => (
       new Response(JSON.stringify({ error: { message: "Rate limit exceeded" } }), { status: 429 })
     )),
     error => error.code === "provider_limit" && error.status === 429
   );
 
-  // 402 Quota exceeded -> provider_limit
   await assert.rejects(
-    runOpenAICompatibleGeneration({ prompt: "test", schema, model: "gpt-4o" }, undefined, async () => (
+    runOpenAICompatibleGeneration(remoteParams(), undefined, async () => (
       new Response(JSON.stringify({ error: { message: "Insufficient quota" } }), { status: 402 })
     )),
     error => error.code === "provider_limit" && error.status === 402
   );
 
-  // 503 Service unavailable -> provider_unavailable
   await assert.rejects(
-    runOpenAICompatibleGeneration({ prompt: "test", schema, model: "gpt-4o" }, undefined, async () => (
+    runOpenAICompatibleGeneration(remoteParams(), undefined, async () => (
       new Response(JSON.stringify({ error: { message: "Server overloaded" } }), { status: 503 })
     )),
     error => error.code === "provider_unavailable" && error.status === 503
   );
 
-  // Network failure -> provider_unavailable
   await assert.rejects(
-    runOpenAICompatibleGeneration({ prompt: "test", schema, model: "gpt-4o" }, undefined, async () => {
+    runOpenAICompatibleGeneration(remoteParams(), undefined, async () => {
       throw new Error("connect ECONNREFUSED 127.0.0.1:8000");
     }),
     error => error.code === "provider_unavailable" && error.status === 503 && /ECONNREFUSED/.test(error.message)
   );
 
-  // Non-JSON response -> provider_unavailable (502)
   await assert.rejects(
-    runOpenAICompatibleGeneration({ prompt: "test", schema, model: "gpt-4o" }, undefined, async () => (
+    runOpenAICompatibleGeneration(remoteParams(), undefined, async () => (
       new Response("<html>Bad gateway</html>", { status: 200 })
     )),
     error => error.code === "provider_unavailable" && error.status === 502 && /invalid JSON/i.test(error.message)
   );
 
-  // Empty choices -> provider_unavailable (502)
   await assert.rejects(
-    runOpenAICompatibleGeneration({ prompt: "test", schema, model: "gpt-4o" }, undefined, async () => (
+    runOpenAICompatibleGeneration(remoteParams(), undefined, async () => (
       new Response(JSON.stringify({ choices: [] }), { status: 200 })
     )),
     error => error.code === "provider_unavailable" && error.status === 502 && /empty or malformed/.test(error.message)
   );
 
-  // Refusal message -> provider_unavailable (502)
   await assert.rejects(
-    runOpenAICompatibleGeneration({ prompt: "test", schema, model: "gpt-4o" }, undefined, async () => (
+    runOpenAICompatibleGeneration(remoteParams(), undefined, async () => (
       new Response(JSON.stringify({
         choices: [{ message: { role: "assistant", refusal: "Cannot process request" } }],
       }), { status: 200 })
@@ -304,13 +388,31 @@ test("maps auth, quota, availability, and malformed responses into failover erro
     error => error.code === "provider_unavailable" && error.status === 502 && /refused/i.test(error.message)
   );
 
-  // Non-JSON content string -> provider_unavailable (502)
   await assert.rejects(
-    runOpenAICompatibleGeneration({ prompt: "test", schema, model: "gpt-4o" }, undefined, async () => (
+    runOpenAICompatibleGeneration(remoteParams(), undefined, async () => (
       new Response(JSON.stringify({
         choices: [{ message: { role: "assistant", content: "I cannot do that as JSON." } }],
       }), { status: 200 })
     )),
     error => error.code === "provider_unavailable" && error.status === 502 && /non-JSON/i.test(error.message)
+  );
+});
+
+test("normalizes fenced and prose-wrapped JSON and rejects array roots", async () => {
+  for (const content of [
+    '```json\n{"questions":[]}\n```',
+    'Here is the result: {"questions":[]} Done.',
+  ]) {
+    const output = await runOpenAICompatibleGeneration(remoteParams(), undefined, async () => (
+      new Response(JSON.stringify({ choices: [{ message: { content } }] }))
+    ));
+    assert.equal(output, '{"questions":[]}');
+  }
+
+  await assert.rejects(
+    runOpenAICompatibleGeneration(remoteParams(), undefined, async () => (
+      new Response(JSON.stringify({ choices: [{ message: { content: "[]" } }] }))
+    )),
+    error => error.code === "provider_unavailable" && /non-JSON/.test(error.message),
   );
 });
