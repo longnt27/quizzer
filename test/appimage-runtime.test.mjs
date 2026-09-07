@@ -14,6 +14,7 @@ import {
   resolveTargetArchFromArgs,
   validateRuntimeFile,
   verifyRuntimeFile,
+  writeAll,
 } from '../release/appimage-runtime.mjs';
 
 const createMockBinary = (size, filler = 0x41) => {
@@ -21,6 +22,25 @@ const createMockBinary = (size, filler = 0x41) => {
   const sha256 = createHash('sha256').update(buf).digest('hex');
   return { buffer: buf, size, sha256 };
 };
+
+test('writeAll retries partial file writes until every byte is persisted', async () => {
+  const source = Buffer.from('partial writes must not truncate verified runtimes');
+  const destination = Buffer.alloc(source.length);
+  let writes = 0;
+  const fileHandle = {
+    async write(bytes, offset, length) {
+      const bytesWritten = Math.min(3, length);
+      bytes.copy(destination, offset, offset, offset + bytesWritten);
+      writes += 1;
+      return { bytesWritten };
+    },
+  };
+
+  await writeAll(fileHandle, source);
+
+  assert.deepEqual(destination, source);
+  assert.ok(writes > 1);
+});
 
 test('correct selection selects immutable release 20251108 assets for x64 and arm64', () => {
   assert.equal(APPIMAGE_TYPE2_RELEASE, '20251108');
@@ -65,7 +85,6 @@ test('correct selection selects immutable release 20251108 assets for x64 and ar
   assert.throws(() => resolveTargetArchFromArgs(['--arch=x64,arm64']), /Conflicting target architectures/);
   assert.throws(() => resolveTargetArchFromArgs(['--arch', 'ia32']), /Unsupported AppImage target architecture: "ia32"/);
 });
-
 test('cache verification reuses valid cached file without network requests', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'quizzer-runtime-cache-test-'));
   try {
@@ -494,4 +513,3 @@ test('successful safe forge wrapper validation executes cleanly and validates ar
   assert.notEqual(badCmd.status, 0, 'unknown command must be rejected');
   assert.match(badCmd.stderr, /Usage: node scripts\/forge\.mjs <package\|make>/);
 });
-
