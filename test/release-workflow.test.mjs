@@ -55,3 +55,19 @@ test('release publishes separate application and landing SBOMs', async () => {
   assert.match(workflow, /release-bundle\/landing-sbom\.cdx\.json/);
   assert.match(workflow, /gh release create[^\n]+release-bundle\/landing-sbom\.cdx\.json/);
 });
+
+test('release generates package manager manifests only after signing and bundles them as attested release assets', async () => {
+  const workflow = await readFile(workflowPath, 'utf8');
+
+  ordered(workflow, 'Sign release manifest', 'Generate package manager manifests');
+  ordered(workflow, 'Generate package manager manifests', 'Attest release artifacts and manifest');
+  assert.match(workflow, /npm run release:package-manifests -- --manifest release-bundle\/release-manifest\.json --output release-bundle/);
+  assert.match(workflow, /release-bundle\/quizzer\.rb/);
+  assert.match(workflow, /release-bundle\/Somethings1\.Quizzer\.yaml/);
+  assert.match(workflow, /release-bundle\/Somethings1\.Quizzer\.installer\.yaml/);
+  assert.match(workflow, /release-bundle\/Somethings1\.Quizzer\.locale\.en-US\.yaml/);
+  assert.match(workflow, /gh release create[^\n]+release-bundle\/quizzer\.rb/);
+  assert.match(workflow, /gh release create[^\n]+release-bundle\/Somethings1\.Quizzer\.yaml/);
+  assert.match(workflow, /gh release create[^\n]+release-bundle\/Somethings1\.Quizzer\.installer\.yaml/);
+  assert.match(workflow, /gh release create[^\n]+release-bundle\/Somethings1\.Quizzer\.locale\.en-US\.yaml/);
+});

@@ -31,7 +31,8 @@
     "verify:desktop-fuses": "node scripts/verify-electron-fuses.mjs",
     "build:cli": "node scripts/build-cli-sea.mjs",
     "release:manifest": "node scripts/generate-release-manifest.mjs",
-    "release:installers": "node scripts/prepare-release-installers.mjs"
+    "release:installers": "node scripts/prepare-release-installers.mjs",
+    "release:package-manifests": "node scripts/generate-package-manifests.mjs"
   },
   "dependencies": {
     "@codemirror/lang-json": "^6.0.2",
