@@ -296,6 +296,26 @@ test('queues and controls a durable test generation job', async () => {
   assert.equal(resumed.job.providerAttempts[0].outcome, 'manually-selected');
   assert.equal(resumed.job.providerAttempts[0].accepted, 0);
 
+  const ceilingResumeId = 'cli-ceiling-resume-job';
+  const ceilingResumeOptions = { ...created.job.options, costCeilingMicroUsd: 100 };
+  await seedStorageRecord('generationJobs', ceilingResumeId, {
+    id: ceilingResumeId, testId: 'cli-ceiling-resume-test', name: 'CLI ceiling resume', createdAt: 1, updatedAt: 1,
+    status: 'paused', errorCode: 'cost_ceiling', documentIds: [documents.documents[0].id], options: ceilingResumeOptions,
+    questions: [], rejected: 0, rounds: {},
+  });
+  await assert.rejects(cli('resume', ceilingResumeId), /one matching unmatched ceiling raise/);
+  const raisedAndResumed = await cli('jobs', 'raise-ceiling', ceilingResumeId, '--cost-ceiling', '$1.00', '--reason', 'Continue after review', '--confirm-cost', '--resume');
+  assert.equal(raisedAndResumed.job.status, 'queued');
+  assert.equal(raisedAndResumed.accounting.audit.at(-1).event, 'ceiling-resumed');
+  assert.equal(raisedAndResumed.accounting.audit.filter(item => item.event === 'ceiling-resumed').length, 1);
+  await seedStorageRecord('generationJobs', ceilingResumeId, {
+    ...raisedAndResumed.job, status: 'paused', errorCode: 'cost_ceiling', workerId: undefined, leaseId: undefined, leaseExpiresAt: undefined,
+  });
+  await assert.rejects(cli('resume', ceilingResumeId), /one matching unmatched ceiling raise/);
+  const raisedAgain = await cli('jobs', 'raise-ceiling', ceilingResumeId, '--cost-ceiling', '$2.00', '--reason', 'Approve another continuation', '--confirm-cost', '--resume');
+  assert.equal(raisedAgain.job.status, 'queued');
+  assert.equal(raisedAgain.accounting.audit.filter(item => item.event === 'ceiling-resumed').length, 2);
+
   const recoveryAttemptId = `attempt-${'c'.repeat(48)}`;
   const recoveryOptions = {
     ...created.job.options, costCeilingMicroUsd: 10,

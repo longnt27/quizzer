@@ -460,6 +460,12 @@ const accountingRoute = (job, routeIndex) => {
 };
 const accountingCeiling = job => validateCostCeiling(job.options?.costCeilingMicroUsd ?? job.costCeilingMicroUsd);
 const findAccountingEvent = (audit, attemptId, event) => audit.find(item => item.attemptId === attemptId && item.event === event);
+const unmatchedCeilingRaises = audit => {
+  const consumed = new Set(audit.filter(item => item.event === 'ceiling-resumed').map(item => item.ceilingRaiseIndex));
+  return audit
+    .map((item, index) => ({ item, index }))
+    .filter(({ item, index }) => item.event === 'ceiling-raised' && !consumed.has(index));
+};
 
 /* Atomically append a reservation before a provider request is sent. */
 export const reserveGenerationAttempt = (id, {
@@ -762,6 +768,24 @@ export const controlGenerationJob = (id, action, changes = {}, now = Date.now())
   }
   if (action === 'cancel' && existing.data.status === 'cancelled') return existing;
   const resume = action === 'resume';
+  let usageAudit = existing.data.usageAudit;
+  if (resume && existing.data.status === 'paused' && existing.data.errorCode === 'cost_ceiling') {
+    const { summary, audit } = accountingState(existing.data);
+    const currentCeiling = accountingCeiling(existing.data);
+    const pendingRaises = unmatchedCeilingRaises(audit);
+    if (currentCeiling === undefined || pendingRaises.length !== 1 || pendingRaises[0].item.newCeilingMicroUsd !== currentCeiling) {
+      throw new Error('Cost ceiling resume requires one matching unmatched ceiling raise');
+    }
+    const [{ item: raise, index: ceilingRaiseIndex }] = pendingRaises;
+    usageAudit = [...audit, {
+      event: 'ceiling-resumed', at: now, currentCeilingMicroUsd: currentCeiling,
+      ceilingRaiseIndex, ceilingRaiseAt: raise.at,
+    }];
+    // Validate the journal before the queued transition is committed. The
+    // accounting summary is deliberately reused unchanged: this marker only
+    // consumes the approval and never changes spend or reservations.
+    validateGenerationAccounting(summary, usageAudit, existing.data.options);
+  }
   const data = {
     ...existing.data,
     ...(resume && changes.options ? { options: changes.options } : {}),
@@ -777,6 +801,7 @@ export const controlGenerationJob = (id, action, changes = {}, now = Date.now())
     leaseId: undefined,
     leaseExpiresAt: undefined,
     ...(resume ? { finishedAt: undefined } : { finishedAt: now }),
+    ...(usageAudit ? { usageAudit } : {}),
   };
   return putRecord('generationJobs', id, data);
 };
