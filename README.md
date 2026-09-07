@@ -210,7 +210,7 @@ The source CLI uses the same route with `quizzer test create ... --provider olla
 
 ### llama.cpp local generation
 
-Quizzer can connect to a locally managed llama.cpp server through its OpenAI-compatible `/v1` endpoint. Configure **Plugins & models → Local generation → llama.cpp local model** with a loopback endpoint such as `http://127.0.0.1:8080/v1` and the model identifier served by that process, then explicitly save the configuration. Quizzer never downloads or launches llama.cpp in this slice, accepts no remote endpoint for this provider, and keeps the route local, non-billable, bounded, cancellable, and resumable. The CLI supports the same route with `quizzer test create --provider llama-cpp --model <served-model> --endpoint http://127.0.0.1:8080/v1`.
+Quizzer can connect to a llama.cpp server through its OpenAI-compatible `/v1` endpoint. Configure **Plugins & models → Local generation → llama.cpp local model** with a loopback endpoint such as `http://127.0.0.1:8080/v1` and the model identifier served by that process, then explicitly save the configuration. In Advanced mode, **Managed llama.cpp runtime** can validate and remember absolute paths to an already-installed `llama-server` executable and GGUF model, launch that process with hardware-bounded settings after explicit confirmation, monitor its health, and stop it cleanly. Quizzer does not download llama.cpp or model files automatically, accepts no remote endpoint for this provider, and keeps the route local, non-billable, bounded, cancellable, and resumable. The CLI supports manual endpoint mode with `quizzer test create --provider llama-cpp --model <served-model> --endpoint http://127.0.0.1:8080/v1`.
 
 ### Codex Agent
 
@@ -429,13 +429,12 @@ The generation pipeline reached its bounded retry limit after rejecting malforme
 - Database schema changes require a new Dexie version and a migration strategy.
 - Duplicate thresholds should be evaluated against representative quiz sets before changing defaults.
 
-## Roadmap
+## Remaining 1.0 release gates
 
-- Capability-negotiated provider routes and custom OpenAI-compatible endpoints
-- Provider-reported usage accounting and configurable per-job cost ceilings
-- Cross-encoder reranking plus multi-query and HyDE retrieval
-- Managed local generation through llama.cpp or Ollama
-- Full browser, accessibility, installer, update, and rollback validation across the supported platform matrix
+- Exercise signed install, update, and rollback artifacts on clean Windows, macOS, Ubuntu, and Fedora machines.
+- Complete large-library, full-disk, network-loss, missing-model, and plugin-crash stress runs against release builds.
+- Finish independent security and WCAG reviews, then address their findings.
+- Supply production signing/notarization identities and trusted release keys, publish the beta, and complete two successful update/rollback cycles before stable promotion.
 
 ## Security
 
