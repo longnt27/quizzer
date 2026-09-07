@@ -5,8 +5,8 @@ import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promi
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import {
-  backupDatabase, beginLegacyMigration, claimGenerationJob, completeGenerationJob, controlGenerationJob, createGenerationJobs, deleteRecord, finalizeLegacyMigration, getRecord, listLegacyMigrations,
-  listRecords, putRecord, renewGenerationJobLease, storageInfo, subscribeStorageChanges, syncStorage, updateGenerationJobWithLease,
+  backupDatabase, beginLegacyMigration, claimGenerationJob, completeGenerationJob, controlGenerationJob, createGenerationJobs, deleteRecord, finalizeGenerationAttempt, finalizeLegacyMigration, getRecord, listLegacyMigrations,
+  listRecords, putRecord, renewGenerationJobLease, reserveGenerationAttempt, storageInfo, subscribeStorageChanges, syncStorage, updateGenerationJobWithLease,
 } from './server/storage.mjs';
 import { detectHardwareCapabilities } from './server/hardware-profile.mjs';
 import { ensureServiceToken, isAuthorizedRequest } from './server/auth.mjs';
@@ -958,6 +958,8 @@ const generationWorker = process.env.QUIZZER_DISABLE_SERVICE_GENERATION === '1' 
   complete: (job, completion) => completeGenerationJob(job.id, {
     workerId: job.workerId, leaseId: job.leaseId, ...completion,
   }).job.data,
+  reserveGenerationAttempt: (id, params) => reserveGenerationAttempt(id, params).data,
+  finalizeGenerationAttempt: (id, params) => finalizeGenerationAttempt(id, params).data,
   getJob: id => getRecord('generationJobs', id)?.data,
   loadDocuments: ids => ids.map(id => {
     const record = getRecord('documents', id);
