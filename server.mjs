@@ -32,6 +32,11 @@ import { resolveVectorIndexProvider } from './server/plugin-vector-index.mjs';
 import { resolveDocumentExtractor, resolveOcrProvider } from './server/plugin-extraction.mjs';
 import { listOllamaModels, runOllamaGeneration, runOllamaHyde, validateOllamaModelName } from './server/ollama-generation.mjs';
 import { runOpenAICompatibleGeneration } from './server/openai-compatible-generation.mjs';
+import { normalizeProviderUsage } from './server/provider-usage.mjs';
+import {
+  runAnthropic as runBuiltinAnthropic, runGemini as runBuiltinGemini,
+  runOpenAI as runBuiltinOpenAI, runOpenAICompatible as runBuiltinOpenAICompatible,
+} from './server/builtin-provider-generation.mjs';
 
 const configuredPortValue = process.env.QUIZZER_SERVICE_PORT ?? '8787';
 const configuredPort = Number(configuredPortValue);
@@ -779,155 +784,19 @@ const runAntigravityAgent = async ({ prompt, schema, model }, signal) => {
   return typeof structured === 'string' ? structured : JSON.stringify(structured);
 };
 
-const runGemini = async ({ prompt, schema, model, images = [], apiKey }, signal) => {
-  requireApiKey(apiKey, 'Gemini');
-  const modelName = model || 'gemini-2.5-flash';
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    signal,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }, ...images.slice(0, 30).map(image => {
-        const match = /^data:(image\/[^;]+);base64,(.+)$/.exec(image);
-        if (!match) throw new Error('Invalid image input');
-        return { inlineData: { mimeType: match[1], data: match[2] } };
-      })] }],
-      generationConfig: { responseMimeType: 'application/json', responseJsonSchema: schema },
-    }),
-  });
-  const payload = await parseApiResponse(response, 'Gemini');
-  const output = payload.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('') || '';
-  if (!output) throw new Error('Gemini returned an empty response');
-  return output;
-};
-
-class ProviderError extends Error {
-  constructor(message, status, code) {
-    super(message);
-    this.status = status;
-    this.code = code;
-  }
-}
-
-const providerErrorCode = status => status === 401 || status === 403
-  ? 'provider_auth'
-  : status === 402 || status === 429
-    ? 'provider_limit'
-    : status >= 500
-      ? 'provider_unavailable'
-      : 'provider_error';
-
-const normalizeProviderError = error => {
-  if (error instanceof ProviderError || error?.name === 'AbortError') return error;
-  const message = error instanceof Error ? error.message : 'Generation failed';
-  if (/usage limit|rate limit|quota|too many requests|insufficient (?:balance|credits)|credit balance|capacity/i.test(message)) {
-    return new ProviderError(message, 429, 'provider_limit');
-  }
-  if (/not logged in|unauthorized|authentication|api key|sign[ -]?in|login required/i.test(message)) {
-    return new ProviderError(message, 401, 'provider_auth');
-  }
-  if (error?.code === 'ENOENT' || /command not found|executable.*not found|is not installed/i.test(message)) {
-    return new ProviderError(message, 503, 'provider_unavailable');
-  }
-  return error;
-};
-
-const requireApiKey = (apiKey, label) => {
-  const article = /^[aeiou]/i.test(label) ? 'an' : 'a';
-  if (typeof apiKey !== 'string' || !apiKey.trim()) throw new ProviderError(`Enter ${article} ${label} API key in Quizzer`, 401, 'provider_auth');
-};
-
-const parseApiResponse = async (response, provider) => {
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const message = payload?.error?.message || payload?.message || `${provider} failed (${response.status})`;
-    throw new ProviderError(message, response.status, providerErrorCode(response.status));
-  }
-  return payload;
-};
-
-const imageContent = images => images.slice(0, 30).map(image => ({ type: 'image_url', image_url: { url: image } }));
-
-const runOpenAICompatible = async ({ prompt, schema, model, images = [], apiKey }, signal, config) => {
-  requireApiKey(apiKey, config.label);
-  const content = config.supportsImages && images.length
-    ? [{ type: 'text', text: prompt }, ...imageContent(images)]
-    : `${prompt}\n\nReturn JSON matching this schema exactly:\n${JSON.stringify(schema)}`;
-  const response = await fetch(config.endpoint, {
-    method: 'POST', signal,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: model || config.defaultModel,
-      messages: [{ role: 'user', content }],
-      response_format: config.jsonSchema
-        ? { type: 'json_schema', json_schema: { name: 'quiz_questions', strict: true, schema } }
-        : { type: 'json_object' },
-      ...(config.providerRouting ? { provider: { require_parameters: true } } : {}),
-    }),
-  });
-  const payload = await parseApiResponse(response, config.label);
-  const output = payload.choices?.[0]?.message?.content;
-  if (!output) throw new Error(`${config.label} returned an empty response`);
-  return output;
-};
-
-const runOpenAI = async ({ prompt, schema, model, images = [], apiKey }, signal) => {
-  requireApiKey(apiKey, 'OpenAI');
-  const content = [{ type: 'input_text', text: prompt }, ...images.slice(0, 30).map(image => ({ type: 'input_image', image_url: image }))];
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST', signal,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: model || 'gpt-5-mini',
-      input: [{ role: 'user', content }],
-      text: { format: { type: 'json_schema', name: 'quiz_questions', strict: true, schema } },
-    }),
-  });
-  const payload = await parseApiResponse(response, 'OpenAI');
-  const output = payload.output?.flatMap(item => item.content ?? []).find(item => item.type === 'output_text')?.text;
-  if (!output) throw new Error('OpenAI returned an empty response');
-  return output;
-};
-
-const runAnthropic = async ({ prompt, schema, model, images = [], apiKey }, signal) => {
-  requireApiKey(apiKey, 'Anthropic');
-  const content = [
-    { type: 'text', text: prompt },
-    ...images.slice(0, 30).map(image => {
-      const match = /^data:(image\/(?:png|jpeg|webp|gif));base64,(.+)$/.exec(image);
-      if (!match) throw new Error('Invalid image input');
-      return { type: 'image', source: { type: 'base64', media_type: match[1], data: match[2] } };
-    }),
-  ];
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST', signal,
-    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({
-      model: model || 'claude-sonnet-4-5-20250929', max_tokens: 8192,
-      messages: [{ role: 'user', content }],
-      output_config: { format: { type: 'json_schema', schema } },
-    }),
-  });
-  const payload = await parseApiResponse(response, 'Anthropic');
-  const output = payload.content?.find(block => block.type === 'text')?.text;
-  if (!output) throw new Error('Anthropic returned an empty response');
-  return output;
-};
-
 const providerRunners = {
   plugin: (body, signal) => runGeneratorPlugin(body, signal, { loadManager: getPluginManager }),
   ollama: runOllamaGeneration,
   codex: runCodex,
   'claude-agent': runClaudeAgent,
   'antigravity-agent': runAntigravityAgent,
-  gemini: runGemini,
-  anthropic: runAnthropic,
-  openai: runOpenAI,
-  openrouter: (body, signal) => runOpenAICompatible(body, signal, {
+  gemini: runBuiltinGemini,
+  anthropic: runBuiltinAnthropic,
+  openai: runBuiltinOpenAI,
+  openrouter: (body, signal) => runBuiltinOpenAICompatible(body, signal, {
     label: 'OpenRouter', endpoint: 'https://openrouter.ai/api/v1/chat/completions', defaultModel: 'openai/gpt-4o-mini', jsonSchema: true, supportsImages: true, providerRouting: true,
   }),
-  deepseek: (body, signal) => runOpenAICompatible(body, signal, {
+  deepseek: (body, signal) => runBuiltinOpenAICompatible(body, signal, {
     label: 'DeepSeek', endpoint: 'https://api.deepseek.com/chat/completions', defaultModel: 'deepseek-chat', jsonSchema: false, supportsImages: false,
   }),
   'openai-compatible': async (body, signal) => {

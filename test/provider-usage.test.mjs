@@ -11,6 +11,18 @@ test('normalizes OpenAI and Ollama token usage and ignores monetary claims', () 
   });
 });
 
+test('normalizes built-in provider usage shapes', () => {
+  assert.deepEqual(normalizeProviderUsage('gemini', { usageMetadata: {
+    promptTokenCount: 2, candidatesTokenCount: 5, totalTokenCount: 7,
+  } }), { inputTokens: 2, outputTokens: 5, totalTokens: 7 });
+  assert.deepEqual(normalizeProviderUsage('anthropic', { usage: { input_tokens: 2, output_tokens: 5 } }), {
+    inputTokens: 2, outputTokens: 5, totalTokens: 7,
+  });
+  assert.deepEqual(normalizeProviderUsage('openai-responses', { usage: {
+    input_tokens: 2, output_tokens: 5, total_tokens: 7,
+  } }), { inputTokens: 2, outputTokens: 5, totalTokens: 7 });
+});
+
 test('reports missing, malformed, and overflowing usage explicitly', () => {
   assert.deepEqual(normalizeProviderUsage('ollama', {}), { unknown: true, reason: 'missing' });
   assert.deepEqual(normalizeProviderUsage('ollama', { prompt_eval_count: '12', eval_count: 8 }), { unknown: true, reason: 'malformed' });
