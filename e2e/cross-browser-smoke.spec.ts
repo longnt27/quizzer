@@ -1,11 +1,9 @@
 import { expect, test } from '@playwright/test';
 
-test('boots with semantic main navigation and keyboard-accessible mode control', async ({ page }, testInfo) => {
+test('boots with semantic main navigation and keyboard-accessible mode control', async ({ page }) => {
   await page.goto('/');
   const shell = page.locator('.app-shell');
-  if (!(await shell.isVisible({ timeout: 5_000 }).catch(() => false))) {
-    testInfo.skip(true, `${testInfo.project.name} cannot boot the desktop shell in this environment`);
-  }
+  await expect(shell).toBeVisible({ timeout: 15_000 });
 
   const navigation = page.locator('.desktop-sidebar');
   await expect(navigation).toBeVisible();
