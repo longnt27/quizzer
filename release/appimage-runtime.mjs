@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { chmod, mkdir, open, rename, rm, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -149,16 +149,68 @@ export const prepareAppImageRuntime = async (options = {}) => {
 
   const fetchFn = options.fetch || globalThis.fetch;
   const url = options.url || target.url;
-  const allowRedirects = options.allowRedirects === true;
 
-  // 2. Disable redirects
-  const response = await fetchFn(url, {
-    redirect: allowRedirects ? 'follow' : 'manual',
+  // 2. Fetch with automatic redirects disabled
+  let response = await fetchFn(url, {
+    redirect: 'manual',
     headers: { 'User-Agent': 'Quizzer-AppImage-Runtime-Preparer/1.0.0' },
   });
 
-  if (!allowRedirects && ((response.status >= 300 && response.status < 400) || response.type === 'opaqueredirect' || response.redirected)) {
-    throw new Error(`Redirects are disabled when downloading AppImage runtime from ${url} (received status ${response.status})`);
+  const isRedirect = (response.status >= 300 && response.status < 400)
+    || response.type === 'opaqueredirect'
+    || response.redirected;
+
+  if (isRedirect) {
+    // Manually accept at most one HTTPS redirect only from the exact pinned github.com URL
+    if (url !== target.url) {
+      throw new Error(`Redirect rejected: redirects are only permitted from the exact pinned GitHub release URL (${target.url}), got redirect from ${url}`);
+    }
+
+    const location = response.headers?.get?.('location');
+    if (!location) {
+      throw new Error(`Redirect response from ${url} missing Location header (status ${response.status})`);
+    }
+
+    let redirectUrl;
+    try {
+      redirectUrl = new URL(location, url);
+    } catch (err) {
+      throw new Error(`Invalid redirect Location "${location}": ${err.message}`);
+    }
+
+    if (redirectUrl.protocol !== 'https:') {
+      throw new Error(`Rejected insecure redirect protocol "${redirectUrl.protocol}". Only HTTPS redirects are permitted.`);
+    }
+
+    if (redirectUrl.hostname !== 'release-assets.githubusercontent.com') {
+      throw new Error(`Rejected redirect destination host "${redirectUrl.hostname}". Only "release-assets.githubusercontent.com" is permitted.`);
+    }
+
+    if (redirectUrl.port && redirectUrl.port !== '443') {
+      throw new Error(`Rejected non-standard HTTPS port "${redirectUrl.port}" in redirect.`);
+    }
+
+    if (redirectUrl.username || redirectUrl.password) {
+      throw new Error(`Rejected redirect containing credentials in URL`);
+    }
+
+    if (redirectUrl.hash) {
+      throw new Error(`Rejected redirect containing URL fragment: "${redirectUrl.hash}"`);
+    }
+
+    // Follow at most one hop; keep automatic redirects disabled to reject chains
+    const redirectedResponse = await fetchFn(redirectUrl.href, {
+      redirect: 'manual',
+      headers: { 'User-Agent': 'Quizzer-AppImage-Runtime-Preparer/1.0.0' },
+    });
+
+    if ((redirectedResponse.status >= 300 && redirectedResponse.status < 400)
+        || redirectedResponse.type === 'opaqueredirect'
+        || redirectedResponse.redirected) {
+      throw new Error(`Rejected redirect chain: second redirect received from ${redirectUrl.href} (status ${redirectedResponse.status})`);
+    }
+
+    response = redirectedResponse;
   }
 
   if (!response.ok) {
@@ -170,8 +222,9 @@ export const prepareAppImageRuntime = async (options = {}) => {
     throw new Error(`Content-Length mismatch for ${target.assetName}: expected ${target.size}, got ${contentLength}`);
   }
 
-  // 3. Atomically cache the exact file, validate size and SHA-256
-  const tempPath = join(cacheDirectory, `${target.assetName}.${process.pid}.${Date.now()}.tmp`);
+  // 3. Atomically cache the exact file using full-write semantics and collision-resistant temp name
+  const uniqueToken = randomUUID();
+  const tempPath = join(cacheDirectory, `${target.assetName}.${process.pid}.${Date.now()}.${uniqueToken}.tmp`);
   const hasher = createHash('sha256');
   let bytesReceived = 0;
 
@@ -200,6 +253,7 @@ export const prepareAppImageRuntime = async (options = {}) => {
         hasher.update(buffer);
         await fileHandle.write(buffer);
       }
+      await fileHandle.sync();
     } finally {
       await fileHandle.close();
     }

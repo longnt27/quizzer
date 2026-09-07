@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import test from 'node:test';
 import {
   APPIMAGE_RUNTIME_TARGETS,
@@ -140,58 +141,196 @@ test('tampering detection rejects corrupted cache and tampered downloads', async
   }
 });
 
-test('redirects are strictly disabled and rejected without following', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'quizzer-runtime-redirect-test-'));
+test('accepted one-hop GitHub asset redirect allows downloading from release-assets.githubusercontent.com', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'quizzer-runtime-onehop-test-'));
   try {
-    // 301 Moved Permanently
-    const fetch301 = async () => ({
-      ok: false,
-      status: 301,
-      type: 'opaqueredirect',
-      headers: new Headers({ location: 'https://cdn.example.com/asset' }),
+    const target = resolveAppImageTarget('x64');
+    const mockBinary = createMockBinary(target.size, 0x42);
+    const redirectDestination = 'https://release-assets.githubusercontent.com/github-release-asset/mock-uuid?token=secret123';
+
+    let initialRequestMade = false;
+    let redirectedRequestMade = false;
+
+    const fetchFn = async (requestedUrl, init) => {
+      if (requestedUrl === target.url) {
+        initialRequestMade = true;
+        assert.equal(init?.redirect, 'manual', 'must not follow automatic redirects');
+        return {
+          ok: false,
+          status: 302,
+          headers: new Headers({ location: redirectDestination }),
+        };
+      }
+      if (requestedUrl === redirectDestination) {
+        redirectedRequestMade = true;
+        assert.equal(init?.redirect, 'manual', 'must keep manual redirect on second hop');
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers({ 'content-length': String(mockBinary.size) }),
+          arrayBuffer: async () => mockBinary.buffer,
+        };
+      }
+      throw new Error(`Unexpected request to ${requestedUrl}`);
+    };
+
+    const savedPath = await prepareAppImageRuntime({
+      architecture: 'x64',
+      cacheDirectory: directory,
+      fetch: fetchFn,
+      expectedSha256: mockBinary.sha256,
+      expectedSize: mockBinary.size,
     });
 
-    await assert.rejects(
-      prepareAppImageRuntime({
-        architecture: 'x64',
-        cacheDirectory: directory,
-        fetch: fetch301,
-      }),
-      /Redirects are disabled when downloading AppImage runtime/,
-    );
+    assert.equal(initialRequestMade, true);
+    assert.equal(redirectedRequestMade, true);
+    assert.equal(savedPath, join(directory, target.assetName));
 
-    // 302 Found
-    const fetch302 = async () => ({
+    const stats = await stat(savedPath);
+    assert.equal(stats.size, mockBinary.size);
+    assert.ok((stats.mode & 0o111) !== 0, 'file should be executable');
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('rejected host in redirect is blocked', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'quizzer-runtime-badhost-test-'));
+  try {
+    const target = resolveAppImageTarget('x64');
+    const fetchEvilHost = async () => ({
       ok: false,
       status: 302,
-      headers: new Headers({ location: 'https://cdn.example.com/asset' }),
-    });
-
-    await assert.rejects(
-      prepareAppImageRuntime({
-        architecture: 'arm64',
-        cacheDirectory: directory,
-        fetch: fetch302,
-      }),
-      /Redirects are disabled when downloading AppImage runtime/,
-    );
-
-    // Response marked as redirected
-    const fetchRedirected = async () => ({
-      ok: true,
-      status: 200,
-      redirected: true,
-      headers: new Headers(),
-      arrayBuffer: async () => Buffer.alloc(10).buffer,
+      headers: new Headers({ location: 'https://evil.attacker.com/runtime-x86_64' }),
     });
 
     await assert.rejects(
       prepareAppImageRuntime({
         architecture: 'x64',
         cacheDirectory: directory,
-        fetch: fetchRedirected,
+        fetch: fetchEvilHost,
       }),
-      /Redirects are disabled when downloading AppImage runtime/,
+      /Rejected redirect destination host "evil\.attacker\.com"/,
+    );
+
+    const fetchOtherGitHubHost = async () => ({
+      ok: false,
+      status: 302,
+      headers: new Headers({ location: 'https://raw.githubusercontent.com/runtime-x86_64' }),
+    });
+
+    await assert.rejects(
+      prepareAppImageRuntime({
+        architecture: 'x64',
+        cacheDirectory: directory,
+        fetch: fetchOtherGitHubHost,
+      }),
+      /Rejected redirect destination host "raw\.githubusercontent\.com"/,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('rejected second redirect or redirect chain is blocked', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'quizzer-runtime-chain-test-'));
+  try {
+    const target = resolveAppImageTarget('x64');
+    const hop1 = 'https://release-assets.githubusercontent.com/step1';
+    const hop2 = 'https://release-assets.githubusercontent.com/step2';
+
+    const fetchChain = async (requestedUrl) => {
+      if (requestedUrl === target.url) {
+        return {
+          ok: false,
+          status: 302,
+          headers: new Headers({ location: hop1 }),
+        };
+      }
+      if (requestedUrl === hop1) {
+        return {
+          ok: false,
+          status: 302,
+          headers: new Headers({ location: hop2 }),
+        };
+      }
+      throw new Error(`Unexpected request to ${requestedUrl}`);
+    };
+
+    await assert.rejects(
+      prepareAppImageRuntime({
+        architecture: 'x64',
+        cacheDirectory: directory,
+        fetch: fetchChain,
+      }),
+      /Rejected redirect chain: second redirect received/,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('insecure protocols, credentials, fragments, and non-pinned sources in redirects are rejected', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'quizzer-runtime-security-test-'));
+  try {
+    // Insecure HTTP protocol
+    const fetchHttp = async () => ({
+      ok: false,
+      status: 302,
+      headers: new Headers({ location: 'http://release-assets.githubusercontent.com/asset' }),
+    });
+    await assert.rejects(
+      prepareAppImageRuntime({ architecture: 'x64', cacheDirectory: directory, fetch: fetchHttp }),
+      /Rejected insecure redirect protocol "http:"/,
+    );
+
+    // Credentials in redirect URL
+    const fetchCreds = async () => ({
+      ok: false,
+      status: 302,
+      headers: new Headers({ location: 'https://user:pass@release-assets.githubusercontent.com/asset' }),
+    });
+    await assert.rejects(
+      prepareAppImageRuntime({ architecture: 'x64', cacheDirectory: directory, fetch: fetchCreds }),
+      /Rejected redirect containing credentials in URL/,
+    );
+
+    // Fragment in redirect URL
+    const fetchFrag = async () => ({
+      ok: false,
+      status: 302,
+      headers: new Headers({ location: 'https://release-assets.githubusercontent.com/asset#fragment' }),
+    });
+    await assert.rejects(
+      prepareAppImageRuntime({ architecture: 'x64', cacheDirectory: directory, fetch: fetchFrag }),
+      /Rejected redirect containing URL fragment/,
+    );
+
+    // Missing Location header
+    const fetchNoLocation = async () => ({
+      ok: false,
+      status: 302,
+      headers: new Headers(),
+    });
+    await assert.rejects(
+      prepareAppImageRuntime({ architecture: 'x64', cacheDirectory: directory, fetch: fetchNoLocation }),
+      /missing Location header/,
+    );
+
+    // Redirect originating from non-pinned URL
+    const fetchNonPinned = async () => ({
+      ok: false,
+      status: 302,
+      headers: new Headers({ location: 'https://release-assets.githubusercontent.com/asset' }),
+    });
+    await assert.rejects(
+      prepareAppImageRuntime({
+        architecture: 'x64',
+        cacheDirectory: directory,
+        fetch: fetchNonPinned,
+        url: 'https://custom-mirror.example.com/asset',
+      }),
+      /redirects are only permitted from the exact pinned GitHub release URL/i,
     );
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -290,3 +429,69 @@ test('Forge configuration wires explicit runtime without continuous fallback', a
     else process.env.QUIZZER_APPIMAGE_RUNTIME = previousEnv;
   }
 });
+
+test('successful safe forge wrapper validation executes cleanly and validates arguments', async () => {
+  const forgeScript = resolve('scripts/forge.mjs');
+
+  // 1. package --help uses spawn and fileURLToPath cleanly
+  const pkgHelp = spawnSync(process.execPath, [forgeScript, 'package', '--help'], { encoding: 'utf8' });
+  assert.equal(pkgHelp.status, 0, `package --help should exit 0, got: ${pkgHelp.stderr}`);
+  assert.match(pkgHelp.stdout, /electron-forge-package/);
+
+  // 2. make --platform darwin --help runs safely without linux runtime checks
+  const darwinHelp = spawnSync(process.execPath, [forgeScript, 'make', '--platform', 'darwin', '--help'], { encoding: 'utf8' });
+  assert.equal(darwinHelp.status, 0, `make --platform darwin --help should exit 0, got: ${darwinHelp.stderr}`);
+  assert.match(darwinHelp.stdout, /electron-forge-make/);
+
+  // 3. make --platform linux with valid verified runtime in QUIZZER_APPIMAGE_RUNTIME
+  const cachedX64Runtime = resolve('node_modules/.cache/quizzer/appimage-runtime/runtime-x86_64');
+  let hasCachedRuntime = false;
+  try {
+    const stats = await stat(cachedX64Runtime);
+    hasCachedRuntime = stats.isFile();
+  } catch {}
+
+  if (hasCachedRuntime) {
+    const linuxHelp = spawnSync(
+      process.execPath,
+      [forgeScript, 'make', '--platform', 'linux', '--arch', 'x64', '--help'],
+      {
+        env: { ...process.env, QUIZZER_APPIMAGE_RUNTIME: cachedX64Runtime },
+        encoding: 'utf8',
+      },
+    );
+    assert.equal(linuxHelp.status, 0, `linux make with verified runtime should exit 0: ${linuxHelp.stderr}`);
+    assert.match(linuxHelp.stdout, /electron-forge-make/);
+  }
+
+  // 4. make --platform linux with invalid/tampered runtime in QUIZZER_APPIMAGE_RUNTIME
+  const invalidRuntime = spawnSync(
+    process.execPath,
+    [forgeScript, 'make', '--platform', 'linux', '--arch', 'x64', '--help'],
+    {
+      env: { ...process.env, QUIZZER_APPIMAGE_RUNTIME: resolve('package.json') },
+      encoding: 'utf8',
+    },
+  );
+  assert.notEqual(invalidRuntime.status, 0, 'tampered runtime path must be rejected');
+  assert.match(invalidRuntime.stderr, /mismatch/);
+
+  // 5. make with unsupported architecture
+  const ia32Run = spawnSync(
+    process.execPath,
+    [forgeScript, 'make', '--platform', 'linux', '--arch', 'ia32'],
+    { encoding: 'utf8' },
+  );
+  assert.notEqual(ia32Run.status, 0, 'unsupported architecture must be rejected');
+  assert.match(ia32Run.stderr, /Unsupported AppImage target architecture: "ia32"/);
+
+  // 6. unknown forge command
+  const badCmd = spawnSync(
+    process.execPath,
+    [forgeScript, 'deploy'],
+    { encoding: 'utf8' },
+  );
+  assert.notEqual(badCmd.status, 0, 'unknown command must be rejected');
+  assert.match(badCmd.stderr, /Usage: node scripts\/forge\.mjs <package\|make>/);
+});
+
