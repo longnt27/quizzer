@@ -246,6 +246,22 @@ test('exposes the plugin contract and bounded lifecycle collection', async () =>
   });
   assert.equal(badInstall.status, 400);
 
+  for (const body of [
+    { path: '/tmp/plugin', confirmed: true },
+    { id: 'registry-plugin', confirmed: true },
+    { id: 'registry-plugin', confirmationToken: '0'.repeat(64) },
+    { id: 'Invalid_Plugin' },
+    { path: `bad\0path` },
+    { id: 'registry-plugin', unexpected: true },
+  ]) {
+    const response = await authorized('/api/v1/plugins/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    assert.equal(response.status, 400, JSON.stringify(body));
+  }
+
   // Non-existent plugin update/rollback returns 400
   const badUpdate = await authorized('/api/v1/plugins/nonexistent/update', {
     method: 'POST',
@@ -253,6 +269,19 @@ test('exposes the plugin contract and bounded lifecycle collection', async () =>
     body: JSON.stringify({}),
   });
   assert.equal(badUpdate.status, 400);
+  for (const body of [
+    { confirmed: true },
+    { confirmed: false, confirmationToken: '0'.repeat(64) },
+    { confirmed: 'true' },
+    { unexpected: true },
+  ]) {
+    const response = await authorized('/api/v1/plugins/nonexistent/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    assert.equal(response.status, 400, JSON.stringify(body));
+  }
 
   const badRollback = await authorized('/api/v1/plugins/nonexistent/rollback', {
     method: 'POST',

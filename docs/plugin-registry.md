@@ -12,18 +12,20 @@ The plugin registry system is built on a strict defense-in-depth model:
    - The signature is verified against explicitly configured trusted keys before any catalog entry, version, or URL is parsed or trusted.
 
 2. **Canonical Download URL Restriction**:
-   - Downloads are strictly restricted to canonical credential-free HTTPS Quizzer GitHub Release URLs (`https://github.com/Somethings1/quizzer/releases/download/...` or `/releases/latest/download/...`).
-   - URLs containing credentials (`user:pass@`), non-HTTPS protocols, or path traversal elements (`..`, `\\`) are rejected immediately.
+   - Downloads are strictly restricted to exact, versioned, credential-free HTTPS Quizzer GitHub Release asset URLs (`https://github.com/Somethings1/quizzer/releases/download/<tag>/<asset>`).
+   - Mutable `/latest/` paths, queries, fragments, custom ports, nested asset paths, encoded separators, credentials, and path traversal are rejected immediately.
 
-3. **Disabled Redirects**:
-   - HTTP redirects are disabled (`redirect: "error"`). Any 3xx redirect response immediately aborts the download to prevent open-redirect and domain spoofing attacks.
+3. **Bounded GitHub Asset Redirect**:
+   - Quizzer follows at most one manual HTTPS redirect from the exact GitHub asset URL to `release-assets.githubusercontent.com` on its default port, which is how GitHub serves release bytes.
+   - Missing locations, other hosts, credentials, fragments, unsafe paths, and a second redirect are rejected.
 
 4. **Strict Size Bounds**:
    - **Catalog:** Maximum 1 MiB (`MAX_CATALOG_SIZE`).
    - **Manifest:** Maximum 512 KiB (`MAX_MANIFEST_SIZE`).
    - **Individual File:** Maximum 64 MiB (`MAX_INDIVIDUAL_FILE_SIZE`).
    - **Total Plugin Size:** Maximum 256 MiB (`MAX_TOTAL_PLUGIN_SIZE`).
-   - Responses exceeding content-length or streamed byte limits are aborted immediately.
+   - Every catalog file has a signed URL, SHA-256, and size. Those sizes must sum exactly to the signed `downloadSize`, and actual streamed bytes must match each declaration and the total.
+   - Invalid content lengths and responses exceeding streamed byte limits are aborted immediately. Caller cancellation and a bounded timeout remain active through body consumption.
 
 5. **Platform & Architecture Compatibility**:
    - Registry entries explicitly declare supported operating systems (`darwin`, `linux`, `win32`) and CPU architectures (`x64`, `arm64`).
@@ -33,6 +35,7 @@ The plugin registry system is built on a strict defense-in-depth model:
    - The downloaded `quizzer.plugin.json` manifest signature is verified with Ed25519 against trusted keys.
    - Registry installs **must never enable unsigned plugins or depend on Developer Mode**. Even with Developer Mode active, remote registry plugins must be validly signed.
    - Every declared file in the manifest is hashed with SHA-256 and matched against the manifest entry before an atomic directory swap is made.
+   - Catalog identity, capabilities, platform, resource, permission, and file metadata must match the separately signed plugin manifest.
 
 7. **Atomic Installation & Rollback Invariance**:
    - New versions are downloaded and verified in isolated staging directories.
@@ -51,6 +54,7 @@ The plugin registry system is built on a strict defense-in-depth model:
      - Subprocess execution (`permissions.subprocess`)
      - Elevated filesystem permissions (`persistent-data`, `document-read`, `model-read`)
      - Large downloads (>= 25 MiB)
+   - The desktop UI first submits an unconfirmed request. Only after the service downloads and verifies the signed manifest does it return the authoritative reasons and a manifest-bound confirmation token. The confirmed retry must present that exact token, so a changed catalog or manifest cannot reuse stale approval.
 
 ---
 
@@ -65,7 +69,7 @@ Trusted keys and registry URLs are configured via environment variables or setti
   ```
 - `QUIZZER_PLUGIN_TRUSTED_KEYS`: Fallback trusted keys object if `QUIZZER_PLUGIN_REGISTRY_TRUSTED_KEYS` is not set.
 - `QUIZZER_PLUGIN_REGISTRY_URL`: Custom URL for the registry catalog. Defaults to:
-  `https://github.com/Somethings1/quizzer/releases/download/plugins/catalog.json`
+  `https://github.com/Somethings1/quizzer/releases/download/plugins-v1/catalog.json`
 
 ---
 
@@ -127,8 +131,9 @@ The authenticated Quizzer API provides endpoints corresponding to each lifecycle
 
 - `GET /api/v1/plugins/registry` (or `GET /api/v1/plugins?registry=true`): Fetch verified registry catalog entries.
 - `GET /api/v1/plugins`: List installed external and built-in plugins with `source`, `registryId`, `availableVersion`, and `updateAvailable`.
-- `POST /api/v1/plugins/install`: Install via `{ "id": "plugin-id", "confirmed": true }` or `{ "path": "/path/to/dir" }`.
-- `POST /api/v1/plugins/:id/update`: Update installed plugin with optional `{ "confirmed": true }`.
+- `POST /api/v1/plugins/install`: Install locally via `{ "path": "/path/to/dir" }`, or begin a registry install via `{ "id": "plugin-id" }`.
+- `POST /api/v1/plugins/:id/update`: Begin an installed registry plugin update with `{}`.
+- When either registry operation returns `plugin_confirmation_required`, show its signed-manifest reasons and retry with `{ "confirmed": true, "confirmationToken": "<returned token>" }` (plus `id` for install).
 - `POST /api/v1/plugins/:id/(enable|disable|health|rollback)`: Manage plugin state.
 - `DELETE /api/v1/plugins/:id?confirm=true`: Move plugin to recoverable storage.
 

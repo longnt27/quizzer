@@ -84,16 +84,20 @@ export interface TwoPhaseActionOptions {
 }
 
 export const executeTwoPhaseAction = async <T>(
-  action: (confirmed: boolean) => Promise<T>,
+  action: (confirmationToken?: string) => Promise<T>,
   options: TwoPhaseActionOptions,
 ): Promise<T | null> => {
   try {
-    return await action(false);
+    return await action();
   } catch (error) {
     if (error instanceof ServiceApiError && error.confirmationRequired) {
+      const confirmationToken = error.details?.confirmationToken;
+      if (typeof confirmationToken !== 'string' || !/^[a-f0-9]{64}$/.test(confirmationToken)) {
+        throw new ServiceApiError('Quizzer service returned an invalid plugin confirmation challenge', error.status, error.code);
+      }
       const confirmed = await options.onConfirmationRequired(error.reasons || [], error.details);
       if (!confirmed) return null;
-      return await action(true);
+      return await action(confirmationToken);
     }
     throw error;
   }

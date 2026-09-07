@@ -299,14 +299,23 @@ paths:
                   additionalProperties: false
                   required: [path]
                   properties:
-                    path: { type: string, minLength: 1 }
-                    confirmed: { type: boolean, default: false }
+                    path: { type: string, minLength: 1, maxLength: 4096 }
                 - type: object
                   additionalProperties: false
                   required: [id]
                   properties:
                     id: { type: string, minLength: 1, pattern: '^[a-z0-9](?:[a-z0-9.-]{0,126}[a-z0-9])?$' }
                     confirmed: { type: boolean, default: false }
+                    confirmationToken: { type: string, pattern: '^[a-f0-9]{64}$' }
+                  allOf:
+                    - if:
+                        required: [confirmed]
+                        properties: { confirmed: { const: true } }
+                      then: { required: [confirmationToken] }
+                    - if: { required: [confirmationToken] }
+                      then:
+                        required: [confirmed]
+                        properties: { confirmed: { const: true } }
       responses:
         '201': { description: Installed plugin }
         '400':
@@ -336,6 +345,16 @@ paths:
               additionalProperties: false
               properties:
                 confirmed: { type: boolean, default: false }
+                confirmationToken: { type: string, pattern: '^[a-f0-9]{64}$' }
+              allOf:
+                - if:
+                    required: [confirmed]
+                    properties: { confirmed: { const: true } }
+                  then: { required: [confirmationToken] }
+                - if: { required: [confirmationToken] }
+                  then:
+                    required: [confirmed]
+                    properties: { confirmed: { const: true } }
       responses:
         '200': { description: Plugin lifecycle result }
         '400':
@@ -1215,19 +1234,33 @@ components:
         warning: { type: string }
     PluginConfirmationRequired:
       type: object
-      required: [error, confirmationRequired, reasons]
+      required: [error, code, confirmationRequired, reasons, details]
       additionalProperties: false
       properties:
         error: { type: string }
+        code: { const: plugin_confirmation_required }
         confirmationRequired: { type: boolean, const: true }
         reasons:
           type: array
           items: { type: string }
         details:
           type: object
+          additionalProperties: false
+          required: [newNetwork, newSecrets, subprocess, newElevatedFs, largeDownload, downloadBytes, confirmationToken, pluginId, version]
+          properties:
+            newNetwork: { type: array, items: { type: string } }
+            newSecrets: { type: array, items: { type: string } }
+            subprocess: { type: boolean }
+            newElevatedFs: { type: array, items: { type: string } }
+            largeDownload: { type: boolean }
+            downloadBytes: { type: integer, minimum: 0, maximum: 268435456 }
+            confirmationToken: { type: string, pattern: '^[a-f0-9]{64}$' }
+            pluginId: { type: string }
+            version: { type: string }
     RegistryPluginSummary:
       type: object
       required: [id, name, version, capabilities, platforms, resources, permissions, manifestUrl, downloadSize, installed, compatible]
+      additionalProperties: false
       properties:
         id: { type: string }
         name: { type: string }

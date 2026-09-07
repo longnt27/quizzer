@@ -277,120 +277,81 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
     }
   };
 
-  const checkSecurityConfirmation = (
-    permissions?: { network?: string[]; filesystem?: string[]; secrets?: string[]; subprocess?: boolean },
-    previousPermissions?: { network?: string[]; filesystem?: string[]; secrets?: string[]; subprocess?: boolean },
-    downloadBytes = 0,
-  ) => {
-    const reasons: string[] = [];
-    const currentNetwork = permissions?.network || [];
-    const prevNetwork = new Set(previousPermissions?.network || []);
-    const newNetwork = currentNetwork.filter(h => !prevNetwork.has(h));
-    if (newNetwork.length > 0) {
-      reasons.push(previousPermissions ? `New network access: ${newNetwork.join(', ')}` : `Network access: ${newNetwork.join(', ')}`);
-    }
-
-    const currentSecrets = permissions?.secrets || [];
-    const prevSecrets = new Set(previousPermissions?.secrets || []);
-    const newSecrets = currentSecrets.filter(s => !prevSecrets.has(s));
-    if (newSecrets.length > 0) {
-      reasons.push(previousPermissions ? `New secret access: ${newSecrets.join(', ')}` : `Secret access: ${newSecrets.join(', ')}`);
-    }
-
-    if (permissions?.subprocess && (!previousPermissions || !previousPermissions.subprocess)) {
-      reasons.push('Subprocess execution permission');
-    }
-
-    const elevatedFs = ['persistent-data', 'document-read', 'model-read'];
-    const currentFs = permissions?.filesystem || [];
-    const prevFs = new Set(previousPermissions?.filesystem || []);
-    const newElevatedFs = currentFs.filter(fs => elevatedFs.includes(fs) && !prevFs.has(fs));
-    if (newElevatedFs.length > 0) {
-      reasons.push(previousPermissions ? `New filesystem access: ${newElevatedFs.join(', ')}` : `Filesystem access: ${newElevatedFs.join(', ')}`);
-    }
-
-    if (downloadBytes >= 25 * 1024 * 1024) {
-      reasons.push(`Large download size: ${(downloadBytes / (1024 * 1024)).toFixed(1)} MB`);
-    }
-
-    return reasons;
-  };
-
-  const installRegistryPlugin = (registryPlugin: RegistryPlugin) => {
-    const reasons = checkSecurityConfirmation(registryPlugin.permissions, undefined, registryPlugin.downloadSize);
-    const doInstall = async () => {
-      setPluginAction(`registry:${registryPlugin.id}:install`);
-      try {
-        const result = await serviceJson<{ plugin: ExternalPlugin }>('/api/v1/plugins/install', 'POST', {
-          id: registryPlugin.id,
-          confirmed: true,
-        });
-        message.success(`${result.plugin.name ?? result.plugin.id} installed`);
-        await refreshExternal();
-      } catch (error) {
-        message.error(error instanceof Error ? error.message : 'Could not install registry plugin');
-      } finally {
-        setPluginAction('');
-      }
+  const confirmRegistrySecurity = (title: string, okText: string, reasons: string[]) => new Promise<boolean>(resolve => {
+    let settled = false;
+    const settle = (value: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
     };
+    getModalApi().confirm({
+      title,
+      content: (
+        <Space direction="vertical">
+          <Typography.Text>Quizzer verified the signed plugin manifest. Confirm these permissions and resource effects:</Typography.Text>
+          <ul>
+            {(reasons.length ? reasons : ['Security confirmation required']).map(reason => (
+              <li key={reason}><Typography.Text strong>{reason}</Typography.Text></li>
+            ))}
+          </ul>
+        </Space>
+      ),
+      okText,
+      onOk: () => settle(true),
+      onCancel: () => settle(false),
+    });
+  });
 
-    if (reasons.length > 0) {
-      getModalApi().confirm({
-        title: `Install ${registryPlugin.name || registryPlugin.id}?`,
-        content: (
-          <Space direction="vertical">
-            <Typography.Text>This plugin requires explicit security confirmation before installation:</Typography.Text>
-            <ul>
-              {reasons.map(r => <li key={r}><Typography.Text strong>{r}</Typography.Text></li>)}
-            </ul>
-          </Space>
-        ),
-        okText: 'Confirm and install',
-        onOk: () => doInstall(),
-      });
-    } else {
-      void doInstall();
+  const installRegistryPlugin = async (registryPlugin: RegistryPlugin) => {
+    setPluginAction(`registry:${registryPlugin.id}:install`);
+    try {
+      const result = await executeTwoPhaseAction(
+        confirmationToken => serviceJson<{ plugin: ExternalPlugin }>('/api/v1/plugins/install', 'POST', {
+          id: registryPlugin.id,
+          ...(confirmationToken ? { confirmed: true, confirmationToken } : {}),
+        }),
+        {
+          onConfirmationRequired: reasons => confirmRegistrySecurity(
+            `Install ${registryPlugin.name || registryPlugin.id}?`,
+            'Confirm and install',
+            reasons,
+          ),
+        },
+      );
+      if (!result) return;
+      message.success(`${result.plugin.name ?? result.plugin.id} installed`);
+      await refreshExternal();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Could not install registry plugin');
+    } finally {
+      setPluginAction('');
     }
   };
 
-  const updateRegistryPlugin = (plugin: ExternalPlugin) => {
-    const registryEntry = registryPlugins.find(entry => entry.id === (plugin.registryId || plugin.id));
-    const reasons = registryEntry
-      ? checkSecurityConfirmation(registryEntry.permissions, plugin.permissions, registryEntry.downloadSize)
-      : [];
-    const doUpdate = async () => {
-      setPluginAction(`${plugin.id}:update`);
-      try {
-        const result = await serviceJson<{ plugin: ExternalPlugin }>(
+  const updateRegistryPlugin = async (plugin: ExternalPlugin) => {
+    setPluginAction(`${plugin.id}:update`);
+    try {
+      const result = await executeTwoPhaseAction(
+        confirmationToken => serviceJson<{ plugin: ExternalPlugin }>(
           `/api/v1/plugins/${encodeURIComponent(plugin.id)}/update`,
           'POST',
-          { confirmed: true },
-        );
-        message.success(`Updated ${result.plugin?.name ?? plugin.name ?? plugin.id} to v${result.plugin?.version ?? plugin.availableVersion}`);
-        await refreshExternal();
-      } catch (error) {
-        message.error(error instanceof Error ? error.message : 'Could not update plugin');
-      } finally {
-        setPluginAction('');
-      }
-    };
-
-    if (reasons.length > 0) {
-      getModalApi().confirm({
-        title: `Update ${plugin.name ?? plugin.id} to v${plugin.availableVersion || 'latest'}?`,
-        content: (
-          <Space direction="vertical">
-            <Typography.Text>This update introduces new permissions or a large download:</Typography.Text>
-            <ul>
-              {reasons.map(r => <li key={r}><Typography.Text strong>{r}</Typography.Text></li>)}
-            </ul>
-          </Space>
+          confirmationToken ? { confirmed: true, confirmationToken } : {},
         ),
-        okText: 'Confirm and update',
-        onOk: () => doUpdate(),
-      });
-    } else {
-      void doUpdate();
+        {
+          onConfirmationRequired: reasons => confirmRegistrySecurity(
+            `Update ${plugin.name ?? plugin.id} to v${plugin.availableVersion || 'latest'}?`,
+            'Confirm and update',
+            reasons,
+          ),
+        },
+      );
+      if (!result) return;
+      message.success(`Updated ${result.plugin?.name ?? plugin.name ?? plugin.id} to v${result.plugin?.version ?? plugin.availableVersion}`);
+      await refreshExternal();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Could not update plugin');
+    } finally {
+      setPluginAction('');
     }
   };
 

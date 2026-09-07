@@ -44,6 +44,7 @@ Quizzer supports distribution through signed plugin registries defined by [`quiz
 
 - All release assets must be served from canonical versioned credential-free HTTPS GitHub Release URLs (`https://github.com/Somethings1/quizzer/releases/download/<tag>/...`). Unversioned `/latest/` URLs are prohibited.
 - Manual redirects are strictly bounded: at most one HTTPS 30x hop to credential-free `release-assets.githubusercontent.com` on the default port is accepted. Arbitrary hosts/ports, missing Location, and second redirect hops are rejected.
-- Download sizes are strictly declared, signed, and bounded for catalog (1 MiB), manifest (512 KiB), individual file (64 MiB), and total plugin (256 MiB). The downloaded payload total must match the signed catalog `downloadSize`.
+- Every catalog file URL, SHA-256, and size is signed. File sizes must sum to `downloadSize`, catalog metadata must match the signed plugin manifest, and downloaded bytes must match both per-file and total declarations.
+- Permission and large-download approval in the desktop UI uses a service-issued, manifest-bound confirmation token so stale client previews cannot authorize changed content.
 - Operating system and architecture compatibility are validated prior to download.
 - Full details are documented in [docs/plugin-registry.md](../docs/plugin-registry.md).
