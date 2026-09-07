@@ -145,7 +145,7 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
       <Typography.Paragraph type="secondary">
         Documents are extracted now and saved to your local library. Creating a quiz is a separate step.
       </Typography.Paragraph>
-      <Select value={converter} onChange={setConverter} style={{ width: 280, marginBottom: 12 }} options={[
+      <Select aria-label="Document extraction method" value={converter} onChange={setConverter} style={{ width: 280, marginBottom: 12 }} options={[
         { value: 'automatic' as const, label: 'Automatic (configured extractor)' },
         { value: 'basic', label: 'Basic PDF text extraction' },
       ]} />

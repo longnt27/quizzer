@@ -381,13 +381,13 @@ export function GenerationCenter({ open, onClose, onOpenTest, onManagePlugins }:
       <Typography.Title level={5} style={{ margin: 0 }}>Quiz generation</Typography.Title>
       <div className="generation-concurrency">
         <div><Typography.Text strong>Concurrent test instances</Typography.Text><br /><Typography.Text type="secondary">One provider request per test. Changes apply as running requests finish.</Typography.Text></div>
-        <Slider min={1} max={10} value={instances} marks={{ 1: '1', 5: '5', 10: '10' }} tooltip={{ formatter: value => `${value} instance${value === 1 ? '' : 's'}` }}
+        <Slider ariaLabelForHandle="Concurrent test instances" min={1} max={10} value={instances} marks={{ 1: '1', 5: '5', 10: '10' }} tooltip={{ formatter: value => `${value} instance${value === 1 ? '' : 's'}` }}
           onChange={value => { setInstances(value); setGenerationConcurrency(value); void pumpGenerationQueue(); }}
           onChangeComplete={value => void persistSetting('generation.concurrency', value)} />
       </div>
       <div className="generation-concurrency">
         <div><Typography.Text strong>Questions per request</Typography.Text><br /><Typography.Text type="secondary">Larger batches are faster; smaller batches checkpoint more often.</Typography.Text></div>
-        <Slider min={5} max={25} value={batchSize} marks={{ 5: '5', 10: '10', 20: '20', 25: '25' }} tooltip={{ formatter: value => `${value} questions` }}
+        <Slider ariaLabelForHandle="Questions per request" min={5} max={25} value={batchSize} marks={{ 5: '5', 10: '10', 20: '20', 25: '25' }} tooltip={{ formatter: value => `${value} questions` }}
           onChange={value => { setBatchSize(value); setGenerationBatchSize(value); }}
           onChangeComplete={value => void persistSetting('generation.batchSize', value)} />
       </div>

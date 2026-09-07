@@ -87,7 +87,7 @@ interface HealthResult {
 interface Props { interfaceMode: InterfaceMode; onClose: () => void; }
 
 const statusTag = (ready: boolean, working: boolean, readyText: string) => (
-  <Tag color={working ? 'processing' : ready ? 'success' : 'default'}>
+  <Tag color={working ? '#0050b3' : ready ? '#237804' : undefined}>
     {working ? 'Working…' : ready ? readyText : 'Not configured'}
   </Tag>
 );
@@ -574,7 +574,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
               ...extractorPlugins.map(plugin => ({ value: plugin.id, label: `${plugin.name ?? plugin.id} · ${plugin.id}` })),
             ]} />
           {extractorPlugin === 'builtin' && !status?.marker.installed && !markerWorking && <Button icon={<CloudDownloadOutlined />} onClick={() => void runAction('/api/integrations/marker/install')}>Install Marker visual extraction</Button>}
-          {extractorPlugin === 'builtin' && status?.marker.installed && <Space><Switch checked={enabledTools.marker} onChange={value => setEnabledTools(current => ({ ...current, marker: value }))} /><Typography.Text>Use Marker for automatic PDF extraction</Typography.Text></Space>}
+          {extractorPlugin === 'builtin' && status?.marker.installed && <Space><Switch aria-label="Use Marker for automatic PDF extraction" checked={enabledTools.marker} onChange={value => setEnabledTools(current => ({ ...current, marker: value }))} /><Typography.Text>Use Marker for automatic PDF extraction</Typography.Text></Space>}
           {extractorPlugin === 'builtin' && markerWorking && <Space><Spin size="small" /> Installing Marker…</Space>}
           {extractorPlugin === 'builtin' && status?.marker.job.message && status.marker.job.state !== 'idle' && (
             <Alert showIcon type={status.marker.job.state === 'error' ? 'error' : status.marker.job.state === 'complete' ? 'success' : 'info'}
@@ -596,7 +596,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
               ...ocrPlugins.map(plugin => ({ value: plugin.id, label: `${plugin.name ?? plugin.id} · ${plugin.id}` })),
             ]} />
           {ocrPlugin === 'builtin' && !status?.ocr?.installed && !ocrWorking && <Button icon={<CloudDownloadOutlined />} onClick={() => void runAction('/api/integrations/ocr/install')}>Install Image OCR</Button>}
-          {(ocrPlugin === 'builtin' ? status?.ocr?.installed : selectedOcr) && <Space><Switch checked={enabledTools.ocr} onChange={value => setEnabledTools(current => ({ ...current, ocr: value }))} /><Typography.Text>Enabled</Typography.Text></Space>}
+          {(ocrPlugin === 'builtin' ? status?.ocr?.installed : selectedOcr) && <Space><Switch aria-label="Enable image OCR" checked={enabledTools.ocr} onChange={value => setEnabledTools(current => ({ ...current, ocr: value }))} /><Typography.Text>Enabled</Typography.Text></Space>}
           {ocrPlugin === 'builtin' && ocrWorking && <Space><Spin size="small" /> Installing Image OCR…</Space>}
           {ocrPlugin === 'builtin' && status?.ocr?.job.message && status.ocr.job.state !== 'idle' && (
             <Alert showIcon type={status.ocr.job.state === 'error' ? 'error' : status.ocr.job.state === 'complete' ? 'success' : 'info'}
@@ -631,7 +631,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
             onClick={installEmbeddingModel}>
             {status?.embeddings?.runtimeInstalled ? `Download ${status.embeddings.model}` : `Install Ollama + ${status?.embeddings.model ?? 'embedding model'}`}
           </Button>}
-          {embeddingReady && <Space><Switch checked={enabledTools.embeddings} onChange={value => setEnabledTools(current => ({ ...current, embeddings: value }))} /><Typography.Text>Enabled</Typography.Text></Space>}
+          {embeddingReady && <Space><Switch aria-label="Enable dense embeddings" checked={enabledTools.embeddings} onChange={value => setEnabledTools(current => ({ ...current, embeddings: value }))} /><Typography.Text>Enabled</Typography.Text></Space>}
           {embedderPlugin === 'builtin' && embeddingsWorking && <Space><Spin size="small" /> Installing semantic filter…</Space>}
           {embedderPlugin === 'builtin' && status?.embeddings?.job.message && status.embeddings.job.state !== 'idle' && <pre className="plugin-output">{status.embeddings.job.message}</pre>}
           {embedderPlugin !== 'builtin' && !selectedEmbedder && <Alert type="warning" showIcon message="Selected embedder is unavailable"
@@ -656,7 +656,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
             {status?.ollama?.installed && !status.ollama.serverReady && !ollamaWorking && <Alert type="warning" showIcon message="Ollama service is not running"
               description="Start Ollama, or choose Download model below and Quizzer will start the local service before the confirmed download." />}
             {!!models.ollama?.trim() && !selectedOllamaModel && !ollamaWorking && <Button icon={<CloudDownloadOutlined />} onClick={pullOllamaModel}>Download model</Button>}
-            {selectedOllamaModel && status?.ollama?.serverReady && <Space><Switch checked={enabledProviders.ollama}
+            {selectedOllamaModel && status?.ollama?.serverReady && <Space><Switch aria-label="Enable Ollama for generation" checked={enabledProviders.ollama}
               onChange={value => setEnabledProviders(current => ({ ...current, ollama: value }))} /><Typography.Text>Enabled for generation</Typography.Text></Space>}
             {ollamaWorking && <Space><Spin size="small" /> Preparing local generation…</Space>}
             {status?.ollama?.job.message && status.ollama.job.state !== 'idle' && (
@@ -677,7 +677,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
             <Input value={models['llama-cpp']} onChange={event => setModels(current => ({ ...current, 'llama-cpp': event.target.value }))} addonBefore="Model" placeholder="For example: local-model" />
             <Typography.Text type="secondary">Saving this configuration is an explicit setup confirmation. Only unauthenticated HTTP loopback endpoints are accepted.</Typography.Text>
             {status?.['llama-cpp']?.error && <Alert type="warning" showIcon message="llama.cpp server is not ready" description={status['llama-cpp'].error} />}
-            {status?.['llama-cpp']?.serverReady && isNumericLoopbackEndpoint(llamaCppEndpoint) && Boolean(models['llama-cpp']?.trim()) && <Space><Switch checked={enabledProviders['llama-cpp']} onChange={value => setEnabledProviders(current => ({ ...current, 'llama-cpp': value }))} /><Typography.Text>Enabled for generation</Typography.Text></Space>}
+            {status?.['llama-cpp']?.serverReady && isNumericLoopbackEndpoint(llamaCppEndpoint) && Boolean(models['llama-cpp']?.trim()) && <Space><Switch aria-label="Enable llama.cpp for generation" checked={enabledProviders['llama-cpp']} onChange={value => setEnabledProviders(current => ({ ...current, 'llama-cpp': value }))} /><Typography.Text>Enabled for generation</Typography.Text></Space>}
           </Space>
         </section>
 
@@ -717,7 +717,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
                 {provider.id !== 'codex' && !agent?.installed && !working && <Button icon={<CloudDownloadOutlined />} onClick={() => void runAction(`/api/integrations/${provider.id}/install`)}>Install {provider.label.split(' ')[0]}</Button>}
                 {agent?.installed && !agent.connected && !working && <Button icon={<LoginOutlined />} onClick={() => void runAction(`/api/integrations/${provider.id}/connect`)}>Connect {provider.label.split(' ')[0]}</Button>}
                 {working && <Space><Spin size="small" /> Working…</Space>}
-                {agent?.connected && <Space><Switch checked={enabledProviders[provider.id]} onChange={value => setEnabledProviders(current => ({ ...current, [provider.id]: value }))} /><Typography.Text>Enabled</Typography.Text></Space>}
+                {agent?.connected && <Space><Switch aria-label={`Enable ${provider.label.replace(' – ', ' ')}`} checked={enabledProviders[provider.id]} onChange={value => setEnabledProviders(current => ({ ...current, [provider.id]: value }))} /><Typography.Text>Enabled</Typography.Text></Space>}
               </Space>
               {loginUrl && working && <Typography.Link href={loginUrl} target="_blank" rel="noreferrer">Open the sign-in page</Typography.Link>}
               {agent?.job.message && agent.job.state !== 'idle' && <pre className="plugin-output">{agent.job.message}</pre>}
@@ -742,8 +742,8 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
                   <Input value={models[provider.id]} onChange={event => setModels(current => ({ ...current, [provider.id]: event.target.value }))} addonBefore="Default model" placeholder="e.g. gpt-4o, llama3, custom-model" />
                   <Input.Password value={apiKeys[provider.id]} onChange={event => setApiKeys(current => ({ ...current, [provider.id]: event.target.value }))} placeholder={provider.keyLabel} autoComplete="off" />
                   {(hasKey || loopback) && Boolean(models[provider.id]?.trim()) && <Space wrap>
-                    <Switch checked={enabledProviders[provider.id]} onChange={value => setEnabledProviders(current => ({ ...current, [provider.id]: value }))} /><Typography.Text>Enabled</Typography.Text>
-                    {hasKey && <><Switch checked={rememberedProviders.has(provider.id)} disabled={!credentialStorage.available}
+                    <Switch aria-label={`Enable ${provider.label.replace(' – ', ' ')}`} checked={enabledProviders[provider.id]} onChange={value => setEnabledProviders(current => ({ ...current, [provider.id]: value }))} /><Typography.Text>Enabled</Typography.Text>
+                    {hasKey && <><Switch aria-label={`Remember ${provider.label.replace(' – ', ' ')} with OS protection`} checked={rememberedProviders.has(provider.id)} disabled={!credentialStorage.available}
                       onChange={value => changeRemembered(provider, value)} /><Typography.Text>Remember with OS protection</Typography.Text></>}
                   </Space>}
                 </Space>
@@ -760,8 +760,8 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
                 <Input.Password value={apiKeys[provider.id]} onChange={event => setApiKeys(current => ({ ...current, [provider.id]: event.target.value }))} placeholder={provider.keyLabel} autoComplete="off" />
                 <Input value={models[provider.id]} onChange={event => setModels(current => ({ ...current, [provider.id]: event.target.value }))} addonBefore="Default model" placeholder={provider.defaultModel} />
                 {!!apiKeys[provider.id]?.trim() && <Space wrap>
-                  <Switch checked={enabledProviders[provider.id]} onChange={value => setEnabledProviders(current => ({ ...current, [provider.id]: value }))} /><Typography.Text>Enabled</Typography.Text>
-                  <Switch checked={rememberedProviders.has(provider.id)} disabled={!credentialStorage.available}
+                  <Switch aria-label={`Enable ${provider.label.replace(' – ', ' ')}`} checked={enabledProviders[provider.id]} onChange={value => setEnabledProviders(current => ({ ...current, [provider.id]: value }))} /><Typography.Text>Enabled</Typography.Text>
+                  <Switch aria-label={`Remember ${provider.label.replace(' – ', ' ')} with OS protection`} checked={rememberedProviders.has(provider.id)} disabled={!credentialStorage.available}
                     onChange={value => changeRemembered(provider, value)} /><Typography.Text>Remember with OS protection</Typography.Text>
                 </Space>}
               </Space>
@@ -782,7 +782,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
             <Select value={models.plugin || undefined} onChange={value => setModels(current => ({ ...current, plugin: value }))}
               aria-label="Default local generator plugin" style={{ width: '100%' }}
               options={generatorPlugins.map(plugin => ({ value: plugin.id, label: `${plugin.name ?? plugin.id} · ${plugin.id}` }))} />
-            <Space><Switch checked={enabledProviders.plugin} onChange={value => setEnabledProviders(current => ({ ...current, plugin: value }))} /><Typography.Text>Expose as a generation provider</Typography.Text></Space>
+            <Space><Switch aria-label="Expose local plugin as a generation provider" checked={enabledProviders.plugin} onChange={value => setEnabledProviders(current => ({ ...current, plugin: value }))} /><Typography.Text>Expose as a generation provider</Typography.Text></Space>
           </Space>
         </section>}
         {developerMode && <Alert type="warning" showIcon message="Advanced Developer Mode is active"
@@ -932,7 +932,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
         <Divider style={{ margin: '4px 0' }} />
         {!!configuredProviderOptions.length && <div>
           <Typography.Text strong>Default generation provider</Typography.Text>
-          <Select value={visibleDefaultProvider} onChange={(value: GenerationProvider) => setDefaultProvider(value)} style={{ display: 'block', width: '100%', marginTop: 8 }}
+          <Select aria-label="Default generation provider" value={visibleDefaultProvider} onChange={(value: GenerationProvider) => setDefaultProvider(value)} style={{ display: 'block', width: '100%', marginTop: 8 }}
             options={configuredProviderOptions.map(provider => ({ label: provider.label, value: provider.id }))} />
         </div>}
         {!configuredProviderOptions.length && <Typography.Text type="secondary">Connect a provider above to make it available for generation.</Typography.Text>}

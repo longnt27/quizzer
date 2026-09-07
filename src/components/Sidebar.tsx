@@ -88,7 +88,7 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
         <Input allowClear prefix={<SearchOutlined />} value={query} onChange={event => setQuery(event.target.value)}
           placeholder={tab === 'tests' ? 'Find tests' : 'Find by name or tag'} style={{ marginTop: 10 }} />
       </div>
-      <div className="sidebar-list">
+      <div className="sidebar-list" role="region" aria-label={`${tab === 'tests' ? 'Tests' : 'Documents'} library`} tabIndex={0}>
         {tab === 'tests' ? (
           <List locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No tests yet" /> }} dataSource={visibleTests}
             renderItem={test => (

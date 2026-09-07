@@ -219,17 +219,20 @@ test('passes automated WCAG 2.2 AA checks at desktop and mobile widths', async (
   const tags = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22a', 'wcag22aa'];
   const audit = async () => {
     const { violations } = await new AxeBuilder({ page }).withTags(tags).analyze();
-    expect(violations.map(({ id, impact, help, nodes }) => ({
+    expect(violations.map(({ id, impact, nodes }) => ({
       id,
       impact,
-      help,
       targets: nodes.map(node => node.target),
-      summaries: nodes.map(node => node.failureSummary),
     }))).toEqual([]);
   };
 
   await audit();
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await expect(page.getByText('Verified release unavailable')).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeHidden();
+  await page.getByRole('button', { name: 'Windows', exact: true }).click();
+  await expect(page.getByRole('link', { name: /Download for Windows/ })).toBeVisible();
   await audit();
 });
 

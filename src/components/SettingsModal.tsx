@@ -64,9 +64,9 @@ const sourceLabel = (source: string) => source.startsWith('profile:')
 
 const resourceColor: Record<SettingDefinition['resourceEffect'], string | undefined> = {
   none: undefined,
-  low: 'green',
-  medium: 'gold',
-  high: 'volcano',
+  low: '#237804',
+  medium: '#7a4b00',
+  high: '#a61d24',
 };
 
 export default function SettingsModal({ profile, onClose }: Props) {
@@ -281,8 +281,8 @@ export default function SettingsModal({ profile, onClose }: Props) {
                     <Space size={[4, 4]} wrap>
                       <Tag>{sourceLabel(unsetKeys.has(definition.key) ? resetSource : resolved?.sources[definition.key] ?? 'default')}</Tag>
                       {definition.resourceEffect !== 'none' && <Tag color={resourceColor[definition.resourceEffect]}>{definition.resourceEffect} resource impact</Tag>}
-                      {definition.reindexRequired && <Tag color="orange">Reindex required</Tag>}
-                      {definition.restartRequired && <Tag color="red">Restart required</Tag>}
+                      {definition.reindexRequired && <Tag color="#8a3b00">Reindex required</Tag>}
+                      {definition.restartRequired && <Tag color="#a8071a">Restart required</Tag>}
                       {advanced && <Typography.Text code>{definition.key}</Typography.Text>}
                     </Space>
                   </div>
