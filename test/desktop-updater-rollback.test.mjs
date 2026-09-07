@@ -290,7 +290,7 @@ test('retains a verified signed package and recovers it as a rollback candidate 
     const recovered = await restarted.getStatus();
     assert.equal(recovered.rollbackInfo.available, true);
     assert.equal(recovered.rollbackInfo.version, '1.2.0');
-    assert.equal(recovered.rollbackInfo.status, 'verified');
+    assert.equal(recovered.rollbackInfo.status, 'metadata-verified');
 
     const rollbackResult = await restarted.rollbackUpdate();
     assert.equal(rollbackResult.rolledBack, false);
@@ -462,10 +462,9 @@ test('rotates verified rollback candidates and bounds retained storage', async (
     };
   };
   try {
-    let release = makeRelease('1.1.0', 'Quizzer 1.1 installer');
+    let release;
     const options = {
       userDataDir: env.directory,
-      currentVersion: '1.0.0',
       platform: 'macos',
       architecture: 'arm64',
       isPackaged: true,
@@ -475,24 +474,26 @@ test('rotates verified rollback candidates and bounds retained storage', async (
         ? { ok: true, text: async () => JSON.stringify(release.manifest) }
         : { ok: true, arrayBuffer: async () => release.content },
     };
-    const first = new DesktopUpdater(options);
-    await first.checkForUpdates();
-    await first.downloadUpdate();
-    await first.applyUpdate();
+    for (const [currentVersion, targetVersion] of [
+      ['1.0.0', '1.1.0'],
+      ['1.1.0', '1.2.0'],
+      ['1.2.0', '1.3.0'],
+      ['1.3.0', '1.4.0'],
+    ]) {
+      release = makeRelease(targetVersion, `Quizzer ${targetVersion} installer`);
+      const updater = new DesktopUpdater({ ...options, currentVersion });
+      await updater.checkForUpdates();
+      await updater.downloadUpdate();
+      await updater.applyUpdate();
+    }
 
-    release = makeRelease('1.2.0', 'Quizzer 1.2 installer');
-    const second = new DesktopUpdater({ ...options, currentVersion: '1.1.0' });
-    await second.checkForUpdates();
-    await second.downloadUpdate();
-    await second.applyUpdate();
-
-    const restarted = new DesktopUpdater({ ...options, currentVersion: '1.2.0' });
+    const restarted = new DesktopUpdater({ ...options, currentVersion: '1.4.0' });
     const status = await restarted.getStatus();
     assert.equal(status.rollbackInfo.available, true);
-    assert.equal(status.rollbackInfo.version, '1.1.0');
+    assert.equal(status.rollbackInfo.version, '1.3.0');
     const candidateEntries = (await readdir(join(env.directory, 'updates', 'rollback'), { withFileTypes: true }))
       .filter(entry => entry.isDirectory() && entry.name.startsWith('candidate-'));
-    assert.ok(candidateEntries.length <= 3);
+    assert.equal(candidateEntries.length, 3);
   } finally {
     await rm(env.directory, { recursive: true, force: true });
   }
@@ -548,6 +549,38 @@ test('reports unsupported rollback package handoff without launching it', async 
     assert.equal(result.handoffPending, false);
     assert.equal(result.mechanism, 'manual-handoff');
     assert.match(result.message, /requires manual opening/);
+    assert.equal(launcherCalled, false);
+  } finally {
+    await rm(env.directory, { recursive: true, force: true });
+  }
+});
+
+test('does not launch installer when rollback candidate retention fails', async () => {
+  const env = await setupRollbackEnv('pkg');
+  let launcherCalled = false;
+  try {
+    const updater = new DesktopUpdater({
+      userDataDir: env.directory,
+      currentVersion: '1.0.0',
+      platform: 'macos',
+      architecture: 'arm64',
+      isPackaged: true,
+      trustedKeys: { 'quizzer-release-test': env.keyPair.publicKey },
+      launcher: async () => { launcherCalled = true; },
+      fetch: async url => url.endsWith('release-manifest.json')
+        ? { ok: true, text: async () => JSON.stringify(env.signed) }
+        : { ok: true, arrayBuffer: async () => env.content },
+    });
+    await updater.checkForUpdates();
+    await updater.downloadUpdate();
+    updater.retainRollbackCandidate = async () => {
+      throw new Error('simulated metadata write failure');
+    };
+
+    await assert.rejects(
+      updater.applyUpdate(),
+      /Installer was not launched because rollback candidate could not be retained: simulated metadata write failure/,
+    );
     assert.equal(launcherCalled, false);
   } finally {
     await rm(env.directory, { recursive: true, force: true });

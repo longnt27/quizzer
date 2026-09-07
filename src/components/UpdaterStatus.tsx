@@ -135,7 +135,7 @@ export default function UpdaterStatusView() {
 
   const handleRollback = () => {
     getModalApi().confirm({
-      title: 'Hand off verified rollback?',
+      title: 'Hand off signed rollback candidate?',
       icon: <RollbackOutlined />,
       content: 'Quizzer will open the previously retained signed installer. The running application is not replaced in place.',
       okText: 'Hand off rollback',
@@ -373,10 +373,10 @@ export default function UpdaterStatusView() {
             showIcon
             icon={<RollbackOutlined />}
             message={status.rollbackInfo.available
-              ? `Verified rollback candidate: Quizzer ${status.rollbackInfo.version}`
+              ? `Signed rollback candidate: Quizzer ${status.rollbackInfo.version}`
               : 'Rollback unavailable'}
             description={status.rollbackInfo.available
-              ? `Signed ${status.rollbackInfo.artifactName} is retained for this installation target.`
+              ? `Signed ${status.rollbackInfo.artifactName} metadata is valid; full integrity is reverified immediately before handoff.`
               : status.rollbackInfo.message || 'No previously verified signed installer is retained for this installation.'}
             action={status.rollbackInfo.available ? (
               <Button size="small" onClick={handleRollback} loading={rollingBack} disabled={applying || downloading || discarding}>

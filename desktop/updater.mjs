@@ -667,7 +667,7 @@ export class DesktopUpdater {
         version: candidate.manifest.version,
         targetVersion: this.currentVersion,
         timestamp: candidate.metadata.retainedAt,
-        status: 'verified',
+        status: 'metadata-verified',
         artifactName: candidate.artifact.name,
       };
     } catch (error) {
@@ -769,9 +769,7 @@ export class DesktopUpdater {
       .filter(entry => entry.isDirectory() && rollbackCandidateIdPattern.test(entry.name))
       .map(entry => entry.name)
       .sort((left, right) => right.localeCompare(left));
-    const keepIds = new Set();
-    if (candidateIds.includes(protectedCandidateId)) keepIds.add(protectedCandidateId);
-    const seenVersions = new Set();
+    const validCandidates = [];
     for (const candidateId of candidateIds.slice(0, MAX_ROLLBACK_SCAN)) {
       const candidateDir = join(rollbackRoot, candidateId);
       if (dirname(candidateDir) !== rollbackRoot) continue;
@@ -785,13 +783,30 @@ export class DesktopUpdater {
           platform: this.platform,
           architecture: this.architecture,
         });
-        const key = `${manifest.version}:${candidateArtifact.sha256}`;
-        if (seenVersions.has(key)) continue;
-        seenVersions.add(key);
-        if (keepIds.size < MAX_ROLLBACK_CANDIDATES) keepIds.add(candidateId);
+        validCandidates.push({ candidateId, manifest, metadata, candidateArtifact });
       } catch {
         // Never use an invalid candidate to influence the retained set.
       }
+    }
+    validCandidates.sort((left, right) => compareSemver(right.manifest.version, left.manifest.version)
+      || Date.parse(right.metadata.retainedAt) - Date.parse(left.metadata.retainedAt));
+    const keepIds = new Set();
+    const seenVersions = new Set();
+    const protectedCandidate = validCandidates.find(candidate => candidate.candidateId === protectedCandidateId);
+    if (protectedCandidate) {
+      keepIds.add(protectedCandidateId);
+      seenVersions.add(`${protectedCandidate.manifest.version}:${protectedCandidate.candidateArtifact.sha256}`);
+    } else if (candidateIds.includes(protectedCandidateId)) {
+      // Never delete the freshly written protected directory if a transient
+      // read error occurs while rotating older candidates.
+      keepIds.add(protectedCandidateId);
+    }
+    for (const candidate of validCandidates) {
+      if (keepIds.size >= MAX_ROLLBACK_CANDIDATES) break;
+      const key = `${candidate.manifest.version}:${candidate.candidateArtifact.sha256}`;
+      if (seenVersions.has(key)) continue;
+      seenVersions.add(key);
+      keepIds.add(candidate.candidateId);
     }
     for (const candidateId of candidateIds) {
       if (keepIds.has(candidateId)) continue;
@@ -1236,7 +1251,7 @@ export class DesktopUpdater {
         await this.retainRollbackCandidate(stagedPackage);
       } catch (err) {
         this.state = 'error';
-        this.lastError = `Installer handoff succeeded, but rollback candidate could not be retained: ${err instanceof Error ? err.message : String(err)}`;
+        this.lastError = `Installer was not launched because rollback candidate could not be retained: ${err instanceof Error ? err.message : String(err)}`;
         throw new Error(this.lastError);
       }
 
