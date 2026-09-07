@@ -1,6 +1,6 @@
-import { createHash, createPublicKey, KeyObject } from 'node:crypto';
+import { createHash, createPublicKey, KeyObject, randomUUID } from 'node:crypto';
 import { createReadStream, readFileSync } from 'node:fs';
-import { chmod, lstat, mkdir, open, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, lstat, mkdir, open, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { verifyReleaseManifestSignature } from '../release/manifest.mjs';
@@ -323,6 +323,59 @@ const parseStagedMetadata = content => {
   return stagedData;
 };
 
+const rollbackCandidateIdPattern = /^candidate-\d+-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+const parseRollbackPointer = content => {
+  let pointer;
+  try { pointer = JSON.parse(content); }
+  catch (error) { throw new Error(`Invalid rollback metadata JSON: ${error.message}`); }
+  if (!pointer || typeof pointer !== 'object' || Array.isArray(pointer)) throw new Error('Rollback metadata must be an object');
+  const unexpectedKeys = Object.keys(pointer).filter(key => key !== 'candidateId');
+  if (unexpectedKeys.length) throw new Error(`Rollback metadata contains unknown fields: ${unexpectedKeys.join(', ')}`);
+  if (!rollbackCandidateIdPattern.test(pointer.candidateId)) throw new Error('Rollback metadata has an invalid candidateId');
+  return pointer;
+};
+
+const parseRollbackCandidateMetadata = content => {
+  let metadata;
+  try { metadata = JSON.parse(content); }
+  catch (error) { throw new Error(`Invalid rollback candidate JSON: ${error.message}`); }
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) throw new Error('Rollback candidate metadata must be an object');
+  const allowedKeys = new Set(['candidateId', 'retainedAt', 'manifest', 'selectedArtifactName']);
+  const unexpectedKeys = Object.keys(metadata).filter(key => !allowedKeys.has(key));
+  if (unexpectedKeys.length) throw new Error(`Rollback candidate metadata contains unknown fields: ${unexpectedKeys.join(', ')}`);
+  if (!rollbackCandidateIdPattern.test(metadata.candidateId)) throw new Error('Rollback candidate metadata has an invalid candidateId');
+  if (typeof metadata.retainedAt !== 'string' || Number.isNaN(Date.parse(metadata.retainedAt))) {
+    throw new Error('Rollback candidate metadata has an invalid retainedAt timestamp');
+  }
+  if (!metadata.manifest || typeof metadata.manifest !== 'object' || Array.isArray(metadata.manifest)) {
+    throw new Error('Rollback candidate metadata is missing its signed manifest');
+  }
+  if (!isValidArtifactName(metadata.selectedArtifactName)) {
+    throw new Error('Rollback candidate metadata has an invalid selectedArtifactName');
+  }
+  return metadata;
+};
+
+const atomicWriteJson = async (path, value) => {
+  const tempPath = `${path}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
+    try {
+      await rename(tempPath, path);
+    } catch (error) {
+      // rename(2) replaces atomically on POSIX. Windows refuses to replace an
+      // existing file, so remove only the old metadata after the new file is
+      // complete, then perform the short handoff.
+      if (!['EEXIST', 'EPERM'].includes(error?.code)) throw error;
+      await rm(path, { force: true });
+      await rename(tempPath, path);
+    }
+  } finally {
+    await rm(tempPath, { force: true }).catch(() => {});
+  }
+};
+
 export const normalizePublicKey = value => {
   if (!value) return null;
   if (value instanceof KeyObject) {
@@ -516,8 +569,119 @@ export class DesktopUpdater {
     return this.getStatus();
   }
 
+  rollbackPaths() {
+    const rollbackRoot = join(this.userDataDir, 'updates', 'rollback');
+    return {
+      rollbackRoot,
+      rollbackPointerPath: join(rollbackRoot, 'rollback.json'),
+    };
+  }
+
+  async loadRollbackCandidate() {
+    if (!this.userDataDir) throw new Error('User data directory not configured');
+    const { rollbackRoot, rollbackPointerPath } = this.rollbackPaths();
+    const pointer = parseRollbackPointer(await readBoundedLocalText(
+      rollbackPointerPath,
+      MAX_METADATA_BYTES,
+      'Rollback metadata',
+    ));
+    const entries = await readdir(rollbackRoot, { withFileTypes: true });
+    const candidateIds = entries
+      .filter(entry => entry.isDirectory() && rollbackCandidateIdPattern.test(entry.name))
+      .map(entry => entry.name);
+    if (!candidateIds.includes(pointer.candidateId)) candidateIds.push(pointer.candidateId);
+
+    const validCandidates = [];
+    let lastError;
+    for (const candidateId of candidateIds) {
+      const candidateDir = join(rollbackRoot, candidateId);
+      if (dirname(candidateDir) !== rollbackRoot) {
+        lastError = new Error('Rollback candidate path escapes rollback directory');
+        continue;
+      }
+      try {
+        const metadata = parseRollbackCandidateMetadata(await readBoundedLocalText(
+          join(candidateDir, 'rollback-candidate.json'),
+          MAX_METADATA_BYTES,
+          'Rollback candidate metadata',
+        ));
+        if (metadata.candidateId !== candidateId) throw new Error('Rollback candidate metadata does not match candidate directory');
+        const manifest = await this.verifyManifest(metadata.manifest);
+        const artifact = selectStagedArtifact(manifest.artifacts, metadata.selectedArtifactName, {
+          platform: this.platform,
+          architecture: this.architecture,
+        });
+        const artifactPath = join(candidateDir, artifact.name);
+        if (dirname(artifactPath) !== candidateDir) throw new Error('Derived rollback artifact path escapes candidate directory');
+        await verifyStagedArtifactFile(artifactPath, artifact);
+        if (compareSemver(manifest.version, this.currentVersion) < 0) {
+          validCandidates.push({ artifact, artifactPath, manifest, metadata });
+        }
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    if (validCandidates.length) {
+      validCandidates.sort((left, right) => compareSemver(right.manifest.version, left.manifest.version));
+      return validCandidates[0];
+    }
+    if (lastError) throw lastError;
+    throw new Error(`Rollback candidate is not older than current version ${this.currentVersion}`);
+  }
+
   async getRollbackInfo() {
-    return { available: false };
+    if (!this.userDataDir) return { available: false, status: 'unavailable', message: 'No rollback candidate is available' };
+    try {
+      const candidate = await this.loadRollbackCandidate();
+      return {
+        available: true,
+        version: candidate.manifest.version,
+        targetVersion: this.currentVersion,
+        timestamp: candidate.metadata.retainedAt,
+        status: 'verified',
+        artifactName: candidate.artifact.name,
+      };
+    } catch (error) {
+      if (error?.code === 'ENOENT') return { available: false, status: 'unavailable', message: 'No rollback candidate is available' };
+      return {
+        available: false,
+        status: 'invalid',
+        message: `Rollback candidate verification failed: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  }
+
+  async retainRollbackCandidate({ artifact, manifest }) {
+    if (!this.userDataDir) throw new Error('User data directory not configured');
+    const stagingDir = join(this.userDataDir, 'updates', 'staging');
+    const { rollbackRoot } = this.rollbackPaths();
+    const candidateId = `candidate-${Date.now()}-${randomUUID()}`;
+    const candidateDir = join(rollbackRoot, candidateId);
+    const sourcePath = join(stagingDir, artifact.name);
+    const artifactPath = join(candidateDir, artifact.name);
+    if (dirname(artifactPath) !== candidateDir) throw new Error('Rollback artifact path escapes candidate directory');
+
+    await mkdir(candidateDir, { recursive: true, mode: 0o700 });
+    const tempArtifactPath = join(candidateDir, `.${artifact.name}.${randomUUID()}.tmp`);
+    try {
+      await verifyStagedArtifactFile(sourcePath, artifact);
+      await copyFile(sourcePath, tempArtifactPath);
+      await verifyStagedArtifactFile(tempArtifactPath, artifact);
+      await rename(tempArtifactPath, artifactPath);
+      if (this.platform === 'linux' && artifact.format === 'appimage') await chmod(artifactPath, 0o700);
+      await atomicWriteJson(join(candidateDir, 'rollback-candidate.json'), {
+        candidateId,
+        retainedAt: new Date().toISOString(),
+        manifest,
+        selectedArtifactName: artifact.name,
+      });
+      await atomicWriteJson(join(rollbackRoot, 'rollback.json'), { candidateId });
+    } catch (error) {
+      await rm(candidateDir, { recursive: true, force: true }).catch(() => {});
+      throw error;
+    } finally {
+      await rm(tempArtifactPath, { force: true }).catch(() => {});
+    }
   }
 
   async loadStagedPackage() {
@@ -599,6 +763,7 @@ export class DesktopUpdater {
       supported: Boolean(this.userDataDir),
       updateInfo: this.updateInfo ? { ...this.updateInfo } : undefined,
       downloadProgress: this.downloadProgress ? { ...this.downloadProgress } : undefined,
+      rollbackInfo: await this.getRollbackInfo(),
       stagedArtifactName: this.stagedArtifactName || undefined,
       error: this.lastError || undefined,
     };
@@ -949,6 +1114,18 @@ export class DesktopUpdater {
         throw new Error(this.lastError);
       }
 
+      // The installer handoff is the only point at which this package is a
+      // verified record of the version we are leaving. Keep a separate copy
+      // for a future rollback; discarding a later staged update must not touch
+      // this candidate.
+      try {
+        await this.retainRollbackCandidate(stagedPackage);
+      } catch (err) {
+        this.state = 'error';
+        this.lastError = `Installer handoff succeeded, but rollback candidate could not be retained: ${err instanceof Error ? err.message : String(err)}`;
+        throw new Error(this.lastError);
+      }
+
       this.state = 'installer-handoff-pending';
       this.stagedArtifactName = targetArtifact.name;
 
@@ -978,8 +1155,6 @@ export class DesktopUpdater {
       } catch {
         // Staging directory may not exist
       }
-      const rollbackDir = join(this.userDataDir, 'updates', 'rollback');
-      await rm(rollbackDir, { recursive: true, force: true }).catch(() => {});
     }
 
     this.state = 'idle';
@@ -997,6 +1172,86 @@ export class DesktopUpdater {
   }
 
   async rollbackUpdate() {
-    return this.discardUpdate();
+    const rollbackInfo = await this.getRollbackInfo();
+    if (!rollbackInfo.available) {
+      this.state = 'idle';
+      this.lastError = null;
+      return {
+        rolledBack: false,
+        handoffPending: false,
+        mechanism: 'unavailable',
+        message: rollbackInfo.message || 'No verified rollback candidate is available.',
+        status: await this.getStatus(),
+      };
+    }
+
+    let candidate;
+    try {
+      candidate = await this.loadRollbackCandidate();
+    } catch (error) {
+      this.state = 'idle';
+      this.lastError = null;
+      return {
+        rolledBack: false,
+        handoffPending: false,
+        mechanism: 'unavailable',
+        message: `Rollback candidate is no longer available: ${error instanceof Error ? error.message : String(error)}`,
+        status: await this.getStatus(),
+      };
+    }
+
+    this.state = 'applying';
+    this.updateInfo = {
+      version: candidate.manifest.version,
+      channel: candidate.manifest.channel,
+      publishedAt: candidate.manifest.publishedAt,
+      publicKeyId: candidate.manifest.publicKeyId,
+      artifact: candidate.artifact,
+    };
+    this.downloadProgress = null;
+    this.stagedArtifactName = null;
+    this.lastError = null;
+
+    if (!this.isPackaged) {
+      this.state = 'idle';
+      return {
+        rolledBack: false,
+        handoffPending: false,
+        mechanism: 'staged-development',
+        restoredVersion: candidate.manifest.version,
+        message: 'Rollback candidate verified. In unpacked development mode, installer handoff is disabled.',
+        status: await this.getStatus(),
+      };
+    }
+
+    if (!isAutoHandoffSupported(this.platform, candidate.artifact.format)) {
+      this.state = 'manual-handoff';
+      return {
+        rolledBack: false,
+        handoffPending: false,
+        mechanism: 'manual-handoff',
+        restoredVersion: candidate.manifest.version,
+        message: `Rollback package format ${candidate.artifact.format} requires manual opening. The verified rollback package remains in private storage.`,
+        status: await this.getStatus(),
+      };
+    }
+
+    try {
+      await this.launcher(candidate.artifactPath, candidate.artifact.format, this.platform);
+    } catch (error) {
+      this.state = 'error';
+      this.lastError = `Rollback installer handoff failed: ${error instanceof Error ? error.message : String(error)}`;
+      throw new Error(this.lastError);
+    }
+
+    this.state = 'installer-handoff-pending';
+    return {
+      rolledBack: false,
+      handoffPending: true,
+      mechanism: 'staged-ready',
+      restoredVersion: candidate.manifest.version,
+      message: 'Verified rollback package was handed off to the system installer. Complete the installation in the system window that opened.',
+      status: await this.getStatus(),
+    };
   }
 }
