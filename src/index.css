@@ -90,6 +90,7 @@ button, input, textarea, select { font: inherit; }
 .generation-activity .ant-badge { color: inherit; }
 .generation-job { padding: 16px !important; margin-bottom: 10px; border: 1px solid var(--border) !important; border-radius: 10px; background: var(--surface-soft); }
 .generation-job-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.generation-cost-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .generation-concurrency { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(220px, 320px); align-items: center; gap: 24px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); }
 
 .mobile-header {

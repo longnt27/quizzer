@@ -25,6 +25,17 @@ const targetFor = (job: StoredGenerationJob) => job.options.questionCounts
   ? job.options.questionCounts.multipleChoice + job.options.questionCounts.fillBlank + job.options.questionCounts.reasoning + (job.options.questionCounts.coding ?? 0)
   : job.options.questionCount;
 
+const formatUsd = (microUsd: number | undefined) => microUsd === undefined
+  ? '—'
+  : `$${(microUsd / 1_000_000).toFixed(2)}`;
+
+const accountingState = (job: StoredGenerationJob) => {
+  const summary = job.usageSummary;
+  const pausedForCost = job.errorCode === 'cost_ceiling' || job.errorCode === 'cost_recovery'
+    || Boolean(job.usageAudit?.some(event => event.overCeiling));
+  return { summary, pausedForCost };
+};
+
 function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJob; onOpenTest: (id: string) => void; onManagePlugins: () => void }) {
   const settings = getProviderSettings();
   const configured = useConfiguredProviders();
@@ -36,6 +47,7 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
   const accepted = job.progress?.accepted ?? job.questions.length;
   const percent = target ? Math.min(100, Math.round(accepted / target * 100)) : 0;
   const providerDefinition = getProviderDefinition(provider);
+  const { summary, pausedForCost } = accountingState(job);
 
   useEffect(() => {
     if (job.status !== 'paused') return;
@@ -81,6 +93,19 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
           {getProviderDefinition(attempt.provider).label} · {attempt.outcome.replace('-', ' ')} · {attempt.accepted} saved
         </Tag>)}</Space>
       </div>}
+      {summary && <div className="generation-cost-summary" aria-label="Generation usage and cost">
+        <Typography.Text type="secondary">Usage</Typography.Text>
+        <Space wrap size={[8, 4]}>
+          <Tag>{summary.totalTokens.toLocaleString()} tokens</Tag>
+          <Tag color="blue">Committed {formatUsd(summary.finalizedCostMicroUsd)}</Tag>
+          <Tag color={summary.reservedCostMicroUsd > 0 ? 'gold' : undefined}>Reserved {formatUsd(summary.reservedCostMicroUsd)}</Tag>
+          <Tag>{job.options.costCeilingMicroUsd === undefined ? 'Unlimited ceiling' : `Ceiling ${formatUsd(job.options.costCeilingMicroUsd)}`}</Tag>
+        </Space>
+      </div>}
+      {pausedForCost && <Alert type="warning" showIcon message={job.errorCode === 'cost_ceiling' ? 'Generation paused at its cost ceiling' : 'Generation paused for cost recovery'}
+        description={job.errorCode === 'cost_ceiling'
+          ? 'Saved questions and usage totals are preserved. Raise the ceiling through the service after reviewing the estimated impact, then continue.'
+          : 'Saved questions and usage totals are preserved. Review the accounting history and choose Continue after the service confirms a safe route.'} />}
       {job.error && <Alert type={job.status === 'error' ? 'error' : 'warning'} showIcon message={job.error} />}
       {job.status === 'paused' && <Space direction="vertical" style={{ width: '100%' }}>
         <Typography.Text type="secondary">Accepted questions are saved. Choose a provider for only the unfinished portion.</Typography.Text>
