@@ -205,6 +205,8 @@ On macOS, double-click `start-tailscale.command` in Finder. On Windows, double-c
 
 The same launcher is available from a terminal as `npm run tailscale`. It binds Vite to the Tailscale interface rather than exposing Quizzer on every LAN interface.
 
+The launcher creates or reuses a private service token in Quizzer's application-data directory and supplies it to both the loopback service and the renderer. Requests made through the remote Vite page are therefore authenticated without displaying the token in the launcher output. The service remains bound to `127.0.0.1`; only Vite is reachable over the tailnet.
+
 ## Provider setup
 
 Open **Plugins & models** at the bottom of the sidebar. This panel is the central place to:
@@ -342,7 +344,7 @@ The initial import merges records by ID in bounded batches and runs behind the u
 
 When a schema-v1 database still contains the old embedded retrieval tables, Quizzer creates a timestamped SQLite backup and matching SHA-256 checksum under `backups/schema` before removing those rebuildable tables. Source records remain in the authoritative database; retrieval rebuilds in the separate index database on demand.
 
-Use `quizzer migrations list` to inspect IndexedDB migration status, hashes, and retained rollback paths. Use `quizzer backup create` for a consistent live backup of SQLite, configuration, and every content-addressed original; `quizzer backup verify <directory>` re-hashes every entry before you rely on it. After quitting the desktop app and local service, `quizzer backup restore <directory> --yes` verifies the backup again, preserves the current library as a recovery backup, and atomically replaces the database, object store, and safe configuration while clearing derived indexes for rebuild. Source deployments can also stop Quizzer and copy the `.quizzer-data` directory. Set `QUIZZER_DATABASE_PATH`, `QUIZZER_SPARSE_INDEX_PATH`, or `QUIZZER_DENSE_INDEX_PATH` only when custom locations are needed for a packaged or managed deployment.
+Use `quizzer migrations list` to inspect IndexedDB migration status, hashes, and retained rollback paths. Use `quizzer backup create` for a consistent live backup of SQLite, configuration, and every content-addressed original; `quizzer backup verify <directory>` re-hashes every entry before you rely on it. After quitting the desktop app and local service, `quizzer backup restore <directory> --yes` verifies the backup again, preserves the current library as a recovery backup, and atomically replaces the database, object store, and safe configuration while clearing derived indexes for rebuild. Quizzer uses the native per-user application-data directory by default; set `QUIZZER_APP_DATA_DIR`, `QUIZZER_DATABASE_PATH`, `QUIZZER_SPARSE_INDEX_PATH`, or `QUIZZER_DENSE_INDEX_PATH` when custom locations are needed for a packaged or managed deployment.
 
 Authenticated desktop and remote clients can create the same complete backup with `POST /api/v1/backups`, list service-managed backups with `GET /api/v1/backups`, and perform a full integrity verification with `GET /api/v1/backups/{backupId}`. Restore remains an offline CLI operation so the active service cannot replace its own database.
 
@@ -357,7 +359,7 @@ Select **Install Ollama + all-minilm** under **Plugins & models** to enable loca
 - API requests send selected extracted content—and figures for supported multimodal models—to the selected provider.
 - API keys pass through the loopback service only for the active request. They remain in browser session storage unless the desktop user explicitly remembers them in the OS-protected credential vault; they are never written to IndexedDB, local storage, settings exports, backups, or diagnostics.
 - Deleting browser site data clears only that browser's cache; reopening Quizzer repopulates it from the server.
-- Deleting `.quizzer-data` deletes the shared server library. Keep backups of important data.
+- Deleting Quizzer's application-data directory deletes the shared server library. Keep backups of important data.
 
 Do not upload confidential material unless the selected provider and your account's data-handling terms are appropriate for it.
 

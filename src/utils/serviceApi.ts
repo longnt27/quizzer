@@ -1,3 +1,5 @@
+import { authorizationHeaderForToken } from './serviceAuth.mjs';
+
 interface ServiceErrorPayload {
   error?: string;
   code?: string;
@@ -32,8 +34,7 @@ export class ServiceApiError extends Error {
 }
 
 export const serviceAuthorizationHeader = () => {
-  const token = import.meta.env.VITE_QUIZZER_API_TOKEN;
-  return token ? `Bearer ${token}` : undefined;
+  return authorizationHeaderForToken(import.meta.env.VITE_QUIZZER_API_TOKEN);
 };
 
 export const serviceFetch = (path: string, init: RequestInit = {}) => {

@@ -17,7 +17,7 @@ import { validateOnboardingState } from './server/onboarding.mjs';
 import { PluginManager } from './plugin-sdk/manager.mjs';
 import { materializeRuntimeAsset, readRuntimeText, runningAsSingleExecutable } from './server/runtime-assets.mjs';
 import { collectStoredObjectReferences, materializeDocumentImages, materializeSerializedObjects, ObjectStore } from './server/object-store.mjs';
-import { denseIndexPathFor, sparseIndexPathFor } from './server/paths.mjs';
+import { defaultAppDataDirectory, denseIndexPathFor, sparseIndexPathFor } from './server/paths.mjs';
 import { createBackup, listBackups, verifyBackup } from './server/backup.mjs';
 import { cancelIndexJob, createIndexJob, recoverIndexJob, resumeIndexJob, runIndexJob } from './server/index-jobs.mjs';
 import { extractDocumentBuffer, reextractDocument } from './server/document-import.mjs';
@@ -48,7 +48,7 @@ if (!/^\d{1,5}$/.test(configuredPortValue) || !Number.isSafeInteger(configuredPo
 }
 const maxBodyBytes = 25 * 1024 * 1024;
 const maxStorageBodyBytes = 250 * 1024 * 1024;
-const appDataDirectory = process.env.QUIZZER_APP_DATA_DIR || join(process.cwd(), '.quizzer-data');
+const appDataDirectory = defaultAppDataDirectory();
 const resourceDirectory = process.env.QUIZZER_RESOURCE_DIR || process.cwd();
 const managedMarkerDirectory = join(appDataDirectory, '.quizzer-tools', 'marker');
 const managedMarkerExecutable = join(managedMarkerDirectory, process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'marker_single.exe' : 'marker_single');
