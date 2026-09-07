@@ -193,6 +193,7 @@ export const chunkDocumentContent = (content: string, options: ChunkDocumentOpti
   const chunks: StoredDocumentChunk[] = [];
   let parentIndex = -1;
   let parentSize = 0;
+  let previousBreadcrumb = '';
   const seen = new Set<string>();
   const units: Unit[] = [];
   for (const item of coalesceHeadings(content, unitsFor(content, options.signal), child)) {
@@ -204,7 +205,8 @@ export const chunkDocumentContent = (content: string, options: ChunkDocumentOpti
     throwIfAborted(options.signal);
     const text = content.slice(unit.start, unit.end);
     const size = estimateChunkTokens(text);
-    if (parentIndex < 0 || (unit.sectionKind === 'heading' && parentSize > 0)
+    if (parentIndex < 0 || (unit.breadcrumb && unit.breadcrumb !== previousBreadcrumb)
+      || (unit.sectionKind === 'heading' && parentSize > 0)
       || (parentSize > 0 && parentSize + size > parent)) { parentIndex += 1; parentSize = 0; }
     const key = `${unit.start}:${unit.end}:${text}`;
     if (seen.has(key)) continue;
@@ -212,6 +214,7 @@ export const chunkDocumentContent = (content: string, options: ChunkDocumentOpti
     chunks.push({ id: `chunk-${chunks.length}`, index: chunks.length, page: unit.page, start: unit.start, end: unit.end,
       parentId: `parent-${parentIndex}`, breadcrumb: unit.breadcrumb, sectionKind: unit.sectionKind, tokenCount: size });
     parentSize += size;
+    previousBreadcrumb = unit.breadcrumb;
   }
   return chunks;
 };

@@ -229,10 +229,12 @@ const structuralChunkDocument = (documentId, content, { signal, childTokens = CH
   const children = [];
   let parentOrdinal = -1;
   let parentTokenCount = 0;
+  let previousBreadcrumb = '';
   for (const unit of units) {
     throwIfAborted(signal);
     const tokens = estimateChunkTokens(content.slice(unit.start, unit.end));
-    const startsNewParent = parentOrdinal < 0 || (unit.kind === 'heading' && parentTokenCount > 0)
+    const startsNewParent = parentOrdinal < 0 || (unit.breadcrumb && unit.breadcrumb !== previousBreadcrumb)
+      || (unit.kind === 'heading' && parentTokenCount > 0)
       || parentTokenCount && parentTokenCount + tokens > parentTokens;
     if (startsNewParent) {
       parentOrdinal += 1;
@@ -255,6 +257,7 @@ const structuralChunkDocument = (documentId, content, { signal, childTokens = CH
       tokenCount: tokens,
     });
     parentTokenCount += tokens;
+    previousBreadcrumb = unit.breadcrumb;
   }
   // A malformed extractor can produce duplicate/overlapping units. Keep the
   // first deterministic span and never expose ambiguous citation ranges.

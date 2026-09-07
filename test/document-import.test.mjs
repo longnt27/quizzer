@@ -70,6 +70,14 @@ test('many short paragraphs remain deterministic and bounded', () => {
   assert.ok(chunks.every(chunk => chunk.end > chunk.start && chunk.tokenCount && chunk.tokenCount <= 512));
 });
 
+test('small headed sections keep breadcrumb and parent boundaries aligned', () => {
+  const content = '# Alpha\n\nFirst detail.\n\n## Beta\n\nSecond detail.\n\n# Gamma\n\nThird detail.';
+  const chunks = chunkDocument('headed', content);
+  assert.equal(chunks.length, 3);
+  assert.deepEqual(chunks.map(chunk => chunk.breadcrumb), ['Alpha', 'Alpha › Beta', 'Gamma']);
+  assert.equal(new Set(chunks.map(chunk => chunk.parentId)).size, 3);
+});
+
 test('re-extracts only from the verified original and retains bounded converter provenance', async () => {
   const path = join(directory, 'reextract.md');
   const objectStore = new ObjectStore(join(directory, 'reextract-data'));
