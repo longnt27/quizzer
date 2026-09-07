@@ -290,7 +290,8 @@ const runPlugins = async action => {
   }
   if (action === 'health') {
     const health = await manager.health(target);
-    return writeResult({ id: target, health }, health.ok ? `${target} is healthy (${health.durationMs} ms)` : `${target} failed: ${health.error}`);
+    const memory = health.peakRssBytes === undefined ? '' : `, peak ${(health.peakRssBytes / 1024 / 1024).toFixed(1)} MB RSS`;
+    return writeResult({ id: target, health }, health.ok ? `${target} is healthy (${health.durationMs} ms${memory})` : `${target} failed: ${health.error}${memory}`);
   }
   if (action === 'rollback') {
     const plugin = await manager.rollback(target);

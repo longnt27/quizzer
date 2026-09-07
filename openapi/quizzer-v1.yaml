@@ -460,7 +460,15 @@ paths:
                     required: [confirmed]
                     properties: { confirmed: { const: true } }
       responses:
-        '200': { description: Plugin lifecycle result }
+        '200':
+          description: Plugin lifecycle result; health actions include sampled direct-process resource usage
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plugin: { type: object }
+                  health: { $ref: '#/components/schemas/PluginHealthResult' }
         '400':
           description: Invalid request or security confirmation required
           content:
@@ -1484,6 +1492,21 @@ components:
         updateAvailable: { type: boolean }
         rollbackAvailable: { type: boolean }
         warning: { type: string }
+    PluginHealthResult:
+      type: object
+      required: [ok, durationMs]
+      properties:
+        ok: { type: boolean }
+        result: {}
+        error: { type: string }
+        durationMs: { type: integer, minimum: 0 }
+        declaredMemoryMB: { type: integer, minimum: 0 }
+        scopedFileBytes: { type: integer, minimum: 0 }
+        resourceSamples: { type: integer, minimum: 0 }
+        peakRssBytes:
+          type: integer
+          minimum: 0
+          description: Peak sampled resident memory for the direct plugin process; omitted when platform sampling is unavailable.
     PluginConfirmationRequired:
       type: object
       required: [error, code, confirmationRequired, reasons, details]

@@ -386,6 +386,9 @@ test('manages unsigned local plugins only after explicit developer opt-in', asyn
   assert.match(installed.plugin.warning, /Unsigned local plugin/);
   const health = (await cli('plugins', 'health', installed.plugin.id)).health;
   assert.equal(health.ok, true, health.error);
+  assert.equal(health.declaredMemoryMB, 32);
+  assert.ok(health.resourceSamples >= 1);
+  assert.ok(health.peakRssBytes > 0);
   assert.equal((await cli('plugins', 'disable', installed.plugin.id)).plugin.enabled, false);
   assert.equal((await cli('plugins', 'enable', installed.plugin.id)).plugin.enabled, true);
   await cli('config', 'set', 'retrieval.rerankerPlugin', installed.plugin.id);

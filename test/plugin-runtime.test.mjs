@@ -18,6 +18,10 @@ const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
 for await (const line of lines) {
   const request = JSON.parse(line);
   if (request.method === 'plugin.wait') await new Promise(resolve => setTimeout(resolve, 5000));
+  if (request.method === 'plugin.ignore-term') {
+    process.on('SIGTERM', () => {});
+    await new Promise(resolve => setTimeout(resolve, 5000));
+  }
   if (request.method === 'plugin.exit') {
     process.stderr.write('deliberate plugin exit');
     process.exit(7);
@@ -102,6 +106,11 @@ test('runs JSON-RPC with scoped files, explicit secrets, limits, and cancellatio
   assert.deepEqual(invocation.result.scopedContents, ['bounded source context']);
   assert.equal(invocation.result.persistentDataDirectory, undefined);
   assert.equal(invocation.result.persistentDataEnvironment, undefined);
+  assert.equal(invocation.metrics.declaredMemoryMB, 32);
+  assert.equal(invocation.metrics.scopedFileBytes, 22);
+  assert.ok(invocation.metrics.durationMs >= 0);
+  assert.ok(invocation.metrics.resourceSamples >= 1);
+  assert.ok(invocation.metrics.peakRssBytes > 0);
   await assert.rejects(stat(invocation.result.temporaryDirectory), /ENOENT/);
 
   const persistentManifest = {
@@ -134,6 +143,11 @@ test('isolates malformed plugin responses and bounded process failures', async (
   await assert.rejects(invoke('plugin.empty-error'), /Plugin dev\.quizzer\.runtime-test failed/);
   await assert.rejects(invoke('plugin.exit'), /deliberate plugin exit/);
   await assert.rejects(invoke('plugin.wait', { timeoutMs: 30 }), /timed out after 30 ms/);
+  const forcedAt = Date.now();
+  await assert.rejects(invoke('plugin.ignore-term', { timeoutMs: 250 }), /timed out after 250 ms/);
+  const forcedDuration = Date.now() - forcedAt;
+  assert.ok(forcedDuration >= 1_000, 'fixture should survive the graceful SIGTERM');
+  assert.ok(forcedDuration < 2_500, 'SIGTERM-resistant plugin should be force-killed promptly');
   await assert.rejects(invoke('plugin.output-limit'), /exceeded the output limit/);
 
   const controller = new AbortController();
@@ -181,7 +195,11 @@ test('installs, blocks, enables, checks, upgrades, rolls back, and removes plugi
   assert.equal((await lockedManager.list())[0].status, 'blocked');
   await assert.rejects(lockedManager.invoke(first.manifest.id, 'plugin.echo'), /Developer Mode/);
 
-  assert.equal((await manager.health(first.manifest.id)).ok, true);
+  const health = await manager.health(first.manifest.id);
+  assert.equal(health.ok, true);
+  assert.equal(health.declaredMemoryMB, 32);
+  assert.ok(health.resourceSamples >= 1);
+  assert.ok(health.peakRssBytes > 0);
   assert.equal((await manager.setEnabled(first.manifest.id, false)).enabled, false);
   await assert.rejects(manager.invoke(first.manifest.id, 'plugin.echo'), /disabled/);
   await manager.setEnabled(first.manifest.id, true);
@@ -257,6 +275,9 @@ test('surfaces broken, incompatible, and unhealthy plugin states', async () => {
   const health = await unhealthyManager.health(unhealthy.manifest.id);
   assert.equal(health.ok, false);
   assert.match(health.error, /deliberate plugin exit/);
+  assert.equal(health.declaredMemoryMB, 32);
+  assert.ok(health.resourceSamples >= 1);
+  assert.ok(health.peakRssBytes > 0);
   await assert.rejects(unhealthyManager.rollback(unhealthy.manifest.id), /No rollback version/);
 
   unhealthy.manifest.platforms = [{ os: process.platform, architectures: [otherArchitecture] }];

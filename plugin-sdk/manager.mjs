@@ -510,9 +510,13 @@ export class PluginManager {
         allowDisabled: true,
         timeoutMs: manifest.healthCheck.timeoutMs,
       });
-      return { ok: true, result: invocation.result, durationMs: Date.now() - startedAt };
+      return { ok: true, result: invocation.result, ...invocation.metrics };
     } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : String(error), durationMs: Date.now() - startedAt };
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+        ...(error?.pluginMetrics ?? { durationMs: Date.now() - startedAt }),
+      };
     }
   }
 
