@@ -54,7 +54,7 @@ jobs:
       - run: npm run test:coverage
       - run: npm run eval:rag
       - run: npm run build
-      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: npx playwright install --with-deps chromium firefox
       - run: npm run test:e2e
       - name: Generate landing CycloneDX SBOM
         working-directory: landing
