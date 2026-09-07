@@ -563,3 +563,118 @@ test('pauses finite-ceiling jobs for both reserved and finalized replay attempts
     assert.match(result.error, /may have been charged.*not checkpointed/i);
   }
 });
+
+test('covers accounting pause failures, envelopes, null responses, and cancellation', async () => {
+  const base = {
+    id: 'job-branch-coverage', testId: 'test-branch-coverage', name: 'Branch quiz', status: 'running',
+    workerId: 'service-worker', leaseId: 'lease-branch', createdAt: 1, updatedAt: 1,
+    documentIds: ['doc-one'], options: optionsFor({ questionCounts: { multipleChoice: 1, fillBlank: 0, reasoning: 0, coding: 0 } }),
+    questions: [], rejected: 0, rounds: {}, providerAttempts: [],
+  };
+  const finite = { ...base, options: { ...base.options, costCeilingMicroUsd: 100 } };
+  let requests = 0;
+  const reserveBlocked = createHarness(finite, () => { requests += 1; return '{}'; });
+  reserveBlocked.dependencies.reserveGenerationAttempt = () => { throw new Error('ceiling exhausted'); };
+  reserveBlocked.dependencies.finalizeGenerationAttempt = () => { throw new Error('must not finalize'); };
+  const blocked = await executeGenerationJob(finite, reserveBlocked.dependencies);
+  assert.equal(blocked.errorCode, 'cost_ceiling');
+  assert.equal(requests, 0);
+
+  requests = 0;
+  const unavailable = createHarness(finite, () => { requests += 1; return '{}'; });
+  const unavailableResult = await executeGenerationJob(finite, unavailable.dependencies);
+  assert.equal(unavailableResult.errorCode, 'cost_ceiling');
+  assert.equal(requests, 0);
+
+  const calls = [];
+  const envelope = createHarness(base, () => {
+    calls.push('request');
+    return { output: JSON.stringify({ questions: [candidateFor('multiple-choice')] }), usage: {
+      inputTokens: 2, outputTokens: 3, totalTokens: 5,
+    } };
+  });
+  envelope.dependencies.reserveGenerationAttempt = (_id, params) => {
+    calls.push('reserve');
+    return { ...base, usageAudit: [{ attemptId: params.attemptId, event: 'reserved' }] };
+  };
+  envelope.dependencies.finalizeGenerationAttempt = () => { calls.push('finalize'); return base; };
+  const completed = await executeGenerationJob(base, envelope.dependencies);
+  assert.equal(completed.status, 'completed');
+  assert.deepEqual(calls, ['reserve', 'request', 'finalize']);
+
+  const cancelled = createHarness(base, () => { throw new Error('must not dispatch'); });
+  const signal = new AbortController();
+  signal.abort(Object.assign(new Error('cancelled by test'), { name: 'AbortError' }));
+  await assert.rejects(executeGenerationJob(base, { ...cancelled.dependencies, signal: signal.signal }), /cancelled by test/);
+
+  const alreadyOver = createHarness({ ...finite, usageSummary: {
+    inputTokens: 0, outputTokens: 0, totalTokens: 0, finalizedCostMicroUsd: 101, reservedCostMicroUsd: 0,
+  } }, () => { throw new Error('must not dispatch'); });
+  const overResult = await executeGenerationJob({ ...finite, usageSummary: {
+    inputTokens: 0, outputTokens: 0, totalTokens: 0, finalizedCostMicroUsd: 101, reservedCostMicroUsd: 0,
+  } }, alreadyOver.dependencies);
+  assert.equal(overResult.errorCode, 'cost_ceiling');
+
+  const unlimitedReserveFailure = createHarness(base, () => { throw new Error('must not dispatch'); });
+  unlimitedReserveFailure.dependencies.reserveGenerationAttempt = () => { throw new Error('accounting unavailable'); };
+  const accountingFailure = await executeGenerationJob(base, unlimitedReserveFailure.dependencies);
+  assert.equal(accountingFailure.status, 'error');
+
+  const invalid = createHarness(base, () => JSON.stringify({ questions: [{}] }));
+  const invalidResult = await executeGenerationJob(base, invalid.dependencies);
+  assert.equal(invalidResult.errorCode, 'validation_exhausted');
+
+  const embedding = createHarness(base, () => JSON.stringify({ questions: [candidateFor('multiple-choice')] }));
+  embedding.dependencies.embed = async () => { throw new Error('embedding unavailable'); };
+  embedding.state().options.resolvedSettings['embeddings.enabled'] = true;
+  const embeddingResult = await executeGenerationJob(base, embedding.dependencies);
+  assert.equal(embeddingResult.status, 'completed');
+
+  const legacy = {
+    ...base,
+    id: 'job-legacy-slots', testId: 'test-legacy-slots',
+    options: { ...base.options, questionCount: 2, questionCounts: { multipleChoice: 2, fillBlank: 0, reasoning: 0, coding: 0 } },
+    questions: [candidateFor('multiple-choice', 99)],
+  };
+  const legacyHarness = createHarness(legacy, () => JSON.stringify({ questions: [candidateFor('multiple-choice', 100)] }));
+  const legacyResult = await executeGenerationJob(legacy, legacyHarness.dependencies);
+  assert.ok(['completed', 'error'].includes(legacyResult.status));
+
+  const nullResponse = createHarness({ ...base, id: 'job-null-response' }, () => null);
+  const nullResult = await executeGenerationJob({ ...base, id: 'job-null-response' }, nullResponse.dependencies);
+  assert.equal(nullResult.errorCode, 'validation_exhausted');
+
+  const legacyAudit = createHarness({ ...base, id: 'job-legacy-audit', usageAudit: [{ attemptId: 'other-attempt', event: 'reserved' }] },
+    () => JSON.stringify({ questions: [candidateFor('multiple-choice', 501)] }));
+  const legacyAuditResult = await executeGenerationJob({ ...base, id: 'job-legacy-audit', usageAudit: [{ attemptId: 'other-attempt', event: 'reserved' }] }, legacyAudit.dependencies);
+  assert.ok(['completed', 'error'].includes(legacyAuditResult.status));
+
+  const undefinedAccounting = createHarness({ ...base, id: 'job-undefined-accounting' },
+    () => JSON.stringify({ questions: [candidateFor('multiple-choice', 601)] }));
+  undefinedAccounting.dependencies.reserveGenerationAttempt = () => undefined;
+  undefinedAccounting.dependencies.finalizeGenerationAttempt = () => undefined;
+  const undefinedAccountingResult = await executeGenerationJob({ ...base, id: 'job-undefined-accounting' }, undefinedAccounting.dependencies);
+  assert.equal(undefinedAccountingResult.status, 'completed');
+
+  const aliasAccounting = createHarness({ ...base, id: 'job-alias-accounting' },
+    () => JSON.stringify({ questions: [candidateFor('multiple-choice', 701)] }));
+  aliasAccounting.dependencies.reserveProviderAttempt = () => undefined;
+  aliasAccounting.dependencies.finalizeProviderAttempt = () => undefined;
+  const aliasResult = await executeGenerationJob({ ...base, id: 'job-alias-accounting' }, aliasAccounting.dependencies);
+  assert.equal(aliasResult.status, 'completed');
+
+  const finalizeFailure = createHarness({ ...base, id: 'job-finalize-failure' },
+    () => JSON.stringify({ questions: [candidateFor('multiple-choice', 801)] }));
+  finalizeFailure.dependencies.reserveGenerationAttempt = () => undefined;
+  finalizeFailure.dependencies.finalizeGenerationAttempt = () => { throw new Error('finalization unavailable'); };
+  const finalizeFailureResult = await executeGenerationJob({ ...base, id: 'job-finalize-failure' }, finalizeFailure.dependencies);
+  assert.equal(finalizeFailureResult.status, 'error');
+
+  const optionalDeps = createHarness({ ...base, id: 'job-optional-deps' },
+    () => JSON.stringify({ questions: [candidateFor('multiple-choice', 901)] }));
+  delete optionalDeps.dependencies.ensureIndexed;
+  delete optionalDeps.dependencies.retrieve;
+  delete optionalDeps.dependencies.loadImage;
+  const optionalResult = await executeGenerationJob({ ...base, id: 'job-optional-deps' }, optionalDeps.dependencies);
+  assert.equal(optionalResult.status, 'completed');
+});
