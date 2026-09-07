@@ -35,7 +35,7 @@ export const normalizeProviderUsage = (provider, payload) => {
   const usage = provider === "ollama"
     ? normalized(source.prompt_eval_count, source.eval_count)
     : provider === "gemini"
-      ? normalized(source.promptTokenCount, source.candidatesTokenCount, source.totalTokenCount)
+      ? normalized(source.promptTokenCount, (source.candidatesTokenCount || 0) + (source.thoughtsTokenCount || 0), source.totalTokenCount)
       : provider === "anthropic"
         ? normalized(source.input_tokens, source.output_tokens)
         : provider === "openai-responses"

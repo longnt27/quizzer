@@ -33,6 +33,10 @@ import { resolveDocumentExtractor, resolveOcrProvider } from './server/plugin-ex
 import { listOllamaModels, runOllamaGeneration, runOllamaHyde, validateOllamaModelName } from './server/ollama-generation.mjs';
 import { runOpenAICompatibleGeneration } from './server/openai-compatible-generation.mjs';
 import { normalizeProviderUsage } from './server/provider-usage.mjs';
+import {
+  runAnthropic as runBuiltinAnthropic, runGemini as runBuiltinGemini,
+  runOpenAI as runBuiltinOpenAI, runOpenAICompatible as runBuiltinOpenAICompatible,
+} from './server/builtin-provider-generation.mjs';
 
 const configuredPortValue = process.env.QUIZZER_SERVICE_PORT ?? '8787';
 const configuredPort = Number(configuredPortValue);
@@ -780,7 +784,7 @@ const runAntigravityAgent = async ({ prompt, schema, model }, signal) => {
   return typeof structured === 'string' ? structured : JSON.stringify(structured);
 };
 
-export const runGemini = async ({ prompt, schema, model, images = [], apiKey, includeUsage = false, maxOutputTokens }, signal) => {
+const runGemini = async ({ prompt, schema, model, images = [], apiKey, includeUsage = false, maxOutputTokens }, signal) => {
   requireApiKey(apiKey, 'Gemini');
   const modelName = model || 'gemini-2.5-flash';
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent?key=${encodeURIComponent(apiKey)}`;
@@ -857,7 +861,7 @@ const parseApiResponse = async (response, provider) => {
 
 const imageContent = images => images.slice(0, 30).map(image => ({ type: 'image_url', image_url: { url: image } }));
 
-export const runOpenAICompatible = async ({ prompt, schema, model, images = [], apiKey, includeUsage = false, maxOutputTokens }, signal, config) => {
+const runOpenAICompatible = async ({ prompt, schema, model, images = [], apiKey, includeUsage = false, maxOutputTokens }, signal, config) => {
   requireApiKey(apiKey, config.label);
   const content = config.supportsImages && images.length
     ? [{ type: 'text', text: prompt }, ...imageContent(images)]
@@ -881,7 +885,7 @@ export const runOpenAICompatible = async ({ prompt, schema, model, images = [], 
   return includeUsage ? { output, usage: normalizeProviderUsage(config.usageProvider || 'openai-compatible', payload) } : output;
 };
 
-export const runOpenAI = async ({ prompt, schema, model, images = [], apiKey, includeUsage = false, maxOutputTokens }, signal) => {
+const runOpenAI = async ({ prompt, schema, model, images = [], apiKey, includeUsage = false, maxOutputTokens }, signal) => {
   requireApiKey(apiKey, 'OpenAI');
   const content = [{ type: 'input_text', text: prompt }, ...images.slice(0, 30).map(image => ({ type: 'input_image', image_url: image }))];
   const response = await fetch('https://api.openai.com/v1/responses', {
@@ -900,7 +904,7 @@ export const runOpenAI = async ({ prompt, schema, model, images = [], apiKey, in
   return includeUsage ? { output, usage: normalizeProviderUsage('openai-responses', payload) } : output;
 };
 
-export const runAnthropic = async ({ prompt, schema, model, images = [], apiKey, includeUsage = false, maxOutputTokens }, signal) => {
+const runAnthropic = async ({ prompt, schema, model, images = [], apiKey, includeUsage = false, maxOutputTokens }, signal) => {
   requireApiKey(apiKey, 'Anthropic');
   const content = [
     { type: 'text', text: prompt },
@@ -931,13 +935,13 @@ const providerRunners = {
   codex: runCodex,
   'claude-agent': runClaudeAgent,
   'antigravity-agent': runAntigravityAgent,
-  gemini: runGemini,
-  anthropic: runAnthropic,
-  openai: runOpenAI,
-  openrouter: (body, signal) => runOpenAICompatible(body, signal, {
+  gemini: runBuiltinGemini,
+  anthropic: runBuiltinAnthropic,
+  openai: runBuiltinOpenAI,
+  openrouter: (body, signal) => runBuiltinOpenAICompatible(body, signal, {
     label: 'OpenRouter', endpoint: 'https://openrouter.ai/api/v1/chat/completions', defaultModel: 'openai/gpt-4o-mini', jsonSchema: true, supportsImages: true, providerRouting: true,
   }),
-  deepseek: (body, signal) => runOpenAICompatible(body, signal, {
+  deepseek: (body, signal) => runBuiltinOpenAICompatible(body, signal, {
     label: 'DeepSeek', endpoint: 'https://api.deepseek.com/chat/completions', defaultModel: 'deepseek-chat', jsonSchema: false, supportsImages: false,
   }),
   'openai-compatible': async (body, signal) => {
