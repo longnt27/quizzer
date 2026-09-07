@@ -65,17 +65,31 @@ const run = (command, args) => new Promise((resolve, reject) => {
     code === 0 ? undefined : new Error(`${command} ${args.join(' ')} exited with ${code ?? 'a signal'}`)));
 });
 
+const waitForExit = (child, timeoutMs) => new Promise(resolve => {
+  if (child.exitCode !== null) {
+    resolve(true);
+    return;
+  }
+  let timer;
+  const onExit = () => {
+    clearTimeout(timer);
+    resolve(true);
+  };
+  timer = setTimeout(() => {
+    child.off('exit', onExit);
+    resolve(false);
+  }, timeoutMs);
+  child.once('exit', onExit);
+});
+
 const stopChildren = async () => {
   const children = [...activeChildren];
   for (const child of children) if (!child.killed) child.kill('SIGTERM');
   await Promise.all(children.map(async child => {
     if (child.exitCode !== null) return;
-    await Promise.race([
-      new Promise(resolve => child.once('exit', resolve)),
-      new Promise(resolve => setTimeout(resolve, 5_000)),
-    ]);
-    if (child.exitCode === null && !child.killed) child.kill('SIGKILL');
-    if (child.exitCode === null) await new Promise(resolve => child.once('exit', resolve));
+    if (await waitForExit(child, 5_000)) return;
+    if (child.exitCode === null) child.kill('SIGKILL');
+    if (!await waitForExit(child, 5_000)) throw new Error('A test subprocess did not exit after SIGKILL');
   }));
 };
 
@@ -88,12 +102,11 @@ const verifyNodeSqlite = () => run(process.execPath, ['--input-type=module', '--
   'database.close();',
 ].join('\n')]);
 
+const originalCxxFlags = process.env.CXXFLAGS;
 const backupDirectory = await mkdtemp(join(tmpdir(), 'quizzer-electron-native-'));
 let snapshot;
-let originalCxxFlags;
 try {
   snapshot = await snapshotNativeArtifacts(sqliteDirectory, backupDirectory);
-  originalCxxFlags = process.env.CXXFLAGS;
   delete process.env.CXXFLAGS;
   await rebuild({
     buildPath: projectDirectory,
