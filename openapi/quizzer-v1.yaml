@@ -1152,11 +1152,12 @@ components:
         approved: { type: boolean }
         pricing:
           type: object
+          required: [inputMicroUsdPerMillionTokens, outputMicroUsdPerMillionTokens]
           additionalProperties: false
           properties:
             inputMicroUsdPerMillionTokens: { type: integer, minimum: 0, maximum: 9000000000000000 }
             outputMicroUsdPerMillionTokens: { type: integer, minimum: 0, maximum: 9000000000000000 }
-        usage: { type: object, additionalProperties: true }
+        usage: { type: string, enum: [provider-reported, unavailable] }
     RAGProfile:
       type: object
       required: [id, retrieval, contextBudget, rerank]
@@ -1256,8 +1257,6 @@ components:
         inputTokens: { type: integer, minimum: 0 }
         outputTokens: { type: integer, minimum: 0 }
         totalTokens: { type: integer, minimum: 0 }
-        inputRequests: { type: integer, minimum: 0 }
-        outputRequests: { type: integer, minimum: 0 }
         reservedCostMicroUsd: { type: integer, minimum: 0 }
         finalizedCostMicroUsd: { type: integer, minimum: 0 }
     GenerationAccounting:

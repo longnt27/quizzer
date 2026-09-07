@@ -23,6 +23,7 @@ import { resolveEmbeddingProvider } from '../server/plugin-embeddings.mjs';
 import { resolveVectorIndexProvider } from '../server/plugin-vector-index.mjs';
 import { runOllamaHyde } from '../server/ollama-generation.mjs';
 import { validateOpenAICompatibleEndpoint } from '../server/openai-compatible-generation.mjs';
+import { getKnownProviderRouteMetadata } from '../server/provider-pricing.mjs';
 
 const usage = `Quizzer CLI
 
@@ -37,7 +38,7 @@ Usage:
   quizzer retrieve <query> [--document <id>] [--tag <tag>] [--limit 10] [--json]
   quizzer test create --document <id> [--document <id>] [--name name] [--questions 20]
                       [--instruction text] [--provider provider] [--model model] [--endpoint url] [--approve-paid]
-                      [--cost-ceiling USD|unlimited] [--json]
+                      [--cost-ceiling USD|unlimited] [--input-price USD/1M] [--output-price USD/1M] [--json]
   quizzer jobs list|show <id>|cancel <id>|raise-ceiling <id> --cost-ceiling USD --reason text --confirm-cost [--resume] [--json]
   quizzer jobs resume <id> [--provider provider] [--model model] [--endpoint url] [--approve-paid] [--json]
   quizzer resume <job-id> [--provider provider] [--model model] [--endpoint url] [--approve-paid] [--json]
@@ -125,6 +126,26 @@ const parseCostCeiling = raw => {
   const micros = BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, '0'));
   if (micros > BigInt(Number.MAX_SAFE_INTEGER)) fail('--cost-ceiling is too large');
   return Number(micros);
+};
+const parsePricePerMillion = (raw, flagName) => {
+  if (raw === undefined) return undefined;
+  const value = String(raw).trim().replace(/^\$/, '');
+  if (!/^\d{1,12}(?:\.\d{1,6})?$/.test(value)) fail(`${flagName} must be a non-negative USD amount per million tokens`);
+  const [whole, fraction = ''] = value.split('.');
+  const micros = BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, '0'));
+  if (micros > BigInt(Number.MAX_SAFE_INTEGER)) fail(`${flagName} is too large`);
+  return Number(micros);
+};
+const routeMetadata = (provider, model, finiteCeiling) => {
+  const known = getKnownProviderRouteMetadata(provider, model);
+  const input = parsePricePerMillion(flag('input-price', undefined), '--input-price');
+  const output = parsePricePerMillion(flag('output-price', undefined), '--output-price');
+  if ((input === undefined) !== (output === undefined)) fail('--input-price and --output-price must be provided together');
+  if (input !== undefined) known.pricing = { inputMicroUsdPerMillionTokens: input, outputMicroUsdPerMillionTokens: output };
+  if (finiteCeiling !== undefined && known.pricing === undefined) {
+    fail('A finite --cost-ceiling requires known model pricing or both --input-price and --output-price');
+  }
+  return known;
 };
 const providerPolicy = provider => PROVIDER_POLICIES[provider] ?? fail(`Unsupported provider: ${provider}`);
 const requirePaidApproval = (provider, policy) => {
@@ -482,6 +503,7 @@ const runTestCreate = async () => {
   const name = flag('name', `Quiz ${new Date(now).toLocaleDateString()}`);
   const customInstruction = flag('instruction', undefined);
   const costCeilingMicroUsd = parseCostCeiling(flag('cost-ceiling', undefined));
+  const metadata = routeMetadata(provider, model, costCeilingMicroUsd);
   const privacy = policy.privacy;
   const job = {
     id: jobId,
@@ -503,7 +525,7 @@ const runTestCreate = async () => {
         contextBudget: settings.values['retrieval.contextBudget'],
         rerank: settings.values['retrieval.rerank'],
       },
-      routeChain: [{ provider, ...(model ? { model } : {}), privacy, paid: privacy === 'remote-api', approved: true }],
+      routeChain: [{ provider, ...(model ? { model } : {}), privacy, paid: privacy === 'remote-api', approved: true, ...metadata }],
       resolvedSettings: settings.values,
     },
     questions: [],
@@ -589,6 +611,7 @@ const runJobs = async (action, explicitId) => {
         privacy: policy.privacy,
         paid: policy.billing === 'usage-based',
         approved: true,
+        ...routeMetadata(selectedProvider, selectedModel, generationRecord.data.options.costCeilingMicroUsd),
       };
       const existingRoutes = generationRecord.data.options.routeChain;
       if (existingRoutes?.length) {

@@ -236,9 +236,24 @@ test('queues and controls a durable test generation job', async () => {
     '--questions', '2', '--provider', 'openai', '--model', 'gpt-5-mini', '--approve-paid', '--cost-ceiling', '$1.25',
   );
   assert.equal(ceilingCreated.job.options.costCeilingMicroUsd, 1_250_000);
+  assert.deepEqual(ceilingCreated.job.options.routeChain[0].pricing, {
+    inputMicroUsdPerMillionTokens: 250_000, outputMicroUsdPerMillionTokens: 2_000_000,
+  });
   assert.equal((await cli('jobs', 'show', ceilingCreated.job.id)).accounting.summary.finalizedCostMicroUsd, 0);
   assert.equal((await cli('jobs', 'list')).jobs.find(job => job.id === ceilingCreated.job.id).accounting.summary.reservedCostMicroUsd, 0);
   await cli('jobs', 'cancel', ceilingCreated.job.id);
+  await assert.rejects(cli(
+    'test', 'create', '--document', documents.documents[0].id, '--provider', 'openai', '--model', 'unknown-model',
+    '--approve-paid', '--cost-ceiling', '1.00',
+  ), /requires known model pricing/);
+  const customPriced = await cli(
+    'test', 'create', '--document', documents.documents[0].id, '--provider', 'openai', '--model', 'unknown-model',
+    '--approve-paid', '--cost-ceiling', '1.00', '--input-price', '0.50', '--output-price', '2.00',
+  );
+  assert.deepEqual(customPriced.job.options.routeChain[0].pricing, {
+    inputMicroUsdPerMillionTokens: 500_000, outputMicroUsdPerMillionTokens: 2_000_000,
+  });
+  await cli('jobs', 'cancel', customPriced.job.id);
   await cli('jobs', 'cancel', paidCreated.job.id);
 
   await assert.rejects(cli(
@@ -316,6 +331,7 @@ test('queues and controls a durable test generation job', async () => {
   assert.equal(legacyResume.job.options.provider, 'openai-compatible');
   assert.deepEqual(legacyResume.job.options.routeChain, [{
     provider: 'openai-compatible', model: 'legacy-custom-model', privacy: 'remote-api', paid: true, approved: true,
+    usage: 'provider-reported',
   }]);
   assert.equal(legacyResume.job.options.resolvedSettings['providers.openai-compatible.endpoint'], 'http://127.0.0.1:11434/v1');
   assert.equal(legacyResume.job.activeRouteIndex, 0);

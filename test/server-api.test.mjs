@@ -566,6 +566,17 @@ test('provides onboarding, document, job, and event operations', async () => {
   const accounting = await authorized('/api/v1/jobs/cost-api-job/accounting');
   assert.equal(accounting.status, 200);
   assert.equal((await accounting.json()).accounting.summary.finalizedCostMicroUsd, 0);
+  assert.equal((await authorized('/api/v1/jobs/missing-cost-job/accounting')).status, 404);
+  const zeroRaise = await authorized('/api/v1/jobs/cost-api-job/accounting/ceiling', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newCeilingMicroUsd: 0, reason: 'Invalid', confirmed: true }),
+  });
+  assert.equal(zeroRaise.status, 400);
+  const decreasingRaise = await authorized('/api/v1/jobs/cost-api-job/accounting/ceiling', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newCeilingMicroUsd: 999_999, reason: 'Invalid', confirmed: true }),
+  });
+  assert.equal(decreasingRaise.status, 400);
   const unconfirmed = await authorized('/api/v1/jobs/cost-api-job/accounting/ceiling', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ newCeilingMicroUsd: 2_000_000, reason: 'Need more coverage', confirmed: false }),
