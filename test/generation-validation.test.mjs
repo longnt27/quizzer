@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import {
   validateActiveRoute, validateCoveragePlan, validateGenerationOptions, validateGenerationOptionsTransition,
   validateGenerationProgress, validateGenerationRejections, validateGenerationRejectionTransition,
+  validateGenerationUsageAudit, validateGenerationAccounting,
   validateNewGenerationJob, validateProviderAttempts,
   validateProviderAttemptTransition, validateProviderRoute,
 } from '../server/generation-validation.mjs';
@@ -22,6 +24,33 @@ const options = () => ({
   ragProfile: { id: 'balanced', retrieval: 'hybrid', contextBudget: 8_192, rerank: true },
   routeChain: [{ provider: 'openai', model: 'gpt-5-mini', privacy: 'remote-api', paid: true, approved: true }],
   resolvedSettings,
+});
+
+const pricedOptions = (costCeilingMicroUsd) => ({
+  ...options(),
+  ...(costCeilingMicroUsd === undefined ? {} : { costCeilingMicroUsd }),
+  routeChain: [{ ...options().routeChain[0],
+    pricing: { inputMicroUsdPerMillionTokens: 250_000, outputMicroUsdPerMillionTokens: 2_000_000 },
+    usage: 'provider-reported' }],
+});
+
+const fingerprint = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+const reservationEvent = (attemptId, routeIndex = 0, inputTokens = 100, outputTokens = 50) => {
+  const bounds = { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens };
+  const reservedCostMicroUsd = 125;
+  return {
+    event: 'reserved', attemptId, at: 10, routeIndex, provider: 'openai', model: 'gpt-5-mini',
+    reservedCostMicroUsd, reservationInputTokens: inputTokens, reservationOutputTokens: outputTokens,
+    reservationCostKnown: true,
+    reservationFingerprint: fingerprint({ routeIndex, bounds, reservationCostMicroUsd: reservedCostMicroUsd, reservationCostKnown: true }),
+  };
+};
+const finalizedEvent = (attemptId, at = 11, overrides = {}) => ({
+  event: 'finalized', attemptId, at, routeIndex: 0, provider: 'openai', model: 'gpt-5-mini',
+  finalizedCostMicroUsd: 125, reservationReleasedMicroUsd: 125, reservationRetained: false,
+  overCeiling: false, usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+  finalizationFingerprint: fingerprint({ usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 } }),
+  ...overrides,
 });
 
 test('validates complete generation snapshots and provider policy metadata', () => {
@@ -311,4 +340,77 @@ test('validates route-bound attempts, progress, and retrieval coverage', () => {
   assert.throws(() => validateGenerationRejectionTransition(appended.slice(1), rejections), /append-only/);
   assert.throws(() => validateGenerationRejections([{ ...rejections[0], reason: 'unknown' }]), /reason is invalid/);
   assert.throws(() => validateGenerationRejections([{ ...rejections[0], statement: 'x'.repeat(501) }]), /statement is invalid/);
+});
+
+test('derives a tamper-evident usage journal with ceiling approvals and recovery', () => {
+  const value = pricedOptions(500);
+  const attemptId = 'attempt-' + 'a'.repeat(48);
+  const reservation = reservationEvent(attemptId);
+  const audit = [
+    { event: 'ceiling-raised', at: 1, previousCeilingMicroUsd: 250, newCeilingMicroUsd: 500, reason: 'Approved test budget' },
+    reservation,
+    { event: 'ceiling-resumed', at: 10, currentCeilingMicroUsd: 500, ceilingRaiseIndex: 0, ceilingRaiseAt: 1 },
+    { event: 'recovery-approved', at: 10, recoveryAttemptId: attemptId, reason: 'Retry after network interruption' },
+    finalizedEvent(attemptId),
+  ];
+  const summary = { inputTokens: 100, outputTokens: 50, totalTokens: 150, finalizedCostMicroUsd: 125, reservedCostMicroUsd: 0 };
+  assert.deepEqual(validateGenerationUsageAudit(audit, { options: value, summary }), summary);
+  assert.deepEqual(validateGenerationAccounting(summary, audit, value), summary);
+  assert.throws(() => validateGenerationUsageAudit([
+    audit[0], audit[1], audit[2], audit[3], { ...audit[3], at: 11 }, audit[4],
+  ], { options: value }), /duplicated/);
+  assert.throws(() => validateGenerationUsageAudit([
+    { ...audit[0], newCeilingMicroUsd: 400 }, audit[1], audit[2], audit[3], audit[4],
+  ], { options: value }), /audit|resume approval/);
+  assert.throws(() => validateGenerationUsageAudit([
+    { ...audit[0], previousCeilingMicroUsd: 200 }, audit[1], { ...audit[2], currentCeilingMicroUsd: 400 }, audit[3], audit[4],
+  ], { options: value }), /resume approval|does not match its audit/);
+  assert.throws(() => validateGenerationUsageAudit([
+    audit[0], reservation, { ...audit[2], ceilingRaiseIndex: 99 }, audit[3], audit[4],
+  ], { options: value }), /resume approval|reference is invalid/);
+  assert.throws(() => validateGenerationUsageAudit([
+    audit[0], { ...reservation, reservedCostMicroUsd: 126 }, audit[2], audit[3], audit[4],
+  ], { options: value }), /Reservation does not match/);
+  assert.throws(() => validateGenerationUsageAudit([
+    audit[0], reservation, audit[2], audit[3], finalizedEvent(attemptId, 11, { reservationReleasedMicroUsd: 0 }),
+  ], { options: value }), /Finalized accounting does not match/);
+  assert.throws(() => validateGenerationUsageAudit(audit, {
+    options: value, summary: { ...summary, finalizedCostMicroUsd: 124 },
+  }), /summary does not match/);
+  assert.deepEqual(validateGenerationUsageAudit([
+    { event: 'ceiling-raised', at: 1, previousCeilingMicroUsd: 250, newCeilingMicroUsd: 500, reason: 'First approval' },
+    { event: 'ceiling-raised', at: 2, previousCeilingMicroUsd: 500, newCeilingMicroUsd: 750, reason: 'Second approval' },
+  ], { options: { ...value, costCeilingMicroUsd: 750 } }), {
+    inputTokens: 0, outputTokens: 0, totalTokens: 0, finalizedCostMicroUsd: 0, reservedCostMicroUsd: 0,
+  });
+});
+
+test('validates unknown usage, over-ceiling charges, and accounting event schemas', () => {
+  const value = pricedOptions();
+  const attemptId = 'attempt-' + 'b'.repeat(48);
+  const unknownReservation = reservationEvent(attemptId);
+  const unknownFinal = {
+    event: 'finalized', attemptId, at: 3, routeIndex: 0, provider: 'openai', model: 'gpt-5-mini',
+    finalizedCostMicroUsd: 0, reservationReleasedMicroUsd: 0, reservationRetained: true, overCeiling: false,
+    usage: { unknown: true, reason: 'missing' },
+    finalizationFingerprint: fingerprint({ usage: { unknown: true, reason: 'missing' } }),
+  };
+  assert.deepEqual(validateGenerationUsageAudit([unknownReservation, unknownFinal], { options: value }), {
+    inputTokens: 0, outputTokens: 0, totalTokens: 0, finalizedCostMicroUsd: 0, reservedCostMicroUsd: 125,
+  });
+  const overValue = pricedOptions(100);
+  const overId = 'attempt-' + 'c'.repeat(48);
+  const overReservation = reservationEvent(overId);
+  const overFinal = finalizedEvent(overId, 4, { overCeiling: true, ceilingAtFinalizationMicroUsd: 100 });
+  assert.deepEqual(validateGenerationUsageAudit([
+    { event: 'ceiling-raised', at: 1, previousCeilingMicroUsd: 50, newCeilingMicroUsd: 100, reason: 'Budget' },
+    overReservation, overFinal,
+  ], { options: overValue }).finalizedCostMicroUsd, 125);
+  for (const event of ['reserved', 'finalized', 'ceiling-raised', 'ceiling-resumed', 'recovery-approved']) {
+    assert.throws(() => validateGenerationUsageAudit([{ event, at: 1 }], { options: value }));
+  }
+  assert.throws(() => validateGenerationUsageAudit([
+    unknownReservation,
+    { ...unknownFinal, usage: { unknown: true, reason: 'invalid' } },
+  ], { options: value }), /Unknown provider usage marker is invalid/);
 });
