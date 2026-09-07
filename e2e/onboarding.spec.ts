@@ -79,6 +79,10 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await page.goto('/');
 
   await expect(page.getByRole('heading', { name: 'Learn from your own material' })).toBeVisible();
+  const onboarding = page.locator('.onboarding-drawer');
+  await onboarding.getByText('Simple', { exact: true }).click();
+  await expect(onboarding.getByRole('radio', { name: /^Simple/ })).toBeChecked();
+  await expect(page.getByRole('button', { name: 'Switch to Advanced mode' })).toBeVisible();
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('heading', { name: 'Choose a hardware profile' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Continue' })).toBeEnabled({ timeout: 15_000 });
@@ -119,6 +123,7 @@ test('resumes real onboarding and finishes through durable quiz practice', async
 
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Create your first quiz' })).toBeVisible();
+  await expect(page.getByRole('radio', { name: 'Simple', exact: true })).toBeChecked();
   await expect(page.getByRole('button', { name: 'Continue' })).toBeDisabled();
   await page.locator('.onboarding-drawer').getByRole('button').filter({ hasText: 'Create test' }).click();
   await page.getByText('coordination', { exact: true }).click();
