@@ -32,6 +32,7 @@ import { resolveVectorIndexProvider } from './server/plugin-vector-index.mjs';
 import { resolveDocumentExtractor, resolveOcrProvider } from './server/plugin-extraction.mjs';
 import { listOllamaModels, runOllamaGeneration, runOllamaHyde, validateOllamaModelName } from './server/ollama-generation.mjs';
 import { runOpenAICompatibleGeneration } from './server/openai-compatible-generation.mjs';
+import { normalizeProviderUsage } from './server/provider-usage.mjs';
 
 const configuredPortValue = process.env.QUIZZER_SERVICE_PORT ?? '8787';
 const configuredPort = Number(configuredPortValue);
@@ -779,7 +780,7 @@ const runAntigravityAgent = async ({ prompt, schema, model }, signal) => {
   return typeof structured === 'string' ? structured : JSON.stringify(structured);
 };
 
-const runGemini = async ({ prompt, schema, model, images = [], apiKey }, signal) => {
+export const runGemini = async ({ prompt, schema, model, images = [], apiKey, includeUsage = false, maxOutputTokens }, signal) => {
   requireApiKey(apiKey, 'Gemini');
   const modelName = model || 'gemini-2.5-flash';
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent?key=${encodeURIComponent(apiKey)}`;
@@ -793,13 +794,20 @@ const runGemini = async ({ prompt, schema, model, images = [], apiKey }, signal)
         if (!match) throw new Error('Invalid image input');
         return { inlineData: { mimeType: match[1], data: match[2] } };
       })] }],
-      generationConfig: { responseMimeType: 'application/json', responseJsonSchema: schema },
+      generationConfig: { responseMimeType: 'application/json', responseJsonSchema: schema,
+        ...(maxOutputTokens === undefined ? {} : { maxOutputTokens: validateBuiltinMaxOutputTokens(maxOutputTokens) }) },
     }),
   });
   const payload = await parseApiResponse(response, 'Gemini');
   const output = payload.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('') || '';
   if (!output) throw new Error('Gemini returned an empty response');
-  return output;
+  return includeUsage ? { output, usage: normalizeProviderUsage('gemini', payload) } : output;
+};
+
+const validateBuiltinMaxOutputTokens = value => {
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || value < 1 || value > 10_000_000) throw new Error('maxOutputTokens must be an integer between 1 and 10000000');
+  return value;
 };
 
 class ProviderError extends Error {
@@ -849,7 +857,7 @@ const parseApiResponse = async (response, provider) => {
 
 const imageContent = images => images.slice(0, 30).map(image => ({ type: 'image_url', image_url: { url: image } }));
 
-const runOpenAICompatible = async ({ prompt, schema, model, images = [], apiKey }, signal, config) => {
+export const runOpenAICompatible = async ({ prompt, schema, model, images = [], apiKey, includeUsage = false, maxOutputTokens }, signal, config) => {
   requireApiKey(apiKey, config.label);
   const content = config.supportsImages && images.length
     ? [{ type: 'text', text: prompt }, ...imageContent(images)]
@@ -864,15 +872,16 @@ const runOpenAICompatible = async ({ prompt, schema, model, images = [], apiKey 
         ? { type: 'json_schema', json_schema: { name: 'quiz_questions', strict: true, schema } }
         : { type: 'json_object' },
       ...(config.providerRouting ? { provider: { require_parameters: true } } : {}),
+      ...(maxOutputTokens === undefined ? {} : { max_tokens: validateBuiltinMaxOutputTokens(maxOutputTokens) }),
     }),
   });
   const payload = await parseApiResponse(response, config.label);
   const output = payload.choices?.[0]?.message?.content;
   if (!output) throw new Error(`${config.label} returned an empty response`);
-  return output;
+  return includeUsage ? { output, usage: normalizeProviderUsage(config.usageProvider || 'openai-compatible', payload) } : output;
 };
 
-const runOpenAI = async ({ prompt, schema, model, images = [], apiKey }, signal) => {
+export const runOpenAI = async ({ prompt, schema, model, images = [], apiKey, includeUsage = false, maxOutputTokens }, signal) => {
   requireApiKey(apiKey, 'OpenAI');
   const content = [{ type: 'input_text', text: prompt }, ...images.slice(0, 30).map(image => ({ type: 'input_image', image_url: image }))];
   const response = await fetch('https://api.openai.com/v1/responses', {
@@ -882,15 +891,16 @@ const runOpenAI = async ({ prompt, schema, model, images = [], apiKey }, signal)
       model: model || 'gpt-5-mini',
       input: [{ role: 'user', content }],
       text: { format: { type: 'json_schema', name: 'quiz_questions', strict: true, schema } },
+      ...(maxOutputTokens === undefined ? {} : { max_output_tokens: validateBuiltinMaxOutputTokens(maxOutputTokens) }),
     }),
   });
   const payload = await parseApiResponse(response, 'OpenAI');
   const output = payload.output?.flatMap(item => item.content ?? []).find(item => item.type === 'output_text')?.text;
   if (!output) throw new Error('OpenAI returned an empty response');
-  return output;
+  return includeUsage ? { output, usage: normalizeProviderUsage('openai-responses', payload) } : output;
 };
 
-const runAnthropic = async ({ prompt, schema, model, images = [], apiKey }, signal) => {
+export const runAnthropic = async ({ prompt, schema, model, images = [], apiKey, includeUsage = false, maxOutputTokens }, signal) => {
   requireApiKey(apiKey, 'Anthropic');
   const content = [
     { type: 'text', text: prompt },
@@ -904,7 +914,7 @@ const runAnthropic = async ({ prompt, schema, model, images = [], apiKey }, sign
     method: 'POST', signal,
     headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
     body: JSON.stringify({
-      model: model || 'claude-sonnet-4-5-20250929', max_tokens: 8192,
+      model: model || 'claude-sonnet-4-5-20250929', max_tokens: maxOutputTokens === undefined ? 8192 : validateBuiltinMaxOutputTokens(maxOutputTokens),
       messages: [{ role: 'user', content }],
       output_config: { format: { type: 'json_schema', schema } },
     }),
@@ -912,7 +922,7 @@ const runAnthropic = async ({ prompt, schema, model, images = [], apiKey }, sign
   const payload = await parseApiResponse(response, 'Anthropic');
   const output = payload.content?.find(block => block.type === 'text')?.text;
   if (!output) throw new Error('Anthropic returned an empty response');
-  return output;
+  return includeUsage ? { output, usage: normalizeProviderUsage('anthropic', payload) } : output;
 };
 
 const providerRunners = {
