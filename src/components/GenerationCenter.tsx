@@ -31,9 +31,9 @@ const formatUsd = (microUsd: number | undefined) => microUsd === undefined
 
 const accountingState = (job: StoredGenerationJob) => {
   const summary = job.usageSummary;
-  const pausedForCost = job.errorCode === 'cost_ceiling' || job.errorCode === 'cost_recovery'
-    || Boolean(job.usageAudit?.some(event => event.overCeiling));
-  return { summary, pausedForCost };
+  const pausedForCost = job.errorCode === 'cost_ceiling' || job.errorCode === 'cost_recovery';
+  const overCeiling = Boolean(job.usageAudit?.some(event => event.overCeiling));
+  return { summary, pausedForCost, overCeiling };
 };
 
 function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJob; onOpenTest: (id: string) => void; onManagePlugins: () => void }) {
@@ -52,17 +52,18 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
   const accepted = job.progress?.accepted ?? job.questions.length;
   const percent = target ? Math.min(100, Math.round(accepted / target * 100)) : 0;
   const providerDefinition = getProviderDefinition(provider);
-  const { summary, pausedForCost } = accountingState(job);
+  const { summary, pausedForCost, overCeiling } = accountingState(job);
 
   useEffect(() => {
     if (job.status !== 'paused') return;
-    const next = configured.providers.find(item => item.id !== job.options.provider)?.id
-      ?? configured.providers[0]?.id;
+    const next = pausedForCost
+      ? job.options.provider
+      : configured.providers.find(item => item.id !== job.options.provider)?.id ?? configured.providers[0]?.id;
     if (!next) return;
     const latestSettings = getProviderSettings();
     setProvider(next);
-    setModel(latestSettings.models[next]);
-  }, [configured.providers, job.options.provider, job.status]);
+    setModel(pausedForCost ? (job.options.model ?? latestSettings.models[next]) : latestSettings.models[next]);
+  }, [configured.providers, job.options.model, job.options.provider, job.status, pausedForCost]);
 
   const resume = async () => {
     if (!configured.providers.some(item => item.id === provider)) return message.error('Connect an AI provider first');
@@ -85,6 +86,10 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
     if (isCeiling && (current === undefined || next === undefined || next <= current)) {
       return message.error('Enter a new ceiling strictly higher than the current ceiling');
     }
+    const selectedRoute = getProviderRoute(provider, model, true);
+    if (current !== undefined && !selectedRoute.pricing) {
+      return message.error('The selected route has no verified pricing. Choose a priced model or configure explicit pricing in Advanced mode before continuing.');
+    }
     setAccountingWorking(true);
     try {
       const path = `/api/v1/jobs/${encodeURIComponent(job.id)}/accounting/${isCeiling ? 'ceiling' : 'recovery'}`;
@@ -93,7 +98,6 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
         : { reason, confirmed: true };
       const result = await serviceJson<{ job: StoredGenerationJob }>(path, 'POST', body);
       await applyServiceRecord('generationJobs', result.job.id, result.job);
-      const selectedRoute = getProviderRoute(provider, model, true);
       const existingRoutes = result.job.options.routeChain ?? [];
       const existingIndex = existingRoutes.findIndex(route => route.provider === selectedRoute.provider && route.model === selectedRoute.model);
       const routeChain = existingIndex >= 0
@@ -142,10 +146,13 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
           <Tag>{job.options.costCeilingMicroUsd === undefined ? 'Unlimited ceiling' : `Ceiling ${formatUsd(job.options.costCeilingMicroUsd)}`}</Tag>
         </Space>
       </div>}
-      {pausedForCost && <Alert type="warning" showIcon message={job.errorCode === 'cost_ceiling' ? 'Generation paused at its cost ceiling' : 'Generation paused for cost recovery'}
-        description={job.errorCode === 'cost_ceiling'
+      {(pausedForCost || overCeiling) && <Alert type="warning" showIcon message={pausedForCost
+        ? job.errorCode === 'cost_ceiling' ? 'Generation paused at its cost ceiling' : 'Generation paused for cost recovery'
+        : 'Generation exceeded its recorded ceiling'}
+        description={pausedForCost && job.errorCode === 'cost_ceiling'
           ? 'Saved questions and usage totals are preserved. Raise the ceiling through the service after reviewing the estimated impact, then continue.'
-          : 'Saved questions and usage totals are preserved. Review the accounting history and choose Continue after the service confirms a safe route.'} />}
+          : pausedForCost ? 'Saved questions and usage totals are preserved. Review the accounting history and choose Continue after the service confirms a safe route.'
+            : 'The provider reported usage above the historical ceiling. Review the accounting history before starting another generation.'} />}
       {job.error && <Alert type={job.status === 'error' ? 'error' : 'warning'} showIcon message={job.error} />}
       {job.status === 'paused' && <Space direction="vertical" style={{ width: '100%' }}>
         <Typography.Text type="secondary">Accepted questions are saved. Choose a provider for only the unfinished portion.</Typography.Text>
