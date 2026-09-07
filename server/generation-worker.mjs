@@ -476,6 +476,16 @@ export const executeGenerationJob = async (claimedJob, dependencies) => {
         const reserve = dependencies.reserveGenerationAttempt ?? dependencies.reserveProviderAttempt;
         const finalize = dependencies.finalizeGenerationAttempt ?? dependencies.finalizeProviderAttempt;
         const attemptId = accountingAttemptId(job.id, type, round, requestedSlotIndexes, routeIndex);
+        // A worker crash can leave a reservation (or a finalized charge) after
+        // the output checkpoint was lost. Never replay that provider request:
+        // the output may already have been charged and cannot be reconstructed.
+        const priorAccountingEvent = (job.usageAudit ?? []).find(item => item?.attemptId === attemptId);
+        if (priorAccountingEvent && (reserve || finalize)) {
+          await persist({ status: 'paused', errorCode: 'cost_recovery',
+            error: 'A prior generation request may have been charged, but its output was not checkpointed. Review the accounting history before retrying.',
+          });
+          return job;
+        }
         let accountingReserved = false;
         let accountingJob = job;
         let candidates;
