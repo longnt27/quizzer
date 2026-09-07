@@ -56,6 +56,7 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium firefox
       - run: npm run test:e2e
+      - run: npm run test:e2e:cost
       - name: Generate landing CycloneDX SBOM
         working-directory: landing
         run: npm sbom --sbom-format cyclonedx > landing-sbom.cdx.json
