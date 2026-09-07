@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Badge, Button, Empty, Input, List, Modal, Progress, Select, Slider, Space, Tag, Typography } from 'antd';
+import { Alert, Badge, Button, Checkbox, Empty, Input, InputNumber, List, Modal, Progress, Select, Slider, Space, Tag, Typography } from 'antd';
 import { CloseOutlined, DatabaseOutlined, LoadingOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type StoredGenerationJob, type StoredIndexJob } from '../db/db';
@@ -31,10 +31,43 @@ const formatUsd = (microUsd: number | undefined) => microUsd === undefined
 
 const accountingState = (job: StoredGenerationJob) => {
   const summary = job.usageSummary;
-  const pausedForCost = job.errorCode === 'cost_ceiling' || job.errorCode === 'cost_recovery'
-    || Boolean(job.usageAudit?.some(event => event.overCeiling));
-  return { summary, pausedForCost };
+  const pausedForCost = job.errorCode === 'cost_ceiling' || job.errorCode === 'cost_recovery';
+  const overCeiling = Boolean(job.usageAudit?.some(event => event.overCeiling));
+  return { summary, pausedForCost, overCeiling };
 };
+
+const routeMatches = (route: ReturnType<typeof getProviderRoute>, provider: GenerationProvider, model: string) =>
+  route.provider === provider && (route.model ?? undefined) === (model.trim() || undefined);
+
+/** Resolve an existing immutable route before deriving a new route snapshot. */
+const resolveJobRoute = (job: StoredGenerationJob, provider: GenerationProvider, model: string) => {
+  const existing = (job.options.routeChain ?? []).find(route => routeMatches(route, provider, model));
+  return existing ? { ...existing, approved: true } : getProviderRoute(provider, model, true);
+};
+
+const hasPendingCeilingAuthorization = (job: StoredGenerationJob) => {
+  if (job.errorCode !== 'cost_ceiling' || job.options.costCeilingMicroUsd === undefined) return false;
+  const audit = job.usageAudit ?? [];
+  const consumed = new Set(audit
+    .filter(event => event.event === 'ceiling-resumed' && Number.isInteger(event.ceilingRaiseIndex))
+    .map(event => event.ceilingRaiseIndex as number));
+  // Consecutive raises are historical approvals. Only the latest matching
+  // raise that has not been consumed by its explicit resume marker applies.
+  for (let index = audit.length - 1; index >= 0; index -= 1) {
+    const event = audit[index];
+    if (event.event === 'ceiling-raised' && event.newCeilingMicroUsd === job.options.costCeilingMicroUsd && !consumed.has(index)) return true;
+  }
+  return false;
+};
+
+const hasRecoveryAuthorization = (job: StoredGenerationJob) => Boolean(
+  job.errorCode === 'cost_recovery' && job.recoveryAttemptId
+    && job.usageAudit?.some(event => event.event === 'recovery-approved' && event.recoveryAttemptId === job.recoveryAttemptId),
+);
+
+const formatRoutePrice = (route: ReturnType<typeof getProviderRoute>) => route.pricing
+  ? `$${(route.pricing.inputMicroUsdPerMillionTokens / 1_000_000).toFixed(2)} input / $${(route.pricing.outputMicroUsdPerMillionTokens / 1_000_000).toFixed(2)} output per 1M tokens`
+  : 'No verified price snapshot';
 
 function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJob; onOpenTest: (id: string) => void; onManagePlugins: () => void }) {
   const settings = getProviderSettings();
@@ -42,32 +75,118 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
   const firstAlternative = settings.defaultProvider;
   const [provider, setProvider] = useState<GenerationProvider>(firstAlternative);
   const [model, setModel] = useState(settings.models[firstAlternative]);
+  const [accountingModalOpen, setAccountingModalOpen] = useState(false);
+  const [newCeilingDollars, setNewCeilingDollars] = useState<number | null>(null);
+  const [accountingReason, setAccountingReason] = useState('');
+  const [accountingConfirmed, setAccountingConfirmed] = useState(false);
+  const [accountingWorking, setAccountingWorking] = useState(false);
+  const [accountingValidation, setAccountingValidation] = useState('');
   const message = getMessageApi();
   const target = targetFor(job);
   const accepted = job.progress?.accepted ?? job.questions.length;
   const percent = target ? Math.min(100, Math.round(accepted / target * 100)) : 0;
   const providerDefinition = getProviderDefinition(provider);
-  const { summary, pausedForCost } = accountingState(job);
+  const { summary, pausedForCost, overCeiling } = accountingState(job);
+  const alreadyAuthorized = job.errorCode === 'cost_ceiling'
+    ? hasPendingCeilingAuthorization(job) : hasRecoveryAuthorization(job);
+  const selectedRoute = resolveJobRoute(job, provider, model);
+  const accountingIdentity = `${job.id}:${job.errorCode ?? ''}:${job.recoveryAttemptId ?? ''}:${job.options.costCeilingMicroUsd ?? ''}`;
+
+  const resetAccountingForm = () => {
+    setNewCeilingDollars(null);
+    setAccountingReason('');
+    setAccountingConfirmed(false);
+    setAccountingValidation('');
+  };
+
+  useEffect(() => {
+    resetAccountingForm();
+    setAccountingModalOpen(false);
+    // Reset only when the job or its durable authorization identity changes.
+  }, [accountingIdentity]);
 
   useEffect(() => {
     if (job.status !== 'paused') return;
-    const next = configured.providers.find(item => item.id !== job.options.provider)?.id
-      ?? configured.providers[0]?.id;
+    const next = pausedForCost
+      ? job.options.provider
+      : configured.providers.find(item => item.id !== job.options.provider)?.id ?? configured.providers[0]?.id;
     if (!next) return;
     const latestSettings = getProviderSettings();
     setProvider(next);
-    setModel(latestSettings.models[next]);
-  }, [configured.providers, job.options.provider, job.status]);
+    setModel(pausedForCost ? (job.options.model ?? latestSettings.models[next]) : latestSettings.models[next]);
+  }, [configured.providers, job.options.model, job.options.provider, job.status, pausedForCost]);
 
-  const resume = async () => {
-    if (!configured.providers.some(item => item.id === provider)) return message.error('Connect an AI provider first');
-    const selectedRoute = getProviderRoute(provider, model, true);
-    const existingRoutes = job.options.routeChain ?? [];
-    const existingIndex = existingRoutes.findIndex(route => route.provider === selectedRoute.provider && route.model === selectedRoute.model);
+  const resume = async (resumeJob = job) => {
+    if (!configured.providers.some(item => item.id === provider)) return message.error('Connect the selected AI provider first');
+    const route = resolveJobRoute(resumeJob, provider, model);
+    if (resumeJob.options.costCeilingMicroUsd !== undefined && !route.pricing) {
+      return message.error('The selected route has no verified pricing. Choose a priced model or configure explicit pricing in Advanced mode before continuing.');
+    }
+    const existingRoutes = resumeJob.options.routeChain ?? [];
+    const existingIndex = existingRoutes.findIndex(existing => routeMatches(existing, provider, model));
     const routeChain = existingIndex >= 0
-      ? existingRoutes.map((route, index) => index === existingIndex ? { ...route, approved: true } : route)
-      : [...existingRoutes, selectedRoute];
-    await resumeGenerationJob(job.id, { ...job.options, provider, model: model.trim() || undefined, routeChain });
+      ? existingRoutes.map((existing, index) => index === existingIndex ? { ...existing, approved: true } : existing)
+      : [...existingRoutes, route];
+    try {
+      await resumeGenerationJob(resumeJob.id, { ...resumeJob.options, provider, model: model.trim() || undefined, routeChain });
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Could not queue generation resume');
+    }
+  };
+
+  const continueAccounting = async () => {
+    const isCeiling = job.errorCode === 'cost_ceiling';
+    const reason = accountingReason.trim();
+    const fail = (detail: string) => { setAccountingValidation(detail); return message.error(detail); };
+    setAccountingValidation('');
+    if (!configured.providers.some(item => item.id === provider)) return fail('Connect the selected AI provider before authorizing this continuation');
+    if (!reason || reason.length > 500) return fail('Enter a reason between 1 and 500 characters');
+    if (!accountingConfirmed) return fail('Confirm the spend and privacy impact before continuing');
+    const current = job.options.costCeilingMicroUsd;
+    const next = newCeilingDollars === null ? undefined : Math.round(newCeilingDollars * 1_000_000);
+    if (isCeiling && (current === undefined || next === undefined || next <= current)) {
+      return fail('Enter a new ceiling strictly higher than the current ceiling');
+    }
+    if (current !== undefined && !selectedRoute.pricing) {
+      return fail('The selected route has no verified pricing. Choose a priced model or configure explicit pricing in Advanced mode before continuing.');
+    }
+    setAccountingWorking(true);
+    let authorizationApplied = false;
+    try {
+      const path = `/api/v1/jobs/${encodeURIComponent(job.id)}/accounting/${isCeiling ? 'ceiling' : 'recovery'}`;
+      const body = isCeiling
+        ? { newCeilingMicroUsd: next, reason, confirmed: true }
+        : { reason, confirmed: true };
+      const result = await serviceJson<{ job: StoredGenerationJob }>(path, 'POST', body);
+      authorizationApplied = true;
+      await applyServiceRecord('generationJobs', result.job.id, result.job);
+      const route = resolveJobRoute(result.job, provider, model);
+      const existingRoutes = result.job.options.routeChain ?? [];
+      const existingIndex = existingRoutes.findIndex(existing => routeMatches(existing, provider, model));
+      const routeChain = existingIndex >= 0
+        ? existingRoutes.map((existing, index) => index === existingIndex ? { ...existing, approved: true } : existing)
+        : [...existingRoutes, route];
+      try {
+        await resumeGenerationJob(result.job.id, { ...result.job.options, provider, model: model.trim() || undefined, routeChain });
+      } catch (error) {
+        // The service-owned authorization is durable. Do not ask for a second
+        // raise/approval when only the queue request failed.
+        setAccountingModalOpen(false);
+        resetAccountingForm();
+        message.error(`Authorization recorded, but resume could not be queued: ${error instanceof Error ? error.message : 'service unavailable'}. Choose Resume to retry.`);
+        return;
+      }
+      setAccountingModalOpen(false);
+      resetAccountingForm();
+    } catch (error) {
+      if (authorizationApplied) {
+        setAccountingModalOpen(false);
+        resetAccountingForm();
+        message.error(`Authorization recorded, but resume could not be queued: ${error instanceof Error ? error.message : 'service unavailable'}. Choose Resume to retry.`);
+      } else message.error(error instanceof Error ? error.message : 'Could not confirm accounting recovery');
+    } finally {
+      setAccountingWorking(false);
+    }
   };
 
   return <List.Item className="generation-job">
@@ -102,10 +221,15 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
           <Tag>{job.options.costCeilingMicroUsd === undefined ? 'Unlimited ceiling' : `Ceiling ${formatUsd(job.options.costCeilingMicroUsd)}`}</Tag>
         </Space>
       </div>}
-      {pausedForCost && <Alert type="warning" showIcon message={job.errorCode === 'cost_ceiling' ? 'Generation paused at its cost ceiling' : 'Generation paused for cost recovery'}
-        description={job.errorCode === 'cost_ceiling'
-          ? 'Saved questions and usage totals are preserved. Raise the ceiling through the service after reviewing the estimated impact, then continue.'
-          : 'Saved questions and usage totals are preserved. Review the accounting history and choose Continue after the service confirms a safe route.'} />}
+      {(pausedForCost || overCeiling) && <Alert type="warning" showIcon message={pausedForCost
+        ? job.errorCode === 'cost_ceiling' ? 'Generation paused at its cost ceiling' : 'Generation paused for cost recovery'
+        : 'Generation exceeded its recorded ceiling'}
+        description={pausedForCost && job.errorCode === 'cost_ceiling'
+          ? alreadyAuthorized
+            ? 'A ceiling raise is already recorded for this pause. Quizzer will retry the saved resume without asking you to authorize the same spend again.'
+            : 'Saved questions and usage totals are preserved. Raise the ceiling through the service after reviewing the estimated impact, then continue.'
+          : pausedForCost ? 'Saved questions and usage totals are preserved. Review the accounting history and choose Continue after the service confirms a safe route.'
+            : 'The provider reported usage above the historical ceiling. Review the accounting history before starting another generation.'} />}
       {job.error && <Alert type={job.status === 'error' ? 'error' : 'warning'} showIcon message={job.error} />}
       {job.status === 'paused' && <Space direction="vertical" style={{ width: '100%' }}>
         <Typography.Text type="secondary">Accepted questions are saved. Choose a provider for only the unfinished portion.</Typography.Text>
@@ -113,10 +237,13 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
           description="Connect an agent or add an API key to continue this job."
           action={<Button size="small" onClick={onManagePlugins}>Open plugins</Button>} />}
         {!!configured.providers.length && <Space wrap>
-          <Select value={provider} onChange={next => { setProvider(next); setModel(settings.models[next]); }} style={{ width: 190 }}
+          <Select value={configured.providers.some(item => item.id === provider) ? provider : undefined} placeholder="Select provider"
+            aria-label="Provider for continuing generation" onChange={next => { setProvider(next); setModel(settings.models[next]); resetAccountingForm(); }} style={{ width: 190 }}
             options={configured.providers.map(item => ({ label: item.label, value: item.id }))} />
-          <Input value={model} onChange={event => setModel(event.target.value)} addonBefore="Model" placeholder={providerDefinition.defaultModel || 'Provider default'} style={{ width: 260 }} />
-          <Button type="primary" icon={<PlayCircleOutlined />} onClick={() => void resume()}>Continue</Button>
+          <Input value={model} onChange={event => { setModel(event.target.value); resetAccountingForm(); }} addonBefore="Model" aria-label="Model for continuing generation" placeholder={providerDefinition.defaultModel || 'Provider default'} style={{ width: 260 }} />
+          {pausedForCost
+            ? <Button type="primary" icon={<PlayCircleOutlined />} onClick={() => alreadyAuthorized ? void resume() : setAccountingModalOpen(true)}>{alreadyAuthorized ? 'Resume' : 'Continue'}</Button>
+            : <Button type="primary" icon={<PlayCircleOutlined />} onClick={() => void resume()}>Continue</Button>}
         </Space>}
         {!!configured.providers.length && <Alert type={providerDefinition.kind === 'api' ? 'warning' : 'info'} showIcon
           message={providerDefinition.kind === 'api'
@@ -127,6 +254,37 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
             ? 'Continuing runs only unfinished source batches through the selected local, out-of-process plugin.'
             : 'Continuing explicitly approves this route for only the unfinished questions. Existing accepted questions are retained.'} />}
       </Space>}
+      {pausedForCost && <Modal open={accountingModalOpen} title={job.errorCode === 'cost_ceiling' ? 'Raise ceiling and continue' : 'Confirm cost recovery'}
+        okText="Confirm and continue" confirmLoading={accountingWorking} okButtonProps={{ disabled: !accountingConfirmed }}
+        onOk={() => void continueAccounting()} onCancel={() => { if (!accountingWorking) { setAccountingModalOpen(false); resetAccountingForm(); } }}>
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Alert type={selectedRoute.paid ? 'warning' : 'info'} showIcon message={`${providerDefinition.label} · ${selectedRoute.model ?? 'provider default'}`}
+            description={`${selectedRoute.privacy === 'local' ? 'Local data processing' : selectedRoute.privacy === 'signed-in-agent' ? 'Signed-in agent data handling' : 'Remote API data handling'} · ${selectedRoute.paid ? 'Paid route may incur provider charges' : 'No provider charge expected'} · ${formatRoutePrice(selectedRoute)}`} />
+          <Typography.Paragraph>
+            {job.errorCode === 'cost_ceiling'
+              ? `Committed ${formatUsd(summary?.finalizedCostMicroUsd)} · reserved ${formatUsd(summary?.reservedCostMicroUsd)} · current ceiling ${formatUsd(job.options.costCeilingMicroUsd)}.`
+              : 'A previous attempt may have charged the provider before Quizzer committed its checkpoint. This action acknowledges that risk before advancing recovery.'}
+          </Typography.Paragraph>
+          {job.errorCode === 'cost_ceiling' && <div>
+            <label htmlFor={`cost-ceiling-${job.id}`}>New generation cost ceiling (USD)</label>
+            <InputNumber id={`cost-ceiling-${job.id}`} aria-invalid={Boolean(accountingValidation && (newCeilingDollars === null || newCeilingDollars === undefined))} min={0} max={9_000_000_000} precision={2}
+              value={newCeilingDollars} onChange={value => { setNewCeilingDollars(value); setAccountingValidation(''); }} addonBefore="$" addonAfter="USD" style={{ width: '100%' }} />
+          </div>}
+          <div>
+            <label htmlFor={`cost-reason-${job.id}`}>Reason for continuing</label>
+            <Input.TextArea id={`cost-reason-${job.id}`} aria-label="Cost recovery reason" aria-invalid={Boolean(accountingValidation && !accountingReason.trim())}
+              aria-describedby={accountingValidation ? `cost-validation-${job.id}` : undefined} rows={3} maxLength={500} showCount value={accountingReason}
+            onChange={event => setAccountingReason(event.target.value)} placeholder="Why should Quizzer continue this generation?" />
+          </div>
+          <Checkbox id={`cost-confirm-${job.id}`} checked={accountingConfirmed} aria-describedby={accountingValidation ? `cost-validation-${job.id}` : undefined}
+            onChange={event => { setAccountingConfirmed(event.target.checked); setAccountingValidation(''); }}>
+            {job.errorCode === 'cost_recovery'
+              ? 'I acknowledge that the provider may already have charged this attempt, consent to retrying recovery, and accept the selected route’s data handling.'
+              : 'I confirm the higher spend and the selected provider’s data-sharing impact, and understand saved progress will be retained.'}
+          </Checkbox>
+          {accountingValidation && <Typography.Text type="danger" role="alert" id={`cost-validation-${job.id}`}>{accountingValidation}</Typography.Text>}
+        </Space>
+      </Modal>}
       <Space wrap>
         {(job.status === 'queued' || job.status === 'running' || job.status === 'waiting' || job.status === 'paused') &&
           <Button danger size="small" icon={<CloseOutlined />} onClick={() => void cancelGenerationJob(job.id)}>Cancel</Button>}
