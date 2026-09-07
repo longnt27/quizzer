@@ -1,0 +1,332 @@
+import { lstat, readFile, mkdir, rename, writeFile } from 'node:fs/promises';
+import { basename, dirname, isAbsolute } from 'node:path';
+import { spawn as nodeSpawn } from 'node:child_process';
+import { getLlamaCppStatus } from './llama-cpp-generation.mjs';
+
+export const LLAMA_CPP_RUNTIME_DEFAULTS = Object.freeze({
+  host: '127.0.0.1',
+  port: 8080,
+  contextSize: 4096,
+  batchSize: 512,
+  threads: 4,
+  startupTimeoutMs: 15_000,
+  stopTimeoutMs: 2_000,
+});
+
+const MAX_PATH_LENGTH = 4_096;
+const MAX_OUTPUT_LENGTH = 12_000;
+const MAX_ERROR_LENGTH = 1_000;
+const CONTROL_CHAR_PATTERN = /[\u0000-\u001f\u007f]/;
+const CONTROL_CHARS = /[\u0000-\u001f\u007f]/g;
+const PATH_LIKE = /(?:[A-Za-z]:[\\/]|\/|\\\\)[^\s'"`]+/g;
+
+const bounded = (value, limit = MAX_ERROR_LENGTH) => String(value ?? '').replace(CONTROL_CHARS, ' ').replace(/\s+/g, ' ').trim().slice(-limit);
+const safeMessage = (value, fallback = 'llama.cpp runtime failed') => bounded(value, MAX_ERROR_LENGTH) || fallback;
+
+export const redactRuntimeOutput = (value, paths = []) => {
+  let result = bounded(value, MAX_OUTPUT_LENGTH);
+  for (const path of paths.filter(Boolean)) result = result.split(path).join(`[${basename(path)}]`);
+  return result.replace(PATH_LIKE, match => `[${basename(match.replaceAll('\\', '/'))}]`).slice(-MAX_OUTPUT_LENGTH);
+};
+
+export const validateRuntimePath = async (value, label, { executable = false, statImpl = lstat } = {}) => {
+  if (typeof value !== 'string' || !value.trim()) throw new Error(`${label} is required`);
+  const path = value.trim();
+  if (path.length > MAX_PATH_LENGTH || CONTROL_CHAR_PATTERN.test(path) || !isAbsolute(path)) {
+    throw new Error(`${label} must be an absolute path without control characters (maximum ${MAX_PATH_LENGTH} characters)`);
+  }
+  let details;
+  try { details = await statImpl(path); }
+  catch { throw new Error(`${label} must point to an existing regular file`); }
+  if (details.isSymbolicLink?.()) throw new Error(`${label} must not be a symbolic link`);
+  if (!details.isFile?.()) throw new Error(`${label} must point to an existing regular file`);
+  if (executable && process.platform !== 'win32' && (Number(details.mode) & 0o111) === 0) {
+    throw new Error(`${label} must be executable`);
+  }
+  return path;
+};
+
+export const validateRuntimeOptions = (options = {}) => {
+  const numeric = (key, min, max) => {
+    const value = options[key] ?? LLAMA_CPP_RUNTIME_DEFAULTS[key];
+    if (!Number.isSafeInteger(value) || value < min || value > max) throw new Error(`${key} must be an integer from ${min} to ${max}`);
+    return value;
+  };
+  if (options.host !== undefined && options.host !== LLAMA_CPP_RUNTIME_DEFAULTS.host) throw new Error('llama.cpp managed runtime only supports 127.0.0.1');
+  return {
+    host: LLAMA_CPP_RUNTIME_DEFAULTS.host,
+    port: numeric('port', 1024, 65_535),
+    contextSize: numeric('contextSize', 512, 131_072),
+    batchSize: numeric('batchSize', 1, 2_048),
+    threads: numeric('threads', 1, 256),
+    startupTimeoutMs: numeric('startupTimeoutMs', 1_000, 120_000),
+    stopTimeoutMs: numeric('stopTimeoutMs', 250, 30_000),
+  };
+};
+
+const runtimeStatus = (status = {}) => ({
+  mode: status.mode === 'managed' ? 'managed' : 'manual',
+  state: ['idle', 'starting', 'running', 'stopping', 'error'].includes(status.state) ? status.state : 'idle',
+  configured: Boolean(status.configured),
+  serverReady: Boolean(status.serverReady),
+  host: '127.0.0.1',
+  port: Number.isSafeInteger(status.port) && status.port >= 1024 && status.port <= 65_535 ? status.port : LLAMA_CPP_RUNTIME_DEFAULTS.port,
+  executableName: typeof status.executableName === 'string' ? basename(status.executableName).slice(-160) : undefined,
+  modelName: typeof status.modelName === 'string' ? basename(status.modelName).slice(-160) : undefined,
+  pid: Number.isSafeInteger(status.pid) ? status.pid : undefined,
+  startedAt: Number.isSafeInteger(status.startedAt) ? status.startedAt : undefined,
+  stoppedAt: Number.isSafeInteger(status.stoppedAt) ? status.stoppedAt : undefined,
+  lastError: status.lastError ? safeMessage(status.lastError) : undefined,
+  output: status.output ? redactRuntimeOutput(status.output) : undefined,
+});
+
+const persistStatus = async (path, value) => {
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  const temporary = `${path}.${process.pid}.tmp`;
+  await writeFile(temporary, `${JSON.stringify(runtimeStatus(value), null, 2)}\n`, { mode: 0o600 });
+  await rename(temporary, path);
+};
+
+const readStatus = async path => {
+  try { return runtimeStatus(JSON.parse(await readFile(path, 'utf8'))); }
+  catch (error) { if (error?.code !== 'ENOENT') return runtimeStatus({ state: 'error', lastError: 'Saved llama.cpp runtime status is invalid' }); return runtimeStatus(); }
+};
+
+const signalError = reason => reason instanceof Error ? reason : Object.assign(new Error(String(reason || 'Operation cancelled')), { name: 'AbortError' });
+const abortableDelay = (milliseconds, signal) => new Promise((resolve, reject) => {
+  if (signal?.aborted) { reject(signalError(signal.reason)); return; }
+  const timer = setTimeout(done, milliseconds);
+  const onAbort = () => { clearTimeout(timer); signal?.removeEventListener('abort', onAbort); reject(signalError(signal.reason)); };
+  function done() { signal?.removeEventListener('abort', onAbort); resolve(); }
+  signal?.addEventListener('abort', onAbort, { once: true });
+});
+
+export const createLlamaCppRuntime = ({
+  appDataDirectory,
+  statusPath = `${appDataDirectory}/llama-cpp-runtime.json`,
+  loadSettings,
+  saveSettings,
+  patchSettings,
+  detectHardware = () => ({ cpuCores: 4, memoryGB: 8 }),
+  spawn = nodeSpawn,
+  platform = globalThis.process.platform,
+  processTreeKiller,
+  healthCheck = ({ endpoint }, signal) => getLlamaCppStatus({ endpoint }, globalThis.fetch, signal),
+  now = () => Date.now(),
+} = {}) => {
+  if (typeof loadSettings !== 'function' || (typeof saveSettings !== 'function' && typeof patchSettings !== 'function')) throw new Error('llama.cpp runtime requires settings storage');
+  let status = runtimeStatus();
+  let child;
+  let initialized = false;
+  let persistenceQueue = Promise.resolve();
+  let outputTimer;
+  let outputSnapshot;
+  let stopTimeoutMs = LLAMA_CPP_RUNTIME_DEFAULTS.stopTimeoutMs;
+  const treeKiller = processTreeKiller || (({ pid }) => spawn('taskkill', ['/pid', String(pid), '/t', '/f'], { shell: false, stdio: 'ignore', windowsHide: true }));
+
+  const persist = snapshot => {
+    const operation = persistenceQueue.catch(() => {}).then(() => persistStatus(statusPath, snapshot));
+    persistenceQueue = operation;
+    operation.catch(() => {});
+    return operation;
+  };
+  const flushOutput = async () => {
+    if (outputTimer) { clearTimeout(outputTimer); outputTimer = undefined; }
+    if (outputSnapshot) { const snapshot = outputSnapshot; outputSnapshot = undefined; await persist(snapshot); }
+    await persistenceQueue.catch(() => {});
+  };
+  const save = async next => { status = runtimeStatus(next); await flushOutput(); await persist(status); return status; };
+  const scheduleOutputSave = () => {
+    outputSnapshot = status;
+    if (outputTimer) return;
+    outputTimer = setTimeout(() => {
+      outputTimer = undefined;
+      const snapshot = outputSnapshot;
+      outputSnapshot = undefined;
+      void persist(snapshot).catch(error => { status = runtimeStatus({ ...status, lastError: `Could not persist llama.cpp runtime status: ${safeMessage(error)}` }); });
+    }, 100);
+    outputTimer.unref?.();
+  };
+  const updateSettings = async patch => typeof patchSettings === 'function' ? patchSettings(patch) : saveSettings(patch);
+  const initialize = async () => {
+    if (!initialized) { status = await readStatus(statusPath); if (status.state === 'starting' || status.state === 'stopping' || status.state === 'running') status = await save({ ...status, state: 'idle', serverReady: false, pid: undefined, lastError: status.state === 'running' ? 'Managed process was not running after service restart' : undefined }); initialized = true; }
+    return status;
+  };
+  const currentSettings = async () => {
+    const settings = await loadSettings();
+    return settings.values ?? settings;
+  };
+  const settingsForStart = async () => {
+    const values = await currentSettings();
+    const executablePath = values['providers.llama-cpp.executablePath'];
+    const modelPath = values['providers.llama-cpp.modelPath'];
+    if (!executablePath || !modelPath) throw new Error('Select an installed llama.cpp executable and model file before starting the managed runtime');
+    const hardware = detectHardware() || {};
+    const options = validateRuntimeOptions({
+      port: values['providers.llama-cpp.managedPort'],
+      contextSize: values['providers.llama-cpp.contextSize'],
+      batchSize: values['providers.llama-cpp.batchSize'],
+      threads: Math.min(values['providers.llama-cpp.threads'] ?? LLAMA_CPP_RUNTIME_DEFAULTS.threads, Math.max(1, Number(hardware.cpuCores) || 1)),
+    });
+    return { values, executablePath: await validateRuntimePath(executablePath, 'llama.cpp executable', { executable: true }), modelPath: await validateRuntimePath(modelPath, 'llama.cpp model'), options };
+  };
+  const endpointFor = options => `http://${options.host}:${options.port}/v1`;
+  const waitForHealth = async (endpoint, signal, timeoutMs) => {
+    const controller = new AbortController();
+    const abort = () => controller.abort(signal?.reason ?? signalError());
+    signal?.addEventListener('abort', abort, { once: true });
+    const timer = setTimeout(() => controller.abort(Object.assign(new Error('llama.cpp startup health check timed out'), { name: 'TimeoutError' })), timeoutMs);
+    timer.unref?.();
+    try {
+      while (true) {
+        if (controller.signal.aborted) throw signalError(controller.signal.reason);
+        const result = await healthCheck({ endpoint }, controller.signal);
+        if (result?.serverReady) return result;
+        await abortableDelay(250, controller.signal);
+      }
+    } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
+  };
+  const terminateChild = async (handle, timeout, { force = false } = {}) => {
+    if (!handle) return;
+    await new Promise(resolve => {
+      let exited = false;
+      let timer;
+      let fallbackTimer;
+      let treeKillRequested = false;
+      const finish = () => {
+        if (exited) return;
+        exited = true;
+        clearTimeout(timer);
+        clearTimeout(fallbackTimer);
+        handle.removeListener?.('close', finish);
+        handle.removeListener?.('exit', finish);
+        handle.removeListener?.('error', onHandleError);
+        resolve();
+      };
+      const forceFallback = () => {
+        if (exited) return;
+        clearTimeout(fallbackTimer);
+        try { handle.kill('SIGKILL'); } catch { /* Process may have exited. */ }
+        // Some child-process implementations do not emit close after a failed
+        // kill. Keep shutdown bounded while still giving close/exit a chance.
+        fallbackTimer = setTimeout(finish, 500);
+        fallbackTimer.unref?.();
+      };
+      const requestTreeKill = () => {
+        if (platform !== 'win32' || !Number.isSafeInteger(handle.pid)) return false;
+        if (treeKillRequested) return true;
+        let killer;
+        try { killer = treeKiller({ pid: handle.pid }); }
+        catch { return false; }
+        if (!killer) return false;
+        treeKillRequested = true;
+        // taskkill itself can fail asynchronously (for example when the
+        // process has already exited). Always consume that error and fall back
+        // to the direct child handle without treating taskkill spawn as exit.
+        killer.once?.('error', forceFallback);
+        fallbackTimer = setTimeout(forceFallback, Math.max(250, Math.min(2_000, timeout)));
+        fallbackTimer.unref?.();
+        return true;
+      };
+      const onHandleError = () => forceFallback();
+      handle.once?.('close', finish);
+      handle.once?.('exit', finish);
+      handle.once?.('error', onHandleError);
+      timer = setTimeout(() => {
+        if (!requestTreeKill()) forceFallback();
+      }, timeout);
+      timer.unref?.();
+      try {
+        if (force) {
+          if (!requestTreeKill()) forceFallback();
+        } else handle.kill(platform === 'win32' ? undefined : 'SIGTERM');
+      } catch { forceFallback(); }
+    });
+  };
+  const stop = async ({ force = false } = {}) => {
+    await initialize();
+    if (!child) return status;
+    const process = child;
+    await save({ ...status, state: 'stopping', serverReady: false });
+    await terminateChild(process, stopTimeoutMs, { force });
+    child = undefined;
+    return await save({ ...status, state: 'idle', serverReady: false, pid: undefined, stoppedAt: now() });
+  };
+  const start = async ({ confirmed = false, signal } = {}) => {
+    await initialize();
+    if (confirmed !== true) throw new Error('Explicit confirmation is required before starting llama.cpp');
+    if (child || status.state === 'starting' || status.state === 'running') return status;
+    const { values, executablePath, modelPath, options } = await settingsForStart();
+    const endpoint = endpointFor(options);
+    stopTimeoutMs = options.stopTimeoutMs;
+    await save({ ...status, mode: 'managed', configured: true, state: 'starting', serverReady: false, port: options.port, executableName: executablePath, modelName: modelPath, output: undefined, lastError: undefined, stopTimeoutMs: options.stopTimeoutMs });
+    const args = ['-m', modelPath, '--host', options.host, '--port', String(options.port), '--ctx-size', String(options.contextSize), '--batch-size', String(options.batchSize), '--threads', String(options.threads)];
+    let handle;
+    let detachLifecycle = () => {};
+    let handleEnded = false;
+    try {
+      if (signal?.aborted) throw signalError(signal.reason);
+      handle = spawn(executablePath, args, {
+        shell: false,
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { PATH: process.env.PATH || '' },
+      });
+      child = handle;
+      let output = '';
+      const append = chunk => {
+        output = redactRuntimeOutput(`${output}${chunk?.toString?.() || ''}`, [executablePath, modelPath]).slice(-MAX_OUTPUT_LENGTH);
+        status = runtimeStatus({ ...status, output });
+        scheduleOutputSave();
+      };
+      handle.stdout?.on?.('data', append); handle.stderr?.on?.('data', append);
+      let startupPending = true;
+      let lifecycleActive = true;
+      let rejectStartup;
+      const exitPromise = new Promise((_, reject) => { rejectStartup = reject; });
+      const processEnded = (error, code) => {
+        if (!lifecycleActive) return;
+        lifecycleActive = false;
+        handleEnded = true;
+        if (child === handle) child = undefined;
+        if (startupPending) {
+          rejectStartup(error || new Error(`llama.cpp exited before health check (code ${code ?? 'unknown'})`));
+          return;
+        }
+        if (status.state === 'stopping' || status.state === 'idle') return;
+        void save({ ...status, state: 'error', serverReady: false, pid: undefined, stoppedAt: now(), lastError: redactRuntimeOutput(safeMessage(error || `llama.cpp exited (code ${code ?? 'unknown'})`), [executablePath, modelPath]) }).catch(() => {});
+      };
+      const onError = error => processEnded(error);
+      const onClose = code => processEnded(undefined, code);
+      handle.once?.('error', onError); handle.once?.('close', onClose);
+      detachLifecycle = () => {
+        lifecycleActive = false;
+        handle.removeListener?.('error', onError);
+        handle.removeListener?.('close', onClose);
+      };
+      await Promise.race([waitForHealth(endpoint, signal, options.startupTimeoutMs), exitPromise]);
+      startupPending = false;
+      const next = await save({ ...status, state: 'running', serverReady: true, pid: Number.isSafeInteger(handle.pid) ? handle.pid : undefined, startedAt: now(), output });
+      if (child !== handle || !lifecycleActive) throw new Error('llama.cpp exited during startup');
+      // Persisting the managed endpoint lets generation use the exact endpoint that was started.
+      await updateSettings({ 'providers.llama-cpp.endpoint': endpoint });
+      return next;
+    } catch (error) {
+      detachLifecycle();
+      if (handle && !handleEnded) await terminateChild(handle, stopTimeoutMs).catch(() => {});
+      child = undefined;
+      await save({ ...status, state: 'error', serverReady: false, pid: undefined, lastError: redactRuntimeOutput(safeMessage(error, 'llama.cpp failed to start'), [executablePath, modelPath]) });
+      throw error;
+    }
+  };
+  const configure = async ({ executablePath, modelPath, confirmed = false } = {}) => {
+    if (confirmed !== true) throw new Error('Explicit confirmation is required before saving llama.cpp paths');
+    if (child || status.state === 'starting' || status.state === 'running' || status.state === 'stopping') throw new Error('Stop the managed llama.cpp runtime before changing its paths');
+    const executable = await validateRuntimePath(executablePath, 'llama.cpp executable', { executable: true });
+    const model = await validateRuntimePath(modelPath, 'llama.cpp model');
+    await updateSettings({ 'providers.llama-cpp.executablePath': executable, 'providers.llama-cpp.modelPath': model });
+    return await save({ ...status, mode: 'managed', configured: true, executableName: executable, modelName: model, lastError: undefined });
+  };
+  const getStatus = async () => { await initialize(); return status; };
+  return Object.freeze({ initialize, getStatus, configure, start, stop, endpointFor, validateRuntimePath });
+};

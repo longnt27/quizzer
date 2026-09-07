@@ -34,6 +34,7 @@ import { listOllamaModels, runOllamaGeneration, runOllamaHyde, validateOllamaMod
 import {
   getLlamaCppStatus, runLlamaCppGeneration, validateLlamaCppEndpoint, validateLlamaCppModel,
 } from './server/llama-cpp-generation.mjs';
+import { createLlamaCppRuntime } from './server/llama-cpp-runtime.mjs';
 import { runOpenAICompatibleGeneration } from './server/openai-compatible-generation.mjs';
 import { normalizeProviderUsage } from './server/provider-usage.mjs';
 import {
@@ -304,6 +305,18 @@ const configureLlamaCpp = async body => {
   return { ok: true, settings: await loadResolvedSettings(appDataDirectory) };
 };
 
+const llamaCppRuntime = createLlamaCppRuntime({
+  appDataDirectory,
+  loadSettings: () => loadResolvedSettings(appDataDirectory),
+  saveSettings: values => writeUserSettings(appDataDirectory, values),
+  patchSettings: async values => {
+    const current = await readUserSettings(appDataDirectory);
+    return writeUserSettings(appDataDirectory, { ...current, ...values });
+  },
+  detectHardware: () => detectHardwareCapabilities(appDataDirectory),
+});
+await llamaCppRuntime.initialize();
+
 const getPluginManager = async () => {
   const settings = await loadResolvedSettings(appDataDirectory);
   return new PluginManager({
@@ -449,6 +462,8 @@ const managedOcrWorks = async () => {
 const integrationStatus = async () => {
   const ollamaExecutable = await ollamaCommand();
   const settings = await loadResolvedSettings(appDataDirectory);
+  const runtime = await llamaCppRuntime.getStatus();
+  const llamaEndpoint = runtime.state === 'running' ? llamaCppRuntime.endpointFor({ host: '127.0.0.1', port: runtime.port }) : settings.values['providers.llama-cpp.endpoint'];
   const [codexInstalled, codexConnected, claudeInstalled, claudeConnected, antigravityInstalled, ollamaInstalled, ollama, llamaCpp, managedMarker, systemMarker, managedOcr] = await Promise.all([
     commandWorks('codex', ['--version']),
     commandWorks('codex', ['login', 'status']),
@@ -457,7 +472,7 @@ const integrationStatus = async () => {
     commandWorks('agy', ['--version']),
     commandWorks(ollamaExecutable, ['--version']),
     listOllamaModels(globalThis.fetch, AbortSignal.timeout(3_000)).catch(() => ({ serverReady: false, models: [] })),
-    getLlamaCppStatus({ endpoint: settings.values['providers.llama-cpp.endpoint'] }, globalThis.fetch, AbortSignal.timeout(3_500)),
+    getLlamaCppStatus({ endpoint: llamaEndpoint }, globalThis.fetch, AbortSignal.timeout(3_500)),
     managedMarkerWorks(),
     hasSystemMarker(),
     managedOcrWorks(),
@@ -477,7 +492,7 @@ const integrationStatus = async () => {
     openrouter: { available: true },
     deepseek: { available: true },
     'openai-compatible': { available: true },
-    'llama-cpp': llamaCpp,
+    'llama-cpp': { ...llamaCpp, runtime },
     ollama: {
       installed: ollamaInstalled || ollama.serverReady,
       serverReady: ollama.serverReady,
@@ -1069,6 +1084,24 @@ const handleVersionedApi = async (request, response, url) => {
     }
     if (request.method === 'POST' && url.pathname === '/api/v1/integrations/llama-cpp/configure') {
       send(response, 200, await configureLlamaCpp(await readJson(request)));
+      return true;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/v1/integrations/llama-cpp/runtime') {
+      send(response, 200, { runtime: await llamaCppRuntime.getStatus() });
+      return true;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/v1/integrations/llama-cpp/runtime/configure') {
+      send(response, 200, { runtime: await llamaCppRuntime.configure(await readJson(request)) });
+      return true;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/v1/integrations/llama-cpp/runtime/start') {
+      const lifetime = bindRequestCancellation(request, response, 'llama.cpp start request disconnected');
+      try { send(response, 200, { runtime: await llamaCppRuntime.start({ ...(await readJson(request)), signal: lifetime.signal }) }); }
+      finally { lifetime.dispose(); }
+      return true;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/v1/integrations/llama-cpp/runtime/stop') {
+      send(response, 200, { runtime: await llamaCppRuntime.stop(await readJson(request)) });
       return true;
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/capabilities') {
@@ -1722,6 +1755,21 @@ const serviceServer = createServer(async (request, response) => {
 serviceServer.once('error', error => {
   process.parentPort?.postMessage?.({ type: 'quizzer-service-error', message: error instanceof Error ? error.message : String(error) });
   throw error;
+});
+let serviceClosing = false;
+const closeService = async () => {
+  if (serviceClosing) return;
+  serviceClosing = true;
+  await llamaCppRuntime.stop().catch(error => {
+    process.stderr.write(`Could not stop managed llama.cpp during service shutdown: ${error instanceof Error ? error.message : String(error)}\n`);
+  });
+  await new Promise(resolve => {
+    try { serviceServer.close(() => resolve()); }
+    catch { resolve(); }
+  });
+};
+for (const signal of ['SIGTERM', 'SIGINT']) process.once(signal, () => {
+  void closeService().finally(() => process.exit(0));
 });
 serviceServer.listen(configuredPort, '127.0.0.1', () => {
   const address = serviceServer.address();
