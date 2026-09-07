@@ -7,7 +7,6 @@ const MAX_ROUNDS = 5;
 const MAX_SOURCE_IMAGES = 6;
 const DEFAULT_TEMPLATE = `Create exactly {{count}} new, challenging {{questionType}} quiz-question candidates.
 Use the language of the source.
-Target difficulty: {{difficulty}}. Match the cognitive demand to this level while staying grounded in the source.
 {{typeInstructions}}
 {{multipleChoiceRule}}
 Questions must be self-contained and must not mention pages, slides, sections, or the source document.
