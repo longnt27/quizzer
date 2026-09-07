@@ -3,6 +3,7 @@ const MAX_SAFE = Number.MAX_SAFE_INTEGER;
 const MAX_SAFE_BIGINT = BigInt(MAX_SAFE);
 export const MICRO_USD_PER_USD = 1_000_000;
 export const TOKENS_PER_MILLION = 1_000_000;
+export const MAX_RESERVATION_TOKENS = 10_000_000_000;
 
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
@@ -63,6 +64,20 @@ export const normalizeProviderUsage = usage => {
   const reportedCost = aliasedValue(usage, ['costMicroUsd', 'cost_micro_usd'], 'Provider reported cost');
   if (reportedCost !== undefined) validateMicroUsd(reportedCost, 'Provider reported cost');
   return { inputTokens, outputTokens, totalTokens, ...(reportedCost === undefined ? {} : { costMicroUsd: reportedCost }) };
+};
+
+/* A reservation is an upper bound supplied as token counts, never as money. */
+export const normalizeReservationUsage = input => {
+  if (!isObject(input)) throw new Error('Generation reservation usage must be an object');
+  const allowed = new Set(['inputTokens', 'outputTokens']);
+  const unknown = Object.keys(input).filter(key => !allowed.has(key));
+  if (unknown.length) throw new Error(`Generation reservation usage contains unsupported fields: ${unknown.join(', ')}`);
+  validateUsageInteger(input.inputTokens, 'Reservation input token bound');
+  validateUsageInteger(input.outputTokens, 'Reservation output token bound');
+  if (input.inputTokens > MAX_RESERVATION_TOKENS || input.outputTokens > MAX_RESERVATION_TOKENS) throw new Error('Generation reservation token bound is too large');
+  const totalTokens = safeAdd(input.inputTokens, input.outputTokens, 'Reservation token bound');
+  if (totalTokens > MAX_RESERVATION_TOKENS) throw new Error('Generation reservation token bound is too large');
+  return { inputTokens: input.inputTokens, outputTokens: input.outputTokens, totalTokens };
 };
 
 /* Route snapshots use integer micro-USD per million input/output tokens. */

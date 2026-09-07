@@ -3,8 +3,9 @@ import { validateOllamaModelName } from './ollama-generation.mjs';
 import { validateOpenAICompatibleModel, validateOpenAICompatibleEndpoint } from './openai-compatible-generation.mjs';
 import { validateSettings } from './settings.mjs';
 import { isDeepStrictEqual } from 'node:util';
+import { createHash } from 'node:crypto';
 import {
-  addUsageSummary, assertCostWithinCeiling, emptyUsageSummary, estimateRouteCost, normalizeProviderUsage, normalizeUsageSummary,
+  addUsageSummary, emptyUsageSummary, estimateRouteCost, normalizeProviderUsage, normalizeReservationUsage, normalizeUsageSummary,
   validateCostCeiling, validateMicroUsd, validateUsageInteger, routePricing,
 } from './generation-cost.mjs';
 
@@ -259,7 +260,9 @@ export const validateProviderAttempts = (input, options) => {
 const accountingEventKeys = new Set([
   'event', 'attemptId', 'at', 'routeIndex', 'provider', 'model', 'reservedCostMicroUsd',
   'finalizedCostMicroUsd', 'reservationReleasedMicroUsd', 'reservationRetained', 'usage',
-  'previousCeilingMicroUsd', 'newCeilingMicroUsd', 'reason',
+  'previousCeilingMicroUsd', 'newCeilingMicroUsd', 'reason', 'overCeiling', 'ceilingAtFinalizationMicroUsd',
+  'reservationInputTokens', 'reservationOutputTokens', 'reservationCostKnown', 'reservationFingerprint',
+  'finalizationFingerprint',
 ]);
 const accountingAttemptId = value => {
   if (!boundedText(value, 1, 100) || !/^[A-Za-z0-9-]+$/.test(value)) throw new Error('Generation accounting attempt id is invalid');
@@ -298,6 +301,14 @@ export const validateGenerationUsageAudit = (input, { options, summary } = {}) =
     if (item.event === 'reserved') {
       if (reservations.has(item.attemptId) || finalized.has(item.attemptId)) throw new Error('Generation accounting attempt was reserved more than once');
       validateMicroUsd(item.reservedCostMicroUsd, 'Reserved cost');
+      validateUsageInteger(item.reservationInputTokens, 'Reservation input token bound');
+      validateUsageInteger(item.reservationOutputTokens, 'Reservation output token bound');
+      if (typeof item.reservationCostKnown !== 'boolean' || !boundedText(item.reservationFingerprint, 64, 64)) throw new Error('Reservation fingerprint is invalid');
+      const bounds = normalizeReservationUsage({ inputTokens: item.reservationInputTokens, outputTokens: item.reservationOutputTokens });
+      const expectedCost = eventRoute ? estimateRouteCost(eventRoute, bounds) : undefined;
+      if (item.reservationCostKnown !== (expectedCost !== undefined) || item.reservedCostMicroUsd !== (expectedCost ?? 0)) throw new Error('Reservation does not match route pricing');
+      const expectedFingerprint = createHash('sha256').update(JSON.stringify({ routeIndex: item.routeIndex, bounds, reservationCostMicroUsd: expectedCost ?? 0, reservationCostKnown: expectedCost !== undefined })).digest('hex');
+      if (item.reservationFingerprint !== expectedFingerprint) throw new Error('Reservation fingerprint is invalid');
       if (item.reservationRetained !== undefined || item.finalizedCostMicroUsd !== undefined || item.usage !== undefined) throw new Error('Reservation event contains finalization fields');
       reservations.set(item.attemptId, item.reservedCostMicroUsd);
       derived = addUsageSummary(derived, undefined, 0, item.reservedCostMicroUsd);
@@ -307,6 +318,7 @@ export const validateGenerationUsageAudit = (input, { options, summary } = {}) =
       validateMicroUsd(item.finalizedCostMicroUsd, 'Finalized cost');
       validateMicroUsd(item.reservationReleasedMicroUsd, 'Released reservation');
       if (typeof item.reservationRetained !== 'boolean') throw new Error('Generation accounting reservation state is invalid');
+      if (typeof item.overCeiling !== 'boolean' || !boundedText(item.finalizationFingerprint, 64, 64)) throw new Error('Generation finalization fingerprint is invalid');
       let usage;
       if (item.usage !== undefined) usage = normalizeProviderUsage(item.usage);
       if (item.reservationReleasedMicroUsd > reservation) throw new Error('Generation accounting released reservation exceeds its reservation');
@@ -315,6 +327,20 @@ export const validateGenerationUsageAudit = (input, { options, summary } = {}) =
         if (item.reservationReleasedMicroUsd !== 0 || !item.reservationRetained || item.finalizedCostMicroUsd !== 0) throw new Error('Unknown usage must retain its full reservation');
       } else if (item.reservationReleasedMicroUsd !== reservation || item.reservationRetained || item.finalizedCostMicroUsd !== estimatedCost) {
         throw new Error('Finalized accounting does not match the route pricing');
+      }
+      if (item.ceilingAtFinalizationMicroUsd !== undefined) validateMicroUsd(item.ceilingAtFinalizationMicroUsd, 'Finalization cost ceiling');
+      const fingerprintUsage = usage ? { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, totalTokens: usage.totalTokens } : item.usage;
+      const finalFingerprint = createHash('sha256').update(JSON.stringify({ usage: fingerprintUsage })).digest('hex');
+      if (item.finalizationFingerprint !== finalFingerprint) throw new Error('Generation finalization fingerprint is invalid');
+      if (item.overCeiling && (item.ceilingAtFinalizationMicroUsd === undefined
+        || BigInt(item.finalizedCostMicroUsd) + BigInt(derived.finalizedCostMicroUsd)
+          + BigInt(derived.reservedCostMicroUsd - reservation) <= BigInt(item.ceilingAtFinalizationMicroUsd))) {
+        throw new Error('Over-ceiling finalization is not justified');
+      }
+      if (!item.overCeiling && item.ceilingAtFinalizationMicroUsd !== undefined
+        && BigInt(item.finalizedCostMicroUsd) + BigInt(derived.finalizedCostMicroUsd)
+          + BigInt(derived.reservedCostMicroUsd - reservation) > BigInt(item.ceilingAtFinalizationMicroUsd)) {
+        throw new Error('Finalization above ceiling must be marked overCeiling');
       }
       if (item.reservationReleasedMicroUsd > derived.reservedCostMicroUsd) throw new Error('Generation accounting reservation balance is invalid');
       derived = addUsageSummary(derived, usage, item.finalizedCostMicroUsd, 0);
@@ -337,7 +363,8 @@ export const validateGenerationUsageAudit = (input, { options, summary } = {}) =
 
 export const validateGenerationAccounting = (summary, audit, options) => {
   const derived = validateGenerationUsageAudit(audit ?? [], { options, summary });
-  assertCostWithinCeiling(options?.costCeilingMicroUsd, derived.finalizedCostMicroUsd, derived.reservedCostMicroUsd);
+  // Historical finalized charges may legitimately be above a later/current
+  // ceiling; reserve operations enforce the ceiling for all new spend.
   return derived;
 };
 
