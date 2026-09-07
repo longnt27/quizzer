@@ -7,6 +7,14 @@ export const spawnOptionsForPlatform = platform => ({
   windowsHide: isWindowsPlatform(platform),
 });
 
+export const electronExecutableFromPackage = requireElectron => {
+  const executable = requireElectron();
+  if (typeof executable !== 'string' || !executable || executable.toLowerCase().endsWith('.cmd')) {
+    throw new Error('The electron package must resolve to a native Electron executable, not a command shim');
+  }
+  return executable;
+};
+
 export const playwrightCommandForPlatform = ({
   platform,
   nodeExecutable,
@@ -31,7 +39,10 @@ export const playwrightCommandForPlatform = ({
 export const terminationPlanForPlatform = ({ platform, pid, force = false, systemRoot }) => {
   if (isWindowsPlatform(platform)) {
     const taskkill = systemRoot ? windowsPath.join(systemRoot, 'System32', 'taskkill.exe') : 'taskkill.exe';
-    return { command: taskkill, args: ['/PID', String(pid), '/T', '/F'] };
+    return {
+      command: taskkill,
+      args: ['/PID', String(pid), '/T', ...(force ? ['/F'] : [])],
+    };
   }
   return { signal: force ? 'SIGKILL' : 'SIGTERM', processGroup: -pid };
 };

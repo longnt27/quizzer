@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  electronExecutableFromPackage,
   playwrightCommandForPlatform,
   spawnOptionsForPlatform,
   terminationPlanForPlatform,
@@ -24,8 +25,17 @@ test('terminates POSIX process groups with portable signals', () => {
 test('uses Windows taskkill tree termination instead of POSIX signals', () => {
   assert.deepEqual(terminationPlanForPlatform({ platform: 'win32', pid: 1234, systemRoot: 'C:\\Windows' }), {
     command: 'C:\\Windows\\System32\\taskkill.exe',
+    args: ['/PID', '1234', '/T'],
+  });
+  assert.deepEqual(terminationPlanForPlatform({ platform: 'win32', pid: 1234, force: true }), {
+    command: 'taskkill.exe',
     args: ['/PID', '1234', '/T', '/F'],
   });
+});
+
+test('resolves a native Electron executable from the package instead of a command shim', () => {
+  assert.equal(electronExecutableFromPackage(() => '/opt/quizzer/node_modules/electron/dist/electron'), '/opt/quizzer/node_modules/electron/dist/electron');
+  assert.throws(() => electronExecutableFromPackage(() => 'C:\\quizzer\\node_modules\\.bin\\electron.cmd'), /native Electron executable/);
 });
 
 test('wraps only Linux Playwright smoke in xvfb when requested', () => {

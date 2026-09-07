@@ -4,10 +4,13 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { _electron as electron, expect, test } from '@playwright/test';
+import { electronExecutableFromPackage } from '../scripts/electron-shell-platform.mjs';
 
 const projectDirectory = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const electronExecutable = join(projectDirectory, 'node_modules', '.bin', process.platform === 'win32' ? 'electron.cmd' : 'electron');
+const require = createRequire(import.meta.url);
+const electronExecutable = electronExecutableFromPackage(() => require('electron'));
 
 test.describe('Quizzer desktop shell', () => {
   let app;
