@@ -3,6 +3,12 @@ import { chmod, copyFile, cp, mkdir, mkdtemp, readdir, readFile, rename, rm, sta
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { rebuild } from '@electron/rebuild';
+import {
+  isWindowsPlatform,
+  playwrightCommandForPlatform,
+  spawnOptionsForPlatform,
+  terminationPlanForPlatform,
+} from './electron-shell-platform.mjs';
 
 const projectDirectory = process.cwd();
 const sqliteDirectory = join(projectDirectory, 'node_modules', 'better-sqlite3');
@@ -54,7 +60,12 @@ const restoreNativeArtifacts = async snapshot => {
 
 const activeChildren = new Set();
 const run = (command, args) => new Promise((resolve, reject) => {
-  const child = spawn(command, args, { cwd: projectDirectory, stdio: 'inherit', env: process.env });
+  const child = spawn(command, args, {
+    cwd: projectDirectory,
+    stdio: 'inherit',
+    env: process.env,
+    ...spawnOptionsForPlatform(process.platform),
+  });
   activeChildren.add(child);
   const finish = (callback, value) => {
     activeChildren.delete(child);
@@ -64,6 +75,29 @@ const run = (command, args) => new Promise((resolve, reject) => {
   child.once('exit', code => finish(code === 0 ? resolve : reject,
     code === 0 ? undefined : new Error(`${command} ${args.join(' ')} exited with ${code ?? 'a signal'}`)));
 });
+
+const terminateChild = async (child, force) => {
+  if (child.exitCode !== null || !child.pid) return;
+  const plan = terminationPlanForPlatform({
+    platform: process.platform,
+    pid: child.pid,
+    force,
+    systemRoot: process.env.SystemRoot,
+  });
+  if (isWindowsPlatform(process.platform)) {
+    await new Promise((resolve, reject) => {
+      const killer = spawn(plan.command, plan.args, { stdio: 'ignore', windowsHide: true });
+      killer.once('error', reject);
+      killer.once('exit', () => resolve());
+    });
+    return;
+  }
+  try {
+    process.kill(plan.processGroup, plan.signal);
+  } catch (error) {
+    if (error?.code !== 'ESRCH') throw error;
+  }
+};
 
 const waitForExit = (child, timeoutMs) => new Promise(resolve => {
   if (child.exitCode !== null) {
@@ -84,12 +118,12 @@ const waitForExit = (child, timeoutMs) => new Promise(resolve => {
 
 const stopChildren = async () => {
   const children = [...activeChildren];
-  for (const child of children) if (!child.killed) child.kill('SIGTERM');
+  await Promise.all(children.map(child => terminateChild(child, false)));
   await Promise.all(children.map(async child => {
     if (child.exitCode !== null) return;
     if (await waitForExit(child, 5_000)) return;
-    if (child.exitCode === null) child.kill('SIGKILL');
-    if (!await waitForExit(child, 5_000)) throw new Error('A test subprocess did not exit after SIGKILL');
+    await terminateChild(child, true);
+    if (!await waitForExit(child, 5_000)) throw new Error('A test subprocess did not exit after forceful termination');
   }));
 };
 
@@ -119,7 +153,13 @@ try {
   });
   await run(process.execPath, ['node_modules/typescript/bin/tsc', '-b']);
   await run(process.execPath, ['node_modules/vite/bin/vite.js', 'build']);
-  await run(process.execPath, ['node_modules/@playwright/test/cli.js', 'test', '--config=playwright.electron.config.ts']);
+  const playwrightCommand = playwrightCommandForPlatform({
+    platform: process.platform,
+    nodeExecutable: process.execPath,
+    projectDirectory,
+    useXvfb: process.env.ELECTRON_SHELL_USE_XVFB === '1',
+  });
+  await run(playwrightCommand.command, playwrightCommand.args);
 } finally {
   try {
     await stopChildren();

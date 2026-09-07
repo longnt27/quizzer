@@ -48,7 +48,20 @@ jobs:
       - run: npm run test:e2e
 
   electron-shell:
-    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            platform: linux
+            xvfb: '1'
+          - runner: windows-2025
+            platform: windows
+            xvfb: '0'
+          - runner: macos-15
+            platform: macos
+            xvfb: '0'
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -56,4 +69,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Install Linux headless display
+        if: matrix.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install --yes xvfb
+      - name: Install Playwright browser (Linux)
+        if: matrix.platform == 'linux'
+        run: npx playwright install --with-deps chromium
+      - name: Install Playwright browser (macOS and Windows)
+        if: matrix.platform != 'linux'
+        run: npx playwright install chromium
       - run: npm run test:e2e:electron
+        env:
+          ELECTRON_SHELL_USE_XVFB: ${{ matrix.xvfb }}
