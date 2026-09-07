@@ -1,3 +1,5 @@
+import { normalizeProviderUsage } from './provider-usage.mjs';
+
 const DEFAULT_OLLAMA_ORIGIN = 'http://127.0.0.1:11434';
 const MAX_PROMPT_CHARACTERS = 2_000_000;
 const MAX_SCHEMA_BYTES = 100_000;
@@ -7,6 +9,7 @@ const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
 const MAX_HYDE_QUERY_CHARACTERS = 1_024;
 const MAX_HYDE_PASSAGE_CHARACTERS = 2_048;
 const HYDE_TIMEOUT_MS = 30_000;
+const MAX_OUTPUT_TOKENS = 10_000_000;
 
 const modelNamePattern = /^(?:[A-Za-z0-9][A-Za-z0-9._-]{0,63}\/){0,4}[A-Za-z0-9][A-Za-z0-9._-]{0,127}(?::[A-Za-z0-9][A-Za-z0-9._-]{0,99})?$/;
 const imagePattern = /^data:image\/(?:png|jpeg|webp|gif);base64,([A-Za-z0-9+/]+={0,2})$/;
@@ -29,6 +32,14 @@ export const validateOllamaModelName = value => {
     throw new Error('Ollama model must be an installed model name such as qwen3:4b');
   }
   return value.trim();
+};
+
+export const validateMaxOutputTokens = value => {
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || value < 1 || value > MAX_OUTPUT_TOKENS) {
+    throw new Error(`maxOutputTokens must be an integer between 1 and ${MAX_OUTPUT_TOKENS}`);
+  }
+  return value;
 };
 
 const validateSchema = schema => {
@@ -73,13 +84,14 @@ const responseError = (payload, status) => {
   return providerError(message, status, code);
 };
 
-export const runOllamaGeneration = async ({ prompt, schema, model, images = [] }, signal, fetchImpl = globalThis.fetch) => {
+export const runOllamaGeneration = async ({ prompt, schema, model, images = [], includeUsage = false, maxOutputTokens }, signal, fetchImpl = globalThis.fetch) => {
   if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > MAX_PROMPT_CHARACTERS) {
     throw new Error('Ollama generation prompt is invalid or too large');
   }
   const modelName = validateOllamaModelName(model);
   const serializedSchema = validateSchema(schema);
   const decodedImages = decodeImages(images);
+  const validatedMaxOutputTokens = validateMaxOutputTokens(maxOutputTokens);
   let response;
   try {
     response = await fetchImpl(ollamaEndpoint('/api/generate').href, {
@@ -90,7 +102,10 @@ export const runOllamaGeneration = async ({ prompt, schema, model, images = [] }
         prompt: `${prompt}\n\nReturn only JSON matching this schema exactly:\n${serializedSchema}`,
         stream: false,
         format: schema,
-        options: { temperature: 0 },
+        options: {
+          temperature: 0,
+          ...(validatedMaxOutputTokens === undefined ? {} : { num_predict: validatedMaxOutputTokens }),
+        },
         ...(decodedImages.length ? { images: decodedImages } : {}),
       }),
     });
@@ -103,7 +118,9 @@ export const runOllamaGeneration = async ({ prompt, schema, model, images = [] }
   if (payload?.done !== true || typeof payload.response !== 'string' || !payload.response.trim()) {
     throw providerError('Ollama returned no completed generation output');
   }
-  return payload.response;
+  return includeUsage
+    ? { output: payload.response, usage: normalizeProviderUsage('ollama', payload) }
+    : payload.response;
 };
 
 const hydeSchema = Object.freeze({
