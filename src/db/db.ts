@@ -32,6 +32,7 @@ export interface StoredGenerationJob {
   providerAttempts?: ProviderAttempt[];
   usageSummary?: GenerationUsageSummary;
   usageAudit?: GenerationUsageAuditEntry[];
+  recoveryAttemptId?: string;
   progress?: {
     accepted: number;
     target: number;

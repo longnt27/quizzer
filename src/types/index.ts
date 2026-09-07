@@ -130,7 +130,7 @@ export interface GenerationUsageSummary {
 }
 
 export interface GenerationUsageAuditEntry {
-  event: 'reserved' | 'finalized' | 'ceiling-raised';
+  event: 'reserved' | 'finalized' | 'ceiling-raised' | 'recovery-approved';
   attemptId?: string;
   at: number;
   provider?: GenerationProvider;
@@ -140,6 +140,7 @@ export interface GenerationUsageAuditEntry {
   reason?: string;
   previousCeilingMicroUsd?: number;
   newCeilingMicroUsd?: number;
+  recoveryAttemptId?: string;
 }
 
 export interface PromptProfileSnapshot {
