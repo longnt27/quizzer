@@ -24,6 +24,23 @@ irm https://github.com/Somethings1/quizzer/releases/latest/download/install.ps1 
 
 These installers do not require Node.js, Python, or Git. They select the current x64 or arm64 artifacts, verify the canonical Ed25519 release metadata and SHA-256 checksum, require Quizzer's pinned Apple Team ID or Windows signing-certificate SHA-256 before executing a downloaded verifier, install `quizzer` on the user PATH, register the desktop application, and launch onboarding. Existing application directories are retained with a timestamped `.previous-*` name on Unix-like systems for rollback.
 
+### Package manager manifests (Homebrew Cask and WinGet)
+
+Quizzer releases deterministically generate Homebrew Cask and standard multi-file WinGet manifests directly from the cryptographically verified, signed release manifest. The generated manifests use canonical versioned GitHub release URLs and signed SHA-256 checksums from the verified release metadata:
+
+- **Homebrew Cask (`quizzer.rb`):** Targets the signed and notarized macOS DMG artifacts for Apple Silicon (`arm64`) and Intel (`x64`), requiring macOS 13 (Ventura) or newer. Install locally using Homebrew:
+  ```sh
+  brew install --cask ./quizzer.rb
+  # Or directly from the attested release asset:
+  brew install --cask https://github.com/Somethings1/quizzer/releases/download/v<version>/quizzer.rb
+  ```
+- **WinGet multi-file manifests:** Generates standard multi-file manifests (`Quizzer.Quizzer.yaml`, `Quizzer.Quizzer.installer.yaml`, `Quizzer.Quizzer.locale.en-US.yaml`) targeting signed Windows installers across `x64` and `arm64`. Install locally using WinGet:
+  ```powershell
+  winget install --manifest ./Quizzer.Quizzer.yaml
+  ```
+
+Every generated manifest is cryptographically verified with the release key before emission, verified to require exactly one macOS x64 DMG, one macOS arm64 DMG, and one supported Windows installer per architecture, and bundled as an attested GitHub release asset in CI. Note: Automated submission to external repositories (such as `homebrew/cask`, an external tap, or `microsoft/winget-pkgs`) is out of scope and not claimed; publication to external repositories is manual.
+
 ### Signed desktop updates and verified staging
 
 Quizzer includes an in-app signed update workflow designed for safety and defense-in-depth:
@@ -341,6 +358,9 @@ Do not upload confidential material unless the selected provider and your accoun
 | `npm run test:coverage` | Enforce 90% line and 80% branch coverage across core service modules |
 | `npm run eval:rag` | Run the offline English/Vietnamese retrieval quality gate |
 | `npm run license:check` | Verify application and landing dependency licenses against the release policy |
+| `npm run release:manifest` | Sign the canonical Ed25519 release manifest from merged artifacts |
+| `npm run release:installers` | Prepare verified release metadata and pinned installer scripts |
+| `npm run release:package-manifests` | Generate deterministic Homebrew Cask and WinGet manifests from signed release metadata |
 | `npm run preview` | Preview the browser bundle; start the service separately for generation |
 
 The application E2E harness creates and removes a fresh temporary service database for every run; it never opens the development library. Run `cd landing && npm run test:e2e` for the separate Chromium landing-page gate. It verifies platform-specific installers, clipboard actions, signed-manifest trust and fallback, the client-only demo, mobile overflow, keyboard controls, and social metadata. CI installs both isolated browser runtimes automatically.
