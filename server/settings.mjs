@@ -111,7 +111,8 @@ const baseSettings = [
   },
   {
     key: 'embeddings.model', type: 'string', default: 'all-minilm',
-    title: 'Embedding model', description: 'Model name supplied to the selected local embedding component.',
+    pattern: '^(?:[A-Za-z0-9][A-Za-z0-9._-]{0,63}/){0,4}[A-Za-z0-9][A-Za-z0-9._-]{0,127}(?::[A-Za-z0-9][A-Za-z0-9._-]{0,99})?$',
+    title: 'Embedding model', description: 'Model name supplied to the selected local embedding component. Profiles choose a hardware-appropriate baseline.',
     visibility: 'advanced', resourceEffect: 'high', restartRequired: false, reindexRequired: true,
     environment: 'QUIZZER_EMBEDDING_MODEL',
   },
@@ -257,7 +258,7 @@ export const HARDWARE_PROFILE_SETTINGS = Object.freeze({
     'extraction.ocr': true,
     'extraction.ocrPlugin': 'builtin',
     'embeddings.enabled': true,
-    'embeddings.model': 'all-minilm',
+    'embeddings.model': 'bge-m3',
     'embeddings.embedderPlugin': 'builtin',
   }),
 });

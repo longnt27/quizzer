@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { listOllamaModels, runOllamaGeneration, runOllamaHyde, validateOllamaModelName } from '../server/ollama-generation.mjs';
+import { listOllamaModels, ollamaModelMatches, runOllamaGeneration, runOllamaHyde, validateOllamaModelName } from '../server/ollama-generation.mjs';
 
 const schema = { type: 'object', additionalProperties: false, required: ['questions'], properties: { questions: { type: 'array' } } };
 
@@ -59,6 +59,10 @@ test('preserves cancellation through local HyDE generation', async () => {
 
 test('requires a safe explicit Ollama model and bounded inputs', async () => {
   assert.equal(validateOllamaModelName('library/qwen3:4b'), 'library/qwen3:4b');
+  assert.equal(ollamaModelMatches('all-minilm:latest', 'all-minilm'), true);
+  assert.equal(ollamaModelMatches('bge-m3', 'bge-m3:latest'), true);
+  assert.equal(ollamaModelMatches('all-minilm:latest', 'bge-m3'), false);
+  assert.equal(ollamaModelMatches(undefined, 'bge-m3'), false);
   for (const model of ['', '-flag', '../escape', 'library/../../escape', 'name with spaces', 'x'.repeat(400)]) {
     assert.throws(() => validateOllamaModelName(model), /Ollama model/);
   }

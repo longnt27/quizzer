@@ -182,6 +182,8 @@ test('reports and invokes local Ollama only after explicit setup confirmation', 
   assert.equal(integrations.ollama.models[0].name, 'qwen3:4b');
   assert.equal(integrations['openai-compatible'].available, true);
   assert.equal(integrations['llama-cpp'].configured, true);
+  assert.equal(integrations.embeddings.model, 'all-minilm');
+  assert.equal(integrations.embeddings.installed, false);
   const runtime = await (await authorized('/api/v1/integrations/llama-cpp/runtime')).json();
   assert.equal(runtime.runtime.mode, 'manual');
   const unconfirmedRuntime = await authorized('/api/v1/integrations/llama-cpp/runtime/configure', {
@@ -202,6 +204,14 @@ test('reports and invokes local Ollama only after explicit setup confirmation', 
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'qwen3:4b' }),
   });
   assert.equal(unconfirmedPull.status, 400);
+  const unconfirmedEmbedding = await authorized('/api/integrations/embeddings/install', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'all-minilm' }),
+  });
+  assert.equal(unconfirmedEmbedding.status, 400);
+  const staleEmbedding = await authorized('/api/integrations/embeddings/install', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'bge-m3', confirmed: true }),
+  });
+  assert.equal(staleEmbedding.status, 400);
 
   const unconfirmedConfigure = await authorized('/api/integrations/llama-cpp/configure', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -237,6 +247,8 @@ test('exposes settings schema, precedence, and validated updates', async () => {
   assert.ok(schema.registry.some(item => item.key === 'embeddings.embedderPlugin'));
   assert.ok(schema.registry.some(item => item.key === 'retrieval.rerankerPlugin'));
   assert.equal(schema.profiles.balanced['generation.concurrency'], 3);
+  assert.equal(schema.profiles.balanced['embeddings.model'], 'all-minilm');
+  assert.equal(schema.profiles.max['embeddings.model'], 'bge-m3');
 
   const updated = await authorized('/api/v1/settings', {
     method: 'PATCH',
