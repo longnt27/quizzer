@@ -626,7 +626,9 @@ export class DesktopUpdater {
       return validCandidates[0];
     }
     if (lastError) throw lastError;
-    throw new Error(`Rollback candidate is not older than current version ${this.currentVersion}`);
+    const error = new Error(`Rollback candidate is not older than current version ${this.currentVersion}`);
+    error.code = 'ROLLBACK_NOT_OLDER';
+    throw error;
   }
 
   async getRollbackInfo() {
@@ -642,7 +644,9 @@ export class DesktopUpdater {
         artifactName: candidate.artifact.name,
       };
     } catch (error) {
-      if (error?.code === 'ENOENT') return { available: false, status: 'unavailable', message: 'No rollback candidate is available' };
+      if (error?.code === 'ENOENT' || error?.code === 'ROLLBACK_NOT_OLDER') {
+        return { available: false, status: 'unavailable', message: 'No rollback candidate is available' };
+      }
       return {
         available: false,
         status: 'invalid',

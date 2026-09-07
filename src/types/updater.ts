@@ -51,6 +51,7 @@ export interface RollbackInfo {
   timestamp?: string;
   status?: string;
   artifactName?: string;
+  message?: string;
 }
 
 export interface KeyStatus {
@@ -101,8 +102,10 @@ export interface DiscardUpdateResult {
 }
 
 export interface RollbackResult {
-  rolledBack?: boolean;
-  discarded?: boolean;
+  rolledBack: false;
+  handoffPending: boolean;
+  mechanism: 'staged-ready' | 'staged-development' | 'manual-handoff' | 'unavailable';
+  message: string;
   restoredVersion?: string;
   status: UpdaterStatus;
 }
@@ -113,5 +116,5 @@ export interface QuizzerDesktopUpdaterApi {
   downloadUpdate: () => Promise<UpdaterStatus>;
   applyUpdate: (options?: ApplyUpdateOptions) => Promise<ApplyUpdateResult>;
   discardUpdate: () => Promise<DiscardUpdateResult>;
-  rollbackUpdate?: () => Promise<DiscardUpdateResult | RollbackResult>;
+  rollbackUpdate: () => Promise<RollbackResult>;
 }

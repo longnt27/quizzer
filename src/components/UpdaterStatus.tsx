@@ -6,6 +6,7 @@ import {
   ExclamationCircleOutlined,
   LoadingOutlined,
   ReloadOutlined,
+  RollbackOutlined,
   SafetyCertificateOutlined,
   SyncOutlined,
 } from '@ant-design/icons';
@@ -32,6 +33,7 @@ export default function UpdaterStatusView() {
   const [downloading, setDownloading] = useState(false);
   const [applying, setApplying] = useState(false);
   const [discarding, setDiscarding] = useState(false);
+  const [rollingBack, setRollingBack] = useState(false);
   const message = getMessageApi();
 
   const isDesktop = typeof window !== 'undefined' && Boolean(window.quizzerDesktop?.updater);
@@ -131,6 +133,29 @@ export default function UpdaterStatusView() {
     });
   };
 
+  const handleRollback = () => {
+    getModalApi().confirm({
+      title: 'Hand off verified rollback?',
+      icon: <RollbackOutlined />,
+      content: 'Quizzer will open the previously retained signed installer. The running application is not replaced in place.',
+      okText: 'Hand off rollback',
+      onOk: async () => {
+        if (!window.quizzerDesktop?.updater) return;
+        setRollingBack(true);
+        try {
+          const result = await window.quizzerDesktop.updater.rollbackUpdate();
+          setStatus(result.status);
+          message.info(result.message);
+        } catch (err) {
+          message.error(err instanceof Error ? err.message : 'Rollback handoff failed');
+          await refreshStatus();
+        } finally {
+          setRollingBack(false);
+        }
+      },
+    });
+  };
+
   if (!isDesktop) {
     return (
       <Card size="small" style={{ marginBottom: 16 }}>
@@ -170,7 +195,7 @@ export default function UpdaterStatusView() {
               size="small"
               value={status?.channel || 'stable'}
               onChange={e => void handleChannelChange(e.target.value as UpdateChannel)}
-              disabled={loading || downloading || applying || discarding}
+              disabled={loading || downloading || applying || discarding || rollingBack}
             >
               <Radio.Button value="stable">Stable</Radio.Button>
               <Radio.Button value="beta">Beta</Radio.Button>
@@ -181,7 +206,7 @@ export default function UpdaterStatusView() {
               icon={loading ? <LoadingOutlined /> : <SyncOutlined />}
               onClick={() => void handleCheck()}
               loading={loading}
-              disabled={downloading || applying}
+              disabled={downloading || applying || rollingBack}
             >
               Check for updates
             </Button>
@@ -339,6 +364,25 @@ export default function UpdaterStatusView() {
             showIcon
             message="No supported update artifact"
             description={status?.error || `No compatible update is available for ${status?.target.platform}/${status?.target.architecture}.`}
+          />
+        )}
+
+        {status?.rollbackInfo && (
+          <Alert
+            type={status.rollbackInfo.available ? 'warning' : 'info'}
+            showIcon
+            icon={<RollbackOutlined />}
+            message={status.rollbackInfo.available
+              ? `Verified rollback candidate: Quizzer ${status.rollbackInfo.version}`
+              : 'Rollback unavailable'}
+            description={status.rollbackInfo.available
+              ? `Signed ${status.rollbackInfo.artifactName} is retained for this installation target.`
+              : status.rollbackInfo.message || 'No previously verified signed installer is retained for this installation.'}
+            action={status.rollbackInfo.available ? (
+              <Button size="small" onClick={handleRollback} loading={rollingBack} disabled={applying || downloading || discarding}>
+                Hand off rollback
+              </Button>
+            ) : undefined}
           />
         )}
 
