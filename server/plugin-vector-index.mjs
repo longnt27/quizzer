@@ -8,6 +8,7 @@ const MAX_INDEX_PAYLOAD_BYTES = 250 * 1024 * 1024;
 const MAX_DOCUMENT_IDS = 10_000;
 const MAX_TAGS = 100;
 const MAX_DIMENSIONS = 8_192;
+const SECTION_KINDS = new Set(['heading', 'paragraph', 'code', 'table', 'list', 'image']);
 
 const unavailable = message => Object.assign(new Error(message), { code: 'provider_unavailable' });
 const isAbort = (error, signal) => signal?.aborted || error?.name === 'AbortError';
@@ -45,6 +46,9 @@ const indexRows = (sourceRows, vectors) => sourceRows.map((row, index) => {
     || tags.some(tag => typeof tag !== 'string' || !tag.trim() || tag.length > 200)) {
     throw new Error(`Vector-index source row ${index + 1} tags are invalid`);
   }
+  if (!SECTION_KINDS.has(row.section_kind || 'paragraph')) {
+    throw new Error(`Vector-index source row ${index + 1} sectionKind is invalid`);
+  }
   return {
     sourceSpanId: boundedString(row.span_id, `Vector-index source row ${index + 1} sourceSpanId`, 500),
     documentId: boundedString(row.document_id, `Vector-index source row ${index + 1} documentId`, 500),
@@ -52,6 +56,11 @@ const indexRows = (sourceRows, vectors) => sourceRows.map((row, index) => {
     chunkIndex: row.chunk_index,
     parentId: boundedString(row.parent_id, `Vector-index source row ${index + 1} parentId`, 500),
     page: row.page,
+    start: row.source_start,
+    end: row.source_end,
+    sectionKind: boundedString(row.section_kind || 'paragraph', `Vector-index source row ${index + 1} sectionKind`, 40),
+    breadcrumb: String(row.breadcrumb || '').slice(0, 2_000),
+    tokenCount: row.token_count,
     tags,
     contentHash: row.content_hash,
     vector: vectors[index],

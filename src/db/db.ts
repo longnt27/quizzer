@@ -116,6 +116,7 @@ export interface StoredDocument {
   extractionSchemaVersion?: number;
   extractedAt?: number;
   extractionContentHash?: string;
+  chunkingVersion?: number;
   extractionHistory?: StoredExtractionRevision[];
   indexedAt?: number;
   indexVersion?: number;
@@ -164,6 +165,11 @@ export interface StoredDocumentChunk {
   start: number;
   end: number;
   textHash?: string;
+  /** Structural metadata added by the bounded parent/child chunker. */
+  parentId?: string;
+  breadcrumb?: string;
+  sectionKind?: 'heading' | 'paragraph' | 'code' | 'table' | 'list' | 'image';
+  tokenCount?: number;
 }
 
 export interface StoredCoveragePlan {

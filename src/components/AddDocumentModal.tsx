@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db, type StoredDocument } from '../db/db';
 import { extractPdf } from '../utils/pdf';
 import { getMessageApi } from '../utils/messageProvider';
-import { chunkDocumentContent } from '../utils/documentChunks';
+import { chunkDocumentContent, STRUCTURAL_CHUNKER_VERSION } from '../utils/documentChunks';
 import { getProviderSettings } from '../utils/providerSettings';
 import { serviceFetch } from '../utils/serviceApi';
 
@@ -118,6 +118,7 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
           extractionSchemaVersion: item.extracted!.extractionSchemaVersion,
           extractedAt: item.extracted!.extractedAt,
           extractionContentHash: item.extracted!.extractionContentHash,
+          chunkingVersion: STRUCTURAL_CHUNKER_VERSION,
           pageCount: item.extracted!.pageCount,
           originalFile: item.file,
           images: item.extracted!.images,

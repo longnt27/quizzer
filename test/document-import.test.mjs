@@ -3,7 +3,9 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { chunkDocument, importDocumentFile, reextractDocument, UTF8_PARSER_VERSION } from '../server/document-import.mjs';
+import {
+  chunkDocument, estimateChunkTokens, importDocumentFile, reextractDocument, UTF8_PARSER_VERSION,
+} from '../server/document-import.mjs';
 import { ObjectStore } from '../server/object-store.mjs';
 
 const directory = await mkdtemp(join(tmpdir(), 'quizzer-document-test-'));
@@ -31,6 +33,49 @@ test('chunks long content without losing source coverage', () => {
   assert.equal(chunks[0].index, 0);
   assert.equal(chunks.at(-1).end, content.length);
   assert.ok(chunks.every(chunk => chunk.end > chunk.start));
+});
+
+test('structural chunks preserve bounded spans and semantic metadata', () => {
+  const content = '# Hạ tầng\n\nMạng giúp cộng tác an toàn.\n\n## Ví dụ\n\n```ts\nconst answer = 42;\n```\n\n| Tên | Giá trị |\n| --- | --- |\n| mạng | nhanh |\n\n--- Page 3 ---\n\n- Một mục\n- Hai mục\n\n![Sơ đồ](diagram.png)';
+  const chunks = chunkDocument('structured', content);
+  assert.ok(chunks.some(chunk => chunk.sectionKind === 'code'));
+  assert.ok(chunks.some(chunk => chunk.sectionKind === 'table'));
+  assert.ok(chunks.some(chunk => chunk.sectionKind === 'list'));
+  assert.ok(chunks.some(chunk => chunk.sectionKind === 'image'));
+  assert.equal(chunks.find(chunk => chunk.sectionKind === 'list')?.page, 3);
+  assert.equal(chunks.find(chunk => chunk.sectionKind === 'code')?.breadcrumb, 'Hạ tầng › Ví dụ');
+  assert.ok(chunks.every(chunk => chunk.end > chunk.start && content.slice(chunk.start, chunk.end).trim()));
+  assert.ok(chunks.every(chunk => estimateChunkTokens(content.slice(chunk.start, chunk.end)) <= 512));
+  assert.equal(new Set(chunks.map(chunk => chunk.id)).size, chunks.length);
+  assert.deepEqual(chunkDocument('structured', content), chunks);
+});
+
+test('structural chunking honors cancellation before large work', () => {
+  const controller = new AbortController();
+  controller.abort();
+  assert.throws(() => chunkDocument('cancelled', 'content', { signal: controller.signal }), error => error.name === 'AbortError');
+});
+
+test('structural chunking rejects oversized chunk counts incrementally', () => {
+  const tooMany = Array.from({ length: 10_001 }, (_value, index) => `paragraph ${index}`).join('\n\n');
+  assert.throws(() => chunkDocument('too-many', tooMany), /10,?000-chunk limit/);
+});
+
+test('many short paragraphs remain deterministic and bounded', () => {
+  const content = Array.from({ length: 2_000 }, (_value, index) => `Entry ${index}: nội dung kiểm thử.`).join('\n\n');
+  const chunks = chunkDocument('many-paragraphs', content);
+  assert.ok(chunks.length > 1);
+  assert.ok(chunks.length <= 2_000);
+  assert.equal(chunks.at(-1).end, content.length);
+  assert.ok(chunks.every(chunk => chunk.end > chunk.start && chunk.tokenCount && chunk.tokenCount <= 512));
+});
+
+test('small headed sections keep breadcrumb and parent boundaries aligned', () => {
+  const content = '# Alpha\n\nFirst detail.\n\n## Beta\n\nSecond detail.\n\n# Gamma\n\nThird detail.';
+  const chunks = chunkDocument('headed', content);
+  assert.equal(chunks.length, 3);
+  assert.deepEqual(chunks.map(chunk => chunk.breadcrumb), ['Alpha', 'Alpha › Beta', 'Gamma']);
+  assert.equal(new Set(chunks.map(chunk => chunk.parentId)).size, 3);
 });
 
 test('re-extracts only from the verified original and retains bounded converter provenance', async () => {
