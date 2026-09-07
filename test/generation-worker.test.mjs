@@ -517,6 +517,18 @@ test('does not replay a provider request after an accounting attempt was recorde
   assert.equal(result.errorCode, 'cost_recovery');
   assert.equal(reserves, 0);
   assert.equal(replay.patches.some(patch => patch.errorCode === 'cost_recovery'), true);
+  const approvedAudit = [{ attemptId: recordedId, event: 'reserved' }, { event: 'recovery-approved', recoveryAttemptId: recordedId }];
+  const approvedJob = { ...base, usageAudit: approvedAudit };
+  const retry = createHarness(approvedJob, () => { throw new Error('provider disconnected again'); });
+  retry.dependencies.reserveGenerationAttempt = (_id, params) => {
+    retry.dependencies.newAttemptId = params.attemptId;
+    return { ...approvedJob, usageAudit: [...approvedAudit, { attemptId: params.attemptId, event: 'reserved' }] };
+  };
+  retry.dependencies.finalizeGenerationAttempt = (_id, params) => ({ ...approvedJob, usageAudit: [...approvedAudit,
+    { attemptId: params.attemptId, event: 'reserved' }, { attemptId: params.attemptId, event: 'finalized' }] });
+  const retried = await executeGenerationJob(approvedJob, retry.dependencies);
+  assert.notEqual(retry.dependencies.newAttemptId, recordedId);
+  assert.equal(retried.status, 'error');
 });
 
 test('pauses finite-ceiling jobs for both reserved and finalized replay attempts', async () => {

@@ -143,6 +143,7 @@ test('requires authentication for every sensitive service endpoint', async () =>
   assert.equal((await authorized('/api/system/capabilities')).status, 200);
   assert.equal((await authorized('/api/v1/health')).status, 200);
   assert.equal((await fetch(`${origin}/api/v1/jobs/job-1/accounting`)).status, 401);
+  assert.equal((await fetch(`${origin}/api/v1/jobs/job-1/accounting/recovery`)).status, 401);
   const capabilities = await (await authorized('/api/v1/capabilities')).json();
   assert.equal(capabilities.providerPolicies.codex.maxConcurrency, 1);
   assert.equal(capabilities.providerPolicies.openai.billing, 'usage-based');
@@ -152,6 +153,7 @@ test('requires authentication for every sensitive service endpoint', async () =>
   assert.match(contract.headers.get('content-type'), /application\/yaml/);
   assert.match(await contract.text(), /openapi: 3\.1\.0[\s\S]*\/jobs\/\{jobId\}\/resume:/);
   assert.match(await (await authorized('/api/v1/openapi.yaml')).text(), /accounting\/ceiling/);
+  assert.match(await (await authorized('/api/v1/openapi.yaml')).text(), /accounting\/recovery/);
 });
 
 test('reports and invokes local Ollama only after explicit setup confirmation', async () => {

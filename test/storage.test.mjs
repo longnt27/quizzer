@@ -11,7 +11,7 @@ process.env.QUIZZER_DATABASE_PATH = join(directory, 'quizzer.sqlite');
 const {
   beginLegacyMigration, claimGenerationJob, completeGenerationJob, controlGenerationJob, createGenerationJobs, finalizeLegacyMigration, getRecord, listLegacyMigrations,
   listRecords, putRecord, renewGenerationJobLease, subscribeStorageChanges, syncStorage, updateGenerationJobWithLease,
-  reserveGenerationAttempt, finalizeGenerationAttempt, getGenerationAccounting, raiseGenerationCostCeiling,
+  reserveGenerationAttempt, finalizeGenerationAttempt, getGenerationAccounting, raiseGenerationCostCeiling, approveGenerationCostRecovery,
 } = await import('../server/storage.mjs');
 
 const sha256 = value => createHash('sha256').update(value).digest('hex');
@@ -416,6 +416,21 @@ test('durably accounts reservations, unknown usage, replay mismatches, over-ceil
   updateGenerationJobWithLease(job.id, { workerId: 'accounting-worker', leaseId: claimed.data.leaseId, patch: { status: 'paused' }, now: 105 });
   raiseGenerationCostCeiling(job.id, { newCeilingMicroUsd: 10, reason: 'approved extension', confirmed: true, now: 106 });
   assert.equal(getRecord('generationJobs', job.id).data.options.costCeilingMicroUsd, 10);
+});
+
+test('approves cost recovery exactly once for a deterministic prior attempt', () => {
+  const options = { ...generationOptions(), costCeilingMicroUsd: 10 };
+  options.routeChain = [{ ...options.routeChain[0], pricing: { inputMicroUsdPerMillionTokens: 1, outputMicroUsdPerMillionTokens: 1 } }];
+  const id = 'recovery-storage-job';
+  putRecord('generationJobs', id, { id, testId: 'recovery-storage-test', name: 'Recovery', createdAt: 1, updatedAt: 1,
+    status: 'paused', errorCode: 'cost_recovery', recoveryAttemptId: 'attempt-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', documentIds: ['accounting-doc'],
+    options, questions: [], rejected: 0, rounds: {}, usageSummary: { inputTokens: 0, outputTokens: 0, totalTokens: 0, finalizedCostMicroUsd: 0, reservedCostMicroUsd: 1 },
+    usageAudit: [{ event: 'reserved', attemptId: 'attempt-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', at: 2, routeIndex: 0, provider: 'codex', reservedCostMicroUsd: 1, reservationInputTokens: 1, reservationOutputTokens: 0, reservationCostKnown: true,
+      reservationFingerprint: sha256(JSON.stringify({ routeIndex: 0, bounds: { inputTokens: 1, outputTokens: 0, totalTokens: 1 }, reservationCostMicroUsd: 1, reservationCostKnown: true })) }] });
+  assert.throws(() => approveGenerationCostRecovery(id, { reason: 'missing confirmation' }), /explicit confirmation/);
+  assert.equal(approveGenerationCostRecovery(id, { reason: 'Acknowledge possible duplicate billing', confirmed: true }).data.usageAudit.at(-1).event, 'recovery-approved');
+  assert.equal(approveGenerationCostRecovery(id, { reason: 'Acknowledge possible duplicate billing', confirmed: true }).data.usageAudit.length, 2);
+  assert.throws(() => approveGenerationCostRecovery(id, { reason: 'again', confirmed: true }), /already consumed/);
 });
 
 test('covers storage validation branches around sync, migration, leases, and completion', async () => {
