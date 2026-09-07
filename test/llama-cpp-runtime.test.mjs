@@ -37,6 +37,13 @@ test('validates bounded managed runtime options and paths', async () => {
   assert.match(redactRuntimeOutput(`failed at ${executable}: \u001b[31msecret\u001b[0m`, [executable]), /\[llama-server\]/);
 });
 
+test('rejects control characters on consecutive path validations', async () => {
+  const regularFile = { isSymbolicLink: () => false, isFile: () => true, mode: 0o700 };
+  const statImpl = async () => regularFile;
+  await assert.rejects(() => validateRuntimePath('/tmp/first\nbad', 'path', { statImpl }), /absolute path/);
+  await assert.rejects(() => validateRuntimePath('/\n/tmp/second', 'path', { statImpl }), /absolute path/);
+});
+
 test('requires confirmation, starts with fixed arguments, health-checks, persists sanitized status, and stops', async () => {
   const { directory, executable, model } = await files();
   let rawSettings = {
@@ -51,10 +58,11 @@ test('requires confirmation, starts with fixed arguments, health-checks, persist
   };
   const calls = [];
   const child = fakeProcess();
+  let settingsLoads = 0;
   const runtime = createLlamaCppRuntime({
     appDataDirectory: directory,
     statusPath: join(directory, 'status.json'),
-    loadSettings: async () => ({ values: { ...rawSettings } }),
+    loadSettings: async () => { settingsLoads += 1; return { ...rawSettings }; },
     patchSettings: async values => { rawSettings = { ...rawSettings, ...values }; },
     detectHardware: () => ({ cpuCores: 4, memoryGB: 8 }),
     spawn: (command, args, options) => { calls.push({ command, args, options }); return child; },
@@ -64,6 +72,7 @@ test('requires confirmation, starts with fixed arguments, health-checks, persist
   await runtime.configure({ executablePath: executable, modelPath: model, confirmed: true });
   const started = await runtime.start({ confirmed: true });
   assert.equal(started.state, 'running');
+  assert.equal(settingsLoads, 1);
   assert.equal(calls.length, 1);
   assert.deepEqual(calls[0].args, ['-m', model, '--host', '127.0.0.1', '--port', '9123', '--ctx-size', '8192', '--batch-size', '128', '--threads', '4']);
   assert.equal(calls[0].options.shell, false);
@@ -133,6 +142,57 @@ test('forced stop uses the force signal and clears durable status', async () => 
       'providers.llama-cpp.batchSize': 512, 'providers.llama-cpp.threads': 2,
     } }),
     patchSettings: async () => {}, spawn: () => child,
+    healthCheck: async () => ({ serverReady: true }),
+  });
+  await runtime.start({ confirmed: true });
+  assert.equal((await runtime.stop({ force: true })).state, 'idle');
+  assert.deepEqual(child.killed, ['SIGKILL']);
+});
+
+test('windows forced stop waits for the child after tree-kill is spawned', async () => {
+  const { directory, executable, model } = await files();
+  const child = fakeProcess();
+  child.kill = signal => { child.killed.push(signal); return true; };
+  const killer = new EventEmitter();
+  const treeKills = [];
+  const runtime = createLlamaCppRuntime({
+    appDataDirectory: directory,
+    statusPath: join(directory, 'status.json'),
+    loadSettings: async () => ({ values: {
+      'providers.llama-cpp.executablePath': executable, 'providers.llama-cpp.modelPath': model,
+      'providers.llama-cpp.managedPort': 9128, 'providers.llama-cpp.contextSize': 4096,
+      'providers.llama-cpp.batchSize': 512, 'providers.llama-cpp.threads': 2,
+    } }),
+    patchSettings: async () => {}, spawn: () => child, platform: 'win32',
+    processTreeKiller: ({ pid }) => { treeKills.push(pid); return killer; },
+    healthCheck: async () => ({ serverReady: true }),
+  });
+  await runtime.start({ confirmed: true });
+  let stopped = false;
+  const stopping = runtime.stop({ force: true }).then(() => { stopped = true; });
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(stopped, false);
+  assert.deepEqual(treeKills, [4242]);
+  assert.deepEqual(child.killed, []);
+  child.emit('close', 0);
+  await stopping;
+  assert.equal(stopped, true);
+});
+
+test('windows tree-kill errors are handled and fall back to the child', async () => {
+  const { directory, executable, model } = await files();
+  const child = fakeProcess();
+  const killer = new EventEmitter();
+  const runtime = createLlamaCppRuntime({
+    appDataDirectory: directory,
+    statusPath: join(directory, 'status.json'),
+    loadSettings: async () => ({ values: {
+      'providers.llama-cpp.executablePath': executable, 'providers.llama-cpp.modelPath': model,
+      'providers.llama-cpp.managedPort': 9129, 'providers.llama-cpp.contextSize': 4096,
+      'providers.llama-cpp.batchSize': 512, 'providers.llama-cpp.threads': 2,
+    } }),
+    patchSettings: async () => {}, spawn: () => child, platform: 'win32',
+    processTreeKiller: () => { queueMicrotask(() => killer.emit('error', new Error('taskkill unavailable'))); return killer; },
     healthCheck: async () => ({ serverReady: true }),
   });
   await runtime.start({ confirmed: true });

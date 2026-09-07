@@ -16,6 +16,7 @@ export const LLAMA_CPP_RUNTIME_DEFAULTS = Object.freeze({
 const MAX_PATH_LENGTH = 4_096;
 const MAX_OUTPUT_LENGTH = 12_000;
 const MAX_ERROR_LENGTH = 1_000;
+const CONTROL_CHAR_PATTERN = /[\u0000-\u001f\u007f]/;
 const CONTROL_CHARS = /[\u0000-\u001f\u007f]/g;
 const PATH_LIKE = /(?:[A-Za-z]:[\\/]|\/|\\\\)[^\s'"`]+/g;
 
@@ -31,10 +32,9 @@ export const redactRuntimeOutput = (value, paths = []) => {
 export const validateRuntimePath = async (value, label, { executable = false, statImpl = lstat } = {}) => {
   if (typeof value !== 'string' || !value.trim()) throw new Error(`${label} is required`);
   const path = value.trim();
-  if (path.length > MAX_PATH_LENGTH || CONTROL_CHARS.test(path) || !isAbsolute(path)) {
+  if (path.length > MAX_PATH_LENGTH || CONTROL_CHAR_PATTERN.test(path) || !isAbsolute(path)) {
     throw new Error(`${label} must be an absolute path without control characters (maximum ${MAX_PATH_LENGTH} characters)`);
   }
-  CONTROL_CHARS.lastIndex = 0;
   let details;
   try { details = await statImpl(path); }
   catch { throw new Error(`${label} must point to an existing regular file`); }
@@ -109,6 +109,8 @@ export const createLlamaCppRuntime = ({
   patchSettings,
   detectHardware = () => ({ cpuCores: 4, memoryGB: 8 }),
   spawn = nodeSpawn,
+  platform = globalThis.process.platform,
+  processTreeKiller,
   healthCheck = ({ endpoint }, signal) => getLlamaCppStatus({ endpoint }, globalThis.fetch, signal),
   now = () => Date.now(),
 } = {}) => {
@@ -120,6 +122,7 @@ export const createLlamaCppRuntime = ({
   let outputTimer;
   let outputSnapshot;
   let stopTimeoutMs = LLAMA_CPP_RUNTIME_DEFAULTS.stopTimeoutMs;
+  const treeKiller = processTreeKiller || (({ pid }) => spawn('taskkill', ['/pid', String(pid), '/t', '/f'], { shell: false, stdio: 'ignore', windowsHide: true }));
 
   const persist = snapshot => {
     const operation = persistenceQueue.catch(() => {}).then(() => persistStatus(statusPath, snapshot));
@@ -149,7 +152,10 @@ export const createLlamaCppRuntime = ({
     if (!initialized) { status = await readStatus(statusPath); if (status.state === 'starting' || status.state === 'stopping' || status.state === 'running') status = await save({ ...status, state: 'idle', serverReady: false, pid: undefined, lastError: status.state === 'running' ? 'Managed process was not running after service restart' : undefined }); initialized = true; }
     return status;
   };
-  const currentSettings = async () => (await loadSettings()).values ?? await loadSettings();
+  const currentSettings = async () => {
+    const settings = await loadSettings();
+    return settings.values ?? settings;
+  };
   const settingsForStart = async () => {
     const values = await currentSettings();
     const executablePath = values['providers.llama-cpp.executablePath'];
@@ -182,28 +188,60 @@ export const createLlamaCppRuntime = ({
   };
   const terminateChild = async (handle, timeout, { force = false } = {}) => {
     if (!handle) return;
-    let exited = false;
-    const exitedPromise = new Promise(resolve => {
-      const finish = () => { if (exited) return; exited = true; clearTimeout(timer); handle.removeListener?.('close', finish); handle.removeListener?.('exit', finish); resolve(); };
-      const timer = setTimeout(() => {
-        if (globalThis.process.platform === 'win32' && Number.isSafeInteger(handle.pid)) {
-          try { nodeSpawn('taskkill', ['/pid', String(handle.pid), '/t', '/f'], { shell: false, stdio: 'ignore', windowsHide: true }); } catch { /* Best-effort tree termination. */ }
-        } else {
-          try { handle.kill('SIGKILL'); } catch { /* Process may have exited. */ }
-        }
-        finish();
-      }, timeout);
+    await new Promise(resolve => {
+      let exited = false;
+      let timer;
+      let fallbackTimer;
+      let treeKillRequested = false;
+      const finish = () => {
+        if (exited) return;
+        exited = true;
+        clearTimeout(timer);
+        clearTimeout(fallbackTimer);
+        handle.removeListener?.('close', finish);
+        handle.removeListener?.('exit', finish);
+        handle.removeListener?.('error', onHandleError);
+        resolve();
+      };
+      const forceFallback = () => {
+        if (exited) return;
+        clearTimeout(fallbackTimer);
+        try { handle.kill('SIGKILL'); } catch { /* Process may have exited. */ }
+        // Some child-process implementations do not emit close after a failed
+        // kill. Keep shutdown bounded while still giving close/exit a chance.
+        fallbackTimer = setTimeout(finish, 500);
+        fallbackTimer.unref?.();
+      };
+      const requestTreeKill = () => {
+        if (platform !== 'win32' || !Number.isSafeInteger(handle.pid)) return false;
+        if (treeKillRequested) return true;
+        let killer;
+        try { killer = treeKiller({ pid: handle.pid }); }
+        catch { return false; }
+        if (!killer) return false;
+        treeKillRequested = true;
+        // taskkill itself can fail asynchronously (for example when the
+        // process has already exited). Always consume that error and fall back
+        // to the direct child handle without treating taskkill spawn as exit.
+        killer.once?.('error', forceFallback);
+        fallbackTimer = setTimeout(forceFallback, Math.max(250, Math.min(2_000, timeout)));
+        fallbackTimer.unref?.();
+        return true;
+      };
+      const onHandleError = () => forceFallback();
       handle.once?.('close', finish);
       handle.once?.('exit', finish);
-      handle.once?.('error', finish);
+      handle.once?.('error', onHandleError);
+      timer = setTimeout(() => {
+        if (!requestTreeKill()) forceFallback();
+      }, timeout);
+      timer.unref?.();
       try {
         if (force) {
-          if (globalThis.process.platform === 'win32' && Number.isSafeInteger(handle.pid)) nodeSpawn('taskkill', ['/pid', String(handle.pid), '/t', '/f'], { shell: false, stdio: 'ignore', windowsHide: true });
-          else handle.kill('SIGKILL');
-        } else handle.kill(globalThis.process.platform === 'win32' ? undefined : 'SIGTERM');
-      } catch { finish(); }
+          if (!requestTreeKill()) forceFallback();
+        } else handle.kill(platform === 'win32' ? undefined : 'SIGTERM');
+      } catch { forceFallback(); }
     });
-    await exitedPromise;
   };
   const stop = async ({ force = false } = {}) => {
     await initialize();
