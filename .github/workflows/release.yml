@@ -46,8 +46,19 @@ jobs:
       - name: Verify tag and package version
         shell: bash
         run: |
+          set -euo pipefail
           PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+            echo "Release tag must be a canonical v-prefixed semantic version: $RELEASE_TAG" >&2
+            exit 1
+          fi
           test "v${PACKAGE_VERSION}" = "$RELEASE_TAG"
+          EXPECTED_CHANNEL=stable
+          if [[ "$PACKAGE_VERSION" == *-* ]]; then EXPECTED_CHANNEL=beta; fi
+          if [ "$RELEASE_CHANNEL" != "$EXPECTED_CHANNEL" ]; then
+            echo "Release channel $RELEASE_CHANNEL does not match $PACKAGE_VERSION ($EXPECTED_CHANNEL)" >&2
+            exit 1
+          fi
       - run: npm audit --omit=dev --audit-level=high
       - run: npm run license:check
       - run: npm run lint
@@ -98,6 +109,7 @@ jobs:
 
   desktop:
     needs: verify
+    environment: release
     strategy:
       fail-fast: false
       matrix:

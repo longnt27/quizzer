@@ -66,3 +66,22 @@ test('release publishes only direct shell installer entrypoints and their verifi
   assert.match(workflow, /gh release create[^\n]+release-bundle\/install\.sh release-bundle\/install\.ps1/);
   assert.doesNotMatch(workflow, /release:package-manifests|quizzer\.rb|Somethings1\.Quizzer/);
 });
+
+test('release rejects malformed tags and channel/version mismatches before building', async () => {
+  const workflow = await readFile(workflowPath, 'utf8');
+
+  assert.match(workflow, /Release tag must be a canonical v-prefixed semantic version/);
+  assert.match(workflow, /test "v\$\{PACKAGE_VERSION\}" = "\$RELEASE_TAG"/);
+  assert.match(workflow, /if \[\[ "\$PACKAGE_VERSION" == \*-\* \]\]; then EXPECTED_CHANNEL=beta; fi/);
+  assert.match(workflow, /if \[ "\$RELEASE_CHANNEL" != "\$EXPECTED_CHANNEL" \]/);
+  ordered(workflow, 'Verify tag and package version', 'npm audit --omit=dev --audit-level=high');
+});
+
+test('release signing and publication use the protected release environment', async () => {
+  const workflow = await readFile(workflowPath, 'utf8');
+  const desktopJob = workflow.slice(workflow.indexOf('\n  desktop:'), workflow.indexOf('\n  publish:'));
+  const publishJob = workflow.slice(workflow.indexOf('\n  publish:'));
+
+  assert.match(desktopJob, /\n    environment: release\n/);
+  assert.match(publishJob, /\n    environment: release\n/);
+});
