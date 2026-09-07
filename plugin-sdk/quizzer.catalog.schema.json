@@ -52,7 +52,8 @@
           "resources",
           "permissions",
           "manifestUrl",
-          "downloadSize"
+          "downloadSize",
+          "files"
         ],
         "properties": {
           "id": {
@@ -209,7 +210,10 @@
               "type": "object",
               "additionalProperties": false,
               "required": [
-                "path"
+                "path",
+                "url",
+                "sha256",
+                "size"
               ],
               "properties": {
                 "path": {

@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { copyFile, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, normalize, resolve } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import {
   assertPluginTrust, isPluginCompatible, loadPluginManifest, validatePluginManifest, validatePluginPath, verifyPluginFiles, verifyPluginSignature,
 } from './manifest.mjs';
@@ -8,10 +9,47 @@ import { invokePluginProcess } from './runtime.mjs';
 import {
   DEFAULT_PLUGIN_REGISTRY_URL, MAX_CATALOG_SIZE, MAX_INDIVIDUAL_FILE_SIZE, MAX_MANIFEST_SIZE,
   MAX_TOTAL_PLUGIN_SIZE, checkPluginSecurityConfirmations, compareSemver, fetchBoundedBuffer,
-  fetchBoundedText, validateCanonicalPluginReleaseUrl, validateRegistryCatalog, verifyRegistryCatalogSignature,
+  fetchBoundedText, validateRegistryCatalog, verifyRegistryCatalogSignature,
 } from './registry.mjs';
 
 const stateVersion = 1;
+const catalogManifestFields = ['name', 'description', 'version', 'capabilities', 'platforms', 'resources', 'permissions'];
+
+const assertCatalogMatchesManifest = (entry, manifest) => {
+  for (const field of catalogManifestFields) {
+    if (!isDeepStrictEqual(entry[field], manifest[field])) {
+      throw new Error(`Catalog ${field} does not match the signed plugin manifest for ${entry.id}`);
+    }
+  }
+  if (entry.files.length !== manifest.files.length) {
+    throw new Error(`Catalog file list does not match the signed plugin manifest for ${entry.id}`);
+  }
+  const manifestFiles = new Map(manifest.files.map(file => [file.path, file]));
+  for (const file of entry.files) {
+    const manifestFile = manifestFiles.get(file.path);
+    if (!manifestFile || manifestFile.sha256 !== file.sha256) {
+      throw new Error(`Catalog file ${file.path} does not match the signed plugin manifest for ${entry.id}`);
+    }
+  }
+};
+
+const confirmationTokenFor = ({ catalog, entry, manifest, previousManifest, confirmation }) => createHash('sha256')
+  .update(catalog.signature)
+  .update('\0')
+  .update(manifest.signature.value)
+  .update('\0')
+  .update(previousManifest?.signature?.value ?? previousManifest?.version ?? 'not-installed')
+  .update('\0')
+  .update(JSON.stringify(confirmation.details))
+  .digest('hex');
+
+const rollbackTimestamp = (id, name) => {
+  if (!name.startsWith(`${id}--`)) return undefined;
+  const separator = name.lastIndexOf('--');
+  if (separator < id.length + 2) return undefined;
+  const timestamp = Number(name.slice(separator + 2));
+  return Number.isSafeInteger(timestamp) && timestamp >= 0 ? timestamp : undefined;
+};
 
 const parseTrustedKeys = environment => {
   if (!environment.QUIZZER_PLUGIN_TRUSTED_KEYS) return {};
@@ -131,7 +169,8 @@ export class PluginManager {
           warning: blocked ?? saved.warning,
           installedAt: saved.installedAt,
           status: blocked ? 'blocked' : 'installed',
-          rollbackAvailable: rollbackEntries.some(rollback => rollback.isDirectory() && rollback.name.startsWith(`${manifest.id}--`)),
+          rollbackAvailable: rollbackEntries.some(rollback => rollback.isDirectory()
+            && rollbackTimestamp(manifest.id, rollback.name) !== undefined),
         };
       } catch (error) {
         return { id: entry.name, enabled: false, compatible: false, status: 'broken', error: error instanceof Error ? error.message : String(error) };
@@ -307,26 +346,24 @@ export class PluginManager {
       throw new Error(`Plugin ${manifest.id} does not support ${this.platform}/${this.architecture}`);
     }
 
-    if (entry.files) {
-      const manifestFileMap = new Map(manifest.files.map(f => [f.path, f]));
-      for (const catFile of entry.files) {
-        const manFile = manifestFileMap.get(catFile.path);
-        if (!manFile) {
-          throw new Error(`Catalog file "${catFile.path}" is not declared in signed plugin manifest for ${id}`);
-        }
-        if (catFile.sha256 && catFile.sha256 !== manFile.sha256) {
-          throw new Error(`Catalog sha256 mismatch for "${catFile.path}" in ${id}: catalog declared ${catFile.sha256}, manifest declared ${manFile.sha256}`);
-        }
-      }
-    }
+    assertCatalogMatchesManifest(entry, manifest);
 
-    const estimatedSize = entry.downloadSize || 0;
-    const confirmation = checkPluginSecurityConfirmations(manifest, previousManifest, estimatedSize);
+    const confirmation = checkPluginSecurityConfirmations(manifest, previousManifest, entry.downloadSize);
+    const confirmationToken = confirmationTokenFor({ catalog, entry, manifest, previousManifest, confirmation });
+    if (options.confirmationToken !== undefined
+      && (typeof options.confirmationToken !== 'string' || options.confirmationToken !== confirmationToken)) {
+      throw new Error(`Plugin security confirmation expired for ${id}; review the current permissions and download size again`);
+    }
     if (confirmation.requiresConfirmation && options.confirmed !== true) {
       const err = new Error(`Explicit confirmation required for ${id}: ${confirmation.reasons.join('; ')}`);
       err.confirmationRequired = true;
       err.reasons = confirmation.reasons;
-      err.details = confirmation.details;
+      err.details = {
+        ...confirmation.details,
+        confirmationToken,
+        pluginId: id,
+        version: manifest.version,
+      };
       throw err;
     }
 
@@ -339,21 +376,8 @@ export class PluginManager {
       let totalBytesReceived = 0;
       for (const file of manifest.files) {
         const relative = validatePluginPath(file.path);
-        let fileUrl;
-        const catFile = entry.files?.find(f => f.path === file.path);
-        if (file.url) {
-          fileUrl = file.url;
-        } else if (catFile?.url) {
-          fileUrl = catFile.url;
-        }
-        if (!fileUrl) {
-          if (entry.downloadBaseUrl) {
-            fileUrl = `${entry.downloadBaseUrl.replace(/\/$/, '')}/${relative}`;
-          } else {
-            const manifestBase = entry.manifestUrl.substring(0, entry.manifestUrl.lastIndexOf('/'));
-            fileUrl = `${manifestBase}/${relative}`;
-          }
-        }
+        const catFile = entry.files.find(item => item.path === file.path);
+        const fileUrl = catFile.url;
 
         const target = join(staging, relative);
         await mkdir(dirname(target), { recursive: true, mode: 0o700 });
@@ -364,7 +388,7 @@ export class PluginManager {
           throw new Error(`Total plugin size exceeded limit of ${MAX_TOTAL_PLUGIN_SIZE} bytes`);
         }
 
-        if (catFile?.size !== undefined && fileBuffer.length !== catFile.size) {
+        if (fileBuffer.length !== catFile.size) {
           throw new Error(`Downloaded file size mismatch for ${file.path}: expected ${catFile.size}, got ${fileBuffer.length}`);
         }
 
@@ -379,6 +403,7 @@ export class PluginManager {
       if (totalBytesReceived !== entry.downloadSize) {
         throw new Error(`Downloaded payload size mismatch for ${id}: expected ${entry.downloadSize} bytes, received ${totalBytesReceived} bytes`);
       }
+      if (options.signal?.aborted) throw options.signal.reason ?? Object.assign(new Error('Plugin installation cancelled'), { name: 'AbortError' });
 
       const stagedManifest = await loadPluginManifest(staging, { verifyFiles: true });
       assertPluginTrust(stagedManifest, { developerMode: false, trustedKeys: this.trustedKeys });
@@ -493,14 +518,10 @@ export class PluginManager {
   async rollback(id) {
     await this.prepare();
     const current = await this.installedPlugin(id);
-    const entries = (await readdir(this.rollbackRoot, { withFileTypes: true }))
-      .filter(entry => entry.isDirectory() && entry.name.startsWith(`${id}--`));
-    const candidates = entries
-      .map(entry => {
-        const parts = entry.name.split('--');
-        const timestamp = Number(parts[parts.length - 1]);
-        return { name: entry.name, timestamp: Number.isFinite(timestamp) ? timestamp : 0 };
-      })
+    const candidates = (await readdir(this.rollbackRoot, { withFileTypes: true }))
+      .filter(entry => entry.isDirectory())
+      .map(entry => ({ name: entry.name, timestamp: rollbackTimestamp(id, entry.name) }))
+      .filter(entry => entry.timestamp !== undefined)
       .sort((a, b) => b.timestamp - a.timestamp)
       .map(entry => entry.name);
     if (!candidates.length) throw new Error(`No rollback version is available for ${id}`);

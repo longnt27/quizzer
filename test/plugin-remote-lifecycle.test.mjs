@@ -86,9 +86,14 @@ const unsignedManifestV1 = { ...manifestV1Unsigned };
 let catalogVersion = "1.0.0";
 let activeManifest = signedManifestV1;
 let activeSource = pluginFileSourceV1;
+const releaseRoot = "https://github.com/Somethings1/quizzer/releases/download/plugins-v1";
+const catalogUrl = `${releaseRoot}/catalog.json`;
+const manifestUrl = `${releaseRoot}/test-echo.manifest.json`;
+const pluginUrl = `${releaseRoot}/test-echo-plugin.mjs`;
 
 const mockFetch = async (url) => {
-  if (url === "https://github.com/Somethings1/quizzer/releases/download/plugins/catalog.json") {
+  if (url === catalogUrl) {
+    const activeBytes = Buffer.byteLength(activeSource);
     const rawCatalog = {
       schemaVersion: 1,
       version: "2026.09.01",
@@ -100,14 +105,15 @@ const mockFetch = async (url) => {
           id: "test-echo",
           name: "Test Echo Plugin",
           version: catalogVersion,
-          description: "Test Echo description",
+          description: activeManifest.description,
           capabilities: ["generator"],
           platforms: [{ os: process.platform, architectures: [process.arch] }],
           resources: { memoryMB: 64, diskMB: 2 },
           permissions: catalogVersion === "1.0.0" ? manifestV1Unsigned.permissions : manifestV2Unsigned.permissions,
-          manifestUrl: "https://github.com/Somethings1/quizzer/releases/download/plugins/test-echo.manifest.json",
-          downloadBaseUrl: "https://github.com/Somethings1/quizzer/releases/download/plugins/",
-          downloadSize: 1024,
+          manifestUrl,
+          downloadBaseUrl: `${releaseRoot}/`,
+          downloadSize: activeBytes,
+          files: [{ path: "plugin.mjs", url: pluginUrl, sha256: activeManifest.files[0].sha256, size: activeBytes }],
         },
         {
           id: "incompatible-plugin",
@@ -117,7 +123,9 @@ const mockFetch = async (url) => {
           platforms: [{ os: process.platform === "linux" ? "win32" : "linux", architectures: ["x64"] }],
           resources: { memoryMB: 64, diskMB: 2 },
           permissions: { network: [], filesystem: ["scoped-temp"], secrets: [], subprocess: false },
-          manifestUrl: "https://github.com/Somethings1/quizzer/releases/download/plugins/incompatible.manifest.json",
+          manifestUrl: `${releaseRoot}/incompatible.manifest.json`,
+          downloadSize: 1,
+          files: [{ path: "plugin.mjs", url: `${releaseRoot}/incompatible-plugin.mjs`, sha256: "a".repeat(64), size: 1 }],
         },
       ],
     };
@@ -131,7 +139,7 @@ const mockFetch = async (url) => {
     };
   }
 
-  if (url === "https://github.com/Somethings1/quizzer/releases/download/plugins/test-echo.manifest.json") {
+  if (url === manifestUrl) {
     return {
       status: 200,
       ok: true,
@@ -141,7 +149,7 @@ const mockFetch = async (url) => {
     };
   }
 
-  if (url === "https://github.com/Somethings1/quizzer/releases/download/plugins/plugin.mjs") {
+  if (url === pluginUrl) {
     return {
       status: 200,
       ok: true,
@@ -164,6 +172,7 @@ test("PluginManager remote lifecycle: list, install, update, rollback, and remov
     trustedKeys,
     trustedRegistryKeys: trustedKeys,
     fetch: mockFetch,
+    registryUrl: catalogUrl,
     developerMode: false,
   });
 
@@ -192,6 +201,7 @@ test("PluginManager remote lifecycle: list, install, update, rollback, and remov
     trustedKeys,
     trustedRegistryKeys: trustedKeys,
     fetch: mockFetch,
+    registryUrl: catalogUrl,
     developerMode: true,
   });
   await assert.rejects(
@@ -244,13 +254,26 @@ test("PluginManager remote lifecycle: list, install, update, rollback, and remov
   assert.equal(echoV2Installed.availableVersion, "2.0.0");
 
   // 7. Update requires confirmation because v2 introduces network permission
+  let confirmation;
   await assert.rejects(
     () => manager.update("test-echo", { confirmed: false }),
-    (err) => err.confirmationRequired === true && err.reasons.length > 0
+    (err) => {
+      confirmation = err;
+      return err.confirmationRequired === true
+        && err.reasons.length > 0
+        && /^[a-f0-9]{64}$/.test(err.details.confirmationToken);
+    },
+  );
+  await assert.rejects(
+    () => manager.update("test-echo", { confirmed: true, confirmationToken: "0".repeat(64) }),
+    /confirmation expired/,
   );
 
   // 8. Update with confirmation: true
-  const updated = await manager.update("test-echo", { confirmed: true });
+  const updated = await manager.update("test-echo", {
+    confirmed: true,
+    confirmationToken: confirmation.details.confirmationToken,
+  });
   assert.equal(updated.version, "2.0.0");
 
   // Verify list() after update

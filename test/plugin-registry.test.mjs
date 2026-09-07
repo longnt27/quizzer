@@ -1,21 +1,17 @@
 import assert from "node:assert/strict";
-import { generateKeyPairSync } from "node:crypto";
+import { createHash, generateKeyPairSync } from "node:crypto";
 import test from "node:test";
 import {
   CATALOG_SCHEMA_VERSION,
-  DEFAULT_PLUGIN_REGISTRY_URL,
-  MAX_CATALOG_SIZE,
-  MAX_INDIVIDUAL_FILE_SIZE,
-  MAX_MANIFEST_SIZE,
-  MAX_TOTAL_PLUGIN_SIZE,
   LARGE_DOWNLOAD_THRESHOLD,
   checkPluginSecurityConfirmations,
   compareSemver,
   fetchBoundedBuffer,
   fetchBoundedText,
-  parseSemver,
   signRegistryCatalog,
+  validateCanonicalPluginDownloadBaseUrl,
   validateCanonicalPluginReleaseUrl,
+  validateRedirectTargetUrl,
   validateRegistryCatalog,
   verifyRegistryCatalogSignature,
 } from "../plugin-sdk/registry.mjs";
@@ -25,282 +21,269 @@ const keyId = "quizzer-registry-2026";
 const trustedKeys = {
   [keyId]: publicKey.export({ type: "spki", format: "pem" }).toString(),
 };
+const releaseRoot = "https://github.com/Somethings1/quizzer/releases/download/plugins-v1";
+const assetUrl = name => `${releaseRoot}/${name}`;
+const pluginSource = "process.stdin.pipe(process.stdout);\n";
+const pluginHash = createHash("sha256").update(pluginSource).digest("hex");
 
-const createSampleCatalog = () => ({
+const createSampleCatalog = (pluginOverrides = {}) => ({
   schemaVersion: CATALOG_SCHEMA_VERSION,
   version: "2026.09.01",
   publishedAt: "2026-09-01T00:00:00.000Z",
   signatureAlgorithm: "ed25519",
   publicKeyId: keyId,
-  plugins: [
-    {
-      id: "fast-embedder",
-      name: "Fast Local Embedder",
-      version: "1.2.0",
-      description: "Accelerated local embeddings",
-      capabilities: ["embedder"],
-      platforms: [
-        { os: "darwin", architectures: ["arm64", "x64"] },
-        { os: "linux", architectures: ["x64"] },
-      ],
-      resources: { memoryMB: 512, diskMB: 200 },
-      permissions: {
-        network: [],
-        filesystem: ["scoped-temp"],
-        secrets: [],
-        subprocess: false,
-      },
-      manifestUrl: "https://github.com/Somethings1/quizzer/releases/download/plugins/fast-embedder-1.2.0.manifest.json",
-      downloadBaseUrl: "https://github.com/Somethings1/quizzer/releases/download/plugins/",
-      downloadSize: 15 * 1024 * 1024,
-    },
-  ],
+  plugins: [{
+    id: "fast-embedder",
+    name: "Fast Local Embedder",
+    version: "1.2.0",
+    description: "Accelerated local embeddings",
+    capabilities: ["embedder"],
+    platforms: [
+      { os: "darwin", architectures: ["arm64", "x64"] },
+      { os: "linux", architectures: ["x64"] },
+    ],
+    resources: { memoryMB: 512, diskMB: 200, accelerators: ["cpu"] },
+    permissions: { network: [], filesystem: ["scoped-temp"], secrets: [], subprocess: false },
+    manifestUrl: assetUrl("fast-embedder-1.2.0.manifest.json"),
+    downloadBaseUrl: `${releaseRoot}/`,
+    downloadSize: Buffer.byteLength(pluginSource),
+    files: [{
+      path: "plugin.mjs",
+      url: assetUrl("fast-embedder-1.2.0-plugin.mjs"),
+      sha256: pluginHash,
+      size: Buffer.byteLength(pluginSource),
+    }],
+    ...pluginOverrides,
+  }],
 });
 
-test("canonical GitHub release URL validator strictly enforces repository and credentials rules", () => {
-  assert.equal(validateCanonicalPluginReleaseUrl("https://github.com/Somethings1/quizzer/releases/download/plugins/catalog.json"), true);
-  assert.equal(validateCanonicalPluginReleaseUrl("https://github.com/Somethings1/quizzer/releases/latest/download/catalog.json"), true);
-
-  // Non-HTTPS
-  assert.equal(validateCanonicalPluginReleaseUrl("http://github.com/Somethings1/quizzer/releases/download/plugins/catalog.json"), false);
-  // Credentials in URL
-  assert.equal(validateCanonicalPluginReleaseUrl("https://user:pass@github.com/Somethings1/quizzer/releases/download/plugins/catalog.json"), false);
-  // Non-GitHub hosts
-  assert.equal(validateCanonicalPluginReleaseUrl("https://evil.com/Somethings1/quizzer/releases/download/plugins/catalog.json"), false);
-  assert.equal(validateCanonicalPluginReleaseUrl("https://raw.githubusercontent.com/Somethings1/quizzer/main/catalog.json"), false);
-  // Wrong repository
-  assert.equal(validateCanonicalPluginReleaseUrl("https://github.com/attacker/quizzer/releases/download/plugins/catalog.json"), false);
-  // Path traversal attempts
-  assert.equal(validateCanonicalPluginReleaseUrl("https://github.com/Somethings1/quizzer/releases/download/plugins/../../escape.json"), false);
-  assert.equal(validateCanonicalPluginReleaseUrl("https://github.com/Somethings1/quizzer/releases/download/plugins/..\\escape.json"), false);
-  // Malformed URL
-  assert.equal(validateCanonicalPluginReleaseUrl("not-a-url"), false);
+const catalogForValidation = (pluginOverrides = {}, catalogOverrides = {}) => ({
+  ...createSampleCatalog(pluginOverrides),
+  ...catalogOverrides,
+  signature: "A".repeat(86),
 });
 
-test("validates and signs registry catalog, verifying Ed25519 signature correctly", () => {
-  const catalog = createSampleCatalog();
-  const signed = signRegistryCatalog(catalog, privateKey);
-  assert.ok(signed.signature);
+test("accepts only exact immutable Quizzer release assets and the GitHub asset redirect host", () => {
+  assert.equal(validateCanonicalPluginReleaseUrl(assetUrl("catalog.json")), true);
+  assert.equal(validateCanonicalPluginDownloadBaseUrl(`${releaseRoot}/`), true);
+  assert.equal(validateRedirectTargetUrl(
+    "https://release-assets.githubusercontent.com/github-production-release-asset/123/asset?sp=r&sig=a%2Fb",
+  ), true);
 
-  // Verifies with trusted keys
+  for (const url of [
+    "https://github.com/Somethings1/quizzer/releases/latest/download/catalog.json",
+    `${releaseRoot}/nested/catalog.json`,
+    `${releaseRoot}/catalog.json?download=1`,
+    `${releaseRoot}/catalog.json#fragment`,
+    "https://user:pass@github.com/Somethings1/quizzer/releases/download/plugins-v1/catalog.json",
+    "https://github.com:444/Somethings1/quizzer/releases/download/plugins-v1/catalog.json",
+    "https://evil.example/Somethings1/quizzer/releases/download/plugins-v1/catalog.json",
+    "https://github.com/attacker/quizzer/releases/download/plugins-v1/catalog.json",
+    `${releaseRoot}/nested%2Fcatalog.json`,
+    `${releaseRoot}/%2e%2e`,
+    "not-a-url",
+  ]) assert.equal(validateCanonicalPluginReleaseUrl(url), false, url);
+
+  assert.equal(validateCanonicalPluginDownloadBaseUrl(releaseRoot), false);
+  assert.equal(validateCanonicalPluginDownloadBaseUrl(`${releaseRoot}/nested/`), false);
+  for (const url of [
+    "https://evil.example/github-production-release-asset/123/asset",
+    "https://release-assets.githubusercontent.com:444/github-production-release-asset/123/asset",
+    "https://user@release-assets.githubusercontent.com/github-production-release-asset/123/asset",
+    "https://release-assets.githubusercontent.com/github-production-release-asset/123/asset#fragment",
+    "https://release-assets.githubusercontent.com/not-a-release/123/asset",
+    "https://release-assets.githubusercontent.com/github-production-release-asset/123/%2e%2e%2Fasset",
+  ]) assert.equal(validateRedirectTargetUrl(url), false, url);
+});
+
+test("signs a strict canonical catalog and verifies only trusted Ed25519 signatures", () => {
+  const signed = signRegistryCatalog(createSampleCatalog(), privateKey);
+  assert.match(signed.signature, /^[A-Za-z0-9_-]{86}$/);
+  assert.equal(validateRegistryCatalog(signed), signed);
   assert.equal(verifyRegistryCatalogSignature(signed, trustedKeys), true);
 
-  // Rejects untrusted key id
   assert.throws(
     () => verifyRegistryCatalogSignature(signed, { "other-key": trustedKeys[keyId] }),
-    /signing key is not trusted/
+    /signing key is not trusted/,
   );
-
-  // Rejects tampered catalog
-  const tampered = { ...signed, plugins: [{ ...signed.plugins[0], version: "2.0.0" }] };
   assert.throws(
-    () => verifyRegistryCatalogSignature(tampered, trustedKeys),
-    /signature verification failed/
+    () => verifyRegistryCatalogSignature({ ...signed, plugins: [{ ...signed.plugins[0], version: "2.0.0" }] }, trustedKeys),
+    /signature verification failed/,
   );
-
-  // Rejects invalid signature algorithms
-  const invalidAlg = { ...signed, signatureAlgorithm: "rsa" };
   assert.throws(
-    () => verifyRegistryCatalogSignature(invalidAlg, trustedKeys),
-    /Unsupported signature algorithm/
+    () => verifyRegistryCatalogSignature({ ...signed, signatureAlgorithm: "rsa" }, trustedKeys),
+    /Unsupported signature algorithm/,
   );
+  const { privateKey: rsaPrivateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  assert.throws(() => signRegistryCatalog(createSampleCatalog(), rsaPrivateKey), /Ed25519 private key/);
 });
 
-test("validates catalog contract constraints and rejects malformed fields", () => {
-  const base = createSampleCatalog();
-
+test("rejects ambiguous or inconsistent signed catalog metadata", () => {
+  const valid = catalogForValidation();
+  assert.equal(validateRegistryCatalog(valid), valid);
   assert.throws(() => validateRegistryCatalog(null), /must be an object/);
-  assert.throws(() => validateRegistryCatalog({ ...base, schemaVersion: 2 }), /Unsupported registry catalog schema version/);
-  assert.throws(() => validateRegistryCatalog({ ...base, publishedAt: "invalid-date" }), /must be a valid ISO date/);
-  assert.throws(() => validateRegistryCatalog({ ...base, signature: "" }), /signature must be a non-empty string/);
+  assert.throws(() => validateRegistryCatalog({ ...valid, unknown: true }), /unsupported fields/);
+  assert.throws(() => validateRegistryCatalog({ ...valid, schemaVersion: 2 }), /Unsupported registry catalog schema/);
+  assert.throws(() => validateRegistryCatalog({ ...valid, publishedAt: "2026-09-01" }), /canonical ISO timestamp/);
+  assert.throws(() => validateRegistryCatalog({ ...valid, signature: "bad" }), /canonical Ed25519/);
 
-  // Duplicate plugin ID
-  const dup = {
-    ...base,
-    signature: "sig",
-    plugins: [base.plugins[0], { ...base.plugins[0] }],
-  };
-  assert.throws(() => validateRegistryCatalog(dup), /Duplicate plugin id/);
+  const duplicate = { ...valid, plugins: [valid.plugins[0], { ...valid.plugins[0] }] };
+  assert.throws(() => validateRegistryCatalog(duplicate), /Duplicate plugin id/);
+  assert.throws(() => validateRegistryCatalog(catalogForValidation({ id: "Invalid_ID!" })), /Invalid plugin id/);
+  assert.throws(() => validateRegistryCatalog(catalogForValidation({ version: "1.0" })), /semantic versioning/);
+  assert.throws(() => validateRegistryCatalog(catalogForValidation({ unexpected: true })), /unsupported fields/);
+  assert.throws(() => validateRegistryCatalog(catalogForValidation({
+    platforms: [{ os: "linux", architectures: ["x64"] }, { os: "linux", architectures: ["arm64"] }],
+  })), /duplicate platform/);
+  assert.throws(() => validateRegistryCatalog(catalogForValidation({
+    platforms: [{ os: "linux", architectures: ["x64", "x64"] }],
+  })), /architectures are invalid/);
+  assert.throws(() => validateRegistryCatalog(catalogForValidation({
+    resources: { memoryMB: 1, diskMB: 1, accelerators: ["cpu", "cpu"] },
+  })), /accelerators are invalid/);
+  assert.throws(() => validateRegistryCatalog(catalogForValidation({
+    permissions: { network: [], filesystem: ["scoped-temp", "scoped-temp"], secrets: [], subprocess: false },
+  })), /filesystem permissions are invalid/);
+  assert.throws(() => validateRegistryCatalog(catalogForValidation({ manifestUrl: "https://evil.example/manifest.json" })), /canonical versioned/);
+  assert.throws(() => validateRegistryCatalog(catalogForValidation({ downloadBaseUrl: `${releaseRoot}/nested/` })), /ending with/);
 
-  // Invalid plugin ID format
-  const invalidId = {
-    ...base,
-    signature: "sig",
-    plugins: [{ ...base.plugins[0], id: "Invalid_ID!" }],
-  };
-  assert.throws(() => validateRegistryCatalog(invalidId), /Invalid plugin id/);
-
-  // Invalid semver
-  const invalidVer = {
-    ...base,
-    signature: "sig",
-    plugins: [{ ...base.plugins[0], version: "1.0" }],
-  };
-  assert.throws(() => validateRegistryCatalog(invalidVer), /semantic versioning/);
-
-  // Untrusted manifest URL
-  const invalidUrl = {
-    ...base,
-    signature: "sig",
-    plugins: [{ ...base.plugins[0], manifestUrl: "https://evil.com/manifest.json" }],
-  };
-  assert.throws(() => validateRegistryCatalog(invalidUrl), /canonical credential-free HTTPS Quizzer GitHub Release URL/);
-
-  // Unsupported platform OS
-  const invalidPlatform = {
-    ...base,
-    signature: "sig",
-    plugins: [{ ...base.plugins[0], platforms: [{ os: "freebsd", architectures: ["x64"] }] }],
-  };
-  assert.throws(() => validateRegistryCatalog(invalidPlatform), /Unsupported registry plugin operating system/);
+  assert.throws(() => validateRegistryCatalog(catalogForValidation({ files: [] })), /1-10000/);
+  assert.throws(() => validateRegistryCatalog(catalogForValidation({
+    files: [{ ...valid.plugins[0].files[0], extra: true }],
+  })), /unsupported fields/);
+  assert.throws(() => validateRegistryCatalog(catalogForValidation({
+    files: [{ ...valid.plugins[0].files[0], path: "../plugin.mjs" }],
+  })), /Unsafe plugin path/);
+  assert.throws(() => validateRegistryCatalog(catalogForValidation({
+    files: [valid.plugins[0].files[0], { ...valid.plugins[0].files[0] }],
+    downloadSize: valid.plugins[0].downloadSize * 2,
+  })), /Duplicate file path/);
+  assert.throws(() => validateRegistryCatalog(catalogForValidation({
+    files: [{ ...valid.plugins[0].files[0], url: "https://evil.example/plugin.mjs" }],
+  })), /canonical versioned/);
+  assert.throws(() => validateRegistryCatalog(catalogForValidation({ downloadSize: 1 })), /must equal its declared file sizes/);
 });
 
-test("fetchBoundedBuffer enforces canonical URLs, redirect rejection, and size boundaries", async () => {
-  // Reject non-canonical URL
-  await assert.rejects(
-    () => fetchBoundedBuffer(async () => {}, "https://evil.com/catalog.json"),
-    /Untrusted plugin download URL/
-  );
+test("streams one bounded GitHub asset redirect and rejects every other redirect shape", async () => {
+  const initialUrl = assetUrl("catalog.json");
+  const targetUrl = "https://release-assets.githubusercontent.com/github-production-release-asset/123/catalog?sp=r&sig=a%2Fb";
+  const calls = [];
+  const redirected = await fetchBoundedText(async (url, options) => {
+    calls.push({ url, options });
+    if (url === initialUrl) return new Response(null, { status: 302, headers: { location: targetUrl } });
+    return new Response("hello");
+  }, initialUrl, {}, 1000);
+  assert.equal(redirected, "hello");
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].options.redirect, "manual");
+  assert.equal("timeoutMs" in calls[0].options, false);
 
-  // Redirect rejection (HTTP 301/302)
-  const redirectFetch = async () => ({
-    status: 302,
-    ok: false,
-    headers: new Map(),
-  });
-  await assert.rejects(
-    () => fetchBoundedBuffer(redirectFetch, "https://github.com/Somethings1/quizzer/releases/download/plugins/catalog.json"),
-    /Redirects are disabled/
-  );
+  await assert.rejects(fetchBoundedBuffer(async () => {}, "https://evil.example/catalog.json"), /Untrusted plugin download URL/);
+  await assert.rejects(fetchBoundedBuffer(async () => ({
+    status: 302, ok: false, headers: { get: () => null },
+  }), initialUrl), /missing Location/);
+  await assert.rejects(fetchBoundedBuffer(async () => ({
+    status: 302, ok: false, headers: { get: () => "https://evil.example/asset" },
+  }), initialUrl), /must target credential-free/);
+  let hop = 0;
+  await assert.rejects(fetchBoundedBuffer(async () => {
+    hop += 1;
+    return {
+      status: 302,
+      ok: false,
+      headers: { get: () => targetUrl },
+      body: { cancel: async () => {} },
+    };
+  }, initialUrl), /Second plugin download redirect/);
+  assert.equal(hop, 2);
+  await assert.rejects(fetchBoundedBuffer(async () => new Response("missing", { status: 404 }), initialUrl), /HTTP 404/);
+});
 
-  // HTTP error
-  const notFoundFetch = async () => ({
-    status: 404,
-    ok: false,
-    headers: new Map(),
-  });
-  await assert.rejects(
-    () => fetchBoundedBuffer(notFoundFetch, "https://github.com/Somethings1/quizzer/releases/download/plugins/catalog.json"),
-    /HTTP 404/
-  );
-
-  // Exceeding Content-Length
-  const largeHeaderFetch = async () => ({
+test("enforces declared and actual response bounds", async () => {
+  const initialUrl = assetUrl("plugin.mjs");
+  for (const contentLength of ["-1", "1.5", "nope", "99999999999999999999"]) {
+    await assert.rejects(fetchBoundedBuffer(async () => ({
+      status: 200,
+      ok: true,
+      headers: { get: () => contentLength },
+      arrayBuffer: async () => Buffer.from("ok"),
+    }), initialUrl, {}, 1000), /invalid Content-Length/);
+  }
+  await assert.rejects(fetchBoundedBuffer(async () => ({
     status: 200,
     ok: true,
-    headers: { get: (hn) => (hn === "content-length" ? "2000" : null) },
+    headers: { get: () => "2000" },
     arrayBuffer: async () => new ArrayBuffer(2000),
-  });
-  await assert.rejects(
-    () => fetchBoundedBuffer(largeHeaderFetch, "https://github.com/Somethings1/quizzer/releases/download/plugins/catalog.json", {}, 1000),
-    /exceeded maximum allowable size/
-  );
+  }), initialUrl, {}, 1000), /exceeded maximum allowable size/);
 
-  // Exceeding streamed bytes
-  const largeStreamFetch = async () => ({
+  let reads = 0;
+  let cancelled = false;
+  await assert.rejects(fetchBoundedBuffer(async () => ({
     status: 200,
     ok: true,
     headers: { get: () => null },
-    body: {
-      getReader: () => {
-        let sent = false;
-        return {
-          read: async () => {
-            if (sent) return { done: true };
-            sent = true;
-            return { done: false, value: new Uint8Array(2000) };
-          },
-        };
-      },
-    },
-  });
-  await assert.rejects(
-    () => fetchBoundedBuffer(largeStreamFetch, "https://github.com/Somethings1/quizzer/releases/download/plugins/catalog.json", {}, 1000),
-    /exceeded maximum allowable size of 1000 bytes/
-  );
+    body: { getReader: () => ({
+      read: async () => reads++ === 0
+        ? { done: false, value: new Uint8Array(1001) }
+        : { done: true },
+      cancel: async () => { cancelled = true; },
+      releaseLock: () => {},
+    }) },
+  }), initialUrl, {}, 1000), /exceeded maximum allowable size of 1000 bytes/);
+  assert.equal(cancelled, true);
 
-  // Successful bounded read
-  const validFetch = async () => ({
-    status: 200,
-    ok: true,
-    headers: { get: (hn) => (hn === "content-length" ? "5" : null) },
-    arrayBuffer: async () => Buffer.from("hello"),
-  });
-  const text = await fetchBoundedText(validFetch, "https://github.com/Somethings1/quizzer/releases/download/plugins/catalog.json", {}, 1000);
-  assert.equal(text, "hello");
+  const body = await fetchBoundedBuffer(async () => new Response("hello"), initialUrl, {}, 1000);
+  assert.equal(body.toString("utf8"), "hello");
+  await assert.rejects(fetchBoundedBuffer(fetch, initialUrl, {}, 0), /size limit is invalid/);
 });
 
-test("compareSemver correctly ranks semantic versions and prereleases", () => {
+test("keeps caller cancellation and timeout active through response streaming", async () => {
+  const initialUrl = assetUrl("plugin.mjs");
+  const stalledResponse = cancelled => ({
+    status: 200,
+    ok: true,
+    headers: { get: () => null },
+    body: { getReader: () => ({
+      read: () => new Promise(() => {}),
+      cancel: async () => cancelled(),
+      releaseLock: () => {},
+    }) },
+  });
+
+  const controller = new AbortController();
+  const reason = Object.assign(new Error("stop registry request"), { name: "AbortError" });
+  let callerCancelled = false;
+  const pending = fetchBoundedBuffer(
+    async () => stalledResponse(() => { callerCancelled = true; }),
+    initialUrl,
+    { signal: controller.signal, timeoutMs: 5_000 },
+  );
+  setTimeout(() => controller.abort(reason), 10);
+  await assert.rejects(pending, error => error === reason);
+  assert.equal(callerCancelled, true);
+
+  let timeoutCancelled = false;
+  await assert.rejects(
+    fetchBoundedBuffer(
+      async () => stalledResponse(() => { timeoutCancelled = true; }),
+      initialUrl,
+      { timeoutMs: 20 },
+    ),
+    error => error.name === "TimeoutError" && /timed out after 20 ms/.test(error.message),
+  );
+  assert.equal(timeoutCancelled, true);
+});
+
+test("compares semantic versions and identifies security confirmation reasons", () => {
   assert.equal(compareSemver("1.0.0", "1.0.0"), 0);
   assert.equal(compareSemver("1.2.0", "1.1.9"), 1);
-  assert.equal(compareSemver("1.0.1", "1.1.0"), -1);
-  assert.equal(compareSemver("2.0.0", "1.9.9"), 1);
   assert.equal(compareSemver("1.0.0-alpha.1", "1.0.0-alpha.2"), -1);
   assert.equal(compareSemver("1.0.0", "1.0.0-beta.1"), 1);
   assert.throws(() => compareSemver("not-semver", "1.0.0"), /Invalid semver comparison/);
-});
 
-test("checkPluginSecurityConfirmations detects network, secrets, subprocess, elevated fs, and large download size", () => {
-  const benignPlugin = {
-    permissions: {
-      network: [],
-      secrets: [],
-      subprocess: false,
-      filesystem: ["scoped-temp"],
-    },
-  };
-  const benignCheck = checkPluginSecurityConfirmations(benignPlugin, null, 10 * 1024 * 1024);
-  assert.equal(benignCheck.requiresConfirmation, false);
-  assert.equal(benignCheck.reasons.length, 0);
-
-  // Network permission requires confirmation
-  const netPlugin = {
-    permissions: {
-      network: ["https://api.example.com"],
-      secrets: [],
-      subprocess: false,
-      filesystem: ["scoped-temp"],
-    },
-  };
-  const netCheck = checkPluginSecurityConfirmations(netPlugin, null, 1000);
-  assert.equal(netCheck.requiresConfirmation, true);
-  assert.match(netCheck.reasons[0], /Network access: https:\/\/api\.example\.com/);
-
-  // Subprocess permission requires confirmation
-  const subPlugin = {
-    permissions: {
-      network: [],
-      secrets: [],
-      subprocess: true,
-      filesystem: ["scoped-temp"],
-    },
-  };
-  const subCheck = checkPluginSecurityConfirmations(subPlugin, null, 1000);
-  assert.equal(subCheck.requiresConfirmation, true);
-  assert.match(subCheck.reasons[0], /Subprocess execution permission/);
-
-  // Elevated filesystem permissions
-  for (const fsPerm of ["persistent-data", "document-read", "model-read"]) {
-    const fsPlugin = {
-      permissions: {
-        network: [],
-        secrets: [],
-        subprocess: false,
-        filesystem: ["scoped-temp", fsPerm],
-      },
-    };
-    const fsCheck = checkPluginSecurityConfirmations(fsPlugin, null, 1000);
-    assert.equal(fsCheck.requiresConfirmation, true);
-    assert.match(fsCheck.reasons[0], new RegExp("Filesystem access: " + fsPerm));
-  }
-
-  // Large download size (>= 25 MiB)
-  const largeCheck = checkPluginSecurityConfirmations(benignPlugin, null, 25 * 1024 * 1024);
-  assert.equal(largeCheck.requiresConfirmation, true);
-  assert.match(largeCheck.reasons[0], /Large download size: 25\.0 MB/);
-
-  // Diff comparison: no new permissions when updating identical permissions
-  const prevPlugin = {
+  const benign = { permissions: { network: [], secrets: [], subprocess: false, filesystem: ["scoped-temp"] } };
+  assert.equal(checkPluginSecurityConfirmations(benign).requiresConfirmation, false);
+  const elevated = {
     permissions: {
       network: ["https://api.example.com"],
       secrets: ["API_TOKEN"],
@@ -308,17 +291,14 @@ test("checkPluginSecurityConfirmations detects network, secrets, subprocess, ele
       filesystem: ["scoped-temp", "persistent-data"],
     },
   };
-  const sameCheck = checkPluginSecurityConfirmations(prevPlugin, prevPlugin, 1000);
-  assert.equal(sameCheck.requiresConfirmation, false);
-
-  // Diff comparison: adding a new secret requires confirmation
-  const addedSecret = {
-    permissions: {
-      ...prevPlugin.permissions,
-      secrets: ["API_TOKEN", "NEW_TOKEN"],
-    },
-  };
-  const secretCheck = checkPluginSecurityConfirmations(addedSecret, prevPlugin, 1000);
-  assert.equal(secretCheck.requiresConfirmation, true);
-  assert.match(secretCheck.reasons[0], /New secret access: NEW_TOKEN/);
+  const check = checkPluginSecurityConfirmations(elevated, null, LARGE_DOWNLOAD_THRESHOLD);
+  assert.equal(check.requiresConfirmation, true);
+  assert.equal(check.reasons.length, 5);
+  assert.deepEqual(check.details.newNetwork, ["https://api.example.com"]);
+  assert.deepEqual(check.details.newSecrets, ["API_TOKEN"]);
+  assert.deepEqual(check.details.newElevatedFs, ["persistent-data"]);
+  assert.equal(check.details.subprocess, true);
+  assert.equal(check.details.largeDownload, true);
+  assert.equal(check.details.downloadBytes, LARGE_DOWNLOAD_THRESHOLD);
+  assert.equal(checkPluginSecurityConfirmations(elevated, elevated, 1).requiresConfirmation, false);
 });

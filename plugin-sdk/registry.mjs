@@ -8,7 +8,7 @@ export const MAX_MANIFEST_SIZE = 512 * 1024; // 512 KiB
 export const MAX_INDIVIDUAL_FILE_SIZE = 64 * 1024 * 1024; // 64 MiB
 export const MAX_TOTAL_PLUGIN_SIZE = 256 * 1024 * 1024; // 256 MiB
 export const LARGE_DOWNLOAD_THRESHOLD = 25 * 1024 * 1024; // 25 MiB
-export const DEFAULT_PLUGIN_REGISTRY_URL = "https://github.com/Somethings1/quizzer/releases/download/plugins/catalog.json";
+export const DEFAULT_PLUGIN_REGISTRY_URL = "https://github.com/Somethings1/quizzer/releases/download/plugins-v1/catalog.json";
 
 const supportedOperatingSystems = new Set(["darwin", "linux", "win32"]);
 const supportedArchitectures = new Set(["x64", "arm64"]);
@@ -17,6 +17,19 @@ const semverRegex = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]
 const pluginIdRegex = /^[a-z0-9](?:[a-z0-9.-]{0,126}[a-z0-9])?$/;
 const secretNameRegex = /^[A-Z][A-Z0-9_]{1,63}$/;
 const sha256Regex = /^[a-f0-9]{64}$/;
+const releaseSegmentRegex = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,254}[A-Za-z0-9])?$/;
+const registrySignatureRegex = /^[A-Za-z0-9_-]{86}$/;
+const catalogKeys = new Set([
+  "schemaVersion", "version", "publishedAt", "signatureAlgorithm", "publicKeyId", "signature", "plugins",
+]);
+const pluginKeys = new Set([
+  "id", "name", "description", "version", "capabilities", "platforms", "resources", "permissions",
+  "manifestUrl", "downloadBaseUrl", "downloadSize", "files",
+]);
+const platformKeys = new Set(["os", "architectures"]);
+const resourceKeys = new Set(["memoryMB", "diskMB", "accelerators"]);
+const permissionKeys = new Set(["network", "filesystem", "secrets", "subprocess"]);
+const fileKeys = new Set(["path", "url", "sha256", "size"]);
 
 export const parseSemver = version => {
   if (typeof version !== "string") return null;
@@ -81,107 +94,82 @@ export const normalizePublicKey = value => {
   if (!value) return null;
   if (value instanceof KeyObject) {
     if (value.type !== "public") throw new Error("KeyObject must be of type public");
+    if (value.asymmetricKeyType !== "ed25519") throw new Error("Registry public key must use Ed25519");
     return value;
   }
   if (typeof value === "string") {
     const trimmed = value.trim();
     if (trimmed.startsWith("-----BEGIN")) {
-      return createPublicKey(trimmed);
+      const key = createPublicKey(trimmed);
+      if (key.asymmetricKeyType !== "ed25519") throw new Error("Registry public key must use Ed25519");
+      return key;
     }
     try {
-      return createPublicKey({
+      const key = createPublicKey({
         key: Buffer.from(trimmed, "base64"),
         format: "der",
         type: "spki",
       });
+      if (key.asymmetricKeyType !== "ed25519") throw new Error("Registry public key must use Ed25519");
+      return key;
     } catch {
-      return createPublicKey(trimmed);
+      const key = createPublicKey(trimmed);
+      if (key.asymmetricKeyType !== "ed25519") throw new Error("Registry public key must use Ed25519");
+      return key;
     }
   }
   if (typeof value === "object" && value.kty === "OKP" && value.crv === "Ed25519") {
-    return createPublicKey({ key: value, format: "jwk" });
+    const key = createPublicKey({ key: value, format: "jwk" });
+    if (key.asymmetricKeyType !== "ed25519") throw new Error("Registry public key must use Ed25519");
+    return key;
   }
   throw new Error("Unsupported public key format");
 };
 
-export const validateCanonicalPluginReleaseUrl = (urlValue, repository = CANONICAL_REPOSITORY) => {
+const hasUnsafeReleasePath = value => /[\r\n\t\0\\]/.test(value) || /%2[ef]|%5c/i.test(value);
+
+const canonicalReleaseUrl = (urlValue, repository, { base = false } = {}) => {
   if (typeof urlValue !== "string") return false;
-  if (urlValue.includes("?") || urlValue.includes("#") || urlValue.includes("..") || urlValue.includes("\\")) {
-    return false;
-  }
-  if (/%2[ee]/i.test(urlValue) || /%2[ff]/i.test(urlValue) || /%5[cc]/i.test(urlValue)) {
-    return false;
-  }
+  if (hasUnsafeReleasePath(urlValue) || urlValue.includes("?") || urlValue.includes("#")) return false;
+  if (base !== urlValue.endsWith("/")) return false;
   try {
     const url = new URL(urlValue);
     if (url.protocol !== "https:") return false;
     if (url.username || url.password) return false;
     if (url.hostname !== "github.com") return false;
-    if (url.port !== "" && url.port !== "443") return false;
+    if (url.port) return false;
     if (url.search || url.hash) return false;
-
     const prefix = `/${repository}/releases/download/`;
     if (!url.pathname.startsWith(prefix)) return false;
-
     const subpath = url.pathname.slice(prefix.length);
-    if (subpath.startsWith("latest/") || subpath === "latest") return false;
-
-    const parts = subpath.split("/").filter(Boolean);
-    if (parts.length < 2) return false;
-    if (parts.some(p => p === "." || p === ".." || p === "latest")) return false;
-
-    return true;
+    const parts = subpath.split("/");
+    if (base) parts.pop();
+    if (parts.length !== (base ? 1 : 2)) return false;
+    if (parts[0].toLowerCase() === "latest") return false;
+    return parts.every(part => releaseSegmentRegex.test(part));
   } catch {
     return false;
   }
 };
 
+export const validateCanonicalPluginReleaseUrl = (urlValue, repository = CANONICAL_REPOSITORY) =>
+  canonicalReleaseUrl(urlValue, repository);
+
 export const validateCanonicalPluginDownloadBaseUrl = (urlValue, repository = CANONICAL_REPOSITORY) => {
-  if (typeof urlValue !== "string") return false;
-  if (!urlValue.endsWith("/")) return false;
-  if (urlValue.includes("?") || urlValue.includes("#") || urlValue.includes("..") || urlValue.includes("\\")) {
-    return false;
-  }
-  if (/%2[ee]/i.test(urlValue) || /%2[ff]/i.test(urlValue) || /%5[cc]/i.test(urlValue)) {
-    return false;
-  }
-  try {
-    const url = new URL(urlValue);
-    if (url.protocol !== "https:") return false;
-    if (url.username || url.password) return false;
-    if (url.hostname !== "github.com") return false;
-    if (url.port !== "" && url.port !== "443") return false;
-    if (url.search || url.hash) return false;
-
-    const prefix = `/${repository}/releases/download/`;
-    if (!url.pathname.startsWith(prefix)) return false;
-
-    const subpath = url.pathname.slice(prefix.length);
-    if (subpath.startsWith("latest/") || subpath === "latest") return false;
-
-    const parts = subpath.split("/").filter(Boolean);
-    if (parts.length < 1) return false;
-    if (parts.some(p => p === "." || p === ".." || p === "latest")) return false;
-
-    return true;
-  } catch {
-    return false;
-  }
+  return canonicalReleaseUrl(urlValue, repository, { base: true });
 };
 
 export const validateRedirectTargetUrl = (targetUrlValue) => {
   if (typeof targetUrlValue !== "string") return false;
-  if (targetUrlValue.includes("..") || targetUrlValue.includes("\\")) return false;
-  if (/%2[ee]/i.test(targetUrlValue) || /%2[ff]/i.test(targetUrlValue) || /%5[cc]/i.test(targetUrlValue)) {
-    return false;
-  }
   try {
     const url = new URL(targetUrlValue);
     if (url.protocol !== "https:") return false;
     if (url.username || url.password) return false;
     if (url.hostname !== "release-assets.githubusercontent.com") return false;
-    if (url.port !== "" && url.port !== "443") return false;
-    if (url.pathname.includes("..") || url.pathname.includes("\\")) return false;
+    if (url.port || url.hash) return false;
+    const rawPath = targetUrlValue.split(/[?#]/, 1)[0];
+    if (hasUnsafeReleasePath(rawPath) || rawPath.includes("..")) return false;
+    if (!url.pathname.startsWith("/github-production-release-asset/")) return false;
     return true;
   } catch {
     return false;
@@ -198,20 +186,32 @@ const requireString = (value, label, maximum = 500) => {
   return value;
 };
 
+const rejectUnknown = (value, allowed, label) => {
+  const unknown = Object.keys(value).filter(key => !allowed.has(key));
+  if (unknown.length) throw new Error(`${label} contains unsupported fields: ${unknown.join(", ")}`);
+};
+
+const hasDuplicates = values => new Set(values).size !== values.length;
+
 export const validateRegistryCatalog = catalog => {
   const obj = requireObject(catalog, "Registry catalog");
+  rejectUnknown(obj, catalogKeys, "Registry catalog");
   if (obj.schemaVersion !== CATALOG_SCHEMA_VERSION) throw new Error(`Unsupported registry catalog schema version: ${obj.schemaVersion}`);
-  if (!obj.version || (typeof obj.version !== "string" && typeof obj.version !== "number")) throw new Error("Registry catalog version must be a string or number");
+  requireString(obj.version, "Registry catalog version", 100);
   requireString(obj.publishedAt, "Registry catalog publishedAt");
-  if (Number.isNaN(Date.parse(obj.publishedAt))) throw new Error("Registry catalog publishedAt must be a valid ISO date");
+  if (Number.isNaN(Date.parse(obj.publishedAt)) || new Date(obj.publishedAt).toISOString() !== obj.publishedAt) {
+    throw new Error("Registry catalog publishedAt must be a canonical ISO timestamp");
+  }
   if (obj.signatureAlgorithm !== "ed25519") throw new Error(`Unsupported signature algorithm: ${obj.signatureAlgorithm}. Only ed25519 is accepted.`);
   requireString(obj.publicKeyId, "Registry catalog publicKeyId", 100);
-  requireString(obj.signature, "Registry catalog signature", 2000);
-  if (!Array.isArray(obj.plugins)) throw new Error("Registry catalog plugins must be an array");
+  if (!/^[A-Za-z0-9._-]{1,100}$/.test(obj.publicKeyId)) throw new Error("Registry catalog publicKeyId is invalid");
+  if (!registrySignatureRegex.test(obj.signature ?? "")) throw new Error("Registry catalog signature must be a canonical Ed25519 base64url value");
+  if (!Array.isArray(obj.plugins) || obj.plugins.length > 1_000) throw new Error("Registry catalog plugins must be an array of at most 1000 entries");
 
   const seenIds = new Set();
   for (const entry of obj.plugins) {
     requireObject(entry, "Registry plugin entry");
+    rejectUnknown(entry, pluginKeys, `Registry entry ${entry.id ?? "unknown"}`);
     if (!pluginIdRegex.test(entry.id ?? "")) throw new Error(`Invalid plugin id in registry entry: ${entry.id}`);
     if (seenIds.has(entry.id)) throw new Error(`Duplicate plugin id in registry catalog: ${entry.id}`);
     seenIds.add(entry.id);
@@ -228,35 +228,48 @@ export const validateRegistryCatalog = catalog => {
       throw new Error(`Registry entry ${entry.id} capabilities are invalid`);
     }
 
-    if (!Array.isArray(entry.platforms) || !entry.platforms.length) {
+    if (!Array.isArray(entry.platforms) || !entry.platforms.length || entry.platforms.length > supportedOperatingSystems.size) {
       throw new Error(`Registry entry ${entry.id} platforms are required`);
     }
+    const seenOperatingSystems = new Set();
     for (const platform of entry.platforms) {
       requireObject(platform, `Registry entry ${entry.id} platform`);
+      rejectUnknown(platform, platformKeys, `Registry entry ${entry.id} platform`);
       if (!supportedOperatingSystems.has(platform.os)) {
         throw new Error(`Unsupported registry plugin operating system: ${platform.os}`);
       }
+      if (seenOperatingSystems.has(platform.os)) throw new Error(`Registry entry ${entry.id} has duplicate platform ${platform.os}`);
+      seenOperatingSystems.add(platform.os);
       if (!Array.isArray(platform.architectures) || !platform.architectures.length
-        || platform.architectures.some(a => !supportedArchitectures.has(a))) {
+        || platform.architectures.some(a => !supportedArchitectures.has(a)) || hasDuplicates(platform.architectures)) {
         throw new Error(`Registry entry ${entry.id} architectures are invalid`);
       }
     }
 
     const resources = requireObject(entry.resources, `Registry entry ${entry.id} resources`);
+    rejectUnknown(resources, resourceKeys, `Registry entry ${entry.id} resources`);
     for (const key of ["memoryMB", "diskMB"]) {
-      if (!Number.isSafeInteger(resources[key]) || resources[key] < 0) {
+      if (!Number.isSafeInteger(resources[key]) || resources[key] < 0 || resources[key] > 1_048_576) {
         throw new Error(`Registry entry ${entry.id} ${key} must be a non-negative integer`);
       }
     }
+    if (resources.accelerators !== undefined && (!Array.isArray(resources.accelerators)
+      || resources.accelerators.some(item => !["cpu", "metal", "cuda", "rocm"].includes(item))
+      || hasDuplicates(resources.accelerators))) throw new Error(`Registry entry ${entry.id} accelerators are invalid`);
 
     const permissions = requireObject(entry.permissions, `Registry entry ${entry.id} permissions`);
-    if (!Array.isArray(permissions.network) || permissions.network.some(item => typeof item !== "string" || !item)) {
+    rejectUnknown(permissions, permissionKeys, `Registry entry ${entry.id} permissions`);
+    if (!Array.isArray(permissions.network) || permissions.network.length > 100
+      || permissions.network.some(item => typeof item !== "string" || !item.trim() || item.length > 2_000 || /[\r\n\0]/.test(item))
+      || hasDuplicates(permissions.network)) {
       throw new Error(`Registry entry ${entry.id} network permissions are invalid`);
     }
-    if (!Array.isArray(permissions.filesystem) || permissions.filesystem.some(item => !supportedFilesystemPermissions.has(item))) {
+    if (!Array.isArray(permissions.filesystem) || permissions.filesystem.some(item => !supportedFilesystemPermissions.has(item))
+      || hasDuplicates(permissions.filesystem)) {
       throw new Error(`Registry entry ${entry.id} filesystem permissions are invalid`);
     }
-    if (!Array.isArray(permissions.secrets) || permissions.secrets.some(item => !secretNameRegex.test(item))) {
+    if (!Array.isArray(permissions.secrets) || permissions.secrets.length > 100
+      || permissions.secrets.some(item => !secretNameRegex.test(item)) || hasDuplicates(permissions.secrets)) {
       throw new Error(`Registry entry ${entry.id} secret permissions are invalid`);
     }
     if (typeof permissions.subprocess !== "boolean") {
@@ -267,47 +280,60 @@ export const validateRegistryCatalog = catalog => {
     if (!validateCanonicalPluginReleaseUrl(entry.manifestUrl)) {
       throw new Error(`Registry entry ${entry.id} manifestUrl must be a canonical versioned credential-free HTTPS Quizzer GitHub Release URL`);
     }
-    if (entry.downloadBaseUrl && !validateCanonicalPluginDownloadBaseUrl(entry.downloadBaseUrl)) {
+    if (entry.downloadBaseUrl !== undefined && !validateCanonicalPluginDownloadBaseUrl(entry.downloadBaseUrl)) {
       throw new Error(`Registry entry ${entry.id} downloadBaseUrl must be a canonical versioned credential-free HTTPS Quizzer GitHub Release URL ending with /`);
     }
     if (typeof entry.downloadSize !== "number" || !Number.isSafeInteger(entry.downloadSize) || entry.downloadSize < 0 || entry.downloadSize > MAX_TOTAL_PLUGIN_SIZE) {
       throw new Error(`Registry entry ${entry.id} downloadSize must be a safe integer between 0 and ${MAX_TOTAL_PLUGIN_SIZE}`);
     }
-    if (entry.files) {
-      if (!Array.isArray(entry.files)) throw new Error(`Registry entry ${entry.id} files must be an array`);
-      const seenFilePaths = new Set();
-      for (const file of entry.files) {
-        requireObject(file, `Registry entry ${entry.id} file`);
-        requireString(file.path, "File path");
-        validatePluginPath(file.path);
-        if (seenFilePaths.has(file.path)) {
-          throw new Error(`Duplicate file path in catalog entry ${entry.id}: ${file.path}`);
-        }
-        seenFilePaths.add(file.path);
-        if (file.url && !validateCanonicalPluginReleaseUrl(file.url)) {
-          throw new Error(`Registry entry ${entry.id} file ${file.path} url must be a canonical versioned credential-free HTTPS Quizzer GitHub Release URL`);
-        }
-        if (file.sha256 && !sha256Regex.test(file.sha256)) {
-          throw new Error(`Registry entry ${entry.id} file ${file.path} sha256 is invalid`);
-        }
-        if (file.size !== undefined && (!Number.isSafeInteger(file.size) || file.size < 0 || file.size > MAX_INDIVIDUAL_FILE_SIZE)) {
-          throw new Error(`Registry entry ${entry.id} file ${file.path} size must be a safe integer between 0 and ${MAX_INDIVIDUAL_FILE_SIZE}`);
-        }
+    if (!Array.isArray(entry.files) || !entry.files.length || entry.files.length > 10_000) {
+      throw new Error(`Registry entry ${entry.id} files must contain 1-10000 signed file records`);
+    }
+    const seenFilePaths = new Set();
+    let declaredTotal = 0;
+    for (const file of entry.files) {
+      requireObject(file, `Registry entry ${entry.id} file`);
+      rejectUnknown(file, fileKeys, `Registry entry ${entry.id} file`);
+      requireString(file.path, "File path");
+      validatePluginPath(file.path);
+      if (seenFilePaths.has(file.path)) {
+        throw new Error(`Duplicate file path in catalog entry ${entry.id}: ${file.path}`);
       }
+      seenFilePaths.add(file.path);
+      if (!validateCanonicalPluginReleaseUrl(file.url)) {
+        throw new Error(`Registry entry ${entry.id} file ${file.path} url must be a canonical versioned credential-free HTTPS Quizzer GitHub Release URL`);
+      }
+      if (!sha256Regex.test(file.sha256 ?? "")) {
+        throw new Error(`Registry entry ${entry.id} file ${file.path} sha256 is invalid`);
+      }
+      if (!Number.isSafeInteger(file.size) || file.size < 0 || file.size > MAX_INDIVIDUAL_FILE_SIZE) {
+        throw new Error(`Registry entry ${entry.id} file ${file.path} size must be a safe integer between 0 and ${MAX_INDIVIDUAL_FILE_SIZE}`);
+      }
+      declaredTotal += file.size;
+      if (!Number.isSafeInteger(declaredTotal) || declaredTotal > MAX_TOTAL_PLUGIN_SIZE) {
+        throw new Error(`Registry entry ${entry.id} files exceed the total plugin size limit`);
+      }
+    }
+    if (declaredTotal !== entry.downloadSize) {
+      throw new Error(`Registry entry ${entry.id} downloadSize must equal its declared file sizes`);
     }
   }
   return obj;
 };
 
 export const signRegistryCatalog = (catalog, privateKeyInput) => {
-  const unsigned = { ...catalog };
+  const unsigned = JSON.parse(JSON.stringify(catalog));
   delete unsigned.signature;
   const privateKey = typeof privateKeyInput === "string"
     ? (privateKeyInput.trim().startsWith("-----BEGIN")
         ? createPrivateKey(privateKeyInput)
         : createPrivateKey({ key: Buffer.from(privateKeyInput.trim(), "base64"), format: "der", type: "pkcs8" }))
     : privateKeyInput;
+  if (!(privateKey instanceof KeyObject) || privateKey.type !== "private" || privateKey.asymmetricKeyType !== "ed25519") {
+    throw new Error("Registry private key must be an Ed25519 private key");
+  }
 
+  validateRegistryCatalog({ ...unsigned, signature: "A".repeat(86) });
   const payload = catalogSignaturePayload(unsigned);
   const signature = sign(null, payload, privateKey).toString("base64url");
   const signed = { ...unsigned, signature };
@@ -316,149 +342,162 @@ export const signRegistryCatalog = (catalog, privateKeyInput) => {
 };
 
 export const verifyRegistryCatalogSignature = (catalog, trustedRegistryKeys) => {
-  if (!catalog || typeof catalog !== "object") throw new Error("Registry catalog must be an object");
-  if (catalog.signatureAlgorithm !== "ed25519") throw new Error(`Unsupported signature algorithm: ${catalog.signatureAlgorithm}. Only ed25519 is accepted.`);
-  if (!catalog.publicKeyId) throw new Error("Registry catalog is missing publicKeyId");
-  if (!catalog.signature || typeof catalog.signature !== "string") throw new Error("Registry catalog is missing signature");
+  validateRegistryCatalog(catalog);
 
   const rawKey = trustedRegistryKeys?.[catalog.publicKeyId];
   if (!rawKey) throw new Error(`Plugin registry signing key is not trusted: ${catalog.publicKeyId}`);
   const publicKey = normalizePublicKey(rawKey);
 
   const payload = catalogSignaturePayload(catalog);
-  const sigBuffer = Buffer.from(
-    catalog.signature,
-    catalog.signature.includes("-") || catalog.signature.includes("_") ? "base64url" : "base64",
-  );
+  const sigBuffer = Buffer.from(catalog.signature, "base64url");
+  if (sigBuffer.length !== 64) throw new Error("Plugin registry catalog signature is invalid");
   const valid = verify(null, payload, publicKey, sigBuffer);
   if (!valid) throw new Error("Plugin registry catalog signature verification failed");
 
-  validateRegistryCatalog(catalog);
   return true;
 };
 
+const abortReason = signal => signal?.reason instanceof Error
+  ? signal.reason
+  : Object.assign(new Error("Plugin download was cancelled"), { name: "AbortError" });
+
+const withAbort = (operation, signal) => {
+  if (signal.aborted) return Promise.reject(abortReason(signal));
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      signal.removeEventListener("abort", onAbort);
+      reject(abortReason(signal));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    Promise.resolve(operation).then(
+      value => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      error => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+};
+
+const contentLengthFor = (response, url, maxBytes) => {
+  const raw = response.headers?.get?.("content-length") ?? response.headers?.get?.("Content-Length");
+  if (raw === null || raw === undefined || raw === "") return;
+  const value = String(raw).trim();
+  if (!/^(?:0|[1-9]\d*)$/.test(value) || !Number.isSafeInteger(Number(value))) {
+    throw new Error(`Response from ${url} returned an invalid Content-Length`);
+  }
+  if (Number(value) > maxBytes) {
+    throw new Error(`Response from ${url} exceeded maximum allowable size (${value} > ${maxBytes})`);
+  }
+};
+
+const cancelResponse = response => {
+  try { Promise.resolve(response?.body?.cancel?.()).catch(() => {}); }
+  catch { /* Ignore response disposal errors. */ }
+};
+
+const readBoundedResponse = async (response, url, maxBytes, signal) => {
+  contentLengthFor(response, url, maxBytes);
+  if (response.body && typeof response.body.getReader === "function") {
+    const reader = response.body.getReader();
+    const chunks = [];
+    let received = 0;
+    try {
+      while (true) {
+        const { done, value } = await withAbort(reader.read(), signal);
+        if (done) break;
+        if (!(value instanceof Uint8Array)) throw new Error(`Response from ${url} returned an invalid byte stream`);
+        received += value.byteLength;
+        if (received > maxBytes) {
+          throw new Error(`Response from ${url} exceeded maximum allowable size of ${maxBytes} bytes`);
+        }
+        chunks.push(Buffer.from(value));
+      }
+      return Buffer.concat(chunks, received);
+    } catch (error) {
+      try { Promise.resolve(reader.cancel(error)).catch(() => {}); }
+      catch { /* Ignore reader disposal errors. */ }
+      throw error;
+    } finally {
+      try { reader.releaseLock?.(); } catch { /* The reader may still be cancelling. */ }
+    }
+  }
+
+  if (typeof response.arrayBuffer === "function") {
+    const buffer = Buffer.from(await withAbort(response.arrayBuffer(), signal));
+    if (buffer.length > maxBytes) throw new Error(`Response from ${url} exceeded maximum allowable size of ${maxBytes} bytes`);
+    return buffer;
+  }
+
+  if (typeof response.text === "function") {
+    const buffer = Buffer.from(await withAbort(response.text(), signal), "utf8");
+    if (buffer.length > maxBytes) throw new Error(`Response from ${url} exceeded maximum allowable size of ${maxBytes} bytes`);
+    return buffer;
+  }
+
+  throw new Error("Unsupported response body format");
+};
+
 export const fetchBoundedBuffer = async (fetchFn, initialUrl, options = {}, maxBytes = MAX_CATALOG_SIZE) => {
+  if (typeof fetchFn !== "function") throw new Error("Plugin downloads require a fetch implementation");
   if (!validateCanonicalPluginReleaseUrl(initialUrl)) {
     throw new Error(`Untrusted plugin download URL: ${initialUrl}. Must be a canonical versioned credential-free HTTPS Quizzer GitHub Release URL.`);
   }
-
-  const signal = options.signal;
-  if (signal?.aborted) {
-    const err = signal.reason || new Error("The operation was aborted");
-    if (!err.name) err.name = "AbortError";
-    throw err;
+  if (!options || typeof options !== "object" || Array.isArray(options)) throw new Error("Plugin download options must be an object");
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > MAX_TOTAL_PLUGIN_SIZE) {
+    throw new Error("Plugin download size limit is invalid");
   }
 
-  const timeoutMs = options.timeoutMs ?? 30_000;
-  let timer;
-  let timeoutController;
-  let combinedSignal = signal;
-  if (!signal) {
-    timeoutController = new AbortController();
-    combinedSignal = timeoutController.signal;
-    timer = setTimeout(() => {
-      const err = new Error(`Request to ${initialUrl} timed out after ${timeoutMs} ms`);
-      err.name = "TimeoutError";
-      timeoutController.abort(err);
-    }, timeoutMs);
-  } else {
-    timeoutController = new AbortController();
-    const abortListener = () => {
-      timeoutController.abort(signal.reason);
-    };
-    signal.addEventListener("abort", abortListener, { once: true });
-    timer = setTimeout(() => {
-      const err = new Error(`Request to ${initialUrl} timed out after ${timeoutMs} ms`);
-      err.name = "TimeoutError";
-      timeoutController.abort(err);
-    }, timeoutMs);
-    combinedSignal = timeoutController.signal;
+  const { signal: callerSignal, timeoutMs = 30_000, ...requestOptions } = options;
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 300_000) {
+    throw new Error("Plugin download timeout must be from 1 to 300000 ms");
   }
+  if (callerSignal?.aborted) throw abortReason(callerSignal);
+
+  const controller = new AbortController();
+  const forwardAbort = () => controller.abort(abortReason(callerSignal));
+  callerSignal?.addEventListener("abort", forwardAbort, { once: true });
+  const timeout = setTimeout(() => controller.abort(Object.assign(
+    new Error(`Request to ${initialUrl} timed out after ${timeoutMs} ms`),
+    { name: "TimeoutError" },
+  )), timeoutMs);
+  const fetchOptions = { ...requestOptions, redirect: "manual", signal: controller.signal };
 
   try {
-    const fetchOptions = {
-      ...options,
-      redirect: "manual",
-      signal: combinedSignal,
-    };
-
-    let response = await fetchFn(initialUrl, fetchOptions);
-
+    let response = await withAbort(fetchFn(initialUrl, fetchOptions), controller.signal);
+    let responseUrl = initialUrl;
     if (response.status >= 300 && response.status < 400) {
-      const location = response.headers?.get?.("location") || response.headers?.get?.("Location");
-      if (!location || typeof location !== "string" || !location.trim()) {
+      const location = response.headers?.get?.("location") ?? response.headers?.get?.("Location");
+      if (typeof location !== "string" || !location.trim()) {
+        cancelResponse(response);
         throw new Error(`Redirect from ${initialUrl} missing Location header (HTTP ${response.status})`);
       }
-
       let targetUrl;
-      try {
-        targetUrl = new URL(location, initialUrl).href;
-      } catch {
-        throw new Error(`Invalid redirect Location: ${location}`);
-      }
-
+      try { targetUrl = new URL(location, initialUrl).href; }
+      catch { throw new Error("Plugin download returned an invalid redirect Location"); }
       if (!validateRedirectTargetUrl(targetUrl)) {
-        throw new Error(`Invalid redirect target URL: ${targetUrl}. Only credential-free release-assets.githubusercontent.com on default port is permitted.`);
+        cancelResponse(response);
+        throw new Error("Plugin download redirect must target credential-free release-assets.githubusercontent.com on its default HTTPS port");
       }
-
-      const hopResponse = await fetchFn(targetUrl, fetchOptions);
-      if (hopResponse.status >= 300 && hopResponse.status < 400) {
-        throw new Error(`Second redirect hop is prohibited (HTTP ${hopResponse.status} from ${targetUrl})`);
+      cancelResponse(response);
+      response = await withAbort(fetchFn(targetUrl, fetchOptions), controller.signal);
+      responseUrl = targetUrl;
+      if (response.status >= 300 && response.status < 400) {
+        cancelResponse(response);
+        throw new Error(`Second plugin download redirect is prohibited (HTTP ${response.status})`);
       }
-      response = hopResponse;
     }
-
     if (!response.ok) {
-      throw new Error(`Failed to fetch from ${initialUrl}: HTTP ${response.status}`);
+      cancelResponse(response);
+      throw new Error(`Failed to fetch plugin asset: HTTP ${response.status}`);
     }
-
-    const contentLength = response.headers?.get?.("content-length") || response.headers?.get?.("Content-Length");
-    if (contentLength && Number(contentLength) > maxBytes) {
-      throw new Error(`Response from ${initialUrl} exceeded maximum allowable size (${contentLength} > ${maxBytes})`);
-    }
-
-    if (response.body && typeof response.body.getReader === "function") {
-      const reader = response.body.getReader();
-      const chunks = [];
-      let received = 0;
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          received += value.byteLength;
-          if (received > maxBytes) {
-            await reader.cancel().catch(() => {});
-            throw new Error(`Response from ${initialUrl} exceeded maximum allowable size of ${maxBytes} bytes`);
-          }
-          chunks.push(Buffer.from(value));
-        }
-        return Buffer.concat(chunks);
-      } catch (err) {
-        await reader.cancel().catch(() => {});
-        throw err;
-      }
-    }
-
-    if (typeof response.arrayBuffer === "function") {
-      const buffer = Buffer.from(await response.arrayBuffer());
-      if (buffer.length > maxBytes) {
-        throw new Error(`Response from ${initialUrl} exceeded maximum allowable size of ${maxBytes} bytes`);
-      }
-      return buffer;
-    }
-
-    if (typeof response.text === "function") {
-      const text = await response.text();
-      const buffer = Buffer.from(text, "utf8");
-      if (buffer.length > maxBytes) {
-        throw new Error(`Response from ${initialUrl} exceeded maximum allowable size of ${maxBytes} bytes`);
-      }
-      return buffer;
-    }
-
-    throw new Error("Unsupported response body format");
+    return await readBoundedResponse(response, responseUrl, maxBytes, controller.signal);
   } finally {
-    if (timer) clearTimeout(timer);
+    clearTimeout(timeout);
+    callerSignal?.removeEventListener("abort", forwardAbort);
   }
 };
 
