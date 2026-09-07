@@ -236,6 +236,15 @@ test('reports and invokes local Ollama only after explicit setup confirmation', 
   });
   assert.equal(generated.status, 200);
   assert.deepEqual(await generated.json(), { output: '{"questions":[]}' });
+
+  const missingProviderKey = await authorized('/api/generate', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider: 'gemini', model: 'gemini-2.5-flash', prompt: 'Create a question', schema: { type: 'object' } }),
+  });
+  assert.equal(missingProviderKey.status, 401);
+  assert.deepEqual(await missingProviderKey.json(), {
+    error: 'Enter a Gemini API key in Quizzer', code: 'provider_auth',
+  });
 });
 
 test('exposes settings schema, precedence, and validated updates', async () => {

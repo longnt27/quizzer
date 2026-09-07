@@ -7,7 +7,7 @@ const MAX_OUTPUT_TOKENS = 10_000_000;
 
 export class BuiltinProviderError extends Error { constructor(message, status = 503, code = 'provider_unavailable') { super(message); this.status = status; this.code = code; } }
 const cap = value => { if (value === undefined) return undefined; if (!Number.isSafeInteger(value) || value < 1 || value > MAX_OUTPUT_TOKENS) throw new Error('maxOutputTokens must be an integer between 1 and 10000000'); return value; };
-const key = (value, label) => { if (typeof value !== 'string' || !value.trim()) throw new BuiltinProviderError(`Enter an ${label} API key in Quizzer`, 401, 'provider_auth'); return value.trim(); };
+const key = (value, label) => { if (typeof value !== 'string' || !value.trim()) { const article = /^[aeiou]/i.test(label) ? 'an' : 'a'; throw new BuiltinProviderError(`Enter ${article} ${label} API key in Quizzer`, 401, 'provider_auth'); } return value.trim(); };
 const validate = ({ prompt, schema, model, apiKey }) => {
   if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > MAX_PROMPT_CHARACTERS) throw new Error('Generation prompt is invalid or too large');
   if (!schema || typeof schema !== 'object' || Array.isArray(schema) || Buffer.byteLength(JSON.stringify(schema)) > MAX_SCHEMA_BYTES) throw new Error('Generation schema is invalid or too large');

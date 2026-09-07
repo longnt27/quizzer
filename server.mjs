@@ -37,6 +37,7 @@ import {
 import { createLlamaCppRuntime } from './server/llama-cpp-runtime.mjs';
 import { runOpenAICompatibleGeneration } from './server/openai-compatible-generation.mjs';
 import { normalizeProviderUsage } from './server/provider-usage.mjs';
+import { normalizeProviderError } from './server/provider-error.mjs';
 import {
   runAnthropic as runBuiltinAnthropic, runGemini as runBuiltinGemini,
   runOpenAI as runBuiltinOpenAI, runOpenAICompatible as runBuiltinOpenAICompatible,
