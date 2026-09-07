@@ -212,6 +212,38 @@ test('service worker routes to openai-compatible provider and respects endpoint 
   assert.equal(harness.completion().test.questions[0].provenance.model, 'custom-model');
 });
 
+test('service worker routes llama.cpp jobs to the local endpoint setting', async () => {
+  const routes = [
+    { provider: 'llama-cpp', model: 'llama-3.2-q4', privacy: 'local', paid: false, approved: true },
+  ];
+  const options = optionsFor({
+    provider: 'llama-cpp',
+    questionCounts: { multipleChoice: 1, fillBlank: 0, reasoning: 0, coding: 0 },
+    routeChain: routes,
+  });
+  options.model = 'llama-3.2-q4';
+  options.resolvedSettings = {
+    ...options.resolvedSettings,
+    'providers.openai-compatible.endpoint': 'https://remote.example.test/v1',
+    'providers.llama-cpp.endpoint': 'http://127.0.0.42:8080/v1',
+  };
+  const job = {
+    id: 'job-llama-cpp', testId: 'test-llama-cpp', name: 'llama.cpp quiz', status: 'running',
+    workerId: 'service-worker', leaseId: 'lease-llama-cpp', createdAt: 1, updatedAt: 1,
+    documentIds: ['doc-one'], options, questions: [], rejected: 0, rounds: {}, activeRouteIndex: 0,
+  };
+  let capturedRequest;
+  const harness = createHarness(job, request => {
+    capturedRequest = request;
+    return JSON.stringify({ questions: [candidateFor('multiple-choice')] });
+  });
+  const result = await executeGenerationJob(job, harness.dependencies);
+  assert.equal(result.status, 'completed');
+  assert.equal(capturedRequest.provider, 'llama-cpp');
+  assert.equal(capturedRequest.endpoint, 'http://127.0.0.42:8080/v1');
+  assert.equal(capturedRequest.resolvedSettings['providers.openai-compatible.endpoint'], 'https://remote.example.test/v1');
+});
+
 test('service worker pauses safely when no approved provider route remains', async () => {
   const options = optionsFor({ questionCounts: { multipleChoice: 1, fillBlank: 0, reasoning: 0, coding: 0 } });
   const job = {
@@ -477,4 +509,229 @@ test('bounds schemas, candidates, JSON extraction, and coverage inputs', () => {
   assert.equal(plan.slots.length, 5);
   assert.equal(buildGenerationCoveragePlan(documents, 2, 'ai-selected').slots.length, 2);
   assert.equal(requestedQuestionCounts({ questionCount: 3 })['multiple-choice'], 3);
+});
+
+test('does not replay a provider request after an accounting attempt was recorded', async () => {
+  const options = optionsFor({ questionCounts: { multipleChoice: 1, fillBlank: 0, reasoning: 0, coding: 0 } });
+  const base = {
+    id: 'job-recovery', testId: 'test-recovery', name: 'Recovery quiz', status: 'running',
+    workerId: 'service-worker', leaseId: 'lease-recovery', createdAt: 1, updatedAt: 1,
+    documentIds: ['doc-one'], options, questions: [], rejected: 0, rounds: {}, providerAttempts: [],
+  };
+  const order = [];
+  const first = createHarness(base, () => {
+    order.push('request');
+    throw new Error('provider disconnected after dispatch');
+  });
+  first.dependencies.reserveGenerationAttempt = (id, params) => {
+    order.push('reserve');
+    first.dependencies.reserveGenerationAttempt.lastAttemptId = params.attemptId;
+    return { ...base, usageAudit: [{ attemptId: params.attemptId, event: 'reserved' }] };
+  };
+  first.dependencies.finalizeGenerationAttempt = (id, params) => {
+    order.push('finalize');
+    return { ...base, usageAudit: [{ attemptId: params.attemptId, event: 'finalized' }] };
+  };
+  await executeGenerationJob(base, first.dependencies);
+  assert.deepEqual(order, ['reserve', 'request', 'finalize']);
+  // Capture the deterministic ID from the finalize call without exposing the
+  // worker's internal ID-generation helper.
+  const recordedId = first.dependencies.reserveGenerationAttempt.lastAttemptId;
+  assert.ok(recordedId);
+  const replay = createHarness({ ...base, usageAudit: [{ attemptId: recordedId, event: 'reserved' }] }, () => {
+    throw new Error('must not dispatch');
+  });
+  let reserves = 0;
+  replay.dependencies.reserveGenerationAttempt = () => { reserves += 1; throw new Error('must not reserve'); };
+  replay.dependencies.finalizeGenerationAttempt = () => { throw new Error('must not finalize'); };
+  const result = await executeGenerationJob({ ...base, usageAudit: [{ attemptId: recordedId, event: 'reserved' }] }, replay.dependencies);
+  assert.equal(result.status, 'paused');
+  assert.equal(result.errorCode, 'cost_recovery');
+  assert.equal(reserves, 0);
+  assert.equal(replay.patches.some(patch => patch.errorCode === 'cost_recovery'), true);
+  const approvedAudit = [{ attemptId: recordedId, event: 'reserved' }, { event: 'recovery-approved', recoveryAttemptId: recordedId }];
+  const approvedJob = { ...base, usageAudit: approvedAudit };
+  const retry = createHarness(approvedJob, () => { throw new Error('provider disconnected again'); });
+  retry.dependencies.reserveGenerationAttempt = (_id, params) => {
+    retry.dependencies.newAttemptId = params.attemptId;
+    return { ...approvedJob, usageAudit: [...approvedAudit, { attemptId: params.attemptId, event: 'reserved' }] };
+  };
+  retry.dependencies.finalizeGenerationAttempt = (_id, params) => ({ ...approvedJob, usageAudit: [...approvedAudit,
+    { attemptId: params.attemptId, event: 'reserved' }, { attemptId: params.attemptId, event: 'finalized' }] });
+  const retried = await executeGenerationJob(approvedJob, retry.dependencies);
+  assert.notEqual(retry.dependencies.newAttemptId, recordedId);
+  assert.equal(retried.status, 'error');
+  const secondApprovalAudit = [...approvedAudit,
+    { attemptId: retry.dependencies.newAttemptId, event: 'reserved' },
+    { event: 'recovery-approved', recoveryAttemptId: retry.dependencies.newAttemptId }];
+  const third = createHarness({ ...base, usageAudit: secondApprovalAudit }, () => { throw new Error('third dispatch failed'); });
+  third.dependencies.reserveGenerationAttempt = (_id, params) => {
+    third.dependencies.newAttemptId = params.attemptId;
+    return { ...base, usageAudit: [...secondApprovalAudit, { attemptId: params.attemptId, event: 'reserved' }] };
+  };
+  third.dependencies.finalizeGenerationAttempt = (_id, params) => ({ ...base, usageAudit: [...secondApprovalAudit,
+    { attemptId: params.attemptId, event: 'reserved' }, { attemptId: params.attemptId, event: 'finalized' }] });
+  await executeGenerationJob({ ...base, usageAudit: secondApprovalAudit }, third.dependencies);
+  assert.notEqual(third.dependencies.newAttemptId, retry.dependencies.newAttemptId);
+  assert.notEqual(third.dependencies.newAttemptId, recordedId);
+});
+
+test('pauses finite-ceiling jobs for both reserved and finalized replay attempts', async () => {
+  const options = {
+    ...optionsFor({ questionCounts: { multipleChoice: 1, fillBlank: 0, reasoning: 0, coding: 0 } }),
+    costCeilingMicroUsd: 10_000_000,
+  };
+  const base = {
+    id: 'job-finite-recovery', testId: 'test-finite-recovery', name: 'Finite recovery quiz', status: 'running',
+    workerId: 'service-worker', leaseId: 'lease-finite-recovery', createdAt: 1, updatedAt: 1,
+    documentIds: ['doc-one'], options, questions: [], rejected: 0, rounds: {}, providerAttempts: [],
+  };
+  for (const event of ['reserved', 'finalized']) {
+    const calls = [];
+    const first = createHarness(base, () => {
+      calls.push('request');
+      return JSON.stringify({ questions: [candidateFor('multiple-choice')] });
+    });
+    first.dependencies.reserveGenerationAttempt = (_id, params) => {
+      calls.push('reserve');
+      first.dependencies.reserveGenerationAttempt.lastAttemptId = params.attemptId;
+      return { ...base, usageAudit: [{ attemptId: params.attemptId, event: 'reserved' }] };
+    };
+    first.dependencies.finalizeGenerationAttempt = (_id, params) => {
+      calls.push('finalize');
+      return { ...base, usageAudit: [{ attemptId: params.attemptId, event: 'finalized' }] };
+    };
+    const completed = await executeGenerationJob(base, first.dependencies);
+    assert.equal(completed.status, 'completed');
+    assert.deepEqual(calls, ['reserve', 'request', 'finalize']);
+    const attemptId = first.dependencies.reserveGenerationAttempt.lastAttemptId;
+
+    const replayCalls = [];
+    const replay = createHarness({ ...base, usageAudit: [{ attemptId, event }] }, () => {
+      replayCalls.push('request');
+      throw new Error('must not dispatch');
+    });
+    replay.dependencies.reserveGenerationAttempt = () => { replayCalls.push('reserve'); throw new Error('must not reserve'); };
+    replay.dependencies.finalizeGenerationAttempt = () => { replayCalls.push('finalize'); throw new Error('must not finalize'); };
+    const result = await executeGenerationJob({ ...base, usageAudit: [{ attemptId, event }] }, replay.dependencies);
+    assert.equal(result.status, 'paused');
+    assert.equal(result.errorCode, 'cost_recovery');
+    assert.deepEqual(replayCalls, []);
+    assert.match(result.error, /may have been charged.*not checkpointed/i);
+  }
+});
+
+test('covers accounting pause failures, envelopes, null responses, and cancellation', async () => {
+  const base = {
+    id: 'job-branch-coverage', testId: 'test-branch-coverage', name: 'Branch quiz', status: 'running',
+    workerId: 'service-worker', leaseId: 'lease-branch', createdAt: 1, updatedAt: 1,
+    documentIds: ['doc-one'], options: optionsFor({ questionCounts: { multipleChoice: 1, fillBlank: 0, reasoning: 0, coding: 0 } }),
+    questions: [], rejected: 0, rounds: {}, providerAttempts: [],
+  };
+  const finite = { ...base, options: { ...base.options, costCeilingMicroUsd: 100 } };
+  let requests = 0;
+  const reserveBlocked = createHarness(finite, () => { requests += 1; return '{}'; });
+  reserveBlocked.dependencies.reserveGenerationAttempt = () => { throw new Error('ceiling exhausted'); };
+  reserveBlocked.dependencies.finalizeGenerationAttempt = () => { throw new Error('must not finalize'); };
+  const blocked = await executeGenerationJob(finite, reserveBlocked.dependencies);
+  assert.equal(blocked.errorCode, 'cost_ceiling');
+  assert.equal(requests, 0);
+
+  requests = 0;
+  const unavailable = createHarness(finite, () => { requests += 1; return '{}'; });
+  const unavailableResult = await executeGenerationJob(finite, unavailable.dependencies);
+  assert.equal(unavailableResult.errorCode, 'cost_ceiling');
+  assert.equal(requests, 0);
+
+  const calls = [];
+  const envelope = createHarness(base, () => {
+    calls.push('request');
+    return { output: JSON.stringify({ questions: [candidateFor('multiple-choice')] }), usage: {
+      inputTokens: 2, outputTokens: 3, totalTokens: 5,
+    } };
+  });
+  envelope.dependencies.reserveGenerationAttempt = (_id, params) => {
+    calls.push('reserve');
+    return { ...base, usageAudit: [{ attemptId: params.attemptId, event: 'reserved' }] };
+  };
+  envelope.dependencies.finalizeGenerationAttempt = () => { calls.push('finalize'); return base; };
+  const completed = await executeGenerationJob(base, envelope.dependencies);
+  assert.equal(completed.status, 'completed');
+  assert.deepEqual(calls, ['reserve', 'request', 'finalize']);
+
+  const cancelled = createHarness(base, () => { throw new Error('must not dispatch'); });
+  const signal = new AbortController();
+  signal.abort(Object.assign(new Error('cancelled by test'), { name: 'AbortError' }));
+  await assert.rejects(executeGenerationJob(base, { ...cancelled.dependencies, signal: signal.signal }), /cancelled by test/);
+
+  const alreadyOver = createHarness({ ...finite, usageSummary: {
+    inputTokens: 0, outputTokens: 0, totalTokens: 0, finalizedCostMicroUsd: 101, reservedCostMicroUsd: 0,
+  } }, () => { throw new Error('must not dispatch'); });
+  const overResult = await executeGenerationJob({ ...finite, usageSummary: {
+    inputTokens: 0, outputTokens: 0, totalTokens: 0, finalizedCostMicroUsd: 101, reservedCostMicroUsd: 0,
+  } }, alreadyOver.dependencies);
+  assert.equal(overResult.errorCode, 'cost_ceiling');
+
+  const unlimitedReserveFailure = createHarness(base, () => { throw new Error('must not dispatch'); });
+  unlimitedReserveFailure.dependencies.reserveGenerationAttempt = () => { throw new Error('accounting unavailable'); };
+  const accountingFailure = await executeGenerationJob(base, unlimitedReserveFailure.dependencies);
+  assert.equal(accountingFailure.status, 'error');
+
+  const invalid = createHarness(base, () => JSON.stringify({ questions: [{}] }));
+  const invalidResult = await executeGenerationJob(base, invalid.dependencies);
+  assert.equal(invalidResult.errorCode, 'validation_exhausted');
+
+  const embedding = createHarness(base, () => JSON.stringify({ questions: [candidateFor('multiple-choice')] }));
+  embedding.dependencies.embed = async () => { throw new Error('embedding unavailable'); };
+  embedding.state().options.resolvedSettings['embeddings.enabled'] = true;
+  const embeddingResult = await executeGenerationJob(base, embedding.dependencies);
+  assert.equal(embeddingResult.status, 'completed');
+
+  const legacy = {
+    ...base,
+    id: 'job-legacy-slots', testId: 'test-legacy-slots',
+    options: { ...base.options, questionCount: 2, questionCounts: { multipleChoice: 2, fillBlank: 0, reasoning: 0, coding: 0 } },
+    questions: [candidateFor('multiple-choice', 99)],
+  };
+  const legacyHarness = createHarness(legacy, () => JSON.stringify({ questions: [candidateFor('multiple-choice', 100)] }));
+  const legacyResult = await executeGenerationJob(legacy, legacyHarness.dependencies);
+  assert.ok(['completed', 'error'].includes(legacyResult.status));
+
+  const nullResponse = createHarness({ ...base, id: 'job-null-response' }, () => null);
+  const nullResult = await executeGenerationJob({ ...base, id: 'job-null-response' }, nullResponse.dependencies);
+  assert.equal(nullResult.errorCode, 'validation_exhausted');
+
+  const legacyAudit = createHarness({ ...base, id: 'job-legacy-audit', usageAudit: [{ attemptId: 'other-attempt', event: 'reserved' }] },
+    () => JSON.stringify({ questions: [candidateFor('multiple-choice', 501)] }));
+  const legacyAuditResult = await executeGenerationJob({ ...base, id: 'job-legacy-audit', usageAudit: [{ attemptId: 'other-attempt', event: 'reserved' }] }, legacyAudit.dependencies);
+  assert.ok(['completed', 'error'].includes(legacyAuditResult.status));
+
+  const undefinedAccounting = createHarness({ ...base, id: 'job-undefined-accounting' },
+    () => JSON.stringify({ questions: [candidateFor('multiple-choice', 601)] }));
+  undefinedAccounting.dependencies.reserveGenerationAttempt = () => undefined;
+  undefinedAccounting.dependencies.finalizeGenerationAttempt = () => undefined;
+  const undefinedAccountingResult = await executeGenerationJob({ ...base, id: 'job-undefined-accounting' }, undefinedAccounting.dependencies);
+  assert.equal(undefinedAccountingResult.status, 'completed');
+
+  const aliasAccounting = createHarness({ ...base, id: 'job-alias-accounting' },
+    () => JSON.stringify({ questions: [candidateFor('multiple-choice', 701)] }));
+  aliasAccounting.dependencies.reserveProviderAttempt = () => undefined;
+  aliasAccounting.dependencies.finalizeProviderAttempt = () => undefined;
+  const aliasResult = await executeGenerationJob({ ...base, id: 'job-alias-accounting' }, aliasAccounting.dependencies);
+  assert.equal(aliasResult.status, 'completed');
+
+  const finalizeFailure = createHarness({ ...base, id: 'job-finalize-failure' },
+    () => JSON.stringify({ questions: [candidateFor('multiple-choice', 801)] }));
+  finalizeFailure.dependencies.reserveGenerationAttempt = () => undefined;
+  finalizeFailure.dependencies.finalizeGenerationAttempt = () => { throw new Error('finalization unavailable'); };
+  const finalizeFailureResult = await executeGenerationJob({ ...base, id: 'job-finalize-failure' }, finalizeFailure.dependencies);
+  assert.equal(finalizeFailureResult.status, 'error');
+
+  const optionalDeps = createHarness({ ...base, id: 'job-optional-deps' },
+    () => JSON.stringify({ questions: [candidateFor('multiple-choice', 901)] }));
+  delete optionalDeps.dependencies.ensureIndexed;
+  delete optionalDeps.dependencies.retrieve;
+  delete optionalDeps.dependencies.loadImage;
+  const optionalResult = await executeGenerationJob({ ...base, id: 'job-optional-deps' }, optionalDeps.dependencies);
+  assert.equal(optionalResult.status, 'completed');
 });

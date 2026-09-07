@@ -36,9 +36,16 @@ const signedManifest = () => {
 };
 
 const failManifest = (page: Page) => page.route(manifestUrl, route => route.abort());
+const stubClipboard = (page: Page) => page.addInitScript(() => {
+  let value = '';
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText: async (next: string) => { value = next; }, readText: async () => value },
+  });
+});
 
-test('detects the platform, exposes every installer, and copies the selected command', async ({ context, page }) => {
-  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+test('detects the platform, exposes every installer, and copies the selected command', async ({ page }) => {
+  await stubClipboard(page);
   await failManifest(page);
   await page.goto('/');
 
@@ -105,8 +112,8 @@ test('updates the client-only quiz preview without contacting an AI provider', a
   expect(externalRequests).toEqual([manifestUrl]);
 });
 
-test('keeps mobile content within the viewport and supports keyboard controls', async ({ context, page }) => {
-  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+test('keeps mobile content within the viewport and supports keyboard controls', async ({ page }) => {
+  await stubClipboard(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await failManifest(page);
   await page.goto('/');
@@ -118,7 +125,7 @@ test('keeps mobile content within the viewport and supports keyboard controls', 
   await windows.focus();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('link', { name: /Download for Windows/ })).toBeVisible();
-  const copy = page.getByLabel('Copy installer command');
+  const copy = page.getByLabel('Copy Windows installer');
   await copy.focus();
   await page.keyboard.press('Enter');
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(installers.windows);
@@ -133,4 +140,62 @@ test('publishes accessible document and social metadata', async ({ page }) => {
   await expect(page.locator('meta[name="description"]')).toHaveAttribute('content', /source-grounded quizzes/);
   await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', /\/og\.png$/);
   await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute('content', 'summary_large_image');
+});
+
+test('supports keyboard access to navigation, download controls, and demo with reduced motion', async ({ page }) => {
+  await stubClipboard(page);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await failManifest(page);
+  await page.goto('/');
+
+  await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Download for/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Windows', exact: true })).toHaveAttribute('type', 'button');
+  await expect(page.getByRole('button', { name: 'Kubernetes operations' })).toHaveAttribute('type', 'button');
+
+  const focusable = page.locator('a[href], button, input, textarea, select, [tabindex]:not([tabindex="-1"])');
+  const count = await focusable.count();
+  expect(count).toBeGreaterThan(5);
+  for (let index = 0; index < Math.min(count, 24); index += 1) {
+    const active = focusable.nth(index);
+    await active.focus();
+    await expect(active).toBeVisible();
+    await expect.poll(() => active.evaluate(element => {
+      const style = getComputedStyle(element);
+      return style.outlineStyle !== 'none' || style.boxShadow !== 'none';
+    })).toBe(true);
+  }
+
+  const windows = page.getByRole('button', { name: 'Windows', exact: true });
+  await windows.focus();
+  await page.keyboard.press('Space');
+  await expect(page.getByLabel('Windows installation command')).toBeVisible();
+  const copy = page.getByLabel('Copy Windows installer');
+  await copy.focus();
+  await page.keyboard.press('Enter');
+  await expect(copy).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Kubernetes operations' })).toBeVisible();
+
+  // Prove actual Tab reachability independently for representative controls;
+  // this avoids assuming a particular DOM order while still detecting traps.
+  const keyboardTargets = [
+    windows,
+    copy,
+    page.getByRole('button', { name: 'Kubernetes operations' }),
+  ];
+  const tabUntil = async (target: ReturnType<typeof page.getByRole>, start = focusable.first()) => {
+    await start.focus();
+    for (let step = 0; step < 200; step += 1) {
+      if (await target.evaluate(element => element === document.activeElement)) return;
+      await page.keyboard.press('Tab');
+    }
+    throw new Error(`Target was not reachable by keyboard Tab traversal: ${await target.getAttribute('aria-label')} (${await target.textContent()})`);
+  };
+  for (const target of keyboardTargets) {
+    await tabUntil(target, focusable.first());
+    await expect(target).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await page.keyboard.press('Tab');
+    await expect(target).toBeFocused();
+  }
 });

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { chunkDocument } from './document-import.mjs';
 import { assessQuestionQuality, retrievalNeedsCorrection } from './generation-quality.mjs';
 
@@ -338,6 +338,39 @@ const providerErrorCode = error => error?.code
 
 const abortError = () => Object.assign(new Error('Generation cancelled'), { name: 'AbortError' });
 
+const accountingAttemptId = (jobId, type, round, slotIndexes, routeIndex = 0, recoveryCount = 0) => `attempt-${createHash('sha256')
+  .update(JSON.stringify({ jobId, type, round, slotIndexes, routeIndex, recoveryCount }))
+  .digest('hex').slice(0, 48)}`;
+
+// UTF-8 bytes are a conservative token upper bound (a token cannot contain
+// more bytes than the input string). Image inputs are data URLs in the worker;
+// their decoded byte length is bounded from the base64 payload.
+const conservativeImageBytes = image => {
+  if (typeof image !== 'string' || !image.startsWith('data:')) return undefined;
+  const comma = image.indexOf(',');
+  if (comma < 0 || !/;base64(?:;|$)/i.test(image.slice(0, comma))) return undefined;
+  const encoded = image.slice(comma + 1);
+  return Math.ceil(encoded.length * 3 / 4);
+};
+const conservativeInputTokens = (prompt, images) => {
+  const textTokens = Buffer.byteLength(prompt, 'utf8');
+  const imageTokens = [];
+  for (const image of images ?? []) {
+    const bytes = conservativeImageBytes(image);
+    if (bytes === undefined) return undefined;
+    imageTokens.push(bytes);
+  }
+  return textTokens + imageTokens.reduce((sum, value) => sum + value, 0);
+};
+const MAX_OUTPUT_RESERVATION_TOKENS = 10_000_000;
+const boundedOutputTokens = requested => Math.min(MAX_OUTPUT_RESERVATION_TOKENS, Math.max(1, requested * 4096));
+const unknownUsage = reason => ({ unknown: true, reason });
+const providerOutputAndUsage = response => {
+  if (typeof response === 'string') return { output: response, usage: undefined };
+  if (response && typeof response === 'object') return { output: response.output, usage: response.usage };
+  return { output: response, usage: undefined };
+};
+
 export const executeGenerationJob = async (claimedJob, dependencies) => {
   let job = { ...claimedJob };
   const controller = new AbortController();
@@ -419,6 +452,15 @@ export const executeGenerationJob = async (claimedJob, dependencies) => {
       let round = (rounds[type] ?? 0) + 1;
       while (round <= MAX_ROUNDS && typeAccepted < typeTarget) {
         if (controller.signal.aborted) throw controller.signal.reason ?? abortError();
+        const ceiling = options.costCeilingMicroUsd;
+        const usageSummary = job.usageSummary;
+        if (ceiling !== undefined && usageSummary
+          && BigInt(usageSummary.finalizedCostMicroUsd ?? 0) + BigInt(usageSummary.reservedCostMicroUsd ?? 0) > BigInt(ceiling)) {
+          await persist({ status: 'paused', errorCode: 'cost_ceiling',
+            error: 'Generation cost ceiling reached; unfinished questions were preserved.',
+          });
+          return job;
+        }
         const requestedSlotIndexes = typeSlotIndexes.filter(slot => !filledSlots.has(slot)).slice(0, batchSize);
         const requested = requestedSlotIndexes.length;
         await persist({ progress: {
@@ -429,17 +471,92 @@ export const executeGenerationJob = async (claimedJob, dependencies) => {
           documents, plan: coveragePlan, slotIndexes: requestedSlotIndexes,
           options, retrieve: dependencies.retrieve, loadImage: dependencies.loadImage, signal: controller.signal,
         });
+        const prompt = generationPrompt({ source, type, count: requested, accepted, options });
+        const finiteCeiling = options.costCeilingMicroUsd !== undefined && options.costCeilingMicroUsd !== null;
+        const reserve = dependencies.reserveGenerationAttempt ?? dependencies.reserveProviderAttempt;
+        const finalize = dependencies.finalizeGenerationAttempt ?? dependencies.finalizeProviderAttempt;
+        const baseAttemptId = accountingAttemptId(job.id, type, round, requestedSlotIndexes, routeIndex);
+        // Approval ordinals are job-wide: a second crash references the first
+        // retry attempt, not the original base attempt. This keeps every
+        // approved retry identity distinct across an arbitrary crash chain.
+        const recoveryCount = (job.usageAudit ?? []).filter(item => item?.event === 'recovery-approved').length;
+        const attemptId = recoveryCount
+          ? accountingAttemptId(job.id, type, round, requestedSlotIndexes, routeIndex, recoveryCount)
+          : baseAttemptId;
+        // A worker crash can leave a reservation (or a finalized charge) after
+        // the output checkpoint was lost. Never replay that provider request:
+        // the output may already have been charged and cannot be reconstructed.
+        const priorAccountingEvent = (job.usageAudit ?? []).find(item => item?.attemptId === attemptId);
+        if (priorAccountingEvent && (reserve || finalize)) {
+          await persist({ status: 'paused', errorCode: 'cost_recovery',
+            recoveryAttemptId: attemptId,
+            error: 'A prior generation request may have been charged, but its output was not checkpointed. Review the accounting history before retrying.',
+          });
+          return job;
+        }
+        let accountingReserved = false;
+        let accountingJob = job;
         let candidates;
         try {
-          const output = await dependencies.requestProvider({
+          const inputTokens = conservativeInputTokens(prompt, source.images);
+          if (finiteCeiling && (!reserve || !finalize || inputTokens === undefined)) {
+            await persist({ status: 'paused', errorCode: 'cost_ceiling',
+              error: inputTokens === undefined
+                ? 'Generation cost ceiling requires a bounded decoded image size.'
+                : 'Generation cost ceiling accounting is unavailable.',
+            });
+            return job;
+          }
+          if (reserve) {
+            try {
+              accountingJob = await reserve(job.id, {
+                workerId: job.workerId, leaseId: job.leaseId, attemptId, routeIndex,
+                estimatedUsage: { inputTokens, outputTokens: boundedOutputTokens(requested) },
+                now: dependencies.now?.() ?? Date.now(),
+              });
+              accountingReserved = true;
+              if (accountingJob) job = { ...accountingJob };
+            } catch (error) {
+              if (finiteCeiling) {
+                await persist({ status: 'paused', errorCode: 'cost_ceiling',
+                  error: String(error?.message || 'Generation cost ceiling reached').slice(0, 4_000),
+                });
+                return job;
+              }
+              throw error;
+            }
+          }
+          const providerEndpoint = options.provider === 'llama-cpp'
+            ? options.resolvedSettings?.['providers.llama-cpp.endpoint']
+            : options.provider === 'openai-compatible'
+              ? options.resolvedSettings?.['providers.openai-compatible.endpoint']
+              : undefined;
+          const providerResponse = await dependencies.requestProvider({
             provider: options.provider, model: options.model,
-            prompt: generationPrompt({ source, type, count: requested, accepted, options }),
+            prompt, includeUsage: true, maxOutputTokens: boundedOutputTokens(requested),
             schema: generationQuestionSchemas[type], images: source.images,
-            endpoint: options.resolvedSettings?.['providers.openai-compatible.endpoint'],
+            ...(providerEndpoint ? { endpoint: providerEndpoint } : {}),
             resolvedSettings: options.resolvedSettings,
           }, controller.signal);
-          candidates = extractGenerationJson(output);
+          if (accountingReserved) {
+            const finalized = await finalize(job.id, {
+              workerId: job.workerId, leaseId: job.leaseId, attemptId,
+              providerUsage: providerOutputAndUsage(providerResponse).usage,
+              now: dependencies.now?.() ?? Date.now(),
+            });
+            if (finalized) { accountingJob = finalized; job = { ...finalized }; }
+          }
+          candidates = extractGenerationJson(providerOutputAndUsage(providerResponse).output);
         } catch (error) {
+          if (accountingReserved) {
+            try {
+              const finalized = await finalize(job.id, {
+                workerId: job.workerId, leaseId: job.leaseId, attemptId,
+                providerUsage: unknownUsage('missing'), now: dependencies.now?.() ?? Date.now(),
+              });
+              if (finalized) { accountingJob = finalized; job = { ...finalized }; }
+            } catch { /* Preserve the provider error; lease/accounting recovery can replay deterministically. */ }
+          }
           const code = providerErrorCode(error);
           if (['provider_limit', 'provider_auth', 'provider_unavailable'].includes(code)) {
             const attempt = {

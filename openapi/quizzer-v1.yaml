@@ -113,6 +113,32 @@ paths:
           $ref: '#/components/responses/InvalidRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /integrations/llama-cpp/configure:
+    post:
+      operationId: configureLlamaCpp
+      summary: Confirm and persist a local llama.cpp endpoint and model
+      description: Only unauthenticated HTTP loopback endpoints are accepted. Quizzer does not download models as part of this operation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [endpoint, model, confirmed]
+              properties:
+                endpoint: { type: string, format: uri, pattern: '^http://(?:127\\.|\\[::1\\])' }
+                model: { type: string, minLength: 1, maxLength: 200 }
+                confirmed: { type: boolean, const: true }
+      responses:
+        '200':
+          description: Configuration saved and effective settings returned
+          content:
+            application/json:
+              schema: { type: object, required: [ok, settings], properties: { ok: { type: boolean }, settings: { $ref: '#/components/schemas/ResolvedSettings' } } }
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /provider-credentials:
     get:
       operationId: getProviderCredentialStatus
@@ -632,6 +658,76 @@ paths:
                 properties:
                   jobs: { type: array, items: { $ref: '#/components/schemas/GenerationJob' } }
         '400': { $ref: '#/components/responses/InvalidRequest' }
+  /jobs/{jobId}/accounting:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    get:
+      operationId: getGenerationJobAccounting
+      summary: Read durable provider usage, cost, reservations, and audit history for a generation job
+      responses:
+        '200':
+          description: Job and accounting snapshot
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [job, accounting]
+                properties:
+                  job: { $ref: '#/components/schemas/GenerationJob' }
+                  accounting: { $ref: '#/components/schemas/GenerationAccounting' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /jobs/{jobId}/accounting/ceiling:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    post:
+      operationId: raiseGenerationJobCostCeiling
+      summary: Explicitly raise a finite generation cost ceiling
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CostCeilingRaise'
+      responses:
+        '200':
+          description: Updated job and accounting audit
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [job, accounting]
+                properties:
+                  job: { $ref: '#/components/schemas/GenerationJob' }
+                  accounting: { $ref: '#/components/schemas/GenerationAccounting' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /jobs/{jobId}/accounting/recovery:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    post:
+      operationId: approveGenerationJobCostRecovery
+      summary: Acknowledge possible duplicate billing and approve one recovery retry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CostRecoveryApproval' }
+      responses:
+        '200':
+          description: Updated job and accounting audit
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [job, accounting]
+                properties:
+                  job: { $ref: '#/components/schemas/GenerationJob' }
+                  accounting: { $ref: '#/components/schemas/GenerationAccounting' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /jobs/claim:
     post:
       operationId: claimGenerationJob
@@ -1100,11 +1196,19 @@ components:
       required: [provider, privacy, paid, approved]
       additionalProperties: false
       properties:
-        provider: { type: string, enum: [plugin, ollama, codex, claude-agent, antigravity-agent, gemini, anthropic, openai, openrouter, deepseek, openai-compatible] }
+        provider: { type: string, enum: [plugin, ollama, llama-cpp, codex, claude-agent, antigravity-agent, gemini, anthropic, openai, openrouter, deepseek, openai-compatible] }
         model: { type: string, minLength: 1, maxLength: 200 }
         privacy: { type: string, enum: [local, signed-in-agent, remote-api] }
         paid: { type: boolean }
         approved: { type: boolean }
+        pricing:
+          type: object
+          required: [inputMicroUsdPerMillionTokens, outputMicroUsdPerMillionTokens]
+          additionalProperties: false
+          properties:
+            inputMicroUsdPerMillionTokens: { type: integer, minimum: 0, maximum: 9000000000000000 }
+            outputMicroUsdPerMillionTokens: { type: integer, minimum: 0, maximum: 9000000000000000 }
+        usage: { type: string, enum: [provider-reported, unavailable] }
     RAGProfile:
       type: object
       required: [id, retrieval, contextBudget, rerank]
@@ -1119,9 +1223,10 @@ components:
       required: [provider, questionCount]
       additionalProperties: false
       properties:
-        provider: { type: string, enum: [plugin, ollama, codex, claude-agent, antigravity-agent, gemini, anthropic, openai, openrouter, deepseek, openai-compatible] }
+        provider: { type: string, enum: [plugin, ollama, llama-cpp, codex, claude-agent, antigravity-agent, gemini, anthropic, openai, openrouter, deepseek, openai-compatible] }
         model: { type: string, minLength: 1, maxLength: 200 }
         questionCount: { type: integer, minimum: 1, maximum: 200 }
+        costCeilingMicroUsd: { type: integer, minimum: 0, maximum: 9000000000000000, description: Maximum estimated generation cost in micro-USD; omit for unlimited. }
         questionCounts:
           type: object
           required: [multipleChoice, fillBlank, reasoning, coding]
@@ -1179,6 +1284,9 @@ components:
         leaseExpiresAt: { type: integer }
         completionId: { type: string }
         creationFingerprint: { type: string, pattern: '^[a-f0-9]{64}$' }
+        usageSummary: { $ref: '#/components/schemas/UsageSummary' }
+        usageAudit: { type: array, items: { type: object } }
+        recoveryAttemptId: { type: string, pattern: '^attempt-[a-f0-9]{48}$' }
         rejections:
           type: array
           maxItems: 5000
@@ -1194,6 +1302,36 @@ components:
         reason: { type: string, enum: [invalid-schema, ungrounded, instruction-mismatch, duplicate, empty-response, out-of-coverage] }
         count: { type: integer, minimum: 1, maximum: 200 }
         statement: { type: string, minLength: 1, maxLength: 500 }
+    UsageSummary:
+      type: object
+      required: [inputTokens, outputTokens, totalTokens, reservedCostMicroUsd, finalizedCostMicroUsd]
+      properties:
+        inputTokens: { type: integer, minimum: 0 }
+        outputTokens: { type: integer, minimum: 0 }
+        totalTokens: { type: integer, minimum: 0 }
+        reservedCostMicroUsd: { type: integer, minimum: 0 }
+        finalizedCostMicroUsd: { type: integer, minimum: 0 }
+    GenerationAccounting:
+      type: object
+      required: [summary, audit]
+      properties:
+        summary: { $ref: '#/components/schemas/UsageSummary' }
+        audit: { type: array, items: { type: object } }
+    CostCeilingRaise:
+      type: object
+      required: [newCeilingMicroUsd, reason, confirmed]
+      additionalProperties: false
+      properties:
+        newCeilingMicroUsd: { type: integer, minimum: 0, maximum: 9000000000000000 }
+        reason: { type: string, minLength: 1, maxLength: 500 }
+        confirmed: { type: boolean, const: true }
+    CostRecoveryApproval:
+      type: object
+      required: [reason, confirmed]
+      additionalProperties: false
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 500 }
+        confirmed: { type: boolean, const: true }
     GenerationJobPatch:
       type: object
       minProperties: 1

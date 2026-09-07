@@ -99,6 +99,16 @@ const authorized = (path, init = {}) => fetch(`${origin}${path}`, {
   ...init,
   headers: { Authorization: `Bearer ${token}`, ...(init.headers ?? {}) },
 });
+const seedServiceRecord = async (collection, id, data) => {
+  const code = `const storage = await import('./server/storage.mjs'); storage.putRecord(${JSON.stringify(collection)}, ${JSON.stringify(id)}, ${JSON.stringify(data)});`;
+  await new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ['--input-type=module', '--eval', code], {
+      cwd: new URL('..', import.meta.url), env: { ...process.env, QUIZZER_DATABASE_PATH: join(directory, 'quizzer.sqlite'), QUIZZER_APP_DATA_DIR: directory },
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    child.once('error', reject); child.once('exit', codeValue => codeValue === 0 ? resolve() : reject(new Error(`seed exited ${codeValue}`)));
+  });
+};
 
 const waitForServer = async () => {
   for (let attempt = 0; attempt < 200; attempt += 1) {
@@ -142,14 +152,23 @@ test('requires authentication for every sensitive service endpoint', async () =>
   assert.equal((await fetch(`${origin}/api/health`)).status, 200);
   assert.equal((await authorized('/api/system/capabilities')).status, 200);
   assert.equal((await authorized('/api/v1/health')).status, 200);
+  assert.equal((await fetch(`${origin}/api/v1/jobs/job-1/accounting`)).status, 401);
+  assert.equal((await fetch(`${origin}/api/v1/jobs/job-1/accounting/recovery`)).status, 401);
   const capabilities = await (await authorized('/api/v1/capabilities')).json();
   assert.equal(capabilities.providerPolicies.codex.maxConcurrency, 1);
   assert.equal(capabilities.providerPolicies.openai.billing, 'usage-based');
   assert.deepEqual(capabilities.providerPolicies.ollama, { billing: 'local', privacy: 'local', maxConcurrency: 1 });
+  assert.deepEqual(capabilities.providerPolicies['llama-cpp'], { billing: 'local', privacy: 'local', maxConcurrency: 1 });
+  assert.match(capabilities.providers.join(','), /llama-cpp/);
   const contract = await authorized('/api/v1/openapi.yaml');
   assert.equal(contract.status, 200);
   assert.match(contract.headers.get('content-type'), /application\/yaml/);
   assert.match(await contract.text(), /openapi: 3\.1\.0[\s\S]*\/jobs\/\{jobId\}\/resume:/);
+  assert.match(await (await authorized('/api/v1/openapi.yaml')).text(), /accounting\/ceiling/);
+  assert.match(await (await authorized('/api/v1/openapi.yaml')).text(), /accounting\/recovery/);
+  const openApi = await (await authorized('/api/v1/openapi.yaml')).text();
+  assert.match(openApi, /\/settings:\n(?:.|\n)*?\n    patch:\n      operationId: updateSettings/);
+  assert.match(openApi, /\/integrations\/llama-cpp\/configure:\n    post:/);
 });
 
 test('reports and invokes local Ollama only after explicit setup confirmation', async () => {
@@ -157,6 +176,7 @@ test('reports and invokes local Ollama only after explicit setup confirmation', 
   assert.equal(integrations.ollama.serverReady, true);
   assert.equal(integrations.ollama.models[0].name, 'qwen3:4b');
   assert.equal(integrations['openai-compatible'].available, true);
+  assert.equal(integrations['llama-cpp'].configured, true);
 
   const unconfirmedInstall = await authorized('/api/integrations/ollama/install', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
@@ -166,6 +186,23 @@ test('reports and invokes local Ollama only after explicit setup confirmation', 
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'qwen3:4b' }),
   });
   assert.equal(unconfirmedPull.status, 400);
+
+  const unconfirmedConfigure = await authorized('/api/integrations/llama-cpp/configure', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ endpoint: 'http://127.0.0.1:8080/v1', model: 'llama-3.2-q4' }),
+  });
+  assert.equal(unconfirmedConfigure.status, 400);
+  const remoteConfigure = await authorized('/api/integrations/llama-cpp/configure', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ endpoint: 'https://remote.example.test/v1', model: 'llama-3.2-q4', confirmed: true }),
+  });
+  assert.equal(remoteConfigure.status, 400);
+  const configured = await authorized('/api/integrations/llama-cpp/configure', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ endpoint: 'http://127.0.0.1:8080/v1', model: 'llama-3.2-q4', confirmed: true }),
+  });
+  assert.equal(configured.status, 200);
+  assert.equal((await configured.json()).settings.values['providers.llama-cpp.model'], 'llama-3.2-q4');
 
   const generated = await authorized('/api/generate', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -373,6 +410,11 @@ test('provides onboarding, document, job, and event operations', async () => {
     }] }),
   });
   assert.equal(forgedSync.status, 400);
+  const forgedRecoveryMarker = await authorized('/api/storage/sync', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ changes: [{ collection: 'generationJobs', id: 'job-1', data: { id: 'job-1', recoveryAttemptId: 'attempt-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' } }] }),
+  });
+  assert.equal(forgedRecoveryMarker.status, 400);
 
   const documents = await (await authorized('/api/v1/documents')).json();
   assert.equal(documents.documents[0].name, 'Guide.md');
@@ -539,6 +581,81 @@ test('provides onboarding, document, job, and event operations', async () => {
   });
   assert.equal((await repeatedCompletion.json()).job.revision, completedPayload.job.revision);
   assert.equal((await authorized('/api/v1/jobs/job-1/cancel', { method: 'POST' })).status, 400);
+
+  const recoveryAttemptId = `attempt-${'d'.repeat(48)}`;
+  const recoveryFingerprint = sha256(JSON.stringify({ routeIndex: 0, bounds: { inputTokens: 1, outputTokens: 0, totalTokens: 1 }, reservationCostMicroUsd: 1, reservationCostKnown: true }));
+  await seedServiceRecord('generationJobs', 'api-recovery-job', {
+    id: 'api-recovery-job', testId: 'api-recovery-test', name: 'API recovery', status: 'paused', errorCode: 'cost_recovery', recoveryAttemptId,
+    documentIds: ['doc-1'], options: { provider: 'codex', questionCount: 1, routeChain: [{ provider: 'codex', privacy: 'signed-in-agent', paid: false, approved: true, pricing: { inputMicroUsdPerMillionTokens: 1, outputMicroUsdPerMillionTokens: 1 } }] },
+    questions: [], rejected: 0, rounds: {}, usageSummary: { inputTokens: 0, outputTokens: 0, totalTokens: 0, finalizedCostMicroUsd: 0, reservedCostMicroUsd: 1 },
+    usageAudit: [{ event: 'reserved', attemptId: recoveryAttemptId, at: 1, routeIndex: 0, provider: 'codex', reservedCostMicroUsd: 1, reservationInputTokens: 1, reservationOutputTokens: 0, reservationCostKnown: true, reservationFingerprint: recoveryFingerprint }],
+  });
+  const recoveryPath = '/api/v1/jobs/api-recovery-job/accounting/recovery';
+  assert.equal((await authorized(recoveryPath, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'Missing confirmation', confirmed: false }) })).status, 400);
+  const recoveryApproved = await authorized(recoveryPath, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'Acknowledge possible duplicate billing', confirmed: true }) });
+  assert.equal(recoveryApproved.status, 200);
+  assert.equal((await recoveryApproved.json()).accounting.audit.at(-1).event, 'recovery-approved');
+  const recoveryRepeat = await authorized(recoveryPath, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'Acknowledge possible duplicate billing', confirmed: true }) });
+  assert.equal((await recoveryRepeat.json()).accounting.audit.filter(item => item.event === 'recovery-approved').length, 1);
+
+  const cappedJob = {
+    id: 'cost-api-job', testId: 'cost-api-test', name: 'Cost API test', status: 'queued', createdAt: 3, updatedAt: 3,
+    documentIds: ['doc-1'], options: { ...generationOptions, provider: 'codex', model: undefined, costCeilingMicroUsd: 1_000_000,
+      routeChain: [{ ...generationOptions.routeChain[0], provider: 'codex', model: undefined, privacy: 'signed-in-agent', paid: false,
+        pricing: { inputMicroUsdPerMillionTokens: 1_000_000, outputMicroUsdPerMillionTokens: 1_000_000 } }] },
+    questions: [], rejected: 0, rounds: {},
+  };
+  const cappedCreate = await authorized('/api/v1/jobs', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jobs: [cappedJob] }),
+  });
+  assert.equal(cappedCreate.status, 201);
+  const cappedClaim = await authorized('/api/v1/jobs/claim', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workerId: 'cost-api-worker', leaseMs: 10_000 }),
+  });
+  const cappedLeased = (await cappedClaim.json()).job;
+  const paused = await authorized('/api/v1/jobs/cost-api-job', {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workerId: 'cost-api-worker', leaseId: cappedLeased.leaseId, patch: { status: 'paused', errorCode: 'cost_ceiling' } }),
+  });
+  assert.equal(paused.status, 200);
+  const directResume = await authorized('/api/v1/jobs/cost-api-job/resume', { method: 'POST' });
+  assert.equal(directResume.status, 400);
+  assert.match((await directResume.json()).error, /one matching unmatched ceiling raise/);
+  assert.equal((await fetch(`${origin}/api/v1/jobs/cost-api-job/accounting`)).status, 401);
+  const accounting = await authorized('/api/v1/jobs/cost-api-job/accounting');
+  assert.equal(accounting.status, 200);
+  assert.equal((await accounting.json()).accounting.summary.finalizedCostMicroUsd, 0);
+  assert.equal((await authorized('/api/v1/jobs/missing-cost-job/accounting')).status, 404);
+  const zeroRaise = await authorized('/api/v1/jobs/cost-api-job/accounting/ceiling', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newCeilingMicroUsd: 0, reason: 'Invalid', confirmed: true }),
+  });
+  assert.equal(zeroRaise.status, 400);
+  const decreasingRaise = await authorized('/api/v1/jobs/cost-api-job/accounting/ceiling', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newCeilingMicroUsd: 999_999, reason: 'Invalid', confirmed: true }),
+  });
+  assert.equal(decreasingRaise.status, 400);
+  const unconfirmed = await authorized('/api/v1/jobs/cost-api-job/accounting/ceiling', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newCeilingMicroUsd: 2_000_000, reason: 'Need more coverage', confirmed: false }),
+  });
+  assert.equal(unconfirmed.status, 400);
+  const raised = await authorized('/api/v1/jobs/cost-api-job/accounting/ceiling', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newCeilingMicroUsd: 2_000_000, reason: 'Need more coverage', confirmed: true }),
+  });
+  assert.equal(raised.status, 200);
+  const raisedPayload = await raised.json();
+  assert.equal(raisedPayload.accounting.audit.at(-1).event, 'ceiling-raised');
+  const resumedAfterRaise = await authorized('/api/v1/jobs/cost-api-job/resume', { method: 'POST' });
+  assert.equal(resumedAfterRaise.status, 200);
+  const resumedPayload = await resumedAfterRaise.json();
+  assert.equal(resumedPayload.job.status, 'queued');
+  const resumedAccounting = await authorized('/api/v1/jobs/cost-api-job/accounting');
+  const resumedAccountingPayload = await resumedAccounting.json();
+  assert.equal(resumedAccountingPayload.accounting.audit.at(-1).event, 'ceiling-resumed');
+  assert.equal(resumedAccountingPayload.accounting.audit.at(-1).currentCeilingMicroUsd, 2_000_000);
 
   const events = await authorized('/api/v1/events');
   assert.match(events.headers.get('content-type'), /^text\/event-stream/);

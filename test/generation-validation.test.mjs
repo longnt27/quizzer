@@ -7,6 +7,7 @@ import {
   validateProviderAttemptTransition, validateProviderRoute,
 } from '../server/generation-validation.mjs';
 import { resolveSettings } from '../server/settings.mjs';
+import { getProviderPricing, getKnownProviderRouteMetadata } from '../server/provider-pricing.mjs';
 
 const resolvedSettings = resolveSettings({ profile: 'balanced', environment: {} }).values;
 
@@ -49,6 +50,18 @@ test('validates complete generation snapshots and provider policy metadata', () 
   assert.equal(validateProviderRoute(ollamaOptions.routeChain[0]), ollamaOptions.routeChain[0]);
   assert.throws(() => validateGenerationOptions({ ...ollamaOptions, model: undefined, routeChain: undefined }), /Ollama model/);
   assert.throws(() => validateProviderRoute({ ...ollamaOptions.routeChain[0], privacy: 'remote-api' }), /privacy and cost policy/);
+  const llamaCppOptions = {
+    ...value,
+    provider: 'llama-cpp', model: 'llama-3.2-q4',
+    routeChain: [{ provider: 'llama-cpp', model: 'llama-3.2-q4', privacy: 'local', paid: false, approved: true }],
+  };
+  assert.equal(validateGenerationOptions(llamaCppOptions), llamaCppOptions);
+  assert.equal(validateProviderRoute(llamaCppOptions.routeChain[0]), llamaCppOptions.routeChain[0]);
+  assert.throws(() => validateGenerationOptions({ ...llamaCppOptions, model: undefined, routeChain: [{ ...llamaCppOptions.routeChain[0], model: undefined }] }), /explicit model/);
+  assert.throws(() => validateGenerationOptions({
+    ...llamaCppOptions,
+    resolvedSettings: { ...resolvedSettings, 'providers.llama-cpp.endpoint': 'https://remote.example.test/v1' },
+  }), /loopback/);
   const compatOptions = {
     ...value,
     provider: 'openai-compatible', model: 'custom-model',
@@ -70,6 +83,27 @@ test('validates complete generation snapshots and provider policy metadata', () 
   assert.throws(() => validateGenerationOptions({
     ...value, resolvedSettings: { apiKey: 'must-not-be-snapshotted' },
   }), /cannot contain secrets/);
+});
+
+test('uses exact release pricing matches and rejects unknown failover pricing under a finite ceiling', () => {
+  assert.deepEqual(getProviderPricing('openai', 'gpt-5-mini'), {
+    inputMicroUsdPerMillionTokens: 250_000, outputMicroUsdPerMillionTokens: 2_000_000,
+  });
+  assert.equal(getProviderPricing('openai', 'gpt-5'), undefined);
+  assert.deepEqual(getProviderPricing('deepseek', 'deepseek-v4-flash'), {
+    inputMicroUsdPerMillionTokens: 440_000, outputMicroUsdPerMillionTokens: 1_320_000,
+  });
+  assert.equal(getProviderPricing('deepseek', 'deepseek-chat'), undefined);
+  assert.deepEqual(getKnownProviderRouteMetadata('ollama', 'qwen3:4b').pricing, {
+    inputMicroUsdPerMillionTokens: 0, outputMicroUsdPerMillionTokens: 0,
+  });
+  assert.throws(() => validateGenerationOptions({
+    ...options(), costCeilingMicroUsd: 1_000_000,
+    routeChain: [
+      { ...options().routeChain[0], pricing: getProviderPricing('openai', 'gpt-5-mini'), usage: 'provider-reported' },
+      { provider: 'openai', model: 'custom-model', privacy: 'remote-api', paid: true, approved: true, usage: 'provider-reported' },
+    ],
+  }), /finite cost ceiling requires explicit input and output pricing/);
 });
 
 test('bounds prompt, route, instruction, and resolved-setting snapshots', () => {

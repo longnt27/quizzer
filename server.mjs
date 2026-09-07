@@ -5,8 +5,8 @@ import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promi
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import {
-  backupDatabase, beginLegacyMigration, claimGenerationJob, completeGenerationJob, controlGenerationJob, createGenerationJobs, deleteRecord, finalizeLegacyMigration, getRecord, listLegacyMigrations,
-  listRecords, putRecord, renewGenerationJobLease, storageInfo, subscribeStorageChanges, syncStorage, updateGenerationJobWithLease,
+  approveGenerationCostRecovery, backupDatabase, beginLegacyMigration, claimGenerationJob, completeGenerationJob, controlGenerationJob, createGenerationJobs, deleteRecord, finalizeGenerationAttempt, finalizeLegacyMigration, getGenerationAccounting, getRecord, listLegacyMigrations,
+  listRecords, putRecord, raiseGenerationCostCeiling, renewGenerationJobLease, reserveGenerationAttempt, storageInfo, subscribeStorageChanges, syncStorage, updateGenerationJobWithLease,
 } from './server/storage.mjs';
 import { detectHardwareCapabilities } from './server/hardware-profile.mjs';
 import { ensureServiceToken, isAuthorizedRequest } from './server/auth.mjs';
@@ -31,7 +31,15 @@ import { resolveEmbeddingProvider } from './server/plugin-embeddings.mjs';
 import { resolveVectorIndexProvider } from './server/plugin-vector-index.mjs';
 import { resolveDocumentExtractor, resolveOcrProvider } from './server/plugin-extraction.mjs';
 import { listOllamaModels, runOllamaGeneration, runOllamaHyde, validateOllamaModelName } from './server/ollama-generation.mjs';
+import {
+  getLlamaCppStatus, runLlamaCppGeneration, validateLlamaCppEndpoint, validateLlamaCppModel,
+} from './server/llama-cpp-generation.mjs';
 import { runOpenAICompatibleGeneration } from './server/openai-compatible-generation.mjs';
+import { normalizeProviderUsage } from './server/provider-usage.mjs';
+import {
+  runAnthropic as runBuiltinAnthropic, runGemini as runBuiltinGemini,
+  runOpenAI as runBuiltinOpenAI, runOpenAICompatible as runBuiltinOpenAICompatible,
+} from './server/builtin-provider-generation.mjs';
 
 const configuredPortValue = process.env.QUIZZER_SERVICE_PORT ?? '8787';
 const configuredPort = Number(configuredPortValue);
@@ -210,6 +218,7 @@ const integrationJobs = {
   'claude-agent': { state: 'idle', message: '' },
   'antigravity-agent': { state: 'idle', message: '' },
   ollama: { state: 'idle', message: '' },
+  'llama-cpp': { state: 'idle', message: '' },
   embeddings: { state: 'idle', message: '' },
   ocr: { state: 'idle', message: '' },
 };
@@ -280,6 +289,19 @@ const updateUserSettings = async body => {
     delete current[key];
   }
   return writeUserSettings(appDataDirectory, { ...current, ...patch });
+};
+
+const configureLlamaCpp = async body => {
+  if (body?.confirmed !== true) throw new Error('Explicit confirmation is required before configuring llama.cpp');
+  const endpoint = validateLlamaCppEndpoint(body?.endpoint);
+  const model = validateLlamaCppModel(body?.model);
+  const current = await readUserSettings(appDataDirectory);
+  await writeUserSettings(appDataDirectory, {
+    ...current,
+    'providers.llama-cpp.endpoint': endpoint,
+    'providers.llama-cpp.model': model,
+  });
+  return { ok: true, settings: await loadResolvedSettings(appDataDirectory) };
 };
 
 const getPluginManager = async () => {
@@ -426,7 +448,8 @@ const managedOcrWorks = async () => {
 
 const integrationStatus = async () => {
   const ollamaExecutable = await ollamaCommand();
-  const [codexInstalled, codexConnected, claudeInstalled, claudeConnected, antigravityInstalled, ollamaInstalled, ollama, managedMarker, systemMarker, managedOcr] = await Promise.all([
+  const settings = await loadResolvedSettings(appDataDirectory);
+  const [codexInstalled, codexConnected, claudeInstalled, claudeConnected, antigravityInstalled, ollamaInstalled, ollama, llamaCpp, managedMarker, systemMarker, managedOcr] = await Promise.all([
     commandWorks('codex', ['--version']),
     commandWorks('codex', ['login', 'status']),
     commandWorks('claude', ['--version']),
@@ -434,6 +457,7 @@ const integrationStatus = async () => {
     commandWorks('agy', ['--version']),
     commandWorks(ollamaExecutable, ['--version']),
     listOllamaModels(globalThis.fetch, AbortSignal.timeout(3_000)).catch(() => ({ serverReady: false, models: [] })),
+    getLlamaCppStatus({ endpoint: settings.values['providers.llama-cpp.endpoint'] }, globalThis.fetch, AbortSignal.timeout(3_500)),
     managedMarkerWorks(),
     hasSystemMarker(),
     managedOcrWorks(),
@@ -453,6 +477,7 @@ const integrationStatus = async () => {
     openrouter: { available: true },
     deepseek: { available: true },
     'openai-compatible': { available: true },
+    'llama-cpp': llamaCpp,
     ollama: {
       installed: ollamaInstalled || ollama.serverReady,
       serverReady: ollama.serverReady,
@@ -779,156 +804,29 @@ const runAntigravityAgent = async ({ prompt, schema, model }, signal) => {
   return typeof structured === 'string' ? structured : JSON.stringify(structured);
 };
 
-const runGemini = async ({ prompt, schema, model, images = [], apiKey }, signal) => {
-  requireApiKey(apiKey, 'Gemini');
-  const modelName = model || 'gemini-2.5-flash';
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    signal,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }, ...images.slice(0, 30).map(image => {
-        const match = /^data:(image\/[^;]+);base64,(.+)$/.exec(image);
-        if (!match) throw new Error('Invalid image input');
-        return { inlineData: { mimeType: match[1], data: match[2] } };
-      })] }],
-      generationConfig: { responseMimeType: 'application/json', responseJsonSchema: schema },
-    }),
-  });
-  const payload = await parseApiResponse(response, 'Gemini');
-  const output = payload.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('') || '';
-  if (!output) throw new Error('Gemini returned an empty response');
-  return output;
-};
-
-class ProviderError extends Error {
-  constructor(message, status, code) {
-    super(message);
-    this.status = status;
-    this.code = code;
-  }
-}
-
-const providerErrorCode = status => status === 401 || status === 403
-  ? 'provider_auth'
-  : status === 402 || status === 429
-    ? 'provider_limit'
-    : status >= 500
-      ? 'provider_unavailable'
-      : 'provider_error';
-
-const normalizeProviderError = error => {
-  if (error instanceof ProviderError || error?.name === 'AbortError') return error;
-  const message = error instanceof Error ? error.message : 'Generation failed';
-  if (/usage limit|rate limit|quota|too many requests|insufficient (?:balance|credits)|credit balance|capacity/i.test(message)) {
-    return new ProviderError(message, 429, 'provider_limit');
-  }
-  if (/not logged in|unauthorized|authentication|api key|sign[ -]?in|login required/i.test(message)) {
-    return new ProviderError(message, 401, 'provider_auth');
-  }
-  if (error?.code === 'ENOENT' || /command not found|executable.*not found|is not installed/i.test(message)) {
-    return new ProviderError(message, 503, 'provider_unavailable');
-  }
-  return error;
-};
-
-const requireApiKey = (apiKey, label) => {
-  const article = /^[aeiou]/i.test(label) ? 'an' : 'a';
-  if (typeof apiKey !== 'string' || !apiKey.trim()) throw new ProviderError(`Enter ${article} ${label} API key in Quizzer`, 401, 'provider_auth');
-};
-
-const parseApiResponse = async (response, provider) => {
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const message = payload?.error?.message || payload?.message || `${provider} failed (${response.status})`;
-    throw new ProviderError(message, response.status, providerErrorCode(response.status));
-  }
-  return payload;
-};
-
-const imageContent = images => images.slice(0, 30).map(image => ({ type: 'image_url', image_url: { url: image } }));
-
-const runOpenAICompatible = async ({ prompt, schema, model, images = [], apiKey }, signal, config) => {
-  requireApiKey(apiKey, config.label);
-  const content = config.supportsImages && images.length
-    ? [{ type: 'text', text: prompt }, ...imageContent(images)]
-    : `${prompt}\n\nReturn JSON matching this schema exactly:\n${JSON.stringify(schema)}`;
-  const response = await fetch(config.endpoint, {
-    method: 'POST', signal,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: model || config.defaultModel,
-      messages: [{ role: 'user', content }],
-      response_format: config.jsonSchema
-        ? { type: 'json_schema', json_schema: { name: 'quiz_questions', strict: true, schema } }
-        : { type: 'json_object' },
-      ...(config.providerRouting ? { provider: { require_parameters: true } } : {}),
-    }),
-  });
-  const payload = await parseApiResponse(response, config.label);
-  const output = payload.choices?.[0]?.message?.content;
-  if (!output) throw new Error(`${config.label} returned an empty response`);
-  return output;
-};
-
-const runOpenAI = async ({ prompt, schema, model, images = [], apiKey }, signal) => {
-  requireApiKey(apiKey, 'OpenAI');
-  const content = [{ type: 'input_text', text: prompt }, ...images.slice(0, 30).map(image => ({ type: 'input_image', image_url: image }))];
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST', signal,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: model || 'gpt-5-mini',
-      input: [{ role: 'user', content }],
-      text: { format: { type: 'json_schema', name: 'quiz_questions', strict: true, schema } },
-    }),
-  });
-  const payload = await parseApiResponse(response, 'OpenAI');
-  const output = payload.output?.flatMap(item => item.content ?? []).find(item => item.type === 'output_text')?.text;
-  if (!output) throw new Error('OpenAI returned an empty response');
-  return output;
-};
-
-const runAnthropic = async ({ prompt, schema, model, images = [], apiKey }, signal) => {
-  requireApiKey(apiKey, 'Anthropic');
-  const content = [
-    { type: 'text', text: prompt },
-    ...images.slice(0, 30).map(image => {
-      const match = /^data:(image\/(?:png|jpeg|webp|gif));base64,(.+)$/.exec(image);
-      if (!match) throw new Error('Invalid image input');
-      return { type: 'image', source: { type: 'base64', media_type: match[1], data: match[2] } };
-    }),
-  ];
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST', signal,
-    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({
-      model: model || 'claude-sonnet-4-5-20250929', max_tokens: 8192,
-      messages: [{ role: 'user', content }],
-      output_config: { format: { type: 'json_schema', schema } },
-    }),
-  });
-  const payload = await parseApiResponse(response, 'Anthropic');
-  const output = payload.content?.find(block => block.type === 'text')?.text;
-  if (!output) throw new Error('Anthropic returned an empty response');
-  return output;
-};
-
 const providerRunners = {
   plugin: (body, signal) => runGeneratorPlugin(body, signal, { loadManager: getPluginManager }),
   ollama: runOllamaGeneration,
+  'llama-cpp': async (body, signal) => runLlamaCppGeneration({
+    ...body,
+    endpoint: body.endpoint
+      || body.resolvedSettings?.['providers.llama-cpp.endpoint']
+      || (await loadResolvedSettings(appDataDirectory)).values['providers.llama-cpp.endpoint'],
+    model: body.model
+      || body.resolvedSettings?.['providers.llama-cpp.model']
+      || (await loadResolvedSettings(appDataDirectory)).values['providers.llama-cpp.model'],
+  }, signal),
   codex: runCodex,
   'claude-agent': runClaudeAgent,
   'antigravity-agent': runAntigravityAgent,
-  gemini: runGemini,
-  anthropic: runAnthropic,
-  openai: runOpenAI,
-  openrouter: (body, signal) => runOpenAICompatible(body, signal, {
+  gemini: runBuiltinGemini,
+  anthropic: runBuiltinAnthropic,
+  openai: runBuiltinOpenAI,
+  openrouter: (body, signal) => runBuiltinOpenAICompatible(body, signal, {
     label: 'OpenRouter', endpoint: 'https://openrouter.ai/api/v1/chat/completions', defaultModel: 'openai/gpt-4o-mini', jsonSchema: true, supportsImages: true, providerRouting: true,
   }),
-  deepseek: (body, signal) => runOpenAICompatible(body, signal, {
-    label: 'DeepSeek', endpoint: 'https://api.deepseek.com/chat/completions', defaultModel: 'deepseek-chat', jsonSchema: false, supportsImages: false,
+  deepseek: (body, signal) => runBuiltinOpenAICompatible(body, signal, {
+    label: 'DeepSeek', endpoint: 'https://api.deepseek.com/chat/completions', defaultModel: 'deepseek-v4-flash', jsonSchema: false, supportsImages: false,
   }),
   'openai-compatible': async (body, signal) => {
     const endpoint = body.endpoint
@@ -958,6 +856,8 @@ const generationWorker = process.env.QUIZZER_DISABLE_SERVICE_GENERATION === '1' 
   complete: (job, completion) => completeGenerationJob(job.id, {
     workerId: job.workerId, leaseId: job.leaseId, ...completion,
   }).job.data,
+  reserveGenerationAttempt: (id, params) => reserveGenerationAttempt(id, params).data,
+  finalizeGenerationAttempt: (id, params) => finalizeGenerationAttempt(id, params).data,
   getJob: id => getRecord('generationJobs', id)?.data,
   loadDocuments: ids => ids.map(id => {
     const record = getRecord('documents', id);
@@ -1165,6 +1065,10 @@ const handleVersionedApi = async (request, response, url) => {
     if (request.method === 'GET' && url.pathname === '/api/v1/openapi.yaml') {
       response.writeHead(200, { 'Content-Type': 'application/yaml; charset=utf-8', 'Cache-Control': 'no-store' });
       response.end(openApiDocument);
+      return true;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/v1/integrations/llama-cpp/configure') {
+      send(response, 200, await configureLlamaCpp(await readJson(request)));
       return true;
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/capabilities') {
@@ -1543,6 +1447,34 @@ const handleVersionedApi = async (request, response, url) => {
       send(response, 201, { jobs });
       return true;
     }
+    const accountingMatch = /^\/api\/v1\/jobs\/([^/]+)\/accounting$/.exec(url.pathname);
+    if (accountingMatch && request.method === 'GET') {
+      const id = decodeURIComponent(accountingMatch[1]);
+      const job = getRecord('generationJobs', id);
+      if (!job) { send(response, 404, { error: 'Job not found' }); return true; }
+      send(response, 200, { job: publicRecord(job), accounting: getGenerationAccounting(id) });
+      return true;
+    }
+    const ceilingMatch = /^\/api\/v1\/jobs\/([^/]+)\/accounting\/ceiling$/.exec(url.pathname);
+    if (ceilingMatch && request.method === 'POST') {
+      const body = await readJson(request);
+      const job = raiseGenerationCostCeiling(decodeURIComponent(ceilingMatch[1]), {
+        newCeilingMicroUsd: body?.newCeilingMicroUsd,
+        reason: body?.reason,
+        confirmed: body?.confirmed,
+      });
+      send(response, 200, { job: publicRecord(job), accounting: getGenerationAccounting(job.id) });
+      return true;
+    }
+    const recoveryMatch = /^\/api\/v1\/jobs\/([^/]+)\/accounting\/recovery$/.exec(url.pathname);
+    if (recoveryMatch && request.method === 'POST') {
+      const body = await readJson(request);
+      const job = approveGenerationCostRecovery(decodeURIComponent(recoveryMatch[1]), {
+        reason: body?.reason, confirmed: body?.confirmed,
+      });
+      send(response, 200, { job: publicRecord(job), accounting: getGenerationAccounting(job.id) });
+      return true;
+    }
     if (request.method === 'POST' && url.pathname === '/api/v1/jobs/claim') {
       const body = await readJson(request);
       const settings = await loadResolvedSettings(appDataDirectory);
@@ -1664,6 +1596,14 @@ const serviceServer = createServer(async (request, response) => {
   }
   if (request.method === 'GET' && request.url === '/api/integrations') {
     return send(response, 200, await integrationStatus());
+  }
+  if (request.method === 'POST' && ['/api/integrations/llama-cpp/configure', '/api/v1/integrations/llama-cpp/configure'].includes(request.url)) {
+    if (!request.headers['content-type']?.startsWith('application/json')) return send(response, 415, { error: 'JSON request required' });
+    try {
+      return send(response, 200, await configureLlamaCpp(await readJson(request)));
+    } catch (error) {
+      return send(response, 400, { error: error instanceof Error ? error.message : 'Invalid llama.cpp configuration' });
+    }
   }
   if (request.method === 'POST' && request.url === '/api/integrations/marker/install') {
     if (!request.headers['content-type']?.startsWith('application/json')) return send(response, 415, { error: 'JSON request required' });

@@ -23,6 +23,8 @@ import { resolveEmbeddingProvider } from '../server/plugin-embeddings.mjs';
 import { resolveVectorIndexProvider } from '../server/plugin-vector-index.mjs';
 import { runOllamaHyde } from '../server/ollama-generation.mjs';
 import { validateOpenAICompatibleEndpoint } from '../server/openai-compatible-generation.mjs';
+import { DEFAULT_LLAMA_CPP_MODEL, validateLlamaCppEndpoint, validateLlamaCppModel } from '../server/llama-cpp-generation.mjs';
+import { getKnownProviderRouteMetadata } from '../server/provider-pricing.mjs';
 
 const usage = `Quizzer CLI
 
@@ -36,8 +38,10 @@ Usage:
   quizzer index <document-id>|--all [--force] [--idempotency-key key] [--json]
   quizzer retrieve <query> [--document <id>] [--tag <tag>] [--limit 10] [--json]
   quizzer test create --document <id> [--document <id>] [--name name] [--questions 20]
-                      [--instruction text] [--provider provider] [--model model] [--endpoint url] [--approve-paid] [--json]
-  quizzer jobs list|show <id>|cancel <id> [--json]
+                      [--instruction text] [--provider provider] [--model model] [--endpoint url] [--approve-paid]
+                      [--cost-ceiling USD|unlimited] [--input-price USD/1M] [--output-price USD/1M] [--json]
+  quizzer jobs list|show <id>|cancel <id>|raise-ceiling <id> --cost-ceiling USD --reason text --confirm-cost [--resume] [--json]
+  quizzer jobs approve-recovery <id> --reason text --confirm-cost [--resume] [--json]
   quizzer jobs resume <id> [--provider provider] [--model model] [--endpoint url] [--approve-paid] [--json]
   quizzer resume <job-id> [--provider provider] [--model model] [--endpoint url] [--approve-paid] [--json]
   quizzer migrations list [--json]
@@ -51,7 +55,7 @@ Usage:
 const parseArguments = arguments_ => {
   const positionals = [];
   const flags = new Map();
-  const booleanFlags = new Set(['all', 'approve-paid', 'force', 'help', 'json', 'registry', 'yes']);
+  const booleanFlags = new Set(['all', 'approve-paid', 'confirm-cost', 'force', 'help', 'json', 'registry', 'resume', 'yes']);
   for (let index = 0; index < arguments_.length; index += 1) {
     const argument = arguments_[index];
     if (!argument.startsWith('--')) { positionals.push(argument); continue; }
@@ -116,6 +120,35 @@ const writeResult = (value, human) => {
   else process.stdout.write(`${human}\n`);
 };
 const fail = message => { throw new Error(message); };
+const parseCostCeiling = raw => {
+  if (raw === undefined || raw === null || String(raw).trim().toLowerCase() === 'unlimited') return undefined;
+  const value = String(raw).trim().replace(/^\$/, '');
+  if (!/^\d{1,12}(?:\.\d{1,6})?$/.test(value)) fail('--cost-ceiling must be a non-negative USD amount (for example 1.50) or unlimited');
+  const [whole, fraction = ''] = value.split('.');
+  const micros = BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, '0'));
+  if (micros > BigInt(Number.MAX_SAFE_INTEGER)) fail('--cost-ceiling is too large');
+  return Number(micros);
+};
+const parsePricePerMillion = (raw, flagName) => {
+  if (raw === undefined) return undefined;
+  const value = String(raw).trim().replace(/^\$/, '');
+  if (!/^\d{1,12}(?:\.\d{1,6})?$/.test(value)) fail(`${flagName} must be a non-negative USD amount per million tokens`);
+  const [whole, fraction = ''] = value.split('.');
+  const micros = BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, '0'));
+  if (micros > BigInt(Number.MAX_SAFE_INTEGER)) fail(`${flagName} is too large`);
+  return Number(micros);
+};
+const routeMetadata = (provider, model, finiteCeiling) => {
+  const known = getKnownProviderRouteMetadata(provider, model);
+  const input = parsePricePerMillion(flag('input-price', undefined), '--input-price');
+  const output = parsePricePerMillion(flag('output-price', undefined), '--output-price');
+  if ((input === undefined) !== (output === undefined)) fail('--input-price and --output-price must be provided together');
+  if (input !== undefined) known.pricing = { inputMicroUsdPerMillionTokens: input, outputMicroUsdPerMillionTokens: output };
+  if (finiteCeiling !== undefined && known.pricing === undefined) {
+    fail('A finite --cost-ceiling requires known model pricing or both --input-price and --output-price');
+  }
+  return known;
+};
 const providerPolicy = provider => PROVIDER_POLICIES[provider] ?? fail(`Unsupported provider: ${provider}`);
 const requirePaidApproval = (provider, policy) => {
   if (policy.billing === 'usage-based' && flag('approve-paid') !== 'true') {
@@ -452,25 +485,30 @@ const runTestCreate = async () => {
   const questionCount = Number(flag('questions', '20'));
   if (!Number.isSafeInteger(questionCount) || questionCount < 1 || questionCount > 200) fail('--questions must be an integer from 1 to 200');
   const explicitEndpoint = flag('endpoint', flag('base-endpoint', undefined));
+  const requestedProvider = flag('provider', undefined);
   if (explicitEndpoint) validateOpenAICompatibleEndpoint(explicitEndpoint);
   const cliOverrides = {
-    ...(explicitEndpoint ? { 'providers.openai-compatible.endpoint': explicitEndpoint } : {}),
+    ...(explicitEndpoint ? { [requestedProvider === 'llama-cpp' ? 'providers.llama-cpp.endpoint' : 'providers.openai-compatible.endpoint']: explicitEndpoint } : {}),
   };
   const settings = await loadResolvedSettings(appDataDirectory, { cli: cliOverrides });
-  const provider = flag('provider', settings.values['generation.defaultProvider']);
-  if (explicitEndpoint && provider !== 'openai-compatible') {
-    fail('--endpoint and --base-endpoint require --provider openai-compatible');
+  const provider = requestedProvider ?? settings.values['generation.defaultProvider'];
+  if (explicitEndpoint && !['openai-compatible', 'llama-cpp'].includes(provider)) {
+    fail('--endpoint and --base-endpoint require --provider openai-compatible or llama-cpp');
   }
+  if (explicitEndpoint && provider === 'llama-cpp') validateLlamaCppEndpoint(explicitEndpoint);
   const policy = providerPolicy(provider);
   requirePaidApproval(provider, policy);
-  const model = flag('model', undefined);
+  const model = flag('model', provider === 'llama-cpp' ? settings.values['providers.llama-cpp.model'] : undefined);
   if (provider === 'openai-compatible' && (!model || !model.trim())) {
     fail('--model is required for openai-compatible');
   }
+  if (provider === 'llama-cpp') validateLlamaCppModel(model);
   const now = Date.now();
   const jobId = randomUUID();
   const name = flag('name', `Quiz ${new Date(now).toLocaleDateString()}`);
   const customInstruction = flag('instruction', undefined);
+  const costCeilingMicroUsd = parseCostCeiling(flag('cost-ceiling', undefined));
+  const metadata = routeMetadata(provider, model, costCeilingMicroUsd);
   const privacy = policy.privacy;
   const job = {
     id: jobId,
@@ -484,6 +522,7 @@ const runTestCreate = async () => {
       provider,
       ...(model ? { model } : {}),
       questionCount,
+      ...(costCeilingMicroUsd === undefined ? {} : { costCeilingMicroUsd }),
       ...(customInstruction ? { customInstruction } : {}),
       ragProfile: {
         id: settings.profile,
@@ -491,7 +530,7 @@ const runTestCreate = async () => {
         contextBudget: settings.values['retrieval.contextBudget'],
         rerank: settings.values['retrieval.rerank'],
       },
-      routeChain: [{ provider, ...(model ? { model } : {}), privacy, paid: privacy === 'remote-api', approved: true }],
+      routeChain: [{ provider, ...(model ? { model } : {}), privacy, paid: privacy === 'remote-api', approved: true, ...metadata }],
       resolvedSettings: settings.values,
     },
     questions: [],
@@ -506,7 +545,7 @@ const runJobs = async (action, explicitId) => {
   const database = await storage();
   if (action === 'list') {
     const jobs = [
-      ...database.listRecords('generationJobs').map(record => ({ ...record.data, kind: 'generation' })),
+      ...database.listRecords('generationJobs').map(record => ({ ...record.data, kind: 'generation', accounting: database.getGenerationAccounting(record.id) })),
       ...database.listRecords('indexJobs').map(record => record.data),
     ].sort((left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0));
     return writeResult({ jobs }, jobs.length ? jobs.map(job => `${job.id}  ${job.status}  ${job.kind === 'index' ? `Index ${job.documentIds.length} document(s)` : job.name}`).join('\n') : 'No jobs');
@@ -517,13 +556,37 @@ const runJobs = async (action, explicitId) => {
   const indexRecord = generationRecord ? undefined : database.getRecord('indexJobs', id);
   const record = generationRecord ?? indexRecord;
   if (!record) fail(`Job not found: ${id}`);
+  if (action === 'raise-ceiling') {
+    const newCeilingMicroUsd = parseCostCeiling(flag('cost-ceiling', undefined));
+    if (newCeilingMicroUsd === undefined) fail('jobs raise-ceiling requires a finite --cost-ceiling');
+    const reason = flag('reason', undefined);
+    if (!reason) fail('jobs raise-ceiling requires --reason');
+    if (flag('confirm-cost') !== 'true') fail('Raising a cost ceiling requires explicit confirmation. Re-run with --confirm-cost.');
+    const raised = database.raiseGenerationCostCeiling(id, { newCeilingMicroUsd, reason, confirmed: true });
+    if (flag('resume') === 'true') {
+      const resumed = database.controlGenerationJob(id, 'resume', { resetRounds: false }).data;
+      return writeResult({ job: resumed, accounting: database.getGenerationAccounting(id) }, `Raised ceiling and queued ${resumed.name}`);
+    }
+    return writeResult({ job: raised.data, accounting: database.getGenerationAccounting(id) }, `Raised ceiling for ${raised.data.name}`);
+  }
+  if (action === 'approve-recovery') {
+    const reason = flag('reason', undefined);
+    if (!reason) fail('jobs approve-recovery requires --reason');
+    if (flag('confirm-cost') !== 'true') fail('Approving cost recovery requires explicit confirmation. Re-run with --confirm-cost.');
+    const approved = database.approveGenerationCostRecovery(id, { reason, confirmed: true });
+    if (flag('resume') === 'true') {
+      const resumed = database.controlGenerationJob(id, 'resume', { resetRounds: false }).data;
+      return writeResult({ job: resumed, accounting: database.getGenerationAccounting(id) }, `Approved recovery and queued ${resumed.name}`);
+    }
+    return writeResult({ job: approved.data, accounting: database.getGenerationAccounting(id) }, `Approved recovery for ${approved.data.name}`);
+  }
   if (action === 'show') return writeResult(
-    { job: record.data },
+    { job: record.data, ...(generationRecord ? { accounting: database.getGenerationAccounting(id) } : {}) },
     indexRecord
       ? `Index ${record.data.documentIds.length} document(s)\nStatus: ${record.data.status}\nCompleted: ${record.data.completedDocumentIds.length}`
       : `${record.data.name}\nStatus: ${record.data.status}\nAccepted: ${record.data.questions?.length ?? 0}`,
   );
-  if (action !== 'resume' && action !== 'cancel') fail('Use jobs list, show, resume, or cancel');
+  if (action !== 'resume' && action !== 'cancel') fail('Use jobs list, show, resume, cancel, raise-ceiling, or approve-recovery');
   if (indexRecord) {
     if (action === 'cancel') {
       const job = cancelIndexJob(indexRecord.data);
@@ -545,25 +608,30 @@ const runJobs = async (action, explicitId) => {
     const requestedModel = flag('model');
     const explicitEndpoint = flag('endpoint', flag('base-endpoint', undefined));
     if (requestedModel && !selectedProvider) fail('--model requires --provider when resuming a generation job');
-    if (explicitEndpoint && selectedProvider !== 'openai-compatible') {
-      fail('--endpoint and --base-endpoint require --provider openai-compatible when resuming a generation job');
+    if (explicitEndpoint && !['openai-compatible', 'llama-cpp'].includes(selectedProvider)) {
+      fail('--endpoint and --base-endpoint require --provider openai-compatible or llama-cpp when resuming a generation job');
     }
     if (selectedProvider) {
       const policy = providerPolicy(selectedProvider);
       requirePaidApproval(selectedProvider, policy);
       const selectedModel = requestedModel ?? (selectedProvider === generationRecord.data.options.provider
         ? generationRecord.data.options.model
-        : undefined);
+        : selectedProvider === 'llama-cpp'
+          ? generationRecord.data.options.resolvedSettings?.['providers.llama-cpp.model'] ?? DEFAULT_LLAMA_CPP_MODEL
+          : undefined);
       if (selectedProvider === 'openai-compatible' && (!selectedModel || !selectedModel.trim())) {
         fail('--model is required when resuming with openai-compatible');
       }
       if (explicitEndpoint) validateOpenAICompatibleEndpoint(explicitEndpoint);
+      if (selectedProvider === 'llama-cpp') validateLlamaCppModel(selectedModel);
+      if (explicitEndpoint && selectedProvider === 'llama-cpp') validateLlamaCppEndpoint(explicitEndpoint);
       const selectedRoute = {
         provider: selectedProvider,
         ...(selectedModel ? { model: selectedModel } : {}),
         privacy: policy.privacy,
         paid: policy.billing === 'usage-based',
         approved: true,
+        ...routeMetadata(selectedProvider, selectedModel, generationRecord.data.options.costCeilingMicroUsd),
       };
       const existingRoutes = generationRecord.data.options.routeChain;
       if (existingRoutes?.length) {
@@ -580,7 +648,7 @@ const runJobs = async (action, explicitId) => {
           routeChain,
           resolvedSettings: {
             ...(generationRecord.data.options.resolvedSettings ?? {}),
-            ...(explicitEndpoint ? { 'providers.openai-compatible.endpoint': explicitEndpoint } : {}),
+            ...(explicitEndpoint ? { [selectedProvider === 'llama-cpp' ? 'providers.llama-cpp.endpoint' : 'providers.openai-compatible.endpoint']: explicitEndpoint } : {}),
           },
         };
         const providerAttempts = [...(generationRecord.data.providerAttempts ?? []), {
@@ -600,7 +668,7 @@ const runJobs = async (action, explicitId) => {
           routeChain: [selectedRoute],
           resolvedSettings: {
             ...(generationRecord.data.options.resolvedSettings ?? {}),
-            ...(explicitEndpoint ? { 'providers.openai-compatible.endpoint': explicitEndpoint } : {}),
+            ...(explicitEndpoint ? { [selectedProvider === 'llama-cpp' ? 'providers.llama-cpp.endpoint' : 'providers.openai-compatible.endpoint']: explicitEndpoint } : {}),
           },
         };
         changes = {

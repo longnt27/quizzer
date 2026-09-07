@@ -54,8 +54,9 @@ jobs:
       - run: npm run test:coverage
       - run: npm run eval:rag
       - run: npm run build
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium firefox
       - run: npm run test:e2e
+      - run: npm run test:e2e:cost
       - name: Generate landing CycloneDX SBOM
         working-directory: landing
         run: npm sbom --sbom-format cyclonedx > landing-sbom.cdx.json
@@ -92,7 +93,7 @@ jobs:
       - run: npm audit --omit=dev --audit-level=high
       - run: npm run lint
       - run: npm run build
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium firefox webkit
       - run: npm run test:e2e
 
   desktop:

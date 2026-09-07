@@ -231,6 +231,29 @@ test('queues and controls a durable test generation job', async () => {
   );
   assert.equal(paidCreated.job.options.routeChain[0].paid, true);
   assert.equal(paidCreated.job.options.routeChain[0].approved, true);
+  const ceilingCreated = await cli(
+    'test', 'create', '--document', documents.documents[0].id, '--name', 'Capped remote quiz',
+    '--questions', '2', '--provider', 'openai', '--model', 'gpt-5-mini', '--approve-paid', '--cost-ceiling', '$1.25',
+  );
+  assert.equal(ceilingCreated.job.options.costCeilingMicroUsd, 1_250_000);
+  assert.deepEqual(ceilingCreated.job.options.routeChain[0].pricing, {
+    inputMicroUsdPerMillionTokens: 250_000, outputMicroUsdPerMillionTokens: 2_000_000,
+  });
+  assert.equal((await cli('jobs', 'show', ceilingCreated.job.id)).accounting.summary.finalizedCostMicroUsd, 0);
+  assert.equal((await cli('jobs', 'list')).jobs.find(job => job.id === ceilingCreated.job.id).accounting.summary.reservedCostMicroUsd, 0);
+  await cli('jobs', 'cancel', ceilingCreated.job.id);
+  await assert.rejects(cli(
+    'test', 'create', '--document', documents.documents[0].id, '--provider', 'openai', '--model', 'unknown-model',
+    '--approve-paid', '--cost-ceiling', '1.00',
+  ), /requires known model pricing/);
+  const customPriced = await cli(
+    'test', 'create', '--document', documents.documents[0].id, '--provider', 'openai', '--model', 'unknown-model',
+    '--approve-paid', '--cost-ceiling', '1.00', '--input-price', '0.50', '--output-price', '2.00',
+  );
+  assert.deepEqual(customPriced.job.options.routeChain[0].pricing, {
+    inputMicroUsdPerMillionTokens: 500_000, outputMicroUsdPerMillionTokens: 2_000_000,
+  });
+  await cli('jobs', 'cancel', customPriced.job.id);
   await cli('jobs', 'cancel', paidCreated.job.id);
 
   await assert.rejects(cli(
@@ -273,6 +296,46 @@ test('queues and controls a durable test generation job', async () => {
   assert.equal(resumed.job.providerAttempts[0].outcome, 'manually-selected');
   assert.equal(resumed.job.providerAttempts[0].accepted, 0);
 
+  const ceilingResumeId = 'cli-ceiling-resume-job';
+  const ceilingResumeOptions = { ...created.job.options, costCeilingMicroUsd: 100 };
+  await seedStorageRecord('generationJobs', ceilingResumeId, {
+    id: ceilingResumeId, testId: 'cli-ceiling-resume-test', name: 'CLI ceiling resume', createdAt: 1, updatedAt: 1,
+    status: 'paused', errorCode: 'cost_ceiling', documentIds: [documents.documents[0].id], options: ceilingResumeOptions,
+    questions: [], rejected: 0, rounds: {},
+  });
+  await assert.rejects(cli('resume', ceilingResumeId), /one matching unmatched ceiling raise/);
+  const raisedAndResumed = await cli('jobs', 'raise-ceiling', ceilingResumeId, '--cost-ceiling', '$1.00', '--reason', 'Continue after review', '--confirm-cost', '--resume');
+  assert.equal(raisedAndResumed.job.status, 'queued');
+  assert.equal(raisedAndResumed.accounting.audit.at(-1).event, 'ceiling-resumed');
+  assert.equal(raisedAndResumed.accounting.audit.filter(item => item.event === 'ceiling-resumed').length, 1);
+  await seedStorageRecord('generationJobs', ceilingResumeId, {
+    ...raisedAndResumed.job, status: 'paused', errorCode: 'cost_ceiling', workerId: undefined, leaseId: undefined, leaseExpiresAt: undefined,
+  });
+  await assert.rejects(cli('resume', ceilingResumeId), /one matching unmatched ceiling raise/);
+  const raisedAgain = await cli('jobs', 'raise-ceiling', ceilingResumeId, '--cost-ceiling', '$2.00', '--reason', 'Approve another continuation', '--confirm-cost', '--resume');
+  assert.equal(raisedAgain.job.status, 'queued');
+  assert.equal(raisedAgain.accounting.audit.filter(item => item.event === 'ceiling-resumed').length, 2);
+
+  const recoveryAttemptId = `attempt-${'c'.repeat(48)}`;
+  const recoveryOptions = {
+    ...created.job.options, costCeilingMicroUsd: 10,
+    routeChain: [{ ...created.job.options.routeChain[0], pricing: { inputMicroUsdPerMillionTokens: 1, outputMicroUsdPerMillionTokens: 1 } }],
+  };
+  const recoveryFingerprint = createHash('sha256').update(JSON.stringify({ routeIndex: 0,
+    bounds: { inputTokens: 1, outputTokens: 0, totalTokens: 1 }, reservationCostMicroUsd: 1, reservationCostKnown: true })).digest('hex');
+  await seedStorageRecord('generationJobs', 'cli-recovery-job', {
+    id: 'cli-recovery-job', testId: 'cli-recovery-test', name: 'CLI recovery', createdAt: 1, updatedAt: 1,
+    status: 'paused', errorCode: 'cost_recovery', recoveryAttemptId, documentIds: [documents.documents[0].id], options: recoveryOptions,
+    questions: [], rejected: 0, rounds: {}, usageSummary: { inputTokens: 0, outputTokens: 0, totalTokens: 0, finalizedCostMicroUsd: 0, reservedCostMicroUsd: 1 },
+    usageAudit: [{ event: 'reserved', attemptId: recoveryAttemptId, at: 1, routeIndex: 0, provider: recoveryOptions.provider,
+      reservedCostMicroUsd: 1, reservationInputTokens: 1, reservationOutputTokens: 0, reservationCostKnown: true, reservationFingerprint: recoveryFingerprint }],
+  });
+  await assert.rejects(cli('jobs', 'approve-recovery', 'cli-recovery-job', '--reason', 'Approve duplicate billing'), /--confirm-cost/);
+  const approvedRecovery = await cli('jobs', 'approve-recovery', 'cli-recovery-job', '--reason', 'Approve duplicate billing', '--confirm-cost');
+  assert.equal(approvedRecovery.accounting.audit.at(-1).event, 'recovery-approved');
+  const resumedRecovery = await cli('jobs', 'approve-recovery', 'cli-recovery-job', '--reason', 'Approve duplicate billing', '--confirm-cost', '--resume');
+  assert.equal(resumedRecovery.job.status, 'queued');
+
   await cli('jobs', 'cancel', created.job.id);
   await assert.rejects(cli('resume', created.job.id, '--model', 'gpt-5-mini'), /--model requires --provider/);
   await assert.rejects(
@@ -308,6 +371,7 @@ test('queues and controls a durable test generation job', async () => {
   assert.equal(legacyResume.job.options.provider, 'openai-compatible');
   assert.deepEqual(legacyResume.job.options.routeChain, [{
     provider: 'openai-compatible', model: 'legacy-custom-model', privacy: 'remote-api', paid: true, approved: true,
+    usage: 'provider-reported',
   }]);
   assert.equal(legacyResume.job.options.resolvedSettings['providers.openai-compatible.endpoint'], 'http://127.0.0.1:11434/v1');
   assert.equal(legacyResume.job.activeRouteIndex, 0);

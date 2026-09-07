@@ -80,6 +80,7 @@ export interface QuestionProvenance {
 export type GenerationProvider =
   | 'plugin'
   | 'ollama'
+  | 'llama-cpp'
   | 'codex'
   | 'claude-agent'
   | 'antigravity-agent'
@@ -90,12 +91,22 @@ export type GenerationProvider =
   | 'deepseek'
   | 'openai-compatible';
 
+/** Immutable per-million-token prices captured when a generation job is created. */
+export interface ProviderPricing {
+  inputMicroUsdPerMillionTokens: number;
+  outputMicroUsdPerMillionTokens: number;
+}
+
+export type ProviderUsageCapability = 'provider-reported' | 'unavailable';
+
 export interface ProviderRoute {
   provider: GenerationProvider;
   model?: string;
   privacy: 'local' | 'signed-in-agent' | 'remote-api';
   paid: boolean;
   approved: boolean;
+  pricing?: ProviderPricing;
+  usage?: ProviderUsageCapability;
 }
 
 export interface ProviderAttempt {
@@ -107,6 +118,34 @@ export interface ProviderAttempt {
   outcome: 'failed' | 'completed' | 'manually-selected';
   errorCode?: string;
   message?: string;
+}
+
+/** Durable, service-owned usage accounting for a generation job. Values are
+ * integer micro-USD (one millionth of a US dollar). Older jobs may omit it. */
+export interface GenerationUsageSummary {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  finalizedCostMicroUsd: number;
+  reservedCostMicroUsd: number;
+}
+
+export interface GenerationUsageAuditEntry {
+  event: 'reserved' | 'finalized' | 'ceiling-raised' | 'ceiling-resumed' | 'recovery-approved';
+  attemptId?: string;
+  at: number;
+  provider?: GenerationProvider;
+  model?: string;
+  overCeiling?: boolean;
+  reservationRetained?: boolean;
+  reason?: string;
+  previousCeilingMicroUsd?: number;
+  newCeilingMicroUsd?: number;
+  recoveryAttemptId?: string;
+  /** Append-only reference consumed when a cost-ceiling pause is resumed. */
+  currentCeilingMicroUsd?: number;
+  ceilingRaiseIndex?: number;
+  ceilingRaiseAt?: number;
 }
 
 export interface PromptProfileSnapshot {
@@ -179,6 +218,8 @@ export interface GenerationOptions {
   ragProfile?: RAGProfile;
   routeChain?: ProviderRoute[];
   resolvedSettings?: Record<string, unknown>;
+  /** Omit for an unlimited job. Stored as integer micro-USD. */
+  costCeilingMicroUsd?: number;
 }
 
 export interface TestSession {

@@ -19,18 +19,37 @@ const normalized = (promptTokens, completionTokens, totalTokens) => {
 };
 
 export const normalizeProviderUsage = (provider, payload) => {
-  const source = provider === "ollama" ? payload : payload?.usage;
+  const source = provider === "ollama" ? payload
+    : provider === "gemini" ? payload?.usageMetadata : payload?.usage;
   if (!source || typeof source !== "object" || Array.isArray(source)) return unknown("missing");
   const fieldNames = provider === "ollama"
     ? ["prompt_eval_count", "eval_count"]
-    : ["prompt_tokens", "completion_tokens", "total_tokens"];
+    : provider === "gemini"
+      ? ["promptTokenCount", "candidatesTokenCount", "thoughtsTokenCount", "totalTokenCount"]
+      : provider === "anthropic"
+        ? ["input_tokens", "output_tokens"]
+        : provider === "openai-responses"
+          ? ["input_tokens", "output_tokens", "total_tokens"]
+        : ["prompt_tokens", "completion_tokens", "total_tokens"];
   if (!fieldNames.some(name => Object.hasOwn(source, name))) return unknown("missing");
   const usage = provider === "ollama"
     ? normalized(source.prompt_eval_count, source.eval_count)
+    : provider === "gemini"
+      ? normalized(source.promptTokenCount, token(source.candidatesTokenCount) === undefined ? undefined : token(source.candidatesTokenCount) + (source.thoughtsTokenCount === undefined ? 0 : token(source.thoughtsTokenCount)), source.totalTokenCount)
+      : provider === "anthropic"
+        ? normalized(source.input_tokens, source.output_tokens)
+        : provider === "openai-responses"
+          ? normalized(source.input_tokens, source.output_tokens, source.total_tokens)
     : normalized(source.prompt_tokens, source.completion_tokens, source.total_tokens);
   if (usage) return usage;
   const fields = provider === "ollama"
     ? [source.prompt_eval_count, source.eval_count]
+    : provider === "gemini"
+      ? [source.promptTokenCount, source.candidatesTokenCount, source.thoughtsTokenCount, source.totalTokenCount]
+      : provider === "anthropic"
+        ? [source.input_tokens, source.output_tokens]
+        : provider === "openai-responses"
+          ? [source.input_tokens, source.output_tokens, source.total_tokens]
     : [source.prompt_tokens, source.completion_tokens, source.total_tokens];
   return fields.some(value => typeof value === "number" && (!Number.isSafeInteger(value) || value < 0 || value > MAX_USAGE_TOKENS))
     || (fields[0] <= MAX_USAGE_TOKENS && fields[1] <= MAX_USAGE_TOKENS

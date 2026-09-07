@@ -1,9 +1,10 @@
 import { useEffect } from 'react';
 import type { StoredAppProfile } from '../db/db';
-import type { GenerationProvider, HardwareProfileId, InterfaceMode } from '../types';
+import type { HardwareProfileId, InterfaceMode } from '../types';
 import { updateAppProfile } from './appProfile';
 import { setGenerationBatchSize, setGenerationConcurrency } from './generationSettings';
-import { getProviderSettings, PROVIDERS, setProviderSettings } from './providerSettings';
+import { getProviderSettings, setProviderSettings } from './providerSettings';
+import { resolveRendererProviderSettings } from './runtimeProviderSettings.ts';
 import { serviceJson, serviceRequest } from './serviceApi';
 
 type SettingValue = string | number | boolean;
@@ -14,23 +15,13 @@ interface ResolvedSettings {
 
 const authoritativeSource = (source: string) => ['user', 'environment', 'cli', 'job'].includes(source);
 
-const applyRendererSettings = (settings: ResolvedSettings) => {
+export const applyRendererSettings = (settings: ResolvedSettings) => {
   setGenerationConcurrency(Number(settings.values['generation.concurrency']));
   setGenerationBatchSize(Number(settings.values['generation.batchSize']));
 
   const current = getProviderSettings();
-  const defaultProvider = settings.values['generation.defaultProvider'];
-  const nextProvider = typeof defaultProvider === 'string' && PROVIDERS.some(provider => provider.id === defaultProvider)
-    ? defaultProvider as GenerationProvider
-    : current.defaultProvider;
-  const enabledTools = {
-    marker: Boolean(settings.values['extraction.marker']),
-    ocr: Boolean(settings.values['extraction.ocr']),
-    embeddings: Boolean(settings.values['embeddings.enabled']),
-  };
-  if (current.defaultProvider !== nextProvider || Object.entries(enabledTools).some(([key, value]) => current.enabledTools[key as keyof typeof enabledTools] !== value)) {
-    setProviderSettings({ ...current, defaultProvider: nextProvider, enabledTools });
-  }
+  const next = resolveRendererProviderSettings(current, settings.values);
+  if (next !== current) setProviderSettings(next);
 };
 
 export const synchronizeRuntimeSettings = async (profile: Pick<StoredAppProfile, 'interfaceMode' | 'hardwareProfile'>) => {

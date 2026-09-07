@@ -3,8 +3,13 @@ import { validateQuestionCheckpoint } from './question-validation.mjs';
 import {
   isModernGenerationOptions, validateActiveRoute, validateCoveragePlan, validateGenerationOptions,
   validateGenerationOptionsTransition, validateGenerationProgress, validateGenerationRejectionTransition, validateNewGenerationJob,
-  validateProviderAttemptTransition,
+  validateProviderAttemptTransition, validateGenerationAccounting,
 } from './generation-validation.mjs';
+import {
+  addUsageSummary, assertCostWithinCeiling, emptyUsageSummary, estimateRouteCost,
+  normalizeProviderUsage, normalizeReservationUsage, normalizeUsageSummary, routePricing, validateCostCeiling,
+  validateMicroUsd, validateUsageInteger,
+} from './generation-cost.mjs';
 import { validateOnboardingState } from './onboarding.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream, mkdirSync } from 'node:fs';
@@ -182,6 +187,10 @@ const validateChange = (change, { bootstrap = false, trusted = false } = {}) => 
     const existing = recordById.get('generationJobs', change.id);
     const status = existing ? JSON.parse(existing.data).status : undefined;
     if (existing && !['completed', 'cancelled'].includes(status)) throw new Error('Active generation jobs cannot be deleted through storage sync');
+  }
+  if (!trusted && !change.deleted && change.collection === 'generationJobs'
+    && (change.data.usageSummary !== undefined || change.data.usageAudit !== undefined || change.data.recoveryAttemptId !== undefined)) {
+    throw new Error('Generation accounting is service-owned and cannot be supplied through storage sync');
   }
 };
 
@@ -428,8 +437,207 @@ export const renewGenerationJobLease = (id, { workerId, leaseId, leaseMs = 45_00
   return putRecord('generationJobs', id, { ...existing.data, leaseExpiresAt: now + leaseMs, updatedAt: now });
 };
 
+const accountingId = (value, label) => {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9-]{8,100}$/.test(value)) throw new Error(`Invalid generation ${label}`);
+  return value;
+};
+const accountingState = job => {
+  const summary = normalizeUsageSummary(job.usageSummary ?? emptyUsageSummary);
+  const audit = job.usageAudit ?? [];
+  validateGenerationAccounting(summary, audit, job.options);
+  return { summary, audit };
+};
+const accountingRoute = (job, routeIndex) => {
+  const options = job.options;
+  const route = options?.routeChain?.[routeIndex];
+  if (!route) throw new Error('Generation accounting route is not available');
+  if (route.provider !== options.provider || (route.model ?? undefined) !== (options.model ?? undefined)) {
+    // Failover routes are valid, but the route must still be part of the
+    // immutable route-chain snapshot.
+    if (!options.routeChain.includes(route)) throw new Error('Generation accounting route is invalid');
+  }
+  return route;
+};
+const accountingCeiling = job => validateCostCeiling(job.options?.costCeilingMicroUsd ?? job.costCeilingMicroUsd);
+const findAccountingEvent = (audit, attemptId, event) => audit.find(item => item.attemptId === attemptId && item.event === event);
+const unmatchedCeilingRaises = audit => {
+  const consumed = new Set(audit.filter(item => item.event === 'ceiling-resumed').map(item => item.ceilingRaiseIndex));
+  return audit
+    .map((item, index) => ({ item, index }))
+    .filter(({ item, index }) => item.event === 'ceiling-raised' && !consumed.has(index));
+};
+
+/* Atomically append a reservation before a provider request is sent. */
+export const reserveGenerationAttempt = (id, {
+  workerId, leaseId, attemptId, routeIndex, maxInputTokens, maxOutputTokens,
+  estimatedUsage, now = Date.now(),
+} = {}) => {
+  accountingId(attemptId, 'accounting attempt id');
+  if (!Number.isSafeInteger(routeIndex) || routeIndex < 0 || routeIndex > 999) throw new Error('Invalid generation accounting route index');
+  const bounds = estimatedUsage !== undefined
+    ? normalizeReservationUsage(estimatedUsage)
+    : normalizeReservationUsage({ inputTokens: maxInputTokens, outputTokens: maxOutputTokens });
+  const existing = getRecord('generationJobs', id);
+  requireActiveGenerationLease(existing, { workerId, leaseId, now });
+  const { summary, audit } = accountingState(existing.data);
+  const route = accountingRoute(existing.data, routeIndex);
+  const pricing = routePricing(route);
+  const reservationCost = pricing ? estimateRouteCost(route, bounds) : undefined;
+  const reservationCostKnown = reservationCost !== undefined;
+  const ceiling = accountingCeiling(existing.data);
+  if (ceiling !== undefined && !reservationCostKnown) throw new Error('Cannot reserve an attempt with unknown provider pricing under a finite cost ceiling');
+  const fingerprint = sha256(JSON.stringify({ routeIndex, bounds, reservationCostMicroUsd: reservationCost ?? 0, reservationCostKnown }));
+  const prior = audit.find(item => item.attemptId === attemptId);
+  if (prior) {
+    const sameReservation = prior.event === 'reserved' && prior.reservationFingerprint === fingerprint
+      && prior.routeIndex === routeIndex && prior.reservationInputTokens === bounds.inputTokens
+      && prior.reservationOutputTokens === bounds.outputTokens;
+    if (sameReservation) return existing;
+    throw new Error('Generation accounting attempt replay parameters do not match the original reservation');
+  }
+  const reservedSummary = addUsageSummary(summary, undefined, 0, reservationCost ?? 0);
+  assertCostWithinCeiling(ceiling, summary.finalizedCostMicroUsd, reservedSummary.reservedCostMicroUsd);
+  const event = {
+    event: 'reserved', attemptId, at: now, routeIndex, provider: route.provider,
+    ...(route.model === undefined ? {} : { model: route.model }),
+    reservedCostMicroUsd: reservationCost ?? 0, reservationInputTokens: bounds.inputTokens,
+    reservationOutputTokens: bounds.outputTokens, reservationCostKnown,
+    reservationFingerprint: fingerprint,
+  };
+  const nextAudit = [...audit, event];
+  validateGenerationAccounting(reservedSummary, nextAudit, existing.data.options);
+  return putRecord('generationJobs', id, { ...existing.data, usageSummary: reservedSummary, usageAudit: nextAudit, updatedAt: now });
+};
+
+/* Finalize exactly once. Missing/unknown usage intentionally keeps its reservation. */
+export const finalizeGenerationAttempt = (id, {
+  workerId, leaseId, attemptId, usage, providerUsage = usage, now = Date.now(),
+} = {}) => {
+  accountingId(attemptId, 'accounting attempt id');
+  const existing = getRecord('generationJobs', id);
+  requireActiveGenerationLease(existing, { workerId, leaseId, now });
+  const { summary, audit } = accountingState(existing.data);
+  const reservation = findAccountingEvent(audit, attemptId, 'reserved');
+  const priorFinal = findAccountingEvent(audit, attemptId, 'finalized');
+  if (priorFinal) {
+    let replayUsage;
+    let replayReason;
+    try { replayUsage = normalizeProviderUsage(providerUsage); }
+    catch (error) { replayReason = /overflow|safe integer|range/.test(error.message) ? 'overflow' : 'malformed'; }
+    if (!replayUsage && providerUsage?.unknown === true) replayReason = providerUsage.reason;
+    const replayFingerprint = sha256(JSON.stringify({ usage: replayUsage ?? { unknown: true, reason: replayReason ?? 'missing' } }));
+    if (replayFingerprint !== priorFinal.finalizationFingerprint) throw new Error('Generation accounting finalization replay parameters do not match the original');
+    return existing;
+  }
+  if (!reservation) {
+    throw new Error('Generation accounting attempt has no reservation');
+  }
+  const route = accountingRoute(existing.data, reservation.routeIndex);
+  let normalized;
+  let unknownReason;
+  try {
+    normalized = normalizeProviderUsage(providerUsage);
+  } catch (error) {
+    unknownReason = /overflow|safe integer|range/.test(error.message) ? 'overflow' : 'malformed';
+  }
+  if (!normalized && providerUsage?.unknown === true) unknownReason = providerUsage.reason;
+  const finalizedCostMicroUsd = normalized ? estimateRouteCost(route, normalized) : undefined;
+  const knownCost = finalizedCostMicroUsd !== undefined;
+  const ceiling = accountingCeiling(existing.data);
+  // Remove this attempt's reservation before checking the final charge, then
+  // add the authoritative route-priced result. Other reservations remain held.
+  const availableReserved = summary.reservedCostMicroUsd - reservation.reservedCostMicroUsd;
+  if (availableReserved < 0) throw new Error('Generation accounting reservation balance is invalid');
+  const nextSummary = addUsageSummary(summary, normalized, knownCost ? finalizedCostMicroUsd : 0, 0);
+  nextSummary.reservedCostMicroUsd = knownCost ? availableReserved : summary.reservedCostMicroUsd;
+  const overCeiling = knownCost && ceiling !== undefined
+    && BigInt(nextSummary.finalizedCostMicroUsd) + BigInt(nextSummary.reservedCostMicroUsd) > BigInt(ceiling);
+  const event = {
+    event: 'finalized', attemptId, at: now, routeIndex: reservation.routeIndex, provider: reservation.provider,
+    ...(reservation.model === undefined ? {} : { model: reservation.model }), finalizedCostMicroUsd: knownCost ? finalizedCostMicroUsd : 0,
+    reservationReleasedMicroUsd: knownCost ? reservation.reservedCostMicroUsd : 0,
+    reservationRetained: !knownCost,
+    overCeiling,
+    ...(knownCost && ceiling !== undefined ? { ceilingAtFinalizationMicroUsd: ceiling } : {}),
+    finalizationFingerprint: sha256(JSON.stringify({ usage: normalized
+      ? { inputTokens: normalized.inputTokens, outputTokens: normalized.outputTokens, totalTokens: normalized.totalTokens }
+      : { unknown: true, reason: unknownReason ?? 'missing' } })),
+    usage: normalized ?? { unknown: true, reason: unknownReason ?? 'missing' },
+  };
+  const nextAudit = [...audit, event];
+  validateGenerationAccounting(nextSummary, nextAudit, existing.data.options);
+  return putRecord('generationJobs', id, { ...existing.data, usageSummary: nextSummary, usageAudit: nextAudit, updatedAt: now });
+};
+
+/* Raising a finite ceiling is an explicit, auditable service operation. */
+export const raiseGenerationCostCeiling = (id, {
+  newCeilingMicroUsd, reason, confirmed = false, now = Date.now(),
+} = {}) => {
+  validateMicroUsd(newCeilingMicroUsd, 'New cost ceiling');
+  if (confirmed !== true) throw new Error('Raising a generation cost ceiling requires explicit confirmation');
+  if (typeof reason !== 'string' || reason.trim().length < 1 || reason.length > 500) throw new Error('Cost ceiling raise reason is invalid');
+  const existing = getRecord('generationJobs', id);
+  if (!existing) throw new Error('Generation job not found');
+  if (!['paused', 'error', 'waiting'].includes(existing.data.status)) throw new Error('Cost ceiling can only be raised for a paused, waiting, or error job');
+  const currentCeiling = accountingCeiling(existing.data);
+  if (currentCeiling === undefined) throw new Error('An unlimited generation job has no ceiling to raise');
+  if (newCeilingMicroUsd <= currentCeiling) throw new Error('A raised cost ceiling must be greater than its current ceiling');
+  const { summary, audit } = accountingState(existing.data);
+  if (unmatchedCeilingRaises(audit).some(({ item }) => item.newCeilingMicroUsd === currentCeiling)) {
+    throw new Error('A cost ceiling raise is already pending; resume the job before raising it again');
+  }
+  const nextOptions = { ...existing.data.options, costCeilingMicroUsd: newCeilingMicroUsd };
+  const nextAudit = [...audit, {
+    event: 'ceiling-raised', at: now, previousCeilingMicroUsd: currentCeiling,
+    newCeilingMicroUsd, reason: reason.trim(),
+  }];
+  validateGenerationAccounting(summary, nextAudit, nextOptions);
+  return putRecord('generationJobs', id, { ...existing.data, options: nextOptions, usageAudit: nextAudit, updatedAt: now });
+};
+
+/* A recovery approval acknowledges that an interrupted provider request may
+ * have been billed. It is consumed once and never mutates the old attempt. */
+export const approveGenerationCostRecovery = (id, { reason, confirmed = false, now = Date.now() } = {}) => {
+  if (confirmed !== true) throw new Error('Generation cost recovery requires explicit confirmation');
+  if (typeof reason !== 'string' || reason.trim().length < 1 || reason.length > 500) throw new Error('Cost recovery approval reason is invalid');
+  const existing = getRecord('generationJobs', id);
+  if (!existing) throw new Error('Generation job not found');
+  if (existing.data.status !== 'paused' || existing.data.errorCode !== 'cost_recovery') {
+    throw new Error('Cost recovery approval requires a job paused for cost_recovery');
+  }
+  if (existing.data.workerId || existing.data.leaseId || existing.data.leaseExpiresAt) {
+    throw new Error('Cost recovery approval requires no active generation lease');
+  }
+  const priorAttemptId = existing.data.recoveryAttemptId;
+  accountingId(priorAttemptId, 'recovery attempt id');
+  const { summary, audit } = accountingState(existing.data);
+  const prior = audit.find(item => item.attemptId === priorAttemptId && ['reserved', 'finalized'].includes(item.event));
+  if (!prior) throw new Error('Cost recovery attempt is not present in accounting history');
+  const priorApproval = audit.find(item => item.event === 'recovery-approved' && item.recoveryAttemptId === priorAttemptId);
+  if (priorApproval) {
+    if (priorApproval.reason === reason.trim()) return existing;
+    throw new Error('Cost recovery approval was already consumed for this attempt');
+  }
+  const nextAudit = [...audit, { event: 'recovery-approved', at: now, recoveryAttemptId: priorAttemptId, reason: reason.trim() }];
+  validateGenerationAccounting(summary, nextAudit, existing.data.options);
+  return putRecord('generationJobs', id, { ...existing.data, usageAudit: nextAudit, updatedAt: now });
+};
+
+export const getGenerationAccounting = id => {
+  const record = getRecord('generationJobs', id);
+  if (!record) throw new Error('Generation job not found');
+  const { summary, audit } = accountingState(record.data);
+  return { summary, audit };
+};
+
+// Provider-facing aliases keep the accounting contract discoverable without
+// exposing a second implementation.
+export const reserveProviderAttempt = reserveGenerationAttempt;
+export const finalizeProviderAttempt = finalizeGenerationAttempt;
+export const raiseCostCeiling = raiseGenerationCostCeiling;
+
 const generationPatchKeys = new Set([
-  'activeRouteIndex', 'coveragePlan', 'error', 'errorCode', 'nextAttemptAt', 'options',
+  'activeRouteIndex', 'coveragePlan', 'error', 'errorCode', 'nextAttemptAt', 'options', 'recoveryAttemptId',
   'progress', 'providerAttempts', 'questions', 'rejected', 'rejections', 'rounds', 'status',
 ]);
 const workerStatuses = new Set(['running', 'waiting', 'paused', 'error']);
@@ -442,6 +650,12 @@ const validateGenerationPatch = (patch, job = {}) => {
   const unsupported = Object.keys(patch).filter(key => !generationPatchKeys.has(key));
   if (unsupported.length) throw new Error(`Generation workers cannot update: ${unsupported.join(', ')}`);
   if (patch.status !== undefined && !workerStatuses.has(patch.status)) throw new Error('Invalid worker generation status');
+  if (patch.recoveryAttemptId !== undefined) {
+    accountingId(patch.recoveryAttemptId, 'recovery attempt id');
+    if (patch.status !== 'paused' || patch.errorCode !== 'cost_recovery') {
+      throw new Error('Recovery attempt marker requires a cost_recovery pause');
+    }
+  }
   const checkpointJob = { ...job, ...(patch.options ? { options: patch.options } : {}) };
   if (patch.questions !== undefined) validateQuestionCheckpoint(patch.questions, checkpointJob);
   if (patch.rejected !== undefined && (!Number.isSafeInteger(patch.rejected) || patch.rejected < 0)) {
@@ -548,8 +762,34 @@ export const controlGenerationJob = (id, action, changes = {}, now = Date.now())
   if (action === 'resume' && ['running', 'completed'].includes(existing.data.status)) {
     throw new Error(`A ${existing.data.status} generation job cannot be resumed`);
   }
+  if (action === 'resume' && existing.data.status === 'paused' && existing.data.errorCode === 'cost_recovery') {
+    const recoveryAttemptId = existing.data.recoveryAttemptId;
+    accountingId(recoveryAttemptId, 'recovery attempt id');
+    const approvals = (existing.data.usageAudit ?? []).filter(item => item.event === 'recovery-approved'
+      && item.recoveryAttemptId === recoveryAttemptId);
+    if (approvals.length !== 1) throw new Error('Cost recovery resume requires one matching recovery approval');
+  }
   if (action === 'cancel' && existing.data.status === 'cancelled') return existing;
   const resume = action === 'resume';
+  let usageAudit = existing.data.usageAudit;
+  if (resume && existing.data.status === 'paused' && existing.data.errorCode === 'cost_ceiling') {
+    const { summary, audit } = accountingState(existing.data);
+    const currentCeiling = accountingCeiling(existing.data);
+    const pendingRaises = unmatchedCeilingRaises(audit);
+    const matchingRaise = pendingRaises.findLast(({ item }) => item.newCeilingMicroUsd === currentCeiling);
+    if (currentCeiling === undefined || !matchingRaise) {
+      throw new Error('Cost ceiling resume requires one matching unmatched ceiling raise (the latest matching authorization)');
+    }
+    const { item: raise, index: ceilingRaiseIndex } = matchingRaise;
+    usageAudit = [...audit, {
+      event: 'ceiling-resumed', at: now, currentCeilingMicroUsd: currentCeiling,
+      ceilingRaiseIndex, ceilingRaiseAt: raise.at,
+    }];
+    // Validate the journal before the queued transition is committed. The
+    // accounting summary is deliberately reused unchanged: this marker only
+    // consumes the approval and never changes spend or reservations.
+    validateGenerationAccounting(summary, usageAudit, existing.data.options);
+  }
   const data = {
     ...existing.data,
     ...(resume && changes.options ? { options: changes.options } : {}),
@@ -565,6 +805,7 @@ export const controlGenerationJob = (id, action, changes = {}, now = Date.now())
     leaseId: undefined,
     leaseExpiresAt: undefined,
     ...(resume ? { finishedAt: undefined } : { finishedAt: now }),
+    ...(usageAudit ? { usageAudit } : {}),
   };
   return putRecord('generationJobs', id, data);
 };

@@ -1,8 +1,14 @@
 import { PROVIDER_POLICIES } from './provider-policy.mjs';
 import { validateOllamaModelName } from './ollama-generation.mjs';
 import { validateOpenAICompatibleModel, validateOpenAICompatibleEndpoint } from './openai-compatible-generation.mjs';
+import { validateLlamaCppEndpoint, validateLlamaCppModel } from './llama-cpp-generation.mjs';
 import { validateSettings } from './settings.mjs';
 import { isDeepStrictEqual } from 'node:util';
+import { createHash } from 'node:crypto';
+import {
+  addUsageSummary, emptyUsageSummary, estimateRouteCost, normalizeProviderUsage, normalizeReservationUsage, normalizeUsageSummary,
+  validateCostCeiling, validateMicroUsd, validateUsageInteger, routePricing,
+} from './generation-cost.mjs';
 
 const generationProviders = new Set(Object.keys(PROVIDER_POLICIES));
 const questionTypes = new Set(['multiple-choice', 'fill-blank', 'reasoning', 'coding']);
@@ -73,15 +79,18 @@ const expectedRouteMetadata = provider => {
 
 export const validateProviderRoute = input => {
   const route = requireObject(input, 'Provider route must be an object');
-  rejectUnknown(route, new Set(['provider', 'model', 'privacy', 'paid', 'approved']), 'Provider route');
+  rejectUnknown(route, new Set(['provider', 'model', 'privacy', 'paid', 'approved', 'pricing', 'usage']), 'Provider route');
   if (!generationProviders.has(route.provider)) throw new Error(`Unsupported generation provider: ${route.provider}`);
   if (route.model !== undefined && !boundedText(route.model, 1, 200)) throw new Error('Provider route model is invalid');
   if (route.provider === 'plugin' && !pluginIdPattern.test(route.model ?? '')) {
     throw new Error('Plugin provider routes require an installed generator plugin id as their model');
   }
   if (route.provider === 'ollama') validateOllamaModelName(route.model);
+  if (route.provider === 'llama-cpp') validateLlamaCppModel(route.model);
   if (route.provider === 'openai-compatible') validateOpenAICompatibleModel(route.model);
   if (typeof route.paid !== 'boolean' || typeof route.approved !== 'boolean') throw new Error('Provider route approval and cost flags must be boolean');
+  if (route.pricing !== undefined) routePricing(route);
+  if (route.usage !== undefined && !['provider-reported', 'unavailable'].includes(route.usage)) throw new Error('Provider route usage capability is invalid');
   const expected = expectedRouteMetadata(route.provider);
   if (route.privacy !== expected.privacy || route.paid !== expected.paid) {
     throw new Error(`Provider route metadata does not match the ${route.provider} privacy and cost policy`);
@@ -105,7 +114,7 @@ const routeMatchesOptions = (route, options) => route.provider === options.provi
 const routeWithoutApproval = ({ approved, ...route }) => route;
 const immutableGenerationOptionKeys = [
   'questionCount', 'questionCounts', 'multipleChoiceMode', 'coverageStrategy', 'customInstruction',
-  'promptProfileSnapshot', 'ragProfile', 'resolvedSettings',
+  'promptProfileSnapshot', 'ragProfile', 'resolvedSettings', 'costCeilingMicroUsd',
 ];
 
 export const validateGenerationOptions = (input, { requireSnapshots = false, requireCompleteSettings = false } = {}) => {
@@ -113,6 +122,7 @@ export const validateGenerationOptions = (input, { requireSnapshots = false, req
   rejectUnknown(options, new Set([
     'provider', 'model', 'questionCount', 'questionCounts', 'multipleChoiceMode', 'coverageStrategy',
     'customInstruction', 'promptProfileSnapshot', 'ragProfile', 'routeChain', 'resolvedSettings',
+    'costCeilingMicroUsd',
   ]), 'Generation options');
   if (!generationProviders.has(options.provider)) throw new Error(`Unsupported generation provider: ${options.provider}`);
   if (options.model !== undefined && !boundedText(options.model, 1, 200)) throw new Error('Generation model is invalid');
@@ -120,6 +130,7 @@ export const validateGenerationOptions = (input, { requireSnapshots = false, req
     throw new Error('Plugin generation requires an installed generator plugin id as its model');
   }
   if (options.provider === 'ollama') validateOllamaModelName(options.model);
+  if (options.provider === 'llama-cpp') validateLlamaCppModel(options.model);
   if (options.provider === 'openai-compatible') validateOpenAICompatibleModel(options.model);
   boundedInteger(options.questionCount, 1, 200, 'Generation question count must be an integer from 1 to 200');
   if (options.questionCounts !== undefined) {
@@ -141,6 +152,7 @@ export const validateGenerationOptions = (input, { requireSnapshots = false, req
   if (options.customInstruction !== undefined && !boundedText(options.customInstruction, 1, 2_000)) {
     throw new Error('Custom learning instruction must contain 1-2000 characters');
   }
+  if (options.costCeilingMicroUsd !== undefined) validateCostCeiling(options.costCeilingMicroUsd);
   if (options.promptProfileSnapshot !== undefined) validatePromptSnapshot(options.promptProfileSnapshot);
   if (options.ragProfile !== undefined) validateRagProfile(options.ragProfile);
   if (options.routeChain !== undefined) {
@@ -153,6 +165,9 @@ export const validateGenerationOptions = (input, { requireSnapshots = false, req
     const activeRoute = options.routeChain.find(route => routeMatchesOptions(route, options));
     if (!activeRoute) throw new Error('Generation provider and model must match a route in the route chain');
     if (!activeRoute.approved) throw new Error('The active provider route must be explicitly approved');
+    if (options.costCeilingMicroUsd !== undefined && options.routeChain.some(route => !route.pricing)) {
+      throw new Error('A finite cost ceiling requires explicit input and output pricing for every approved failover route; add prices in Advanced mode or leave the ceiling unlimited');
+    }
   }
   if (options.resolvedSettings !== undefined) {
     requireObject(options.resolvedSettings, 'Resolved generation settings must be an object');
@@ -160,6 +175,9 @@ export const validateGenerationOptions = (input, { requireSnapshots = false, req
     if (JSON.stringify(options.resolvedSettings).length > 100_000) throw new Error('Resolved generation settings are too large');
     if (options.resolvedSettings['providers.openai-compatible.endpoint'] !== undefined) {
       validateOpenAICompatibleEndpoint(options.resolvedSettings['providers.openai-compatible.endpoint']);
+    }
+    if (options.resolvedSettings['providers.llama-cpp.endpoint'] !== undefined) {
+      validateLlamaCppEndpoint(options.resolvedSettings['providers.llama-cpp.endpoint']);
     }
     if (requireCompleteSettings) {
       validateSettings(options.resolvedSettings, { partial: false });
@@ -243,6 +261,149 @@ export const validateProviderAttempts = (input, options) => {
     }
   }
   return input;
+};
+
+const accountingEventKeys = new Set([
+  'event', 'attemptId', 'at', 'routeIndex', 'provider', 'model', 'reservedCostMicroUsd',
+  'finalizedCostMicroUsd', 'reservationReleasedMicroUsd', 'reservationRetained', 'usage',
+  'previousCeilingMicroUsd', 'newCeilingMicroUsd', 'reason', 'overCeiling', 'ceilingAtFinalizationMicroUsd',
+  'reservationInputTokens', 'reservationOutputTokens', 'reservationCostKnown', 'reservationFingerprint',
+  'finalizationFingerprint', 'recoveryAttemptId', 'currentCeilingMicroUsd', 'ceilingRaiseIndex', 'ceilingRaiseAt',
+]);
+const accountingAttemptId = value => {
+  if (!boundedText(value, 1, 100) || !/^[A-Za-z0-9-]+$/.test(value)) throw new Error('Generation accounting attempt id is invalid');
+  return value;
+};
+
+/* Validates the append-only accounting journal and derives its exact summary. */
+export const validateGenerationUsageAudit = (input, { options, summary } = {}) => {
+  if (!Array.isArray(input) || input.length > 2_000) throw new Error('Generation usage audit must be an array of at most 2000 events');
+  const reservations = new Map();
+  const finalized = new Set();
+  const ceilingRaises = new Map();
+  const consumedCeilingRaiseIndexes = new Set();
+  let lastRaisedCeiling;
+  let derived = { ...emptyUsageSummary };
+  for (const [index, item] of input.entries()) {
+    requireObject(item, 'Generation usage audit event must be an object');
+    rejectUnknown(item, accountingEventKeys, 'Generation usage audit event');
+    boundedInteger(item.at, 0, Number.MAX_SAFE_INTEGER, 'Generation accounting event time is invalid');
+    if (item.event === 'ceiling-raised') {
+      rejectUnknown(item, new Set(['event', 'at', 'previousCeilingMicroUsd', 'newCeilingMicroUsd', 'reason']), 'Generation ceiling audit event');
+      validateMicroUsd(item.previousCeilingMicroUsd, 'Previous cost ceiling');
+      validateMicroUsd(item.newCeilingMicroUsd, 'New cost ceiling');
+      if (item.newCeilingMicroUsd <= item.previousCeilingMicroUsd) throw new Error('A raised cost ceiling must be greater than its previous ceiling');
+      if (lastRaisedCeiling !== undefined && item.previousCeilingMicroUsd !== lastRaisedCeiling) throw new Error('Cost ceiling audit transitions are not contiguous');
+      if (!boundedText(item.reason, 1, 500)) throw new Error('Cost ceiling raise reason is invalid');
+      lastRaisedCeiling = item.newCeilingMicroUsd;
+      ceilingRaises.set(index, { index, at: item.at, newCeilingMicroUsd: item.newCeilingMicroUsd });
+      continue;
+    }
+    if (item.event === 'ceiling-resumed') {
+      rejectUnknown(item, new Set(['event', 'at', 'currentCeilingMicroUsd', 'ceilingRaiseIndex', 'ceilingRaiseAt']), 'Generation ceiling resume audit event');
+      validateMicroUsd(item.currentCeilingMicroUsd, 'Current cost ceiling');
+      boundedInteger(item.ceilingRaiseIndex, 0, input.length - 1, 'Generation ceiling raise reference is invalid');
+      boundedInteger(item.ceilingRaiseAt, 0, Number.MAX_SAFE_INTEGER, 'Generation ceiling raise time is invalid');
+      const raise = ceilingRaises.get(item.ceilingRaiseIndex);
+      const latestUnmatchedRaise = [...ceilingRaises.values()].findLast(candidate => !consumedCeilingRaiseIndexes.has(candidate.index));
+      if (!raise || !latestUnmatchedRaise || latestUnmatchedRaise.index !== item.ceilingRaiseIndex
+        || consumedCeilingRaiseIndexes.has(item.ceilingRaiseIndex)
+        || raise.at !== item.ceilingRaiseAt || raise.newCeilingMicroUsd !== item.currentCeilingMicroUsd) {
+        throw new Error('Generation ceiling resume approval does not match one unmatched ceiling raise');
+      }
+      consumedCeilingRaiseIndexes.add(item.ceilingRaiseIndex);
+      continue;
+    }
+    if (item.event === 'recovery-approved') {
+      rejectUnknown(item, new Set(['event', 'at', 'recoveryAttemptId', 'reason']), 'Generation recovery approval event');
+      if (typeof item.recoveryAttemptId !== 'string' || !/^attempt-[a-f0-9]{48}$/.test(item.recoveryAttemptId)
+        || !boundedText(item.reason, 1, 500)
+        || !input.slice(0, index).some(previous => previous.attemptId === item.recoveryAttemptId
+          && ['reserved', 'finalized'].includes(previous.event))) {
+        throw new Error('Generation recovery approval is invalid');
+      }
+      if (input.slice(0, index).some(previous => previous.event === 'recovery-approved'
+        && previous.recoveryAttemptId === item.recoveryAttemptId)) {
+        throw new Error('Generation recovery approval is duplicated');
+      }
+      continue;
+    }
+    accountingAttemptId(item.attemptId);
+    boundedInteger(item.routeIndex, 0, 999, 'Generation accounting route index is invalid');
+    if (!generationProviders.has(item.provider)) throw new Error('Generation accounting provider is invalid');
+    if (item.model !== undefined && !boundedText(item.model, 1, 200)) throw new Error('Generation accounting model is invalid');
+    const eventRoute = options?.routeChain?.[item.routeIndex];
+    if (eventRoute && (eventRoute.provider !== item.provider || (eventRoute.model ?? undefined) !== (item.model ?? undefined))) {
+      throw new Error('Generation accounting event does not match its route-chain entry');
+    }
+    if (item.event === 'reserved') {
+      if (reservations.has(item.attemptId) || finalized.has(item.attemptId)) throw new Error('Generation accounting attempt was reserved more than once');
+      validateMicroUsd(item.reservedCostMicroUsd, 'Reserved cost');
+      validateUsageInteger(item.reservationInputTokens, 'Reservation input token bound');
+      validateUsageInteger(item.reservationOutputTokens, 'Reservation output token bound');
+      if (typeof item.reservationCostKnown !== 'boolean' || !boundedText(item.reservationFingerprint, 64, 64)) throw new Error('Reservation fingerprint is invalid');
+      const bounds = normalizeReservationUsage({ inputTokens: item.reservationInputTokens, outputTokens: item.reservationOutputTokens });
+      const expectedCost = eventRoute ? estimateRouteCost(eventRoute, bounds) : undefined;
+      if (item.reservationCostKnown !== (expectedCost !== undefined) || item.reservedCostMicroUsd !== (expectedCost ?? 0)) throw new Error('Reservation does not match route pricing');
+      const expectedFingerprint = createHash('sha256').update(JSON.stringify({ routeIndex: item.routeIndex, bounds, reservationCostMicroUsd: expectedCost ?? 0, reservationCostKnown: expectedCost !== undefined })).digest('hex');
+      if (item.reservationFingerprint !== expectedFingerprint) throw new Error('Reservation fingerprint is invalid');
+      if (item.reservationRetained !== undefined || item.finalizedCostMicroUsd !== undefined || item.usage !== undefined) throw new Error('Reservation event contains finalization fields');
+      reservations.set(item.attemptId, item.reservedCostMicroUsd);
+      derived = addUsageSummary(derived, undefined, 0, item.reservedCostMicroUsd);
+    } else if (item.event === 'finalized') {
+      if (!reservations.has(item.attemptId) || finalized.has(item.attemptId)) throw new Error('Generation accounting finalization has no open reservation');
+      const reservation = reservations.get(item.attemptId);
+      validateMicroUsd(item.finalizedCostMicroUsd, 'Finalized cost');
+      validateMicroUsd(item.reservationReleasedMicroUsd, 'Released reservation');
+      if (typeof item.reservationRetained !== 'boolean') throw new Error('Generation accounting reservation state is invalid');
+      if (typeof item.overCeiling !== 'boolean' || !boundedText(item.finalizationFingerprint, 64, 64)) throw new Error('Generation finalization fingerprint is invalid');
+      let usage;
+      if (item.usage !== undefined) usage = normalizeProviderUsage(item.usage);
+      if (item.reservationReleasedMicroUsd > reservation) throw new Error('Generation accounting released reservation exceeds its reservation');
+      const estimatedCost = usage && eventRoute ? estimateRouteCost(eventRoute, usage) : undefined;
+      if (estimatedCost === undefined) {
+        if (item.reservationReleasedMicroUsd !== 0 || !item.reservationRetained || item.finalizedCostMicroUsd !== 0) throw new Error('Unknown usage must retain its full reservation');
+      } else if (item.reservationReleasedMicroUsd !== reservation || item.reservationRetained || item.finalizedCostMicroUsd !== estimatedCost) {
+        throw new Error('Finalized accounting does not match the route pricing');
+      }
+      if (item.ceilingAtFinalizationMicroUsd !== undefined) validateMicroUsd(item.ceilingAtFinalizationMicroUsd, 'Finalization cost ceiling');
+      const fingerprintUsage = usage ? { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, totalTokens: usage.totalTokens } : item.usage;
+      const finalFingerprint = createHash('sha256').update(JSON.stringify({ usage: fingerprintUsage })).digest('hex');
+      if (item.finalizationFingerprint !== finalFingerprint) throw new Error('Generation finalization fingerprint is invalid');
+      if (item.overCeiling && (item.ceilingAtFinalizationMicroUsd === undefined
+        || BigInt(item.finalizedCostMicroUsd) + BigInt(derived.finalizedCostMicroUsd)
+          + BigInt(derived.reservedCostMicroUsd - reservation) <= BigInt(item.ceilingAtFinalizationMicroUsd))) {
+        throw new Error('Over-ceiling finalization is not justified');
+      }
+      if (!item.overCeiling && item.ceilingAtFinalizationMicroUsd !== undefined
+        && BigInt(item.finalizedCostMicroUsd) + BigInt(derived.finalizedCostMicroUsd)
+          + BigInt(derived.reservedCostMicroUsd - reservation) > BigInt(item.ceilingAtFinalizationMicroUsd)) {
+        throw new Error('Finalization above ceiling must be marked overCeiling');
+      }
+      if (item.reservationReleasedMicroUsd > derived.reservedCostMicroUsd) throw new Error('Generation accounting reservation balance is invalid');
+      derived = addUsageSummary(derived, usage, item.finalizedCostMicroUsd, 0);
+      // Reservations are outstanding balances, so finalization releases the
+      // original reservation after the append-only event is validated.
+      derived.reservedCostMicroUsd -= item.reservationReleasedMicroUsd;
+      reservations.delete(item.attemptId);
+      finalized.add(item.attemptId);
+    } else {
+      throw new Error('Generation usage audit event type is invalid');
+    }
+  }
+  if (lastRaisedCeiling !== undefined && options?.costCeilingMicroUsd !== lastRaisedCeiling) throw new Error('Generation cost ceiling does not match its audit');
+  if (summary !== undefined) {
+    const normalized = normalizeUsageSummary(summary);
+    if (JSON.stringify(normalized) !== JSON.stringify(derived)) throw new Error('Generation usage summary does not match its audit');
+  }
+  return derived;
+};
+
+export const validateGenerationAccounting = (summary, audit, options) => {
+  const derived = validateGenerationUsageAudit(audit ?? [], { options, summary });
+  // Historical finalized charges may legitimately be above a later/current
+  // ceiling; reserve operations enforce the ceiling for all new spend.
+  return derived;
 };
 
 export const validateProviderAttemptTransition = (input, previous, options, acceptedCount) => {
