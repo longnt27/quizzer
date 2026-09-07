@@ -52,3 +52,24 @@ test('returns an unavailable status when the local server cannot be reached', as
   const status = await getLlamaCppStatus({ endpoint: DEFAULT_LLAMA_CPP_ENDPOINT }, async () => { throw new Error('offline'); });
   assert.deepEqual(status, { configured: true, serverReady: false, models: [], capabilities: [], error: 'llama.cpp server is unavailable' });
 });
+
+test('bounds chunked health and model status responses before buffering them', async () => {
+  const oversized = new Uint8Array(256 * 1024 + 1);
+  let healthCancelled = false;
+  const healthStatus = await getLlamaCppStatus({ endpoint: DEFAULT_LLAMA_CPP_ENDPOINT }, async (_url, options) => new Response(new ReadableStream({
+    start(controller) { controller.enqueue(oversized); },
+    cancel() { healthCancelled = true; },
+  }), { status: 200, headers: { 'content-type': 'application/json' } }), undefined);
+  assert.equal(healthStatus.serverReady, false);
+  assert.match(healthStatus.error, /oversized/);
+  assert.equal(healthCancelled, true);
+
+  let call = 0;
+  const modelStatus = await getLlamaCppStatus({ endpoint: DEFAULT_LLAMA_CPP_ENDPOINT }, async (_url, options) => {
+    call += 1;
+    if (call === 1) return new Response(JSON.stringify({ status: 'ok' }), { status: 200 });
+    return new Response(new ReadableStream({ start(controller) { controller.enqueue(oversized); }, cancel() {} }), { status: 200 });
+  }, undefined);
+  assert.equal(modelStatus.serverReady, true);
+  assert.deepEqual(modelStatus.models, []);
+});

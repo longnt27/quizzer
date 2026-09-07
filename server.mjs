@@ -291,6 +291,19 @@ const updateUserSettings = async body => {
   return writeUserSettings(appDataDirectory, { ...current, ...patch });
 };
 
+const configureLlamaCpp = async body => {
+  if (body?.confirmed !== true) throw new Error('Explicit confirmation is required before configuring llama.cpp');
+  const endpoint = validateLlamaCppEndpoint(body?.endpoint);
+  const model = validateLlamaCppModel(body?.model);
+  const current = await readUserSettings(appDataDirectory);
+  await writeUserSettings(appDataDirectory, {
+    ...current,
+    'providers.llama-cpp.endpoint': endpoint,
+    'providers.llama-cpp.model': model,
+  });
+  return { ok: true, settings: await loadResolvedSettings(appDataDirectory) };
+};
+
 const getPluginManager = async () => {
   const settings = await loadResolvedSettings(appDataDirectory);
   return new PluginManager({
@@ -1055,17 +1068,7 @@ const handleVersionedApi = async (request, response, url) => {
       return true;
     }
     if (request.method === 'POST' && url.pathname === '/api/v1/integrations/llama-cpp/configure') {
-      const body = await readJson(request);
-      if (body?.confirmed !== true) throw new Error('Explicit confirmation is required before configuring llama.cpp');
-      const endpoint = validateLlamaCppEndpoint(body?.endpoint);
-      const model = validateLlamaCppModel(body?.model);
-      const current = await readUserSettings(appDataDirectory);
-      await writeUserSettings(appDataDirectory, {
-        ...current,
-        'providers.llama-cpp.endpoint': endpoint,
-        'providers.llama-cpp.model': model,
-      });
-      send(response, 200, { ok: true, settings: await loadResolvedSettings(appDataDirectory) });
+      send(response, 200, await configureLlamaCpp(await readJson(request)));
       return true;
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/capabilities') {
@@ -1597,17 +1600,7 @@ const serviceServer = createServer(async (request, response) => {
   if (request.method === 'POST' && ['/api/integrations/llama-cpp/configure', '/api/v1/integrations/llama-cpp/configure'].includes(request.url)) {
     if (!request.headers['content-type']?.startsWith('application/json')) return send(response, 415, { error: 'JSON request required' });
     try {
-      const body = await readJson(request);
-      if (body?.confirmed !== true) throw new Error('Explicit confirmation is required before configuring llama.cpp');
-      const endpoint = validateLlamaCppEndpoint(body?.endpoint);
-      const model = validateLlamaCppModel(body?.model);
-      const current = await readUserSettings(appDataDirectory);
-      await writeUserSettings(appDataDirectory, {
-        ...current,
-        'providers.llama-cpp.endpoint': endpoint,
-        'providers.llama-cpp.model': model,
-      });
-      return send(response, 200, { ok: true, settings: await loadResolvedSettings(appDataDirectory) });
+      return send(response, 200, await configureLlamaCpp(await readJson(request)));
     } catch (error) {
       return send(response, 400, { error: error instanceof Error ? error.message : 'Invalid llama.cpp configuration' });
     }

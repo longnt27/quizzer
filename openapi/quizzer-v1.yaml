@@ -90,6 +90,29 @@ paths:
                 $ref: '#/components/schemas/ResolvedSettings'
         '401':
           $ref: '#/components/responses/Unauthorized'
+    patch:
+      operationId: updateSettings
+      summary: Update or reset user setting overrides
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                values: { type: object, additionalProperties: true }
+                unset: { type: array, items: { type: string } }
+      responses:
+        '200':
+          description: Updated effective settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolvedSettings'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /integrations/llama-cpp/configure:
     post:
       operationId: configureLlamaCpp
@@ -112,29 +135,6 @@ paths:
           content:
             application/json:
               schema: { type: object, required: [ok, settings], properties: { ok: { type: boolean }, settings: { $ref: '#/components/schemas/ResolvedSettings' } } }
-        '400':
-          $ref: '#/components/responses/InvalidRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-    patch:
-      operationId: updateSettings
-      summary: Update or reset user setting overrides
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                values: { type: object, additionalProperties: true }
-                unset: { type: array, items: { type: string } }
-      responses:
-        '200':
-          description: Updated effective settings
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ResolvedSettings'
         '400':
           $ref: '#/components/responses/InvalidRequest'
         '401':

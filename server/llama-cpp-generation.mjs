@@ -28,9 +28,31 @@ export const runLlamaCppGeneration = async (input, signal, fetchImpl = globalThi
   return runOpenAICompatibleGeneration({ ...input, endpoint, model }, signal, fetchImpl);
 };
 
-const boundedStatusText = async response => {
+const boundedStatusText = async (response, signal) => {
   const length = Number(response.headers?.get?.('content-length'));
   if (Number.isFinite(length) && length > MAX_STATUS_BYTES) throw new Error('llama.cpp status response is too large');
+  if (response.body?.getReader) {
+    const reader = response.body.getReader();
+    const chunks = [];
+    let size = 0;
+    try {
+      while (true) {
+        if (signal?.aborted) throw signal.reason ?? Object.assign(new Error('llama.cpp status request was cancelled'), { name: 'AbortError' });
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!(value instanceof Uint8Array)) throw new Error('llama.cpp status response is invalid');
+        size += value.byteLength;
+        if (size > MAX_STATUS_BYTES) throw new Error('llama.cpp status response is too large');
+        chunks.push(Buffer.from(value));
+      }
+      return Buffer.concat(chunks, size).toString('utf8');
+    } catch (error) {
+      try { await reader.cancel(error); } catch { /* Ignore cancellation cleanup errors. */ }
+      throw error;
+    } finally {
+      try { reader.releaseLock?.(); } catch { /* Ignore reader cleanup errors. */ }
+    }
+  }
   const text = await response.text();
   if (Buffer.byteLength(text) > MAX_STATUS_BYTES) throw new Error('llama.cpp status response is too large');
   return text;
@@ -63,7 +85,12 @@ export const getLlamaCppStatus = async ({ endpoint = DEFAULT_LLAMA_CPP_ENDPOINT 
       return { configured: true, serverReady: false, models: [], capabilities: [], error: 'llama.cpp server is unavailable' };
     }
     if (health.status >= 300 && health.status < 400) return { configured: true, serverReady: false, models: [], capabilities: [], error: 'llama.cpp health endpoint redirected' };
-    const healthText = await boundedStatusText(health);
+    let healthText;
+    try { healthText = await boundedStatusText(health, controller.signal); }
+    catch (error) {
+      if (error?.name === 'AbortError' && signal?.aborted) throw error;
+      return { configured: true, serverReady: false, models: [], capabilities: [], error: 'llama.cpp returned an invalid or oversized health response' };
+    }
     if (!health.ok) return { configured: true, serverReady: false, models: [], capabilities: [], error: 'llama.cpp server is not ready' };
     let healthPayload;
     try { healthPayload = healthText ? JSON.parse(healthText) : {}; } catch { healthPayload = {}; }
@@ -71,7 +98,7 @@ export const getLlamaCppStatus = async ({ endpoint = DEFAULT_LLAMA_CPP_ENDPOINT 
     try {
       const modelResponse = await fetchImpl(statusUrl(normalizedEndpoint, 'models'), { signal: controller.signal, redirect: 'manual' });
       if (modelResponse.ok) {
-        const modelText = await boundedStatusText(modelResponse);
+        const modelText = await boundedStatusText(modelResponse, controller.signal);
         const payload = JSON.parse(modelText);
         models = Array.isArray(payload?.data) ? payload.data.slice(0, 100).flatMap(item => {
           try { return [{ id: validateLlamaCppModel(item?.id) }]; } catch { return []; }

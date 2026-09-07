@@ -166,6 +166,9 @@ test('requires authentication for every sensitive service endpoint', async () =>
   assert.match(await contract.text(), /openapi: 3\.1\.0[\s\S]*\/jobs\/\{jobId\}\/resume:/);
   assert.match(await (await authorized('/api/v1/openapi.yaml')).text(), /accounting\/ceiling/);
   assert.match(await (await authorized('/api/v1/openapi.yaml')).text(), /accounting\/recovery/);
+  const openApi = await (await authorized('/api/v1/openapi.yaml')).text();
+  assert.match(openApi, /\/settings:\n(?:.|\n)*?\n    patch:\n      operationId: updateSettings/);
+  assert.match(openApi, /\/integrations\/llama-cpp\/configure:\n    post:/);
 });
 
 test('reports and invokes local Ollama only after explicit setup confirmation', async () => {
