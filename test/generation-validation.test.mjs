@@ -153,6 +153,29 @@ test('keeps generation semantics and route history immutable across failover', (
   }, { allowRouteApproval: true }), /selected for continuation/);
 });
 
+test('keeps all existing route metadata immutable while allowing one approval transition', () => {
+  const value = options();
+  const pendingRoute = {
+    provider: 'codex', privacy: 'signed-in-agent', paid: false, approved: false,
+    pricing: { input: 0, output: 0 }, usage: { inputTokens: 0, outputTokens: 0 },
+  };
+  const previous = { ...value, routeChain: [...value.routeChain, pendingRoute] };
+  const approved = {
+    ...previous,
+    provider: 'codex', model: undefined,
+    routeChain: [...value.routeChain, { ...pendingRoute, approved: true }],
+  };
+  assert.equal(validateGenerationOptionsTransition(previous, approved, { allowRouteApproval: true }), approved);
+  for (const field of ['pricing', 'usage']) {
+    const changed = { ...approved, routeChain: [...approved.routeChain] };
+    changed.routeChain[1] = { ...changed.routeChain[1], [field]: { changed: true } };
+    assert.throws(
+      () => validateGenerationOptionsTransition(previous, changed, { allowRouteApproval: true }),
+      /Existing provider routes cannot be removed, reordered, or changed/,
+    );
+  }
+});
+
 test('accepts only pristine queued jobs at the creation boundary', () => {
   const job = {
     id: 'job-validation-one', testId: 'test-validation-one', name: 'Validated job',

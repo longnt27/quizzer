@@ -100,12 +100,9 @@ const validateRagProfile = input => {
 
 const routeMatchesOptions = (route, options) => route.provider === options.provider
   && (route.model ?? undefined) === (options.model ?? undefined);
-const routeIdentity = route => ({
-  provider: route.provider,
-  model: route.model,
-  privacy: route.privacy,
-  paid: route.paid,
-});
+// Route metadata is part of the generation contract.  Keep every existing
+// field immutable on resume; approval is the sole field that may transition.
+const routeWithoutApproval = ({ approved, ...route }) => route;
 const immutableGenerationOptionKeys = [
   'questionCount', 'questionCounts', 'multipleChoiceMode', 'coverageStrategy', 'customInstruction',
   'promptProfileSnapshot', 'ragProfile', 'resolvedSettings',
@@ -204,7 +201,7 @@ export const validateGenerationOptionsTransition = (previous, next, { allowRoute
   for (let index = 0; index < previousRoutes.length; index += 1) {
     const previousRoute = previousRoutes[index];
     const nextRoute = nextRoutes[index];
-    if (!isDeepStrictEqual(routeIdentity(previousRoute), routeIdentity(nextRoute))) {
+    if (!isDeepStrictEqual(routeWithoutApproval(previousRoute), routeWithoutApproval(nextRoute))) {
       throw new Error('Existing provider routes cannot be removed, reordered, or changed');
     }
     if (previousRoute.approved && !nextRoute.approved) throw new Error('Provider route approval cannot be revoked from generation history');
