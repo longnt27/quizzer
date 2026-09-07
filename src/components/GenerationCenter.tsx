@@ -48,15 +48,16 @@ const resolveJobRoute = (job: StoredGenerationJob, provider: GenerationProvider,
 const hasPendingCeilingAuthorization = (job: StoredGenerationJob) => {
   if (job.errorCode !== 'cost_ceiling' || job.options.costCeilingMicroUsd === undefined) return false;
   const audit = job.usageAudit ?? [];
-  let raiseIndex = -1;
-  for (let index = 0; index < audit.length; index += 1) {
+  const consumed = new Set(audit
+    .filter(event => event.event === 'ceiling-resumed' && Number.isInteger(event.ceilingRaiseIndex))
+    .map(event => event.ceilingRaiseIndex as number));
+  // Consecutive raises are historical approvals. Only the latest matching
+  // raise that has not been consumed by its explicit resume marker applies.
+  for (let index = audit.length - 1; index >= 0; index -= 1) {
     const event = audit[index];
-    if (event.event === 'ceiling-raised' && event.newCeilingMicroUsd === job.options.costCeilingMicroUsd) raiseIndex = index;
+    if (event.event === 'ceiling-raised' && event.newCeilingMicroUsd === job.options.costCeilingMicroUsd && !consumed.has(index)) return true;
   }
-  if (raiseIndex < 0) return false;
-  // A later accounting event means this authorization was already consumed by
-  // a retry. A lost resume has no event after the raise and can be resumed.
-  return !audit.slice(raiseIndex + 1).some(event => event.event === 'reserved' || event.event === 'finalized');
+  return false;
 };
 
 const hasRecoveryAuthorization = (job: StoredGenerationJob) => Boolean(
