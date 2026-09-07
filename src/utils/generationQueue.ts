@@ -7,6 +7,7 @@ import { buildCoveragePlan, ensureDocumentChunks, retrievalContextForSlots } fro
 import { applyServiceRecord, syncNow } from '../db/serverSync';
 import type { ProviderAttempt, ProviderRoute } from '../types';
 import { serviceJson } from './serviceApi';
+import { getProviderRoute } from './providerSettings';
 
 const workerId = uuidv4();
 const rendererWorkerEnabled = import.meta.env.VITE_QUIZZER_RENDERER_WORKER === '1';
@@ -62,7 +63,7 @@ const processJob = async (job: StoredGenerationJob) => {
   try {
     const routeChain: ProviderRoute[] = job.options.routeChain?.length
       ? job.options.routeChain
-      : [{ provider: job.options.provider, model: job.options.model, privacy: 'remote-api', paid: true, approved: true }];
+      : [getProviderRoute(job.options.provider, job.options.model, true)];
     let routeIndex = job.activeRouteIndex ?? Math.max(0, routeChain.findIndex(route => route.provider === job.options.provider && route.model === job.options.model));
     let providerAttempts: ProviderAttempt[] = [...(job.providerAttempts ?? [])];
     const documents = await db.documents.bulkGet(job.documentIds);
