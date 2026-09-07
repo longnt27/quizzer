@@ -54,10 +54,28 @@ function OnboardingCoachMark({ step, open }: { step: OnboardingStep; open: boole
   useEffect(() => {
     if (!copy || (!open && step !== 'practice') || dismissed) { setTarget(undefined); setRect(undefined); return undefined; }
     let frame = 0;
+    let targetObserver: ResizeObserver | undefined;
+    let observedTarget: HTMLElement | undefined;
+    const refreshObservedRect = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        if (observedTarget && document.contains(observedTarget)) setRect(observedTarget.getBoundingClientRect());
+        else locate();
+      });
+    };
     const locate = () => {
       const next = [...document.querySelectorAll(copy.selector)].find(isVisibleTarget) as HTMLElement | undefined;
       setTarget(next);
-      if (next) setRect(next.getBoundingClientRect());
+      setRect(next?.getBoundingClientRect());
+      if (next !== observedTarget) {
+        targetObserver?.disconnect();
+        targetObserver = undefined;
+        observedTarget = next;
+      }
+      if (next && !targetObserver && 'ResizeObserver' in window) {
+        targetObserver = new ResizeObserver(refreshObservedRect);
+        targetObserver.observe(next);
+      }
     };
     const refresh = () => { window.cancelAnimationFrame(frame); frame = window.requestAnimationFrame(locate); };
     refresh();
@@ -69,6 +87,7 @@ function OnboardingCoachMark({ step, open }: { step: OnboardingStep; open: boole
     window.addEventListener('keydown', keyboard);
     return () => {
       window.cancelAnimationFrame(frame);
+      targetObserver?.disconnect();
       window.removeEventListener('resize', refresh);
       window.removeEventListener('scroll', refresh, true);
       window.removeEventListener('keydown', keyboard);
@@ -81,8 +100,8 @@ function OnboardingCoachMark({ step, open }: { step: OnboardingStep; open: boole
   const left = Math.max(12, Math.min(window.innerWidth - 332, rect.left));
   return <>
     <div className="onboarding-coach-highlight" aria-hidden="true" style={{ top: rect.top - 5, left: rect.left - 5, width: rect.width + 10, height: rect.height + 10 }} />
-    <aside className="onboarding-coachmark" role="status" aria-live="polite" style={{ top, left }}>
-      <div><strong>{copy.title}</strong><p>{copy.body}</p></div>
+    <aside className="onboarding-coachmark" role="region" aria-label="Onboarding hint" style={{ top, left }}>
+      <div aria-live="polite"><strong>{copy.title}</strong><p>{copy.body}</p></div>
       <Button type="text" size="small" aria-label="Dismiss walkthrough hint" onClick={() => setDismissed(true)}>Dismiss</Button>
     </aside>
   </>;

@@ -87,6 +87,8 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await expect(page.getByText('AI is ready')).toBeVisible();
   await expect(page.locator('[data-onboarding-target="provider"]').filter({ visible: true }).first()).toBeVisible();
   await expect(page.locator('.onboarding-coachmark')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Onboarding hint' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Dismiss walkthrough hint' })).toBeVisible();
   expect(await page.locator('.onboarding-coachmark').evaluate(element => ({ animation: getComputedStyle(element).animationName, duration: getComputedStyle(element).transitionDuration }))).toEqual({ animation: 'none', duration: '0s' });
   await page.keyboard.press('Escape');
   await expect(page.locator('.onboarding-coachmark')).toBeHidden();
