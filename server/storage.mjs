@@ -460,6 +460,12 @@ const accountingRoute = (job, routeIndex) => {
 };
 const accountingCeiling = job => validateCostCeiling(job.options?.costCeilingMicroUsd ?? job.costCeilingMicroUsd);
 const findAccountingEvent = (audit, attemptId, event) => audit.find(item => item.attemptId === attemptId && item.event === event);
+const unmatchedCeilingRaises = audit => {
+  const consumed = new Set(audit.filter(item => item.event === 'ceiling-resumed').map(item => item.ceilingRaiseIndex));
+  return audit
+    .map((item, index) => ({ item, index }))
+    .filter(({ item, index }) => item.event === 'ceiling-raised' && !consumed.has(index));
+};
 
 /* Atomically append a reservation before a provider request is sent. */
 export const reserveGenerationAttempt = (id, {
@@ -577,6 +583,9 @@ export const raiseGenerationCostCeiling = (id, {
   if (currentCeiling === undefined) throw new Error('An unlimited generation job has no ceiling to raise');
   if (newCeilingMicroUsd <= currentCeiling) throw new Error('A raised cost ceiling must be greater than its current ceiling');
   const { summary, audit } = accountingState(existing.data);
+  if (unmatchedCeilingRaises(audit).some(({ item }) => item.newCeilingMicroUsd === currentCeiling)) {
+    throw new Error('A cost ceiling raise is already pending; resume the job before raising it again');
+  }
   const nextOptions = { ...existing.data.options, costCeilingMicroUsd: newCeilingMicroUsd };
   const nextAudit = [...audit, {
     event: 'ceiling-raised', at: now, previousCeilingMicroUsd: currentCeiling,
@@ -762,6 +771,25 @@ export const controlGenerationJob = (id, action, changes = {}, now = Date.now())
   }
   if (action === 'cancel' && existing.data.status === 'cancelled') return existing;
   const resume = action === 'resume';
+  let usageAudit = existing.data.usageAudit;
+  if (resume && existing.data.status === 'paused' && existing.data.errorCode === 'cost_ceiling') {
+    const { summary, audit } = accountingState(existing.data);
+    const currentCeiling = accountingCeiling(existing.data);
+    const pendingRaises = unmatchedCeilingRaises(audit);
+    const matchingRaise = pendingRaises.findLast(({ item }) => item.newCeilingMicroUsd === currentCeiling);
+    if (currentCeiling === undefined || !matchingRaise) {
+      throw new Error('Cost ceiling resume requires one matching unmatched ceiling raise (the latest matching authorization)');
+    }
+    const { item: raise, index: ceilingRaiseIndex } = matchingRaise;
+    usageAudit = [...audit, {
+      event: 'ceiling-resumed', at: now, currentCeilingMicroUsd: currentCeiling,
+      ceilingRaiseIndex, ceilingRaiseAt: raise.at,
+    }];
+    // Validate the journal before the queued transition is committed. The
+    // accounting summary is deliberately reused unchanged: this marker only
+    // consumes the approval and never changes spend or reservations.
+    validateGenerationAccounting(summary, usageAudit, existing.data.options);
+  }
   const data = {
     ...existing.data,
     ...(resume && changes.options ? { options: changes.options } : {}),
@@ -777,6 +805,7 @@ export const controlGenerationJob = (id, action, changes = {}, now = Date.now())
     leaseId: undefined,
     leaseExpiresAt: undefined,
     ...(resume ? { finishedAt: undefined } : { finishedAt: now }),
+    ...(usageAudit ? { usageAudit } : {}),
   };
   return putRecord('generationJobs', id, data);
 };

@@ -262,7 +262,7 @@ const accountingEventKeys = new Set([
   'finalizedCostMicroUsd', 'reservationReleasedMicroUsd', 'reservationRetained', 'usage',
   'previousCeilingMicroUsd', 'newCeilingMicroUsd', 'reason', 'overCeiling', 'ceilingAtFinalizationMicroUsd',
   'reservationInputTokens', 'reservationOutputTokens', 'reservationCostKnown', 'reservationFingerprint',
-  'finalizationFingerprint', 'recoveryAttemptId',
+  'finalizationFingerprint', 'recoveryAttemptId', 'currentCeilingMicroUsd', 'ceilingRaiseIndex', 'ceilingRaiseAt',
 ]);
 const accountingAttemptId = value => {
   if (!boundedText(value, 1, 100) || !/^[A-Za-z0-9-]+$/.test(value)) throw new Error('Generation accounting attempt id is invalid');
@@ -274,6 +274,8 @@ export const validateGenerationUsageAudit = (input, { options, summary } = {}) =
   if (!Array.isArray(input) || input.length > 2_000) throw new Error('Generation usage audit must be an array of at most 2000 events');
   const reservations = new Map();
   const finalized = new Set();
+  const ceilingRaises = new Map();
+  const consumedCeilingRaiseIndexes = new Set();
   let lastRaisedCeiling;
   let derived = { ...emptyUsageSummary };
   for (const [index, item] of input.entries()) {
@@ -288,6 +290,22 @@ export const validateGenerationUsageAudit = (input, { options, summary } = {}) =
       if (lastRaisedCeiling !== undefined && item.previousCeilingMicroUsd !== lastRaisedCeiling) throw new Error('Cost ceiling audit transitions are not contiguous');
       if (!boundedText(item.reason, 1, 500)) throw new Error('Cost ceiling raise reason is invalid');
       lastRaisedCeiling = item.newCeilingMicroUsd;
+      ceilingRaises.set(index, { index, at: item.at, newCeilingMicroUsd: item.newCeilingMicroUsd });
+      continue;
+    }
+    if (item.event === 'ceiling-resumed') {
+      rejectUnknown(item, new Set(['event', 'at', 'currentCeilingMicroUsd', 'ceilingRaiseIndex', 'ceilingRaiseAt']), 'Generation ceiling resume audit event');
+      validateMicroUsd(item.currentCeilingMicroUsd, 'Current cost ceiling');
+      boundedInteger(item.ceilingRaiseIndex, 0, input.length - 1, 'Generation ceiling raise reference is invalid');
+      boundedInteger(item.ceilingRaiseAt, 0, Number.MAX_SAFE_INTEGER, 'Generation ceiling raise time is invalid');
+      const raise = ceilingRaises.get(item.ceilingRaiseIndex);
+      const latestUnmatchedRaise = [...ceilingRaises.values()].findLast(candidate => !consumedCeilingRaiseIndexes.has(candidate.index));
+      if (!raise || !latestUnmatchedRaise || latestUnmatchedRaise.index !== item.ceilingRaiseIndex
+        || consumedCeilingRaiseIndexes.has(item.ceilingRaiseIndex)
+        || raise.at !== item.ceilingRaiseAt || raise.newCeilingMicroUsd !== item.currentCeilingMicroUsd) {
+        throw new Error('Generation ceiling resume approval does not match one unmatched ceiling raise');
+      }
+      consumedCeilingRaiseIndexes.add(item.ceilingRaiseIndex);
       continue;
     }
     if (item.event === 'recovery-approved') {

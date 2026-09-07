@@ -414,8 +414,26 @@ test('durably accounts reservations, unknown usage, replay mismatches, over-ceil
   finalizeGenerationAttempt(job.id, { workerId: 'accounting-worker', leaseId: claimed.data.leaseId, attemptId: 'accounting-attempt', usage: { unknown: true, reason: 'missing' }, now: 104 });
   assert.throws(() => finalizeGenerationAttempt(job.id, { workerId: 'accounting-worker', leaseId: claimed.data.leaseId, attemptId: 'accounting-attempt', usage: { inputTokens: 1, outputTokens: 0 }, now: 104 }), /replay parameters/);
   updateGenerationJobWithLease(job.id, { workerId: 'accounting-worker', leaseId: claimed.data.leaseId, patch: { status: 'paused' }, now: 105 });
+  putRecord('generationJobs', job.id, { ...getRecord('generationJobs', job.id).data,
+    status: 'paused', errorCode: 'cost_ceiling', workerId: undefined, leaseId: undefined, leaseExpiresAt: undefined });
+  assert.throws(() => controlGenerationJob(job.id, 'resume', {}, 106), /one matching unmatched ceiling raise/);
   raiseGenerationCostCeiling(job.id, { newCeilingMicroUsd: 10, reason: 'approved extension', confirmed: true, now: 106 });
   assert.equal(getRecord('generationJobs', job.id).data.options.costCeilingMicroUsd, 10);
+  const resumed = controlGenerationJob(job.id, 'resume', {}, 107);
+  assert.equal(resumed.data.status, 'queued');
+  assert.deepEqual(getGenerationAccounting(job.id).summary, {
+    inputTokens: 0, outputTokens: 0, totalTokens: 0, finalizedCostMicroUsd: 0, reservedCostMicroUsd: 2,
+  });
+  assert.deepEqual(resumed.data.usageAudit.at(-1), {
+    event: 'ceiling-resumed', at: 107, currentCeilingMicroUsd: 10, ceilingRaiseIndex: 2, ceilingRaiseAt: 106,
+  });
+  putRecord('generationJobs', job.id, { ...resumed.data,
+    status: 'paused', errorCode: 'cost_ceiling', workerId: undefined, leaseId: undefined, leaseExpiresAt: undefined });
+  assert.throws(() => controlGenerationJob(job.id, 'resume', {}, 108), /one matching unmatched ceiling raise/);
+  raiseGenerationCostCeiling(job.id, { newCeilingMicroUsd: 20, reason: 'second approved extension', confirmed: true, now: 109 });
+  const resumedAgain = controlGenerationJob(job.id, 'resume', {}, 110);
+  assert.equal(resumedAgain.data.status, 'queued');
+  assert.equal(resumedAgain.data.usageAudit.filter(item => item.event === 'ceiling-resumed').length, 2);
 });
 
 test('approves cost recovery exactly once for a deterministic prior attempt', () => {
@@ -446,6 +464,27 @@ test('approves cost recovery exactly once for a deterministic prior attempt', ()
   putRecord('generationJobs', 'recovery-missing-history', { id: 'recovery-missing-history', testId: 'recovery-missing-test', name: 'Missing history',
     status: 'paused', errorCode: 'cost_recovery', recoveryAttemptId: 'attempt-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', documentIds: ['accounting-doc'], options, questions: [], rejected: 0, rounds: {} });
   assert.throws(() => approveGenerationCostRecovery('recovery-missing-history', { reason: 'missing history', confirmed: true }), /not present in accounting history/);
+});
+
+test('resumes legacy journals with consecutive ceiling raises using only the latest authorization', () => {
+  const options = { ...generationOptions(), costCeilingMicroUsd: 20 };
+  const id = 'legacy-consecutive-ceiling-job';
+  const firstRaise = { event: 'ceiling-raised', at: 10, previousCeilingMicroUsd: 3, newCeilingMicroUsd: 10, reason: 'first approval' };
+  const secondRaise = { event: 'ceiling-raised', at: 11, previousCeilingMicroUsd: 10, newCeilingMicroUsd: 20, reason: 'latest approval' };
+  putRecord('generationJobs', id, {
+    id, testId: 'legacy-consecutive-ceiling-test', name: 'Legacy consecutive ceiling', createdAt: 1, updatedAt: 1,
+    status: 'paused', errorCode: 'cost_ceiling', documentIds: ['accounting-doc'], options, questions: [], rejected: 0, rounds: {},
+    usageSummary: { inputTokens: 0, outputTokens: 0, totalTokens: 0, finalizedCostMicroUsd: 0, reservedCostMicroUsd: 0 },
+    usageAudit: [firstRaise, secondRaise],
+  });
+  assert.throws(() => raiseGenerationCostCeiling(id, { newCeilingMicroUsd: 30, reason: 'ambiguous', confirmed: true }), /already pending/);
+  const resumed = controlGenerationJob(id, 'resume', {}, 12);
+  assert.equal(resumed.data.status, 'queued');
+  assert.deepEqual(resumed.data.usageAudit[0], firstRaise);
+  assert.deepEqual(resumed.data.usageAudit[1], secondRaise);
+  assert.deepEqual(resumed.data.usageAudit[2], {
+    event: 'ceiling-resumed', at: 12, currentCeilingMicroUsd: 20, ceilingRaiseIndex: 1, ceilingRaiseAt: 11,
+  });
 });
 
 test('covers storage validation branches around sync, migration, leases, and completion', async () => {

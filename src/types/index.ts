@@ -130,7 +130,7 @@ export interface GenerationUsageSummary {
 }
 
 export interface GenerationUsageAuditEntry {
-  event: 'reserved' | 'finalized' | 'ceiling-raised';
+  event: 'reserved' | 'finalized' | 'ceiling-raised' | 'ceiling-resumed';
   attemptId?: string;
   at: number;
   provider?: GenerationProvider;
@@ -140,6 +140,10 @@ export interface GenerationUsageAuditEntry {
   reason?: string;
   previousCeilingMicroUsd?: number;
   newCeilingMicroUsd?: number;
+  /** Append-only reference consumed when a cost-ceiling pause is resumed. */
+  currentCeilingMicroUsd?: number;
+  ceilingRaiseIndex?: number;
+  ceilingRaiseAt?: number;
 }
 
 export interface PromptProfileSnapshot {
