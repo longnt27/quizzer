@@ -592,9 +592,12 @@ test('provides onboarding, document, job, and event operations', async () => {
   const cappedLeased = (await cappedClaim.json()).job;
   const paused = await authorized('/api/v1/jobs/cost-api-job', {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ workerId: 'cost-api-worker', leaseId: cappedLeased.leaseId, patch: { status: 'paused' } }),
+    body: JSON.stringify({ workerId: 'cost-api-worker', leaseId: cappedLeased.leaseId, patch: { status: 'paused', errorCode: 'cost_ceiling' } }),
   });
   assert.equal(paused.status, 200);
+  const directResume = await authorized('/api/v1/jobs/cost-api-job/resume', { method: 'POST' });
+  assert.equal(directResume.status, 400);
+  assert.match((await directResume.json()).error, /one matching unmatched ceiling raise/);
   assert.equal((await fetch(`${origin}/api/v1/jobs/cost-api-job/accounting`)).status, 401);
   const accounting = await authorized('/api/v1/jobs/cost-api-job/accounting');
   assert.equal(accounting.status, 200);
@@ -620,7 +623,16 @@ test('provides onboarding, document, job, and event operations', async () => {
     body: JSON.stringify({ newCeilingMicroUsd: 2_000_000, reason: 'Need more coverage', confirmed: true }),
   });
   assert.equal(raised.status, 200);
-  assert.equal((await raised.json()).accounting.audit.at(-1).event, 'ceiling-raised');
+  const raisedPayload = await raised.json();
+  assert.equal(raisedPayload.accounting.audit.at(-1).event, 'ceiling-raised');
+  const resumedAfterRaise = await authorized('/api/v1/jobs/cost-api-job/resume', { method: 'POST' });
+  assert.equal(resumedAfterRaise.status, 200);
+  const resumedPayload = await resumedAfterRaise.json();
+  assert.equal(resumedPayload.job.status, 'queued');
+  const resumedAccounting = await authorized('/api/v1/jobs/cost-api-job/accounting');
+  const resumedAccountingPayload = await resumedAccounting.json();
+  assert.equal(resumedAccountingPayload.accounting.audit.at(-1).event, 'ceiling-resumed');
+  assert.equal(resumedAccountingPayload.accounting.audit.at(-1).currentCeilingMicroUsd, 2_000_000);
 
   const events = await authorized('/api/v1/events');
   assert.match(events.headers.get('content-type'), /^text\/event-stream/);
