@@ -72,6 +72,7 @@ test("accepts only exact immutable Quizzer release assets and the GitHub asset r
 
   for (const url of [
     "https://github.com/Somethings1/quizzer/releases/latest/download/catalog.json",
+    "https://github.com/Somethings1/quizzer/releases/download/plugins/catalog.json",
     `${releaseRoot}/nested/catalog.json`,
     `${releaseRoot}/catalog.json?download=1`,
     `${releaseRoot}/catalog.json#fragment`,
@@ -131,6 +132,8 @@ test("rejects ambiguous or inconsistent signed catalog metadata", () => {
   assert.throws(() => validateRegistryCatalog(duplicate), /Duplicate plugin id/);
   assert.throws(() => validateRegistryCatalog(catalogForValidation({ id: "Invalid_ID!" })), /Invalid plugin id/);
   assert.throws(() => validateRegistryCatalog(catalogForValidation({ version: "1.0" })), /semantic versioning/);
+  assert.throws(() => validateRegistryCatalog(catalogForValidation({ version: "1.0.0-01" })), /semantic versioning/);
+  assert.throws(() => validateRegistryCatalog(catalogForValidation({ version: "99999999999999999999.0.0" })), /semantic versioning/);
   assert.throws(() => validateRegistryCatalog(catalogForValidation({ unexpected: true })), /unsupported fields/);
   assert.throws(() => validateRegistryCatalog(catalogForValidation({
     platforms: [{ os: "linux", architectures: ["x64"] }, { os: "linux", architectures: ["arm64"] }],

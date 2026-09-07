@@ -13,11 +13,12 @@ export const DEFAULT_PLUGIN_REGISTRY_URL = "https://github.com/Somethings1/quizz
 const supportedOperatingSystems = new Set(["darwin", "linux", "win32"]);
 const supportedArchitectures = new Set(["x64", "arm64"]);
 const supportedFilesystemPermissions = new Set(["scoped-temp", "document-read", "model-read", "persistent-data"]);
-const semverRegex = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?$/;
+const semverRegex = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
 const pluginIdRegex = /^[a-z0-9](?:[a-z0-9.-]{0,126}[a-z0-9])?$/;
 const secretNameRegex = /^[A-Z][A-Z0-9_]{1,63}$/;
 const sha256Regex = /^[a-f0-9]{64}$/;
 const releaseSegmentRegex = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,254}[A-Za-z0-9])?$/;
+const releaseTagRegex = /^(?=[A-Za-z0-9._-]*\d)[A-Za-z0-9](?:[A-Za-z0-9._-]{0,126}[A-Za-z0-9])?$/;
 const registrySignatureRegex = /^[A-Za-z0-9_-]{86}$/;
 const catalogKeys = new Set([
   "schemaVersion", "version", "publishedAt", "signatureAlgorithm", "publicKeyId", "signature", "plugins",
@@ -35,11 +36,16 @@ export const parseSemver = version => {
   if (typeof version !== "string") return null;
   const match = semverRegex.exec(version.trim());
   if (!match) return null;
+  const numericParts = match.slice(1, 4).map(Number);
+  if (numericParts.some(part => !Number.isSafeInteger(part))) return null;
+  const prerelease = match[4] ? match[4].split(".") : null;
+  if (prerelease?.some(part => (/^\d+$/.test(part) && (part.length > 1 && part.startsWith("0")))
+    || (/^\d+$/.test(part) && !Number.isSafeInteger(Number(part))))) return null;
   return {
-    major: Number(match[1]),
-    minor: Number(match[2]),
-    patch: Number(match[3]),
-    prerelease: match[4] ? match[4].split(".") : null,
+    major: numericParts[0],
+    minor: numericParts[1],
+    patch: numericParts[2],
+    prerelease,
     raw: version,
   };
 };
@@ -145,8 +151,8 @@ const canonicalReleaseUrl = (urlValue, repository, { base = false } = {}) => {
     const parts = subpath.split("/");
     if (base) parts.pop();
     if (parts.length !== (base ? 1 : 2)) return false;
-    if (parts[0].toLowerCase() === "latest") return false;
-    return parts.every(part => releaseSegmentRegex.test(part));
+    if (!releaseTagRegex.test(parts[0]) || parts[0].toLowerCase() === "latest") return false;
+    return base || releaseSegmentRegex.test(parts[1]);
   } catch {
     return false;
   }
@@ -217,7 +223,7 @@ export const validateRegistryCatalog = catalog => {
     seenIds.add(entry.id);
 
     requireString(entry.name, `Registry entry ${entry.id} name`, 100);
-    if (!semverRegex.test(entry.version ?? "")) throw new Error(`Registry entry ${entry.id} version must use semantic versioning`);
+    if (!parseSemver(entry.version)) throw new Error(`Registry entry ${entry.id} version must use semantic versioning`);
     if (entry.description !== undefined && (typeof entry.description !== "string" || entry.description.length > 500)) {
       throw new Error(`Registry entry ${entry.id} description is invalid`);
     }
@@ -477,7 +483,10 @@ export const fetchBoundedBuffer = async (fetchFn, initialUrl, options = {}, maxB
       }
       let targetUrl;
       try { targetUrl = new URL(location, initialUrl).href; }
-      catch { throw new Error("Plugin download returned an invalid redirect Location"); }
+      catch {
+        cancelResponse(response);
+        throw new Error("Plugin download returned an invalid redirect Location");
+      }
       if (!validateRedirectTargetUrl(targetUrl)) {
         cancelResponse(response);
         throw new Error("Plugin download redirect must target credential-free release-assets.githubusercontent.com on its default HTTPS port");

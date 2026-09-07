@@ -347,6 +347,7 @@ export class PluginManager {
     }
 
     assertCatalogMatchesManifest(entry, manifest);
+    const catalogFiles = new Map(entry.files.map(file => [file.path, file]));
 
     const confirmation = checkPluginSecurityConfirmations(manifest, previousManifest, entry.downloadSize);
     const confirmationToken = confirmationTokenFor({ catalog, entry, manifest, previousManifest, confirmation });
@@ -376,7 +377,7 @@ export class PluginManager {
       let totalBytesReceived = 0;
       for (const file of manifest.files) {
         const relative = validatePluginPath(file.path);
-        const catFile = entry.files.find(item => item.path === file.path);
+        const catFile = catalogFiles.get(file.path);
         const fileUrl = catFile.url;
 
         const target = join(staging, relative);

@@ -287,6 +287,19 @@ test("PluginManager remote lifecycle: list, install, update, rollback, and remov
   assert.equal(noopUpdate.updated, false);
 
   // 9. Rollback to v1.0.0
+  const staleUnsigned = { ...manifestV1Unsigned, version: "9.9.9" };
+  const staleManifest = {
+    ...staleUnsigned,
+    signature: {
+      algorithm: "ed25519",
+      keyId,
+      value: sign(null, pluginSignaturePayload(staleUnsigned), privateKey).toString("base64"),
+    },
+  };
+  const staleRollback = join(appDataDirectory, "plugins", "rollback", "test-echo--9.9.9--9");
+  await mkdir(staleRollback);
+  await writeFile(join(staleRollback, "plugin.mjs"), pluginFileSourceV1);
+  await writeFile(join(staleRollback, "quizzer.plugin.json"), JSON.stringify(staleManifest));
   const rolledBack = await manager.rollback("test-echo");
   assert.equal(rolledBack.id, "test-echo");
   assert.equal(rolledBack.version, "1.0.0");
