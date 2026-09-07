@@ -167,4 +167,21 @@ test('supports keyboard access to navigation, download controls, and demo with r
   await page.keyboard.press('Enter');
   await expect(copy).toBeFocused();
   await expect(page.getByRole('button', { name: 'Kubernetes operations' })).toBeVisible();
+
+  // Prove actual Tab reachability independently for representative controls;
+  // this avoids assuming a particular DOM order while still detecting traps.
+  const keyboardTargets = [
+    page.getByRole('link', { name: /Download for/ }),
+    windows,
+    copy,
+    page.getByRole('button', { name: 'Kubernetes operations' }),
+  ];
+  for (const target of keyboardTargets) {
+    await target.focus();
+    await page.keyboard.press('Tab');
+    expect(await page.evaluate(() => document.activeElement !== document.body)).toBe(true);
+    await page.keyboard.press('Shift+Tab');
+    await page.keyboard.press('Tab');
+    expect(await page.evaluate(() => document.activeElement !== document.body)).toBe(true);
+  }
 });
