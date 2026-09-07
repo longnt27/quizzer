@@ -8,7 +8,6 @@ import {
   addUsageSummary, emptyUsageSummary, estimateRouteCost, normalizeProviderUsage, normalizeReservationUsage, normalizeUsageSummary,
   validateCostCeiling, validateMicroUsd, validateUsageInteger, routePricing,
 } from './generation-cost.mjs';
-import { getKnownProviderRouteMetadata } from './provider-pricing.mjs';
 
 const generationProviders = new Set(Object.keys(PROVIDER_POLICIES));
 const questionTypes = new Set(['multiple-choice', 'fill-blank', 'reasoning', 'coding']);

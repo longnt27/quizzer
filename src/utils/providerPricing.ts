@@ -1,6 +1,8 @@
 import type { GenerationProvider, ProviderPricing, ProviderUsageCapability } from '../types';
 
-// Prices are release-time snapshots, never fetched at runtime. Sources:
+// Prices are release-time snapshots as of 2026-09-07, never fetched at runtime.
+// DeepSeek uses conservative peak/cache-miss rates because this contract does
+// not model cache hits or off-peak windows. Sources:
 // https://ai.google.dev/gemini-api/docs/pricing, https://www.anthropic.com/pricing,
 // https://openai.com/api/pricing/, https://openrouter.ai/openai/gpt-4o-mini,
 // https://api-docs.deepseek.com/quick_start/pricing.
@@ -9,9 +11,7 @@ const PRICES: Record<string, ProviderPricing> = {
   'anthropic:claude-sonnet-4-5-20250929': { inputMicroUsdPerMillionTokens: 3_000_000, outputMicroUsdPerMillionTokens: 15_000_000 },
   'openai:gpt-5-mini': { inputMicroUsdPerMillionTokens: 250_000, outputMicroUsdPerMillionTokens: 2_000_000 },
   'openrouter:openai/gpt-4o-mini': { inputMicroUsdPerMillionTokens: 150_000, outputMicroUsdPerMillionTokens: 600_000 },
-  // deepseek-chat is the compatibility alias for DeepSeek-V4-Flash; reserve at
-  // cache-miss input pricing because this contract does not model cache hits.
-  'deepseek:deepseek-chat': { inputMicroUsdPerMillionTokens: 140_000, outputMicroUsdPerMillionTokens: 280_000 },
+  'deepseek:deepseek-v4-flash': { inputMicroUsdPerMillionTokens: 440_000, outputMicroUsdPerMillionTokens: 1_320_000 },
 };
 
 export const getProviderPricing = (provider: GenerationProvider, model?: string): ProviderPricing | undefined =>

@@ -1,4 +1,6 @@
-// Release-time snapshots; no network calls at runtime. Sources:
+// Release-time snapshots as of 2026-09-07; no network calls at runtime.
+// DeepSeek uses conservative peak/cache-miss rates because cache hits and
+// off-peak windows are not modeled. Sources:
 // https://ai.google.dev/gemini-api/docs/pricing, https://www.anthropic.com/pricing,
 // https://openai.com/api/pricing/, https://openrouter.ai/openai/gpt-4o-mini,
 // https://api-docs.deepseek.com/quick_start/pricing.
@@ -7,9 +9,7 @@ const PRICES = Object.freeze({
   'anthropic:claude-sonnet-4-5-20250929': Object.freeze({ inputMicroUsdPerMillionTokens: 3_000_000, outputMicroUsdPerMillionTokens: 15_000_000 }),
   'openai:gpt-5-mini': Object.freeze({ inputMicroUsdPerMillionTokens: 250_000, outputMicroUsdPerMillionTokens: 2_000_000 }),
   'openrouter:openai/gpt-4o-mini': Object.freeze({ inputMicroUsdPerMillionTokens: 150_000, outputMicroUsdPerMillionTokens: 600_000 }),
-  // deepseek-chat is the compatibility alias for DeepSeek-V4-Flash. Use the
-  // cache-miss input rate because cache hits are not modeled by this contract.
-  'deepseek:deepseek-chat': Object.freeze({ inputMicroUsdPerMillionTokens: 140_000, outputMicroUsdPerMillionTokens: 280_000 }),
+  'deepseek:deepseek-v4-flash': Object.freeze({ inputMicroUsdPerMillionTokens: 440_000, outputMicroUsdPerMillionTokens: 1_320_000 }),
 });
 
 export const getProviderPricing = (provider, model) => PRICES[`${provider}:${model ?? ''}`];

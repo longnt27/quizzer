@@ -29,7 +29,7 @@ export const PROVIDERS: readonly ProviderDefinition[] = [
   { id: 'anthropic', label: 'Claude – API', kind: 'api', description: 'Calls the native Anthropic Messages API.', defaultModel: 'claude-sonnet-4-5-20250929', keyLabel: 'Anthropic API key' },
   { id: 'openai', label: 'OpenAI – API', kind: 'api', description: 'Calls the OpenAI Responses API.', defaultModel: 'gpt-5-mini', keyLabel: 'OpenAI API key' },
   { id: 'openrouter', label: 'OpenRouter – API', kind: 'api', description: 'Uses an OpenRouter model through its unified API.', defaultModel: 'openai/gpt-4o-mini', keyLabel: 'OpenRouter API key' },
-  { id: 'deepseek', label: 'DeepSeek – API', kind: 'api', description: 'Calls DeepSeek through its OpenAI-compatible API.', defaultModel: 'deepseek-chat', keyLabel: 'DeepSeek API key' },
+  { id: 'deepseek', label: 'DeepSeek – API', kind: 'api', description: 'Calls DeepSeek through its OpenAI-compatible API.', defaultModel: 'deepseek-v4-flash', keyLabel: 'DeepSeek API key' },
   { id: 'openai-compatible', label: 'OpenAI-compatible – Custom', kind: 'api', description: 'Calls a custom OpenAI-compatible chat completions endpoint.', defaultModel: '', keyLabel: 'OpenAI-compatible API key (optional for loopback)' },
 ] as const;
 

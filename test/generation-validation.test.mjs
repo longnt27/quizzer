@@ -78,6 +78,10 @@ test('uses exact release pricing matches and rejects unknown failover pricing un
     inputMicroUsdPerMillionTokens: 250_000, outputMicroUsdPerMillionTokens: 2_000_000,
   });
   assert.equal(getProviderPricing('openai', 'gpt-5'), undefined);
+  assert.deepEqual(getProviderPricing('deepseek', 'deepseek-v4-flash'), {
+    inputMicroUsdPerMillionTokens: 440_000, outputMicroUsdPerMillionTokens: 1_320_000,
+  });
+  assert.equal(getProviderPricing('deepseek', 'deepseek-chat'), undefined);
   assert.deepEqual(getKnownProviderRouteMetadata('ollama', 'qwen3:4b').pricing, {
     inputMicroUsdPerMillionTokens: 0, outputMicroUsdPerMillionTokens: 0,
   });
