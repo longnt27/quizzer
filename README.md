@@ -85,7 +85,7 @@ Quizzer includes an in-app signed update workflow designed for safety and defens
 - Automatic recovery of unfinished test and practice sessions
 - In-app Plugins & models panel for setup and defaults
 - Codex, Claude Code, and Antigravity agent integrations using existing CLI authentication
-- Local Ollama generation plus Gemini, Anthropic Claude, OpenAI, OpenRouter, and DeepSeek API integrations
+- Local Ollama generation plus Gemini, Anthropic Claude, OpenAI, OpenRouter, DeepSeek, and custom OpenAI-compatible API integrations
 - Structured provider output and runtime question validation
 - Live generation progress by test, question type, and retry round
 - Persistent background generation queue, usable while you take completed tests
@@ -121,7 +121,7 @@ PDF / Markdown / text
                          ▼                         ▼
            Local models          Signed-in agents            API providers
               Ollama        Codex · Claude · Antigravity   Gemini · Claude · OpenAI
-                                                         OpenRouter · DeepSeek
+                                                         OpenRouter · DeepSeek · OpenAI-compatible
                  └────────────────────┬──────────────────────────┘
                                       ▼
                          validate + reject duplicates
@@ -240,6 +240,22 @@ Select **Install Claude** or **Install Antigravity** if its CLI is missing, then
 Gemini, Anthropic Claude, OpenAI, OpenRouter, and DeepSeek are configured the same way: enter a key and default model under **Plugins & models**, choose session-only or explicitly remember it in the desktop vault, then select that provider while creating a test. DeepSeek uses JSON mode plus Quizzer's runtime validation; the other adapters request schema-constrained output where supported.
 
 End users do not configure providers in a terminal. Provider installation, account connections, model selection, API credentials, quiz settings, and theme selection all live in the application UI.
+
+### Custom OpenAI-compatible generation
+
+Quizzer supports any OpenAI-compatible chat completions endpoint (such as self-hosted models, vLLM, Ollama, LM Studio, or custom gateways) under **Plugins & models → API providers → OpenAI-compatible – Custom**.
+
+- **Base endpoint validation:** The base endpoint is centrally validated. Remote endpoints must use HTTPS; unencrypted HTTP is allowed strictly for loopback hosts (`localhost`, `127.0.0.1`, `[::1]`, and `127.0.0.0/8`). Userinfo credentials, query parameters, URL fragments, path traversal (`..`), redundant separators (`//`), encoded separators (`%2f`, `%5c`), backslashes, and null bytes are rejected. HTTP redirects are treated as configuration errors and rejected.
+- **Configuration precedence:** The non-secret base endpoint resolves with strict precedence: CLI flag (`--endpoint` or `--base-endpoint`) > environment variable (`QUIZZER_OPENAI_COMPATIBLE_ENDPOINT`, `QUIZZER_OPENAI_COMPATIBLE_BASE_URL`, or `QUIZZER_OPENAI_COMPATIBLE_BASE_ENDPOINT`) > user settings JSONC (`providers.openai-compatible.endpoint`) > built-in default (`https://api.openai.com/v1`).
+- **Explicit model requirement:** OpenAI-compatible routes require an explicit model name; there is no implicit fallback model.
+- **Credentials protection:** Credentials use only the existing credential store (or `QUIZZER_OPENAI_COMPATIBLE_API_KEY` in environment / UI session or OS keychain) and never appear in settings files, logs, exports, or diagnostics. For loopback endpoints, API keys are optional.
+- **Policy and privacy:** The provider is classified with `billing: 'usage-based'`, `privacy: 'remote-api'`, and `defaultConcurrency: 2`. Using this route requires the same explicit approval gate (`--approve-paid` on CLI, or approval checkbox in UI) as other remote API routes.
+- **Bounded requests and durable failover:** Requests are bounded (up to 2,000,000 character prompt, 100 KB schema, 6 images / 20 MB total) and responses are capped at 16 MB. Requests use structured JSON mode (`response_format: { type: 'json_object' }`), timeout enforcement, and cancellation propagation. Failures map into durable failover states: authentication errors (401/403) to `provider_auth`, rate limits and quota exhaustion (402/429) to `provider_limit`, and connectivity/malformed output to `provider_unavailable`.
+
+CLI usage:
+```bash
+quizzer test create "quiz-name" --document doc.pdf --provider openai-compatible --model custom-model-name --approve-paid [--endpoint https://api.example.com/v1]
+```
 
 ## PDF conversion
 

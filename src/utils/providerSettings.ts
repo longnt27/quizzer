@@ -29,11 +29,23 @@ export const PROVIDERS: readonly ProviderDefinition[] = [
   { id: 'openai', label: 'OpenAI – API', kind: 'api', description: 'Calls the OpenAI Responses API.', defaultModel: 'gpt-5-mini', keyLabel: 'OpenAI API key' },
   { id: 'openrouter', label: 'OpenRouter – API', kind: 'api', description: 'Uses an OpenRouter model through its unified API.', defaultModel: 'openai/gpt-4o-mini', keyLabel: 'OpenRouter API key' },
   { id: 'deepseek', label: 'DeepSeek – API', kind: 'api', description: 'Calls DeepSeek through its OpenAI-compatible API.', defaultModel: 'deepseek-chat', keyLabel: 'DeepSeek API key' },
+  { id: 'openai-compatible', label: 'OpenAI-compatible – Custom', kind: 'api', description: 'Calls a custom OpenAI-compatible chat completions endpoint.', defaultModel: '', keyLabel: 'OpenAI-compatible API key (optional for loopback)' },
 ] as const;
 
 export const API_PROVIDERS = PROVIDERS.filter(provider => provider.kind === 'api') as readonly (ProviderDefinition & { id: ApiProvider })[];
 export const AGENT_PROVIDERS = PROVIDERS.filter(provider => provider.kind === 'agent') as readonly (ProviderDefinition & { id: AgentProvider })[];
 export const getProviderDefinition = (id: GenerationProvider) => PROVIDERS.find(provider => provider.id === id) ?? PROVIDERS[0];
+
+export const isOpenAILoopbackEndpoint = (endpoint?: string) => {
+  if (!endpoint || typeof endpoint !== 'string') return false;
+  try {
+    const url = new URL(endpoint);
+    const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    return url.protocol === 'http:' && (host === 'localhost' || host === '127.0.0.1' || host === '::1' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host));
+  } catch {
+    return false;
+  }
+};
 
 export const ollamaModelMatches = (installed: string, configured: string) => installed === configured
   || (!configured.includes(':') && installed === `${configured}:latest`)

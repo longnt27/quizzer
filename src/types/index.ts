@@ -87,7 +87,8 @@ export type GenerationProvider =
   | 'anthropic'
   | 'openai'
   | 'openrouter'
-  | 'deepseek';
+  | 'deepseek'
+  | 'openai-compatible';
 
 export interface ProviderRoute {
   provider: GenerationProvider;

@@ -177,6 +177,41 @@ test('service worker continues only unfinished slots through a pre-approved rout
   assert.equal(harness.completion().test.questions[0].provenance.provider, 'claude-agent');
 });
 
+test('service worker routes to openai-compatible provider and respects endpoint settings', async () => {
+  const routes = [
+    { provider: 'openai-compatible', model: 'custom-model', privacy: 'remote-api', paid: true, approved: true },
+  ];
+  const options = optionsFor({
+    questionCounts: { multipleChoice: 1, fillBlank: 0, reasoning: 0, coding: 0 },
+    routeChain: routes,
+  });
+  options.provider = 'openai-compatible';
+  options.model = 'custom-model';
+  options.resolvedSettings = {
+    ...options.resolvedSettings,
+    'providers.openai-compatible.endpoint': 'http://127.0.0.1:8000/v1',
+  };
+
+  const job = {
+    id: 'job-compat', testId: 'test-compat', name: 'OpenAI-compatible quiz', status: 'running',
+    workerId: 'service-worker', leaseId: 'lease-compat', createdAt: 1, updatedAt: 1,
+    documentIds: ['doc-one'], options, questions: [], rejected: 0, rounds: {}, activeRouteIndex: 0,
+  };
+  let capturedRequest;
+  const harness = createHarness(job, request => {
+    capturedRequest = request;
+    return JSON.stringify({ questions: [candidateFor('multiple-choice')] });
+  });
+
+  const result = await executeGenerationJob(job, harness.dependencies);
+  assert.equal(result.status, 'completed');
+  assert.equal(capturedRequest.provider, 'openai-compatible');
+  assert.equal(capturedRequest.model, 'custom-model');
+  assert.equal(capturedRequest.endpoint, 'http://127.0.0.1:8000/v1');
+  assert.equal(harness.completion().test.questions[0].provenance.provider, 'openai-compatible');
+  assert.equal(harness.completion().test.questions[0].provenance.model, 'custom-model');
+});
+
 test('service worker pauses safely when no approved provider route remains', async () => {
   const options = optionsFor({ questionCounts: { multipleChoice: 1, fillBlank: 0, reasoning: 0, coding: 0 } });
   const job = {

@@ -4,7 +4,7 @@ import { ApiOutlined, CheckCircleOutlined, CloudDownloadOutlined, DeleteOutlined
 import type { GenerationProvider, InterfaceMode } from '../types';
 import {
   AGENT_PROVIDERS, API_PROVIDERS, PROVIDERS, getApiKey, getProviderSettings,
-  forgetRememberedApiKey, loadRememberedApiKeys, migrateLegacyGeminiKey, rememberApiKey,
+  forgetRememberedApiKey, isOpenAILoopbackEndpoint, loadRememberedApiKeys, migrateLegacyGeminiKey, rememberApiKey,
   ollamaModelMatches, setApiKey, setProviderSettings, type AgentProvider,
 } from '../utils/providerSettings';
 import { getMessageApi } from '../utils/messageProvider';
@@ -79,6 +79,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const [ocrPlugin, setOcrPlugin] = useState('builtin');
   const [embedderPlugin, setEmbedderPlugin] = useState('builtin');
   const [vectorIndexPlugin, setVectorIndexPlugin] = useState('builtin');
+  const [openaiCompatibleEndpoint, setOpenaiCompatibleEndpoint] = useState('https://api.openai.com/v1');
   const [externalError, setExternalError] = useState('');
   const [externalLoading, setExternalLoading] = useState(true);
   const [developerMode, setDeveloperMode] = useState(false);
@@ -126,6 +127,9 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
         ? settings.values['embeddings.embedderPlugin'] : 'builtin');
       setVectorIndexPlugin(typeof settings.values['retrieval.vectorIndexPlugin'] === 'string'
         ? settings.values['retrieval.vectorIndexPlugin'] : 'builtin');
+      if (typeof settings.values['providers.openai-compatible.endpoint'] === 'string') {
+        setOpenaiCompatibleEndpoint(settings.values['providers.openai-compatible.endpoint']);
+      }
       setExternalError('');
     } catch (error) {
       setExternalError(error instanceof Error ? error.message : 'Could not load external plugins');
@@ -278,13 +282,16 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   });
 
   const save = async () => {
-    const available = PROVIDERS.filter(provider => enabledProviders[provider.id] && (provider.kind === 'api'
-      ? Boolean(apiKeys[provider.id]?.trim())
-      : provider.kind === 'local'
-        ? Boolean(status?.ollama?.serverReady && status.ollama.models.some(model => ollamaModelMatches(model.name, models.ollama)))
-      : provider.kind === 'plugin'
-        ? generatorPlugins.some(plugin => plugin.id === models.plugin)
-        : Boolean(status?.[provider.id as AgentProvider]?.connected)));
+    const available = PROVIDERS.filter(provider => enabledProviders[provider.id] && (
+      provider.id === 'openai-compatible'
+        ? Boolean(models['openai-compatible']?.trim()) && (Boolean(apiKeys['openai-compatible']?.trim()) || isOpenAILoopbackEndpoint(openaiCompatibleEndpoint))
+        : provider.kind === 'api'
+          ? Boolean(apiKeys[provider.id]?.trim())
+          : provider.kind === 'local'
+            ? Boolean(status?.ollama?.serverReady && status.ollama.models.some(model => ollamaModelMatches(model.name, models.ollama)))
+          : provider.kind === 'plugin'
+            ? generatorPlugins.some(plugin => plugin.id === models.plugin)
+            : Boolean(status?.[provider.id as AgentProvider]?.connected)));
     const selectedProvider = available.some(provider => provider.id === defaultProvider) ? defaultProvider : available[0]?.id ?? defaultProvider;
     setSaving(true);
     try {
@@ -296,6 +303,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       for (const provider of API_PROVIDERS) setApiKey(provider.id, apiKeys[provider.id]?.trim() ?? '');
       await serviceJson('/api/v1/settings', 'PATCH', { values: {
         'generation.defaultProvider': selectedProvider,
+        'providers.openai-compatible.endpoint': openaiCompatibleEndpoint.trim() || 'https://api.openai.com/v1',
         'extraction.marker': enabledTools.marker,
         'extraction.extractorPlugin': extractorPlugin,
         'extraction.ocr': enabledTools.ocr,
@@ -325,13 +333,16 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const selectedEmbedder = embedderPlugins.find(plugin => plugin.id === embedderPlugin);
   const selectedVectorIndex = vectorIndexPlugins.find(plugin => plugin.id === vectorIndexPlugin);
   const embeddingReady = embedderPlugin === 'builtin' ? Boolean(status?.embeddings?.installed) : Boolean(selectedEmbedder);
-  const configuredProviderOptions = PROVIDERS.filter(provider => enabledProviders[provider.id] && (provider.kind === 'api'
-    ? Boolean(apiKeys[provider.id]?.trim())
-    : provider.kind === 'local'
-      ? Boolean(status?.ollama?.serverReady && status.ollama.models.some(model => ollamaModelMatches(model.name, models.ollama)))
-    : provider.kind === 'plugin'
-      ? generatorPlugins.some(plugin => plugin.id === models.plugin)
-      : Boolean(status?.[provider.id as AgentProvider]?.connected)));
+  const configuredProviderOptions = PROVIDERS.filter(provider => enabledProviders[provider.id] && (
+    provider.id === 'openai-compatible'
+      ? Boolean(models['openai-compatible']?.trim()) && (Boolean(apiKeys['openai-compatible']?.trim()) || isOpenAILoopbackEndpoint(openaiCompatibleEndpoint))
+      : provider.kind === 'api'
+        ? Boolean(apiKeys[provider.id]?.trim())
+        : provider.kind === 'local'
+          ? Boolean(status?.ollama?.serverReady && status.ollama.models.some(model => ollamaModelMatches(model.name, models.ollama)))
+        : provider.kind === 'plugin'
+          ? generatorPlugins.some(plugin => plugin.id === models.plugin)
+          : Boolean(status?.[provider.id as AgentProvider]?.connected)));
   const visibleDefaultProvider = configuredProviderOptions.some(provider => provider.id === defaultProvider)
     ? defaultProvider
     : configuredProviderOptions[0]?.id;
@@ -490,21 +501,48 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
         })}
 
         <Divider orientation="left" plain>API providers</Divider>
-        {API_PROVIDERS.map(provider => <section className="plugin-card" key={provider.id}>
-          <div className="plugin-card-heading">
-            <div><Typography.Title level={5}>{provider.label.replace(' – ', ' ')}</Typography.Title><Typography.Text type="secondary">{provider.description}</Typography.Text></div>
-            {statusTag(Boolean(apiKeys[provider.id]?.trim()), false, 'Connected')}
-          </div>
-          <Space direction="vertical" style={{ width: '100%' }}>
-            <Input.Password value={apiKeys[provider.id]} onChange={event => setApiKeys(current => ({ ...current, [provider.id]: event.target.value }))} placeholder={provider.keyLabel} autoComplete="off" />
-            <Input value={models[provider.id]} onChange={event => setModels(current => ({ ...current, [provider.id]: event.target.value }))} addonBefore="Default model" placeholder={provider.defaultModel} />
-            {!!apiKeys[provider.id]?.trim() && <Space wrap>
-              <Switch checked={enabledProviders[provider.id]} onChange={value => setEnabledProviders(current => ({ ...current, [provider.id]: value }))} /><Typography.Text>Enabled</Typography.Text>
-              <Switch checked={rememberedProviders.has(provider.id)} disabled={!credentialStorage.available}
-                onChange={value => changeRemembered(provider, value)} /><Typography.Text>Remember with OS protection</Typography.Text>
-            </Space>}
-          </Space>
-        </section>)}
+        {API_PROVIDERS.map(provider => {
+          if (provider.id === 'openai-compatible') {
+            const hasKey = Boolean(apiKeys[provider.id]?.trim());
+            const loopback = isOpenAILoopbackEndpoint(openaiCompatibleEndpoint);
+            const isConnected = Boolean(models[provider.id]?.trim()) && (hasKey || loopback);
+            return (
+              <section className="plugin-card" key={provider.id}>
+                <div className="plugin-card-heading">
+                  <div><Typography.Title level={5}>{provider.label.replace(' – ', ' ')}</Typography.Title><Typography.Text type="secondary">{provider.description}</Typography.Text></div>
+                  {statusTag(isConnected, false, 'Connected')}
+                </div>
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  <Input value={openaiCompatibleEndpoint} onChange={event => setOpenaiCompatibleEndpoint(event.target.value)} addonBefore="Base endpoint" placeholder="https://api.openai.com/v1" />
+                  <Input value={models[provider.id]} onChange={event => setModels(current => ({ ...current, [provider.id]: event.target.value }))} addonBefore="Default model" placeholder="e.g. gpt-4o, llama3, custom-model" />
+                  <Input.Password value={apiKeys[provider.id]} onChange={event => setApiKeys(current => ({ ...current, [provider.id]: event.target.value }))} placeholder={provider.keyLabel} autoComplete="off" />
+                  {(hasKey || loopback) && Boolean(models[provider.id]?.trim()) && <Space wrap>
+                    <Switch checked={enabledProviders[provider.id]} onChange={value => setEnabledProviders(current => ({ ...current, [provider.id]: value }))} /><Typography.Text>Enabled</Typography.Text>
+                    {hasKey && <><Switch checked={rememberedProviders.has(provider.id)} disabled={!credentialStorage.available}
+                      onChange={value => changeRemembered(provider, value)} /><Typography.Text>Remember with OS protection</Typography.Text></>}
+                  </Space>}
+                </Space>
+              </section>
+            );
+          }
+          return (
+            <section className="plugin-card" key={provider.id}>
+              <div className="plugin-card-heading">
+                <div><Typography.Title level={5}>{provider.label.replace(' – ', ' ')}</Typography.Title><Typography.Text type="secondary">{provider.description}</Typography.Text></div>
+                {statusTag(Boolean(apiKeys[provider.id]?.trim()), false, 'Connected')}
+              </div>
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <Input.Password value={apiKeys[provider.id]} onChange={event => setApiKeys(current => ({ ...current, [provider.id]: event.target.value }))} placeholder={provider.keyLabel} autoComplete="off" />
+                <Input value={models[provider.id]} onChange={event => setModels(current => ({ ...current, [provider.id]: event.target.value }))} addonBefore="Default model" placeholder={provider.defaultModel} />
+                {!!apiKeys[provider.id]?.trim() && <Space wrap>
+                  <Switch checked={enabledProviders[provider.id]} onChange={value => setEnabledProviders(current => ({ ...current, [provider.id]: value }))} /><Typography.Text>Enabled</Typography.Text>
+                  <Switch checked={rememberedProviders.has(provider.id)} disabled={!credentialStorage.available}
+                    onChange={value => changeRemembered(provider, value)} /><Typography.Text>Remember with OS protection</Typography.Text>
+                </Space>}
+              </Space>
+            </section>
+          );
+        })}
 
         <Divider orientation="left" plain>External plugins</Divider>
         <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>

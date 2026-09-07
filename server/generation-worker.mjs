@@ -435,6 +435,8 @@ export const executeGenerationJob = async (claimedJob, dependencies) => {
             provider: options.provider, model: options.model,
             prompt: generationPrompt({ source, type, count: requested, accepted, options }),
             schema: generationQuestionSchemas[type], images: source.images,
+            endpoint: options.resolvedSettings?.['providers.openai-compatible.endpoint'],
+            resolvedSettings: options.resolvedSettings,
           }, controller.signal);
           candidates = extractGenerationJson(output);
         } catch (error) {

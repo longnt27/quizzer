@@ -22,6 +22,7 @@ import { resolveDocumentExtractor, resolveOcrProvider } from '../server/plugin-e
 import { resolveEmbeddingProvider } from '../server/plugin-embeddings.mjs';
 import { resolveVectorIndexProvider } from '../server/plugin-vector-index.mjs';
 import { runOllamaHyde } from '../server/ollama-generation.mjs';
+import { validateOpenAICompatibleEndpoint } from '../server/openai-compatible-generation.mjs';
 
 const usage = `Quizzer CLI
 
@@ -35,10 +36,10 @@ Usage:
   quizzer index <document-id>|--all [--force] [--idempotency-key key] [--json]
   quizzer retrieve <query> [--document <id>] [--tag <tag>] [--limit 10] [--json]
   quizzer test create --document <id> [--document <id>] [--name name] [--questions 20]
-                      [--instruction text] [--provider provider] [--model model] [--approve-paid] [--json]
+                      [--instruction text] [--provider provider] [--model model] [--endpoint url] [--approve-paid] [--json]
   quizzer jobs list|show <id>|cancel <id> [--json]
-  quizzer jobs resume <id> [--provider provider] [--model model] [--approve-paid] [--json]
-  quizzer resume <job-id> [--provider provider] [--model model] [--approve-paid] [--json]
+  quizzer jobs resume <id> [--provider provider] [--model model] [--endpoint url] [--approve-paid] [--json]
+  quizzer resume <job-id> [--provider provider] [--model model] [--endpoint url] [--approve-paid] [--json]
   quizzer migrations list [--json]
   quizzer backup create [--destination directory] [--json]
   quizzer backup verify <directory> [--json]
@@ -437,14 +438,25 @@ const runTestCreate = async () => {
   for (const id of documentIds) if (!database.getRecord('documents', id)) fail(`Document not found: ${id}`);
   const questionCount = Number(flag('questions', '20'));
   if (!Number.isSafeInteger(questionCount) || questionCount < 1 || questionCount > 200) fail('--questions must be an integer from 1 to 200');
-  const settings = await loadResolvedSettings(appDataDirectory);
+  const explicitEndpoint = flag('endpoint', flag('base-endpoint', undefined));
+  if (explicitEndpoint) validateOpenAICompatibleEndpoint(explicitEndpoint);
+  const cliOverrides = {
+    ...(explicitEndpoint ? { 'providers.openai-compatible.endpoint': explicitEndpoint } : {}),
+  };
+  const settings = await loadResolvedSettings(appDataDirectory, { cli: cliOverrides });
   const provider = flag('provider', settings.values['generation.defaultProvider']);
+  if (explicitEndpoint && provider !== 'openai-compatible') {
+    fail('--endpoint and --base-endpoint require --provider openai-compatible');
+  }
   const policy = providerPolicy(provider);
   requirePaidApproval(provider, policy);
+  const model = flag('model', undefined);
+  if (provider === 'openai-compatible' && (!model || !model.trim())) {
+    fail('--model is required for openai-compatible');
+  }
   const now = Date.now();
   const jobId = randomUUID();
   const name = flag('name', `Quiz ${new Date(now).toLocaleDateString()}`);
-  const model = flag('model', undefined);
   const customInstruction = flag('instruction', undefined);
   const privacy = policy.privacy;
   const job = {
@@ -518,13 +530,21 @@ const runJobs = async (action, explicitId) => {
   if (action === 'resume') {
     const selectedProvider = flag('provider');
     const requestedModel = flag('model');
+    const explicitEndpoint = flag('endpoint', flag('base-endpoint', undefined));
     if (requestedModel && !selectedProvider) fail('--model requires --provider when resuming a generation job');
+    if (explicitEndpoint && selectedProvider !== 'openai-compatible') {
+      fail('--endpoint and --base-endpoint require --provider openai-compatible when resuming a generation job');
+    }
     if (selectedProvider) {
       const policy = providerPolicy(selectedProvider);
       requirePaidApproval(selectedProvider, policy);
       const selectedModel = requestedModel ?? (selectedProvider === generationRecord.data.options.provider
         ? generationRecord.data.options.model
         : undefined);
+      if (selectedProvider === 'openai-compatible' && (!selectedModel || !selectedModel.trim())) {
+        fail('--model is required when resuming with openai-compatible');
+      }
+      if (explicitEndpoint) validateOpenAICompatibleEndpoint(explicitEndpoint);
       const selectedRoute = {
         provider: selectedProvider,
         ...(selectedModel ? { model: selectedModel } : {}),
@@ -545,6 +565,10 @@ const runJobs = async (action, explicitId) => {
           provider: selectedProvider,
           model: selectedModel,
           routeChain,
+          resolvedSettings: {
+            ...(generationRecord.data.options.resolvedSettings ?? {}),
+            ...(explicitEndpoint ? { 'providers.openai-compatible.endpoint': explicitEndpoint } : {}),
+          },
         };
         const providerAttempts = [...(generationRecord.data.providerAttempts ?? []), {
           provider: selectedProvider,
@@ -556,8 +580,18 @@ const runJobs = async (action, explicitId) => {
         }];
         changes = { options, activeRouteIndex, providerAttempts, resetRounds: false };
       } else {
+        const options = {
+          ...generationRecord.data.options,
+          provider: selectedProvider,
+          ...(selectedModel ? { model: selectedModel } : {}),
+          routeChain: [selectedRoute],
+          resolvedSettings: {
+            ...(generationRecord.data.options.resolvedSettings ?? {}),
+            ...(explicitEndpoint ? { 'providers.openai-compatible.endpoint': explicitEndpoint } : {}),
+          },
+        };
         changes = {
-          options: { ...generationRecord.data.options, provider: selectedProvider, model: selectedModel },
+          options,
           activeRouteIndex: 0,
           providerAttempts: [...(generationRecord.data.providerAttempts ?? []), {
             provider: selectedProvider,

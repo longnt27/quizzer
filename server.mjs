@@ -31,6 +31,7 @@ import { resolveEmbeddingProvider } from './server/plugin-embeddings.mjs';
 import { resolveVectorIndexProvider } from './server/plugin-vector-index.mjs';
 import { resolveDocumentExtractor, resolveOcrProvider } from './server/plugin-extraction.mjs';
 import { listOllamaModels, runOllamaGeneration, runOllamaHyde, validateOllamaModelName } from './server/ollama-generation.mjs';
+import { runOpenAICompatibleGeneration } from './server/openai-compatible-generation.mjs';
 
 const configuredPortValue = process.env.QUIZZER_SERVICE_PORT ?? '8787';
 const configuredPort = Number(configuredPortValue);
@@ -451,6 +452,7 @@ const integrationStatus = async () => {
     openai: { available: true },
     openrouter: { available: true },
     deepseek: { available: true },
+    'openai-compatible': { available: true },
     ollama: {
       installed: ollamaInstalled || ollama.serverReady,
       serverReady: ollama.serverReady,
@@ -928,6 +930,12 @@ const providerRunners = {
   deepseek: (body, signal) => runOpenAICompatible(body, signal, {
     label: 'DeepSeek', endpoint: 'https://api.deepseek.com/chat/completions', defaultModel: 'deepseek-chat', jsonSchema: false, supportsImages: false,
   }),
+  'openai-compatible': async (body, signal) => {
+    const endpoint = body.endpoint
+      || body.resolvedSettings?.['providers.openai-compatible.endpoint']
+      || (await loadResolvedSettings(appDataDirectory)).values['providers.openai-compatible.endpoint'];
+    return runOpenAICompatibleGeneration({ ...body, endpoint }, signal);
+  },
 };
 
 const generationWorkerId = `service-${randomUUID()}`;

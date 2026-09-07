@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { PROVIDER_POLICIES, providerConcurrencySettingKey } from './provider-policy.mjs';
+import { validateOpenAICompatibleEndpoint } from './openai-compatible-generation.mjs';
 
 const baseSettings = [
   {
@@ -131,6 +132,12 @@ const baseSettings = [
     visibility: 'advanced', resourceEffect: 'none', restartRequired: false, reindexRequired: false,
     environment: 'QUIZZER_PLUGIN_DEVELOPER_MODE',
   },
+  {
+    key: 'providers.openai-compatible.endpoint', type: 'string', default: 'https://api.openai.com/v1',
+    title: 'OpenAI-compatible endpoint', description: 'Base URL for custom OpenAI-compatible chat completions (e.g. https://api.openai.com/v1 or http://127.0.0.1:8000/v1).',
+    visibility: 'advanced', resourceEffect: 'none', restartRequired: false, reindexRequired: false,
+    environment: 'QUIZZER_OPENAI_COMPATIBLE_ENDPOINT',
+  },
 ];
 
 const providerConcurrencySettings = Object.entries(PROVIDER_POLICIES).filter(([, policy]) => policy.configurableConcurrency !== false).map(([provider, policy]) => ({
@@ -217,6 +224,9 @@ const validateValue = (definition, value) => {
     throw new Error(`${definition.key} has an invalid value`);
   }
   if (definition.enum && !definition.enum.includes(value)) throw new Error(`${definition.key} must be one of: ${definition.enum.join(', ')}`);
+  if (definition.key === 'providers.openai-compatible.endpoint') {
+    validateOpenAICompatibleEndpoint(value);
+  }
   return value;
 };
 
@@ -315,7 +325,10 @@ export const resolveSettings = ({
 } = {}) => {
   const environmentValues = {};
   for (const definition of SETTINGS_REGISTRY) {
-    const value = environment[definition.environment];
+    const value = environment[definition.environment]
+      ?? (definition.key === 'providers.openai-compatible.endpoint'
+        ? (environment.QUIZZER_OPENAI_COMPATIBLE_BASE_URL || environment.QUIZZER_OPENAI_COMPATIBLE_BASE_ENDPOINT)
+        : undefined);
     if (typeof value === 'string' && value !== '') environmentValues[definition.key] = parseEnvironmentValue(definition, value);
   }
   const selectedProfile = job['hardware.profile'] ?? cli['hardware.profile']

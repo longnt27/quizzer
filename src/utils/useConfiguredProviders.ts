@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import type { GenerationProvider } from '../types';
-import { getApiKey, getProviderSettings, ollamaModelMatches, PROVIDERS, type AgentProvider, type ProviderDefinition } from './providerSettings';
+import {
+  getApiKey, getProviderSettings, isOpenAILoopbackEndpoint, ollamaModelMatches, PROVIDERS,
+  type AgentProvider, type ProviderDefinition,
+} from './providerSettings';
 import { serviceFetch } from './serviceApi';
 
 interface IntegrationStatus {
@@ -14,7 +17,12 @@ interface PluginCollection {
   plugins?: Array<{ id: string; status?: string; enabled?: boolean; compatible?: boolean; capabilities?: string[] }>;
 }
 
-const localApiProviders = () => PROVIDERS.filter(provider => provider.kind === 'api' && Boolean(getApiKey(provider.id).trim()));
+const localApiProviders = () => PROVIDERS.filter(provider => {
+  if (provider.id === 'openai-compatible') {
+    return Boolean(getApiKey('openai-compatible').trim()) && Boolean(getProviderSettings().models['openai-compatible']?.trim());
+  }
+  return provider.kind === 'api' && Boolean(getApiKey(provider.id).trim());
+});
 
 export const useConfiguredProviders = () => {
   const [providers, setProviders] = useState<ProviderDefinition[]>(localApiProviders);
@@ -36,6 +44,25 @@ export const useConfiguredProviders = () => {
             && ollamaModelMatches(model.name, settings.models.ollama))) available.add('ollama');
         }
       } catch { /* API providers remain usable if the status check is temporarily unavailable. */ }
+      try {
+        const [settingsRes, credsRes] = await Promise.all([
+          serviceFetch('/api/v1/settings'),
+          serviceFetch('/api/v1/provider-credentials'),
+        ]);
+        if (settingsRes.ok) {
+          const settingsPayload = await settingsRes.json() as { values?: Record<string, unknown> };
+          const endpoint = typeof settingsPayload?.values?.['providers.openai-compatible.endpoint'] === 'string'
+            ? settingsPayload.values['providers.openai-compatible.endpoint']
+            : undefined;
+          const credsPayload = credsRes.ok ? await credsRes.json() as { providers?: string[] } : null;
+          const hasServiceKey = Boolean(credsPayload?.providers?.includes('openai-compatible'));
+          const hasLocalKey = Boolean(getApiKey('openai-compatible').trim());
+          const hasModel = Boolean(settings.models['openai-compatible']?.trim());
+          if (hasModel && (hasLocalKey || hasServiceKey || isOpenAILoopbackEndpoint(endpoint))) {
+            available.add('openai-compatible');
+          }
+        }
+      } catch { /* If settings check fails, localApiProviders handles remembered keys */ }
       try {
         const response = await serviceFetch('/api/v1/plugins');
         const collection = await response.json() as PluginCollection;
