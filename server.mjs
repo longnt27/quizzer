@@ -309,6 +309,10 @@ const llamaCppRuntime = createLlamaCppRuntime({
   appDataDirectory,
   loadSettings: () => loadResolvedSettings(appDataDirectory),
   saveSettings: values => writeUserSettings(appDataDirectory, values),
+  patchSettings: async values => {
+    const current = await readUserSettings(appDataDirectory);
+    return writeUserSettings(appDataDirectory, { ...current, ...values });
+  },
   detectHardware: () => detectHardwareCapabilities(appDataDirectory),
 });
 await llamaCppRuntime.initialize();
@@ -1751,6 +1755,21 @@ const serviceServer = createServer(async (request, response) => {
 serviceServer.once('error', error => {
   process.parentPort?.postMessage?.({ type: 'quizzer-service-error', message: error instanceof Error ? error.message : String(error) });
   throw error;
+});
+let serviceClosing = false;
+const closeService = async () => {
+  if (serviceClosing) return;
+  serviceClosing = true;
+  await llamaCppRuntime.stop().catch(error => {
+    process.stderr.write(`Could not stop managed llama.cpp during service shutdown: ${error instanceof Error ? error.message : String(error)}\n`);
+  });
+  await new Promise(resolve => {
+    try { serviceServer.close(() => resolve()); }
+    catch { resolve(); }
+  });
+};
+for (const signal of ['SIGTERM', 'SIGINT']) process.once(signal, () => {
+  void closeService().finally(() => process.exit(0));
 });
 serviceServer.listen(configuredPort, '127.0.0.1', () => {
   const address = serviceServer.address();

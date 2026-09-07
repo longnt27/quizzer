@@ -93,24 +93,58 @@ const readStatus = async path => {
 };
 
 const signalError = reason => reason instanceof Error ? reason : Object.assign(new Error(String(reason || 'Operation cancelled')), { name: 'AbortError' });
+const abortableDelay = (milliseconds, signal) => new Promise((resolve, reject) => {
+  if (signal?.aborted) { reject(signalError(signal.reason)); return; }
+  const timer = setTimeout(done, milliseconds);
+  const onAbort = () => { clearTimeout(timer); signal?.removeEventListener('abort', onAbort); reject(signalError(signal.reason)); };
+  function done() { signal?.removeEventListener('abort', onAbort); resolve(); }
+  signal?.addEventListener('abort', onAbort, { once: true });
+});
 
 export const createLlamaCppRuntime = ({
   appDataDirectory,
   statusPath = `${appDataDirectory}/llama-cpp-runtime.json`,
   loadSettings,
   saveSettings,
+  patchSettings,
   detectHardware = () => ({ cpuCores: 4, memoryGB: 8 }),
   spawn = nodeSpawn,
   healthCheck = ({ endpoint }, signal) => getLlamaCppStatus({ endpoint }, globalThis.fetch, signal),
   now = () => Date.now(),
 } = {}) => {
-  if (typeof loadSettings !== 'function' || typeof saveSettings !== 'function') throw new Error('llama.cpp runtime requires settings storage');
+  if (typeof loadSettings !== 'function' || (typeof saveSettings !== 'function' && typeof patchSettings !== 'function')) throw new Error('llama.cpp runtime requires settings storage');
   let status = runtimeStatus();
   let child;
-  let activeStart;
   let initialized = false;
+  let persistenceQueue = Promise.resolve();
+  let outputTimer;
+  let outputSnapshot;
+  let stopTimeoutMs = LLAMA_CPP_RUNTIME_DEFAULTS.stopTimeoutMs;
 
-  const save = async next => { status = runtimeStatus(next); await persistStatus(statusPath, status); return status; };
+  const persist = snapshot => {
+    const operation = persistenceQueue.catch(() => {}).then(() => persistStatus(statusPath, snapshot));
+    persistenceQueue = operation;
+    operation.catch(() => {});
+    return operation;
+  };
+  const flushOutput = async () => {
+    if (outputTimer) { clearTimeout(outputTimer); outputTimer = undefined; }
+    if (outputSnapshot) { const snapshot = outputSnapshot; outputSnapshot = undefined; await persist(snapshot); }
+    await persistenceQueue.catch(() => {});
+  };
+  const save = async next => { status = runtimeStatus(next); await flushOutput(); await persist(status); return status; };
+  const scheduleOutputSave = () => {
+    outputSnapshot = status;
+    if (outputTimer) return;
+    outputTimer = setTimeout(() => {
+      outputTimer = undefined;
+      const snapshot = outputSnapshot;
+      outputSnapshot = undefined;
+      void persist(snapshot).catch(error => { status = runtimeStatus({ ...status, lastError: `Could not persist llama.cpp runtime status: ${safeMessage(error)}` }); });
+    }, 100);
+    outputTimer.unref?.();
+  };
+  const updateSettings = async patch => typeof patchSettings === 'function' ? patchSettings(patch) : saveSettings(patch);
   const initialize = async () => {
     if (!initialized) { status = await readStatus(statusPath); if (status.state === 'starting' || status.state === 'stopping' || status.state === 'running') status = await save({ ...status, state: 'idle', serverReady: false, pid: undefined, lastError: status.state === 'running' ? 'Managed process was not running after service restart' : undefined }); initialized = true; }
     return status;
@@ -142,27 +176,41 @@ export const createLlamaCppRuntime = ({
         if (controller.signal.aborted) throw signalError(controller.signal.reason);
         const result = await healthCheck({ endpoint }, controller.signal);
         if (result?.serverReady) return result;
-        await new Promise((resolve, reject) => {
-          const wait = setTimeout(resolve, 250);
-          const onAbort = () => { clearTimeout(wait); reject(signalError(controller.signal.reason)); };
-          controller.signal.addEventListener('abort', onAbort, { once: true });
-        });
+        await abortableDelay(250, controller.signal);
       }
     } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
   };
+  const terminateChild = async (handle, timeout, { force = false } = {}) => {
+    if (!handle) return;
+    let exited = false;
+    const exitedPromise = new Promise(resolve => {
+      const finish = () => { if (exited) return; exited = true; clearTimeout(timer); handle.removeListener?.('close', finish); handle.removeListener?.('exit', finish); resolve(); };
+      const timer = setTimeout(() => {
+        if (globalThis.process.platform === 'win32' && Number.isSafeInteger(handle.pid)) {
+          try { nodeSpawn('taskkill', ['/pid', String(handle.pid), '/t', '/f'], { shell: false, stdio: 'ignore', windowsHide: true }); } catch { /* Best-effort tree termination. */ }
+        } else {
+          try { handle.kill('SIGKILL'); } catch { /* Process may have exited. */ }
+        }
+        finish();
+      }, timeout);
+      handle.once?.('close', finish);
+      handle.once?.('exit', finish);
+      handle.once?.('error', finish);
+      try {
+        if (force) {
+          if (globalThis.process.platform === 'win32' && Number.isSafeInteger(handle.pid)) nodeSpawn('taskkill', ['/pid', String(handle.pid), '/t', '/f'], { shell: false, stdio: 'ignore', windowsHide: true });
+          else handle.kill('SIGKILL');
+        } else handle.kill(globalThis.process.platform === 'win32' ? undefined : 'SIGTERM');
+      } catch { finish(); }
+    });
+    await exitedPromise;
+  };
   const stop = async ({ force = false } = {}) => {
     await initialize();
-    if (!child) return await save({ ...status, state: status.state === 'error' ? 'error' : 'idle', serverReady: false, pid: undefined, stoppedAt: now() });
+    if (!child) return status;
     const process = child;
     await save({ ...status, state: 'stopping', serverReady: false });
-    if (force) process.kill('SIGKILL'); else process.kill('SIGTERM');
-    await new Promise(resolve => {
-      let done = false;
-      const finish = () => { if (done) return; done = true; clearTimeout(timer); resolve(); };
-      const timer = setTimeout(() => { try { process.kill('SIGKILL'); } catch {} finish(); }, status.stopTimeoutMs ?? LLAMA_CPP_RUNTIME_DEFAULTS.stopTimeoutMs);
-      process.once?.('close', finish);
-      process.once?.('exit', finish);
-    });
+    await terminateChild(process, stopTimeoutMs, { force });
     child = undefined;
     return await save({ ...status, state: 'idle', serverReady: false, pid: undefined, stoppedAt: now() });
   };
@@ -172,9 +220,12 @@ export const createLlamaCppRuntime = ({
     if (child || status.state === 'starting' || status.state === 'running') return status;
     const { values, executablePath, modelPath, options } = await settingsForStart();
     const endpoint = endpointFor(options);
+    stopTimeoutMs = options.stopTimeoutMs;
     await save({ ...status, mode: 'managed', configured: true, state: 'starting', serverReady: false, port: options.port, executableName: executablePath, modelName: modelPath, output: undefined, lastError: undefined, stopTimeoutMs: options.stopTimeoutMs });
     const args = ['-m', modelPath, '--host', options.host, '--port', String(options.port), '--ctx-size', String(options.contextSize), '--batch-size', String(options.batchSize), '--threads', String(options.threads)];
     let handle;
+    let detachLifecycle = () => {};
+    let handleEnded = false;
     try {
       if (signal?.aborted) throw signalError(signal.reason);
       handle = spawn(executablePath, args, {
@@ -185,19 +236,48 @@ export const createLlamaCppRuntime = ({
       });
       child = handle;
       let output = '';
-      const append = chunk => { output = redactRuntimeOutput(`${output}${chunk?.toString?.() || ''}`, [executablePath, modelPath]).slice(-MAX_OUTPUT_LENGTH); void save({ ...status, output }); };
+      const append = chunk => {
+        output = redactRuntimeOutput(`${output}${chunk?.toString?.() || ''}`, [executablePath, modelPath]).slice(-MAX_OUTPUT_LENGTH);
+        status = runtimeStatus({ ...status, output });
+        scheduleOutputSave();
+      };
       handle.stdout?.on?.('data', append); handle.stderr?.on?.('data', append);
-      const exitPromise = new Promise((_, reject) => { handle.once?.('error', reject); handle.once?.('close', code => reject(new Error(`llama.cpp exited before health check (code ${code ?? 'unknown'})`))); });
+      let startupPending = true;
+      let lifecycleActive = true;
+      let rejectStartup;
+      const exitPromise = new Promise((_, reject) => { rejectStartup = reject; });
+      const processEnded = (error, code) => {
+        if (!lifecycleActive) return;
+        lifecycleActive = false;
+        handleEnded = true;
+        if (child === handle) child = undefined;
+        if (startupPending) {
+          rejectStartup(error || new Error(`llama.cpp exited before health check (code ${code ?? 'unknown'})`));
+          return;
+        }
+        if (status.state === 'stopping' || status.state === 'idle') return;
+        void save({ ...status, state: 'error', serverReady: false, pid: undefined, stoppedAt: now(), lastError: redactRuntimeOutput(safeMessage(error || `llama.cpp exited (code ${code ?? 'unknown'})`), [executablePath, modelPath]) }).catch(() => {});
+      };
+      const onError = error => processEnded(error);
+      const onClose = code => processEnded(undefined, code);
+      handle.once?.('error', onError); handle.once?.('close', onClose);
+      detachLifecycle = () => {
+        lifecycleActive = false;
+        handle.removeListener?.('error', onError);
+        handle.removeListener?.('close', onClose);
+      };
       await Promise.race([waitForHealth(endpoint, signal, options.startupTimeoutMs), exitPromise]);
+      startupPending = false;
       const next = await save({ ...status, state: 'running', serverReady: true, pid: Number.isSafeInteger(handle.pid) ? handle.pid : undefined, startedAt: now(), output });
+      if (child !== handle || !lifecycleActive) throw new Error('llama.cpp exited during startup');
       // Persisting the managed endpoint lets generation use the exact endpoint that was started.
-      const current = await loadSettings();
-      await saveSettings({ ...current.values ?? current, 'providers.llama-cpp.endpoint': endpoint });
+      await updateSettings({ 'providers.llama-cpp.endpoint': endpoint });
       return next;
     } catch (error) {
-      try { handle?.kill?.('SIGTERM'); } catch {}
+      detachLifecycle();
+      if (handle && !handleEnded) await terminateChild(handle, stopTimeoutMs).catch(() => {});
       child = undefined;
-      await save({ ...status, state: 'error', serverReady: false, pid: undefined, lastError: safeMessage(error, 'llama.cpp failed to start') });
+      await save({ ...status, state: 'error', serverReady: false, pid: undefined, lastError: redactRuntimeOutput(safeMessage(error, 'llama.cpp failed to start'), [executablePath, modelPath]) });
       throw error;
     }
   };
@@ -206,8 +286,7 @@ export const createLlamaCppRuntime = ({
     if (child || status.state === 'starting' || status.state === 'running' || status.state === 'stopping') throw new Error('Stop the managed llama.cpp runtime before changing its paths');
     const executable = await validateRuntimePath(executablePath, 'llama.cpp executable', { executable: true });
     const model = await validateRuntimePath(modelPath, 'llama.cpp model');
-    const current = await loadSettings();
-    await saveSettings({ ...(current.values ?? current), 'providers.llama-cpp.executablePath': executable, 'providers.llama-cpp.modelPath': model });
+    await updateSettings({ 'providers.llama-cpp.executablePath': executable, 'providers.llama-cpp.modelPath': model });
     return await save({ ...status, mode: 'managed', configured: true, executableName: executable, modelName: model, lastError: undefined });
   };
   const getStatus = async () => { await initialize(); return status; };
