@@ -3,19 +3,20 @@ import { defaultAppDataDirectory, databasePathFor } from '../server/paths.mjs';
 import { ensureServiceToken } from '../server/auth.mjs';
 
 /**
- * Build the environment shared by the loopback service and the Vite renderer.
- * The token is deliberately returned only as an environment value; callers
- * must not print it.
+ * Build the environment shared by the loopback service and Vite.
+ * The token is consumed by Vite's server-side API proxy and is never exposed
+ * as a VITE_* renderer variable.
  */
 export const authenticatedRuntimeEnvironment = async (environment = process.env) => {
   const appDataDirectory = defaultAppDataDirectory({ environment });
   const serviceToken = await ensureServiceToken(appDataDirectory, environment);
+  const runtimeEnvironment = { ...environment };
+  delete runtimeEnvironment.VITE_QUIZZER_API_TOKEN;
   return {
-    ...environment,
+    ...runtimeEnvironment,
     QUIZZER_APP_DATA_DIR: appDataDirectory,
     QUIZZER_DATABASE_PATH: environment.QUIZZER_DATABASE_PATH || databasePathFor(appDataDirectory),
     QUIZZER_API_TOKEN: serviceToken,
-    VITE_QUIZZER_API_TOKEN: serviceToken,
   };
 };
 
