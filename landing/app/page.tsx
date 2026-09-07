@@ -318,7 +318,7 @@ export default function Home() {
             {itemArtifact && <><small className="artifact-details">{itemArtifact.name} · {formatArtifactSize(itemArtifact.size)} · {itemArtifact.minimumOs}</small><small className="checksum">SHA-256 {itemArtifact.sha256}</small></>}
           </article>;
         })}</div>
-        <p className="alternatives">Prefer a package manager? Homebrew, winget, AppImage, deb, and rpm builds are published alongside standalone installers. <a href={releasesUrl}>See all releases <ArrowRight /></a></p>
+        <p className="alternatives">No npm, Homebrew, WinGet, Node.js, Python, or Git is required. The commands above download verified artifacts directly from <a href={releasesUrl}>GitHub Releases <ArrowRight /></a></p>
       </div>
     </section>
 
