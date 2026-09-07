@@ -25,7 +25,7 @@ const criticalModules = [
   { module: 'server/openai-compatible-generation.mjs', baseline: [92, 84] }, // provider adapter
   { module: 'server/generation-validation.mjs', baseline: [96, 80] }, // validators
   { module: 'server/generation-cost.mjs', baseline: [83, 72] }, // cost/accounting
-  { module: 'server/generation-worker.mjs', baseline: [80, 60] }, // job transitions
+  { module: 'server/generation-worker.mjs', baseline: [100, 82] }, // job transitions
 ];
 
 const runTestsOnce = (args, label) => new Promise((resolve, reject) => {

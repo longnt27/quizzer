@@ -764,3 +764,42 @@ test('covers accounting pause failures, envelopes, null responses, and cancellat
   const optionalResult = await executeGenerationJob({ ...base, id: 'job-optional-deps' }, optionalDeps.dependencies);
   assert.equal(optionalResult.status, 'completed');
 });
+
+test('propagates an external cancellation while a provider request is in flight', async () => {
+  const options = optionsFor({ questionCounts: { multipleChoice: 1, fillBlank: 0, reasoning: 0, coding: 0 } });
+  const job = {
+    id: 'job-external-abort', testId: 'test-external-abort', name: 'External abort quiz', status: 'running',
+    workerId: 'service-worker', leaseId: 'lease-external-abort', createdAt: 1, updatedAt: 1,
+    documentIds: ['doc-one'], options, questions: [], rejected: 0, rounds: {}, providerAttempts: [],
+  };
+  const external = new AbortController();
+  const harness = createHarness(job, (_request, signal) => new Promise((_resolve, reject) => {
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    setTimeout(() => external.abort(Object.assign(new Error('user stopped generation'), { name: 'AbortError' })), 2);
+  }));
+
+  await assert.rejects(
+    executeGenerationJob(job, { ...harness.dependencies, signal: external.signal }),
+    error => error?.name === 'AbortError' && error.message === 'user stopped generation',
+  );
+  assert.equal(harness.completion(), undefined);
+});
+
+test('aborts generation when lease renewal fails during a provider request', async () => {
+  const options = optionsFor({ questionCounts: { multipleChoice: 1, fillBlank: 0, reasoning: 0, coding: 0 } });
+  const job = {
+    id: 'job-lease-loss', testId: 'test-lease-loss', name: 'Lease loss quiz', status: 'running',
+    workerId: 'service-worker', leaseId: 'lease-loss', createdAt: 1, updatedAt: 1,
+    documentIds: ['doc-one'], options, questions: [], rejected: 0, rounds: {}, providerAttempts: [],
+  };
+  const harness = createHarness(job, (_request, signal) => new Promise((_resolve, reject) => {
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    setTimeout(() => {}, 20);
+  }));
+  harness.dependencies.leaseRenewMs = 1;
+  harness.dependencies.renew = () => { throw new Error('lease expired'); };
+
+  const result = await executeGenerationJob(job, harness.dependencies);
+  assert.equal(result.status, 'running');
+  assert.equal(harness.completion(), undefined);
+});
