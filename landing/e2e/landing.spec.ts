@@ -134,3 +134,37 @@ test('publishes accessible document and social metadata', async ({ page }) => {
   await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', /\/og\.png$/);
   await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute('content', 'summary_large_image');
 });
+
+test('supports keyboard access to navigation, download controls, and demo with reduced motion', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await failManifest(page);
+  await page.goto('/');
+
+  await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Download for/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Windows', exact: true })).toHaveAttribute('type', 'button');
+  await expect(page.getByRole('button', { name: 'Kubernetes operations' })).toHaveAttribute('type', 'button');
+
+  const focusable = page.locator('a[href], button, input, textarea, select, [tabindex]:not([tabindex="-1"])');
+  const count = await focusable.count();
+  expect(count).toBeGreaterThan(5);
+  for (let index = 0; index < Math.min(count, 24); index += 1) {
+    const active = focusable.nth(index);
+    await active.focus();
+    await expect(active).toBeVisible();
+    await expect.poll(() => active.evaluate(element => {
+      const style = getComputedStyle(element);
+      return style.outlineStyle !== 'none' || style.boxShadow !== 'none';
+    })).toBe(true);
+  }
+
+  const windows = page.getByRole('button', { name: 'Windows', exact: true });
+  await windows.focus();
+  await page.keyboard.press('Space');
+  await expect(page.getByLabel('Windows installation command')).toBeVisible();
+  const copy = page.getByLabel('Copy installer command');
+  await copy.focus();
+  await page.keyboard.press('Enter');
+  await expect(copy).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Kubernetes operations' })).toBeVisible();
+});
