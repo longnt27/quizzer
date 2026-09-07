@@ -104,6 +104,7 @@ export interface DiscardUpdateResult {
 export interface RollbackResult {
   rolledBack: false;
   handoffPending: boolean;
+  quitRequested: boolean;
   mechanism: 'staged-ready' | 'staged-development' | 'manual-handoff' | 'unavailable';
   message: string;
   restoredVersion?: string;

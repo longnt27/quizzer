@@ -110,7 +110,11 @@ const registerValidatedIpc = () => {
   });
   ipcMain.handle('updater:rollback', async event => {
     if (!isTrustedRenderer(event)) throw new Error('Untrusted renderer');
-    return desktopUpdater?.rollbackUpdate();
+    const result = await desktopUpdater?.rollbackUpdate();
+    if (result?.quitRequested && result.mechanism === 'staged-ready') {
+      setTimeout(() => quitApplication(), 500);
+    }
+    return result;
   });
 };
 

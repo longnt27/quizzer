@@ -87,3 +87,11 @@ test('preload script exports only frozen, context-isolated updater surface', asy
   assert.doesNotMatch(preloadSource, /require\('fs'\)/);
   assert.doesNotMatch(preloadSource, /remote/);
 });
+
+test('rollback IPC propagates quitRequested and schedules desktop shutdown after handoff', async () => {
+  const mainSource = await readFile(new URL('../desktop/main.mjs', import.meta.url), 'utf8');
+  assert.match(
+    mainSource,
+    /ipcMain\.handle\('updater:rollback',[\s\S]+const result = await desktopUpdater\?\.rollbackUpdate\(\);[\s\S]+if \(result\?\.quitRequested && result\.mechanism === 'staged-ready'\)[\s\S]+setTimeout\(\(\) => quitApplication\(\), 500\)/,
+  );
+});

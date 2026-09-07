@@ -295,6 +295,7 @@ test('retains a verified signed package and recovers it as a rollback candidate 
     const rollbackResult = await restarted.rollbackUpdate();
     assert.equal(rollbackResult.rolledBack, false);
     assert.equal(rollbackResult.handoffPending, true);
+    assert.equal(rollbackResult.quitRequested, true);
     assert.equal(rollbackResult.mechanism, 'staged-ready');
     assert.equal(rollbackResult.restoredVersion, '1.2.0');
     assert.match(rollbackPath, /updates[\\/]rollback[\\/]candidate-/);
@@ -333,7 +334,7 @@ test('discarding a new staged update preserves the retained rollback candidate',
   }
 });
 
-test('marks a tampered rollback artifact unavailable and refuses handoff', async () => {
+test('rechecks a candidate after status before rollback handoff', async () => {
   const env = await setupRollbackEnv('pkg');
   let launcherCalled = false;
   try {
@@ -355,12 +356,10 @@ test('marks a tampered rollback artifact unavailable and refuses handoff', async
     await updater.applyUpdate();
     const pointer = JSON.parse(await readFile(join(env.directory, 'updates', 'rollback', 'rollback.json'), 'utf8'));
     const candidateArtifact = join(env.directory, 'updates', 'rollback', pointer.candidateId, env.signed.artifacts[0].name);
-    await writeFile(candidateArtifact, Buffer.alloc(env.content.length, 'X'));
-
     const restarted = new DesktopUpdater({ ...options, currentVersion: '1.3.0' });
-    const status = await restarted.getStatus();
-    assert.equal(status.rollbackInfo.available, false);
-    assert.equal(status.rollbackInfo.status, 'invalid');
+    const statusBeforeTamper = await restarted.getStatus();
+    assert.equal(statusBeforeTamper.rollbackInfo.available, true);
+    await writeFile(candidateArtifact, Buffer.alloc(env.content.length, 'X'));
     const result = await restarted.rollbackUpdate();
     assert.equal(result.rolledBack, false);
     assert.equal(result.mechanism, 'unavailable');
@@ -401,6 +400,123 @@ test('rejects rollback pointer path substitution and reports no candidate', asyn
     const status = await restarted.getStatus();
     assert.equal(status.rollbackInfo.available, false);
     assert.equal(status.rollbackInfo.status, 'invalid');
+  } finally {
+    await rm(env.directory, { recursive: true, force: true });
+  }
+});
+
+test('recovers a valid candidate by scanning when the pointer is missing', async () => {
+  const env = await setupRollbackEnv('pkg');
+  try {
+    const options = {
+      userDataDir: env.directory,
+      currentVersion: '1.0.0',
+      platform: 'macos',
+      architecture: 'arm64',
+      isPackaged: true,
+      trustedKeys: { 'quizzer-release-test': env.keyPair.publicKey },
+      launcher: async () => {},
+      fetch: async url => url.endsWith('release-manifest.json')
+        ? { ok: true, text: async () => JSON.stringify(env.signed) }
+        : { ok: true, arrayBuffer: async () => env.content },
+    };
+    const updater = new DesktopUpdater(options);
+    await updater.checkForUpdates();
+    await updater.downloadUpdate();
+    await updater.applyUpdate();
+    await rm(join(env.directory, 'updates', 'rollback', 'rollback.json'));
+
+    const restarted = new DesktopUpdater({ ...options, currentVersion: '1.3.0' });
+    assert.equal((await restarted.getStatus()).rollbackInfo.available, true);
+  } finally {
+    await rm(env.directory, { recursive: true, force: true });
+  }
+});
+
+test('rotates verified rollback candidates and bounds retained storage', async () => {
+  const env = await setupRollbackEnv('pkg');
+  const makeRelease = (version, text) => {
+    const content = Buffer.from(text);
+    const artifactName = `quizzer-${version}-macos-arm64.pkg`;
+    return {
+      content,
+      manifest: signReleaseManifest({
+        schemaVersion: 1,
+        version,
+        channel: 'stable',
+        publishedAt: '2026-09-06T12:00:00.000Z',
+        signatureAlgorithm: 'ed25519',
+        publicKeyId: 'quizzer-release-test',
+        signature: '',
+        artifacts: [{
+          name: artifactName,
+          platform: 'macos',
+          architecture: 'arm64',
+          format: 'pkg',
+          url: `https://github.com/Somethings1/quizzer/releases/download/v${version}/${artifactName}`,
+          size: content.length,
+          sha256: createHash('sha256').update(content).digest('hex'),
+          minimumOs: 'macOS 13',
+        }],
+      }, privateKeyFromBase64(env.encodedPrivateKey)),
+    };
+  };
+  try {
+    let release = makeRelease('1.1.0', 'Quizzer 1.1 installer');
+    const options = {
+      userDataDir: env.directory,
+      currentVersion: '1.0.0',
+      platform: 'macos',
+      architecture: 'arm64',
+      isPackaged: true,
+      trustedKeys: { 'quizzer-release-test': env.keyPair.publicKey },
+      launcher: async () => {},
+      fetch: async url => url.endsWith('release-manifest.json')
+        ? { ok: true, text: async () => JSON.stringify(release.manifest) }
+        : { ok: true, arrayBuffer: async () => release.content },
+    };
+    const first = new DesktopUpdater(options);
+    await first.checkForUpdates();
+    await first.downloadUpdate();
+    await first.applyUpdate();
+
+    release = makeRelease('1.2.0', 'Quizzer 1.2 installer');
+    const second = new DesktopUpdater({ ...options, currentVersion: '1.1.0' });
+    await second.checkForUpdates();
+    await second.downloadUpdate();
+    await second.applyUpdate();
+
+    const restarted = new DesktopUpdater({ ...options, currentVersion: '1.2.0' });
+    const status = await restarted.getStatus();
+    assert.equal(status.rollbackInfo.available, true);
+    assert.equal(status.rollbackInfo.version, '1.1.0');
+    const candidateEntries = (await readdir(join(env.directory, 'updates', 'rollback'), { withFileTypes: true }))
+      .filter(entry => entry.isDirectory() && entry.name.startsWith('candidate-'));
+    assert.ok(candidateEntries.length <= 3);
+  } finally {
+    await rm(env.directory, { recursive: true, force: true });
+  }
+});
+
+test('rejects rollback while a staged update is ready or another operation is active', async () => {
+  const env = await setupRollbackEnv('pkg');
+  try {
+    const updater = new DesktopUpdater({
+      userDataDir: env.directory,
+      currentVersion: '1.0.0',
+      platform: 'macos',
+      architecture: 'arm64',
+      trustedKeys: { 'quizzer-release-test': env.keyPair.publicKey },
+      fetch: async url => url.endsWith('release-manifest.json')
+        ? { ok: true, text: async () => JSON.stringify(env.signed) }
+        : { ok: true, arrayBuffer: async () => env.content },
+    });
+    await updater.checkForUpdates();
+    await updater.downloadUpdate();
+    await assert.rejects(updater.rollbackUpdate(), /updater state is downloaded/);
+    updater.state = 'idle';
+    updater.operationInFlight = 'download';
+    await assert.rejects(updater.rollbackUpdate(), /download is in progress/);
   } finally {
     await rm(env.directory, { recursive: true, force: true });
   }
