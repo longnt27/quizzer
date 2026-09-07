@@ -249,10 +249,31 @@ paths:
       summary: Read the versioned plugin manifest JSON Schema
       responses:
         '200': { description: Plugin manifest schema }
+  /plugins/registry:
+    get:
+      operationId: listRegistryPlugins
+      summary: List signed plugins available in the remote registry catalog
+      responses:
+        '200':
+          description: Available registry plugins
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [plugins]
+                properties:
+                  plugins:
+                    type: array
+                    items: { $ref: '#/components/schemas/RegistryPluginSummary' }
   /plugins:
     get:
       operationId: listPlugins
       summary: List built-in components and installed external plugins
+      parameters:
+        - in: query
+          name: registry
+          schema: { type: boolean }
+          description: When true, return available remote registry plugins instead of installed plugins
       responses:
         '200':
           description: Plugin collection
@@ -267,16 +288,17 @@ paths:
   /plugins/install:
     post:
       operationId: installPlugin
-      summary: Install or update a verified local plugin directory
+      summary: Install or update a verified local plugin directory or remote registry plugin
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [path]
               properties:
                 path: { type: string, minLength: 1 }
+                id: { type: string, minLength: 1 }
+                confirmed: { type: boolean, default: false }
       responses:
         '201': { description: Installed plugin }
         '400': { $ref: '#/components/responses/InvalidRequest' }
@@ -286,10 +308,10 @@ paths:
       - in: path
         name: action
         required: true
-        schema: { type: string, enum: [enable, disable, health, rollback] }
+        schema: { type: string, enum: [enable, disable, health, rollback, update] }
     post:
       operationId: managePlugin
-      summary: Enable, disable, health-check, or roll back a plugin
+      summary: Enable, disable, health-check, update, or roll back a plugin
       responses:
         '200': { description: Plugin lifecycle result }
         '400': { $ref: '#/components/responses/InvalidRequest' }
@@ -1154,4 +1176,29 @@ components:
         compatible: { type: boolean }
         status: { type: string }
         trust: { type: string, enum: [signed, unsigned-local] }
+        source: { type: string, enum: [local, registry] }
+        registryId: { type: string }
+        availableVersion: { type: string }
+        updateAvailable: { type: boolean }
+        rollbackAvailable: { type: boolean }
         warning: { type: string }
+    RegistryPluginSummary:
+      type: object
+      required: [id, name, version, capabilities, platforms, permissions, manifestUrl, installed, compatible]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        version: { type: string }
+        capabilities: { type: array, items: { type: string } }
+        platforms: { type: array, items: { type: object } }
+        resources: { type: object }
+        permissions: { type: object }
+        manifestUrl: { type: string }
+        downloadBaseUrl: { type: string }
+        downloadSize: { type: integer, minimum: 0 }
+        installed: { type: boolean }
+        installedVersion: { type: string }
+        updateAvailable: { type: boolean }
+        compatible: { type: boolean }
+

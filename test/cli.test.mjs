@@ -327,3 +327,16 @@ test('reports durable legacy migration history', async () => {
   const result = await cli('migrations', 'list');
   assert.deepEqual(result.migrations, []);
 });
+
+test('supports plugin registry listing and update CLI commands', async () => {
+  const listResult = await cli('plugins', 'list');
+  assert.ok(Array.isArray(listResult.plugins));
+
+  const registryResult = await cli('plugins', 'list', '--registry');
+  assert.ok(Array.isArray(registryResult.plugins));
+
+  await assert.rejects(cli('plugins', 'install'), /requires a directory or plugin id/);
+  await assert.rejects(cli('plugins', 'update'), /requires a plugin id/);
+  await assert.rejects(cli('plugins', 'update', 'nonexistent-plugin'), /quizzer\.plugin\.json|ENOENT/);
+});
+

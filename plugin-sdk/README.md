@@ -37,3 +37,14 @@ Generator plugins that accept source images must declare `scoped-temp`. Embedder
 Vector-index plugins must declare both `scoped-temp` and `persistent-data`. Quizzer sends `rag.index` a relative `payloadPath` containing bounded JSON rows with stable source-span metadata and host-produced vectors; original document paths and text are not included. It must atomically replace or reuse the named document/version and return `{ "reused": false, "chunks": 12 }`, making a repeated call idempotent after interruption. `rag.search` receives one vector, its embedding-model identity, optional document IDs, and a limit, and returns `{ "matches": [{ "sourceSpanId": "…", "documentId": "…", "tags": [], "score": 0.9 }] }`. `rag.remove` returns `{ "removedChunks": 12 }`. `rag.status` returns non-negative `tableCount`, `chunkCount`, `activeTableCount`, and `activeChunkCount` with a bounded `engine` name. Persistent data is private to the plugin at `context.persistentDataDirectory` and `QUIZZER_PLUGIN_DATA_DIR`; it survives plugin updates, rollback, and recoverable removal because it is derived data that may be rebuilt after reinstall. Plugins without the permission receive neither field.
 
 Secrets are copied into the plugin environment only when their names appear in `permissions.secrets` and the user has configured them. Quizzer does not forward its full environment, service token, provider credentials, or document-library paths.
+
+## Signed Plugin Registry Catalog Contract
+
+Quizzer supports distribution through signed plugin registries defined by [`quizzer.catalog.schema.json`](quizzer.catalog.schema.json). Catalogs are signed using Ed25519 and verified against configured trusted keys (`QUIZZER_PLUGIN_REGISTRY_TRUSTED_KEYS`).
+
+- All release assets must be served from canonical credential-free HTTPS GitHub Release URLs (`https://github.com/Somethings1/quizzer/releases/...`).
+- HTTP redirects are strictly prohibited (`redirect: 'error'`).
+- Download sizes are bounded for catalog (1 MiB), manifest (512 KiB), individual file (64 MiB), and total plugin (256 MiB).
+- Operating system and architecture compatibility are validated prior to download.
+- Full details are documented in [docs/plugin-registry.md](../docs/plugin-registry.md).
+

@@ -230,6 +230,34 @@ test('exposes the plugin contract and bounded lifecycle collection', async () =>
   const collection = await (await authorized('/api/v1/plugins')).json();
   assert.ok(collection.builtIn.some(plugin => plugin.id === 'quizzer.index.fts5'));
   assert.deepEqual(collection.plugins, []);
+
+  // Registry endpoints
+  const registryDirect = await (await authorized('/api/v1/plugins/registry')).json();
+  assert.ok(Array.isArray(registryDirect.plugins));
+
+  const registryParam = await (await authorized('/api/v1/plugins?registry=true')).json();
+  assert.ok(Array.isArray(registryParam.plugins));
+
+  // Invalid install payload
+  const badInstall = await authorized('/api/v1/plugins/install', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  assert.equal(badInstall.status, 400);
+
+  // Non-existent plugin update/rollback returns 400
+  const badUpdate = await authorized('/api/v1/plugins/nonexistent/update', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  assert.equal(badUpdate.status, 400);
+
+  const badRollback = await authorized('/api/v1/plugins/nonexistent/rollback', {
+    method: 'POST',
+  });
+  assert.equal(badRollback.status, 400);
 });
 
 test('stores and streams authenticated content-addressed objects', async () => {

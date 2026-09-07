@@ -1246,6 +1246,15 @@ const handleVersionedApi = async (request, response, url) => {
       send(response, 200, { schema: pluginManifestSchema });
       return true;
     }
+    if (request.method === 'GET' && (url.pathname === '/api/v1/plugins/registry' || (url.pathname === '/api/v1/plugins' && url.searchParams.get('registry') === 'true'))) {
+      const manager = await getPluginManager();
+      try {
+        send(response, 200, { plugins: await manager.listRegistry() });
+      } catch (error) {
+        send(response, 200, { plugins: [], warning: error instanceof Error ? error.message : String(error) });
+      }
+      return true;
+    }
     if (request.method === 'GET' && url.pathname === '/api/v1/plugins') {
       const manager = await getPluginManager();
       send(response, 200, { builtIn: builtInPlugins, plugins: await manager.list() });
@@ -1253,21 +1262,31 @@ const handleVersionedApi = async (request, response, url) => {
     }
     if (request.method === 'POST' && url.pathname === '/api/v1/plugins/install') {
       const body = await readJson(request);
-      if (typeof body?.path !== 'string' || !body.path) throw new Error('A local plugin directory path is required');
       const manager = await getPluginManager();
+      if (body?.id) {
+        send(response, 201, { plugin: await manager.installFromRegistry(body.id, { confirmed: body.confirmed === true }) });
+        return true;
+      }
+      if (typeof body?.path !== 'string' || !body.path) throw new Error('A local plugin directory path or registry id is required');
       send(response, 201, { plugin: await manager.install(body.path) });
       return true;
     }
-    const pluginActionMatch = /^\/api\/v1\/plugins\/([^/]+)\/(enable|disable|health|rollback)$/.exec(url.pathname);
+    const pluginActionMatch = /^\/api\/v1\/plugins\/([^/]+)\/(enable|disable|health|rollback|update)$/.exec(url.pathname);
     if (pluginActionMatch && request.method === 'POST') {
       const id = decodeURIComponent(pluginActionMatch[1]);
       const action = pluginActionMatch[2];
+      const body = await readJson(request).catch(() => ({}));
       const manager = await getPluginManager();
-      const result = action === 'health'
-        ? { health: await manager.health(id) }
-        : action === 'rollback'
-          ? { plugin: await manager.rollback(id) }
-          : { plugin: await manager.setEnabled(id, action === 'enable') };
+      let result;
+      if (action === 'health') {
+        result = { health: await manager.health(id) };
+      } else if (action === 'rollback') {
+        result = { plugin: await manager.rollback(id) };
+      } else if (action === 'update') {
+        result = { plugin: await manager.update(id, { confirmed: body?.confirmed === true }) };
+      } else {
+        result = { plugin: await manager.setEnabled(id, action === 'enable') };
+      }
       send(response, 200, result);
       return true;
     }
@@ -1503,7 +1522,15 @@ const handleVersionedApi = async (request, response, url) => {
       return true;
     }
   } catch (error) {
-    if (!response.destroyed) send(response, 400, { error: error instanceof Error ? error.message : 'Invalid API request' });
+    if (!response.destroyed) {
+      const payload = { error: error instanceof Error ? error.message : 'Invalid API request' };
+      if (error?.confirmationRequired) {
+        payload.confirmationRequired = true;
+        payload.reasons = error.reasons;
+        payload.details = error.details;
+      }
+      send(response, 400, payload);
+    }
     return true;
   }
   send(response, 404, { error: 'Not found' });

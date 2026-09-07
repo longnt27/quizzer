@@ -29,8 +29,8 @@ Usage:
   quizzer doctor [--json]
   quizzer serve [--port 8787]
   quizzer config list|get <key>|set <key> <value>|unset <key>|path [--json]
-  quizzer plugins list|install <directory>|enable <id>|disable <id>|health <id>|rollback <id>
-                  |remove <id> --yes [--json]
+  quizzer plugins list [--registry]|install <directory|id> [--yes]|update <id> [--yes]
+                  |enable <id>|disable <id>|health <id>|rollback <id>|remove <id> --yes [--json]
   quizzer documents list|show <id>|import <file> [--tags a,b]|reextract <id>|remove <id> --yes [--json]
   quizzer index <document-id>|--all [--force] [--idempotency-key key] [--json]
   quizzer retrieve <query> [--document <id>] [--tag <tag>] [--limit 10] [--json]
@@ -50,7 +50,7 @@ Usage:
 const parseArguments = arguments_ => {
   const positionals = [];
   const flags = new Map();
-  const booleanFlags = new Set(['all', 'approve-paid', 'force', 'help', 'json', 'yes']);
+  const booleanFlags = new Set(['all', 'approve-paid', 'force', 'help', 'json', 'registry', 'yes']);
   for (let index = 0; index < arguments_.length; index += 1) {
     const argument = arguments_[index];
     if (!argument.startsWith('--')) { positionals.push(argument); continue; }
@@ -226,16 +226,29 @@ const runPlugins = async action => {
     developerMode: settings.values['plugins.developerMode'],
   });
   if (action === 'list') {
+    if (flag('registry') === 'true') {
+      const plugins = await manager.listRegistry();
+      return writeResult({ plugins }, plugins.length
+        ? plugins.map(plugin => `${plugin.id}  v${plugin.version}  ${plugin.name}${plugin.installed ? (plugin.updateAvailable ? ' (update available)' : ' (installed)') : ' (available)'}`).join('\n')
+        : 'No registry plugins available');
+    }
     const plugins = await manager.list();
     return writeResult({ plugins }, plugins.length
-      ? plugins.map(plugin => `${plugin.id}  ${plugin.version ?? '-'}  ${plugin.enabled ? 'enabled' : plugin.status}`).join('\n')
+      ? plugins.map(plugin => `${plugin.id}  ${plugin.version ?? '-'}  ${plugin.enabled ? 'enabled' : plugin.status}${plugin.updateAvailable ? ' (update available)' : ''}  [${plugin.source ?? 'local'}]`).join('\n')
       : 'No external plugins installed');
   }
   const target = parsed.positionals.shift();
-  if (!target) fail(`plugins ${action} requires ${action === 'install' ? 'a directory' : 'a plugin id'}`);
+  if (!target) fail(`plugins ${action} requires ${action === 'install' ? 'a directory or plugin id' : 'a plugin id'}`);
   if (action === 'install') {
-    const plugin = await manager.install(target);
+    const plugin = await manager.install(target, { confirmed: flag('yes') === 'true' });
     return writeResult({ plugin }, `Installed ${plugin.name} ${plugin.version}${plugin.warning ? `\nWarning: ${plugin.warning}` : ''}`);
+  }
+  if (action === 'update') {
+    const result = await manager.update(target, { confirmed: flag('yes') === 'true' });
+    if (result.updated === false) {
+      return writeResult(result, result.message || `${target} is already up to date`);
+    }
+    return writeResult({ plugin: result }, `Updated ${result.name} to ${result.version}`);
   }
   if (action === 'enable' || action === 'disable') {
     const plugin = await manager.setEnabled(target, action === 'enable');
@@ -254,7 +267,7 @@ const runPlugins = async action => {
     const result = await manager.remove(target);
     return writeResult(result, `Removed ${target}. Recovery copy: ${result.recoveryPath}`);
   }
-  fail('Use plugins list, install, enable, disable, health, rollback, or remove');
+  fail('Use plugins list, install, update, enable, disable, health, rollback, or remove');
 };
 
 const loadCliExtractionOptions = async () => {
