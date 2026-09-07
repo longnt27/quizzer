@@ -99,6 +99,16 @@ const authorized = (path, init = {}) => fetch(`${origin}${path}`, {
   ...init,
   headers: { Authorization: `Bearer ${token}`, ...(init.headers ?? {}) },
 });
+const seedServiceRecord = async (collection, id, data) => {
+  const code = `const storage = await import('./server/storage.mjs'); storage.putRecord(${JSON.stringify(collection)}, ${JSON.stringify(id)}, ${JSON.stringify(data)});`;
+  await new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ['--input-type=module', '--eval', code], {
+      cwd: new URL('..', import.meta.url), env: { ...process.env, QUIZZER_DATABASE_PATH: join(directory, 'quizzer.sqlite'), QUIZZER_APP_DATA_DIR: directory },
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    child.once('error', reject); child.once('exit', codeValue => codeValue === 0 ? resolve() : reject(new Error(`seed exited ${codeValue}`)));
+  });
+};
 
 const waitForServer = async () => {
   for (let attempt = 0; attempt < 200; attempt += 1) {
@@ -377,6 +387,11 @@ test('provides onboarding, document, job, and event operations', async () => {
     }] }),
   });
   assert.equal(forgedSync.status, 400);
+  const forgedRecoveryMarker = await authorized('/api/storage/sync', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ changes: [{ collection: 'generationJobs', id: 'job-1', data: { id: 'job-1', recoveryAttemptId: 'attempt-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' } }] }),
+  });
+  assert.equal(forgedRecoveryMarker.status, 400);
 
   const documents = await (await authorized('/api/v1/documents')).json();
   assert.equal(documents.documents[0].name, 'Guide.md');
@@ -543,6 +558,22 @@ test('provides onboarding, document, job, and event operations', async () => {
   });
   assert.equal((await repeatedCompletion.json()).job.revision, completedPayload.job.revision);
   assert.equal((await authorized('/api/v1/jobs/job-1/cancel', { method: 'POST' })).status, 400);
+
+  const recoveryAttemptId = `attempt-${'d'.repeat(48)}`;
+  const recoveryFingerprint = sha256(JSON.stringify({ routeIndex: 0, bounds: { inputTokens: 1, outputTokens: 0, totalTokens: 1 }, reservationCostMicroUsd: 1, reservationCostKnown: true }));
+  await seedServiceRecord('generationJobs', 'api-recovery-job', {
+    id: 'api-recovery-job', testId: 'api-recovery-test', name: 'API recovery', status: 'paused', errorCode: 'cost_recovery', recoveryAttemptId,
+    documentIds: ['doc-1'], options: { provider: 'codex', questionCount: 1, routeChain: [{ provider: 'codex', privacy: 'signed-in-agent', paid: false, approved: true, pricing: { inputMicroUsdPerMillionTokens: 1, outputMicroUsdPerMillionTokens: 1 } }] },
+    questions: [], rejected: 0, rounds: {}, usageSummary: { inputTokens: 0, outputTokens: 0, totalTokens: 0, finalizedCostMicroUsd: 0, reservedCostMicroUsd: 1 },
+    usageAudit: [{ event: 'reserved', attemptId: recoveryAttemptId, at: 1, routeIndex: 0, provider: 'codex', reservedCostMicroUsd: 1, reservationInputTokens: 1, reservationOutputTokens: 0, reservationCostKnown: true, reservationFingerprint: recoveryFingerprint }],
+  });
+  const recoveryPath = '/api/v1/jobs/api-recovery-job/accounting/recovery';
+  assert.equal((await authorized(recoveryPath, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'Missing confirmation', confirmed: false }) })).status, 400);
+  const recoveryApproved = await authorized(recoveryPath, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'Acknowledge possible duplicate billing', confirmed: true }) });
+  assert.equal(recoveryApproved.status, 200);
+  assert.equal((await recoveryApproved.json()).accounting.audit.at(-1).event, 'recovery-approved');
+  const recoveryRepeat = await authorized(recoveryPath, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'Acknowledge possible duplicate billing', confirmed: true }) });
+  assert.equal((await recoveryRepeat.json()).accounting.audit.filter(item => item.event === 'recovery-approved').length, 1);
 
   const cappedJob = {
     id: 'cost-api-job', testId: 'cost-api-test', name: 'Cost API test', status: 'queued', createdAt: 3, updatedAt: 3,

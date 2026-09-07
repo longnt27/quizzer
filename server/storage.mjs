@@ -189,7 +189,7 @@ const validateChange = (change, { bootstrap = false, trusted = false } = {}) => 
     if (existing && !['completed', 'cancelled'].includes(status)) throw new Error('Active generation jobs cannot be deleted through storage sync');
   }
   if (!trusted && !change.deleted && change.collection === 'generationJobs'
-    && (change.data.usageSummary !== undefined || change.data.usageAudit !== undefined)) {
+    && (change.data.usageSummary !== undefined || change.data.usageAudit !== undefined || change.data.recoveryAttemptId !== undefined)) {
     throw new Error('Generation accounting is service-owned and cannot be supplied through storage sync');
   }
 };
@@ -641,7 +641,12 @@ const validateGenerationPatch = (patch, job = {}) => {
   const unsupported = Object.keys(patch).filter(key => !generationPatchKeys.has(key));
   if (unsupported.length) throw new Error(`Generation workers cannot update: ${unsupported.join(', ')}`);
   if (patch.status !== undefined && !workerStatuses.has(patch.status)) throw new Error('Invalid worker generation status');
-  if (patch.recoveryAttemptId !== undefined) accountingId(patch.recoveryAttemptId, 'recovery attempt id');
+  if (patch.recoveryAttemptId !== undefined) {
+    accountingId(patch.recoveryAttemptId, 'recovery attempt id');
+    if (patch.status !== 'paused' || patch.errorCode !== 'cost_recovery') {
+      throw new Error('Recovery attempt marker requires a cost_recovery pause');
+    }
+  }
   const checkpointJob = { ...job, ...(patch.options ? { options: patch.options } : {}) };
   if (patch.questions !== undefined) validateQuestionCheckpoint(patch.questions, checkpointJob);
   if (patch.rejected !== undefined && (!Number.isSafeInteger(patch.rejected) || patch.rejected < 0)) {
