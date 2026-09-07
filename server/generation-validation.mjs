@@ -262,7 +262,7 @@ const accountingEventKeys = new Set([
   'finalizedCostMicroUsd', 'reservationReleasedMicroUsd', 'reservationRetained', 'usage',
   'previousCeilingMicroUsd', 'newCeilingMicroUsd', 'reason', 'overCeiling', 'ceilingAtFinalizationMicroUsd',
   'reservationInputTokens', 'reservationOutputTokens', 'reservationCostKnown', 'reservationFingerprint',
-  'finalizationFingerprint',
+  'finalizationFingerprint', 'recoveryAttemptId',
 ]);
 const accountingAttemptId = value => {
   if (!boundedText(value, 1, 100) || !/^[A-Za-z0-9-]+$/.test(value)) throw new Error('Generation accounting attempt id is invalid');
@@ -276,7 +276,7 @@ export const validateGenerationUsageAudit = (input, { options, summary } = {}) =
   const finalized = new Set();
   let lastRaisedCeiling;
   let derived = { ...emptyUsageSummary };
-  for (const item of input) {
+  for (const [index, item] of input.entries()) {
     requireObject(item, 'Generation usage audit event must be an object');
     rejectUnknown(item, accountingEventKeys, 'Generation usage audit event');
     boundedInteger(item.at, 0, Number.MAX_SAFE_INTEGER, 'Generation accounting event time is invalid');
@@ -288,6 +288,20 @@ export const validateGenerationUsageAudit = (input, { options, summary } = {}) =
       if (lastRaisedCeiling !== undefined && item.previousCeilingMicroUsd !== lastRaisedCeiling) throw new Error('Cost ceiling audit transitions are not contiguous');
       if (!boundedText(item.reason, 1, 500)) throw new Error('Cost ceiling raise reason is invalid');
       lastRaisedCeiling = item.newCeilingMicroUsd;
+      continue;
+    }
+    if (item.event === 'recovery-approved') {
+      rejectUnknown(item, new Set(['event', 'at', 'recoveryAttemptId', 'reason']), 'Generation recovery approval event');
+      if (typeof item.recoveryAttemptId !== 'string' || !/^attempt-[a-f0-9]{48}$/.test(item.recoveryAttemptId)
+        || !boundedText(item.reason, 1, 500)
+        || !input.slice(0, index).some(previous => previous.attemptId === item.recoveryAttemptId
+          && ['reserved', 'finalized'].includes(previous.event))) {
+        throw new Error('Generation recovery approval is invalid');
+      }
+      if (input.slice(0, index).some(previous => previous.event === 'recovery-approved'
+        && previous.recoveryAttemptId === item.recoveryAttemptId)) {
+        throw new Error('Generation recovery approval is duplicated');
+      }
       continue;
     }
     accountingAttemptId(item.attemptId);

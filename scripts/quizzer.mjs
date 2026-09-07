@@ -40,6 +40,7 @@ Usage:
                       [--instruction text] [--provider provider] [--model model] [--endpoint url] [--approve-paid]
                       [--cost-ceiling USD|unlimited] [--input-price USD/1M] [--output-price USD/1M] [--json]
   quizzer jobs list|show <id>|cancel <id>|raise-ceiling <id> --cost-ceiling USD --reason text --confirm-cost [--resume] [--json]
+  quizzer jobs approve-recovery <id> --reason text --confirm-cost [--resume] [--json]
   quizzer jobs resume <id> [--provider provider] [--model model] [--endpoint url] [--approve-paid] [--json]
   quizzer resume <job-id> [--provider provider] [--model model] [--endpoint url] [--approve-paid] [--json]
   quizzer migrations list [--json]
@@ -564,13 +565,24 @@ const runJobs = async (action, explicitId) => {
     }
     return writeResult({ job: raised.data, accounting: database.getGenerationAccounting(id) }, `Raised ceiling for ${raised.data.name}`);
   }
+  if (action === 'approve-recovery') {
+    const reason = flag('reason', undefined);
+    if (!reason) fail('jobs approve-recovery requires --reason');
+    if (flag('confirm-cost') !== 'true') fail('Approving cost recovery requires explicit confirmation. Re-run with --confirm-cost.');
+    const approved = database.approveGenerationCostRecovery(id, { reason, confirmed: true });
+    if (flag('resume') === 'true') {
+      const resumed = database.controlGenerationJob(id, 'resume', { resetRounds: false }).data;
+      return writeResult({ job: resumed, accounting: database.getGenerationAccounting(id) }, `Approved recovery and queued ${resumed.name}`);
+    }
+    return writeResult({ job: approved.data, accounting: database.getGenerationAccounting(id) }, `Approved recovery for ${approved.data.name}`);
+  }
   if (action === 'show') return writeResult(
     { job: record.data, ...(generationRecord ? { accounting: database.getGenerationAccounting(id) } : {}) },
     indexRecord
       ? `Index ${record.data.documentIds.length} document(s)\nStatus: ${record.data.status}\nCompleted: ${record.data.completedDocumentIds.length}`
       : `${record.data.name}\nStatus: ${record.data.status}\nAccepted: ${record.data.questions?.length ?? 0}`,
   );
-  if (action !== 'resume' && action !== 'cancel') fail('Use jobs list, show, resume, cancel, or raise-ceiling');
+  if (action !== 'resume' && action !== 'cancel') fail('Use jobs list, show, resume, cancel, raise-ceiling, or approve-recovery');
   if (indexRecord) {
     if (action === 'cancel') {
       const job = cancelIndexJob(indexRecord.data);

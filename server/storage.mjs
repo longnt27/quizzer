@@ -189,7 +189,7 @@ const validateChange = (change, { bootstrap = false, trusted = false } = {}) => 
     if (existing && !['completed', 'cancelled'].includes(status)) throw new Error('Active generation jobs cannot be deleted through storage sync');
   }
   if (!trusted && !change.deleted && change.collection === 'generationJobs'
-    && (change.data.usageSummary !== undefined || change.data.usageAudit !== undefined)) {
+    && (change.data.usageSummary !== undefined || change.data.usageAudit !== undefined || change.data.recoveryAttemptId !== undefined)) {
     throw new Error('Generation accounting is service-owned and cannot be supplied through storage sync');
   }
 };
@@ -586,6 +586,34 @@ export const raiseGenerationCostCeiling = (id, {
   return putRecord('generationJobs', id, { ...existing.data, options: nextOptions, usageAudit: nextAudit, updatedAt: now });
 };
 
+/* A recovery approval acknowledges that an interrupted provider request may
+ * have been billed. It is consumed once and never mutates the old attempt. */
+export const approveGenerationCostRecovery = (id, { reason, confirmed = false, now = Date.now() } = {}) => {
+  if (confirmed !== true) throw new Error('Generation cost recovery requires explicit confirmation');
+  if (typeof reason !== 'string' || reason.trim().length < 1 || reason.length > 500) throw new Error('Cost recovery approval reason is invalid');
+  const existing = getRecord('generationJobs', id);
+  if (!existing) throw new Error('Generation job not found');
+  if (existing.data.status !== 'paused' || existing.data.errorCode !== 'cost_recovery') {
+    throw new Error('Cost recovery approval requires a job paused for cost_recovery');
+  }
+  if (existing.data.workerId || existing.data.leaseId || existing.data.leaseExpiresAt) {
+    throw new Error('Cost recovery approval requires no active generation lease');
+  }
+  const priorAttemptId = existing.data.recoveryAttemptId;
+  accountingId(priorAttemptId, 'recovery attempt id');
+  const { summary, audit } = accountingState(existing.data);
+  const prior = audit.find(item => item.attemptId === priorAttemptId && ['reserved', 'finalized'].includes(item.event));
+  if (!prior) throw new Error('Cost recovery attempt is not present in accounting history');
+  const priorApproval = audit.find(item => item.event === 'recovery-approved' && item.recoveryAttemptId === priorAttemptId);
+  if (priorApproval) {
+    if (priorApproval.reason === reason.trim()) return existing;
+    throw new Error('Cost recovery approval was already consumed for this attempt');
+  }
+  const nextAudit = [...audit, { event: 'recovery-approved', at: now, recoveryAttemptId: priorAttemptId, reason: reason.trim() }];
+  validateGenerationAccounting(summary, nextAudit, existing.data.options);
+  return putRecord('generationJobs', id, { ...existing.data, usageAudit: nextAudit, updatedAt: now });
+};
+
 export const getGenerationAccounting = id => {
   const record = getRecord('generationJobs', id);
   if (!record) throw new Error('Generation job not found');
@@ -600,7 +628,7 @@ export const finalizeProviderAttempt = finalizeGenerationAttempt;
 export const raiseCostCeiling = raiseGenerationCostCeiling;
 
 const generationPatchKeys = new Set([
-  'activeRouteIndex', 'coveragePlan', 'error', 'errorCode', 'nextAttemptAt', 'options',
+  'activeRouteIndex', 'coveragePlan', 'error', 'errorCode', 'nextAttemptAt', 'options', 'recoveryAttemptId',
   'progress', 'providerAttempts', 'questions', 'rejected', 'rejections', 'rounds', 'status',
 ]);
 const workerStatuses = new Set(['running', 'waiting', 'paused', 'error']);
@@ -613,6 +641,12 @@ const validateGenerationPatch = (patch, job = {}) => {
   const unsupported = Object.keys(patch).filter(key => !generationPatchKeys.has(key));
   if (unsupported.length) throw new Error(`Generation workers cannot update: ${unsupported.join(', ')}`);
   if (patch.status !== undefined && !workerStatuses.has(patch.status)) throw new Error('Invalid worker generation status');
+  if (patch.recoveryAttemptId !== undefined) {
+    accountingId(patch.recoveryAttemptId, 'recovery attempt id');
+    if (patch.status !== 'paused' || patch.errorCode !== 'cost_recovery') {
+      throw new Error('Recovery attempt marker requires a cost_recovery pause');
+    }
+  }
   const checkpointJob = { ...job, ...(patch.options ? { options: patch.options } : {}) };
   if (patch.questions !== undefined) validateQuestionCheckpoint(patch.questions, checkpointJob);
   if (patch.rejected !== undefined && (!Number.isSafeInteger(patch.rejected) || patch.rejected < 0)) {
@@ -718,6 +752,13 @@ export const controlGenerationJob = (id, action, changes = {}, now = Date.now())
   if (action === 'cancel' && existing.data.status === 'completed') throw new Error('A completed generation job cannot be cancelled');
   if (action === 'resume' && ['running', 'completed'].includes(existing.data.status)) {
     throw new Error(`A ${existing.data.status} generation job cannot be resumed`);
+  }
+  if (action === 'resume' && existing.data.status === 'paused' && existing.data.errorCode === 'cost_recovery') {
+    const recoveryAttemptId = existing.data.recoveryAttemptId;
+    accountingId(recoveryAttemptId, 'recovery attempt id');
+    const approvals = (existing.data.usageAudit ?? []).filter(item => item.event === 'recovery-approved'
+      && item.recoveryAttemptId === recoveryAttemptId);
+    if (approvals.length !== 1) throw new Error('Cost recovery resume requires one matching recovery approval');
   }
   if (action === 'cancel' && existing.data.status === 'cancelled') return existing;
   const resume = action === 'resume';

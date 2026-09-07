@@ -296,6 +296,26 @@ test('queues and controls a durable test generation job', async () => {
   assert.equal(resumed.job.providerAttempts[0].outcome, 'manually-selected');
   assert.equal(resumed.job.providerAttempts[0].accepted, 0);
 
+  const recoveryAttemptId = `attempt-${'c'.repeat(48)}`;
+  const recoveryOptions = {
+    ...created.job.options, costCeilingMicroUsd: 10,
+    routeChain: [{ ...created.job.options.routeChain[0], pricing: { inputMicroUsdPerMillionTokens: 1, outputMicroUsdPerMillionTokens: 1 } }],
+  };
+  const recoveryFingerprint = createHash('sha256').update(JSON.stringify({ routeIndex: 0,
+    bounds: { inputTokens: 1, outputTokens: 0, totalTokens: 1 }, reservationCostMicroUsd: 1, reservationCostKnown: true })).digest('hex');
+  await seedStorageRecord('generationJobs', 'cli-recovery-job', {
+    id: 'cli-recovery-job', testId: 'cli-recovery-test', name: 'CLI recovery', createdAt: 1, updatedAt: 1,
+    status: 'paused', errorCode: 'cost_recovery', recoveryAttemptId, documentIds: [documents.documents[0].id], options: recoveryOptions,
+    questions: [], rejected: 0, rounds: {}, usageSummary: { inputTokens: 0, outputTokens: 0, totalTokens: 0, finalizedCostMicroUsd: 0, reservedCostMicroUsd: 1 },
+    usageAudit: [{ event: 'reserved', attemptId: recoveryAttemptId, at: 1, routeIndex: 0, provider: recoveryOptions.provider,
+      reservedCostMicroUsd: 1, reservationInputTokens: 1, reservationOutputTokens: 0, reservationCostKnown: true, reservationFingerprint: recoveryFingerprint }],
+  });
+  await assert.rejects(cli('jobs', 'approve-recovery', 'cli-recovery-job', '--reason', 'Approve duplicate billing'), /--confirm-cost/);
+  const approvedRecovery = await cli('jobs', 'approve-recovery', 'cli-recovery-job', '--reason', 'Approve duplicate billing', '--confirm-cost');
+  assert.equal(approvedRecovery.accounting.audit.at(-1).event, 'recovery-approved');
+  const resumedRecovery = await cli('jobs', 'approve-recovery', 'cli-recovery-job', '--reason', 'Approve duplicate billing', '--confirm-cost', '--resume');
+  assert.equal(resumedRecovery.job.status, 'queued');
+
   await cli('jobs', 'cancel', created.job.id);
   await assert.rejects(cli('resume', created.job.id, '--model', 'gpt-5-mini'), /--model requires --provider/);
   await assert.rejects(

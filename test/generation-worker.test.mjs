@@ -517,6 +517,31 @@ test('does not replay a provider request after an accounting attempt was recorde
   assert.equal(result.errorCode, 'cost_recovery');
   assert.equal(reserves, 0);
   assert.equal(replay.patches.some(patch => patch.errorCode === 'cost_recovery'), true);
+  const approvedAudit = [{ attemptId: recordedId, event: 'reserved' }, { event: 'recovery-approved', recoveryAttemptId: recordedId }];
+  const approvedJob = { ...base, usageAudit: approvedAudit };
+  const retry = createHarness(approvedJob, () => { throw new Error('provider disconnected again'); });
+  retry.dependencies.reserveGenerationAttempt = (_id, params) => {
+    retry.dependencies.newAttemptId = params.attemptId;
+    return { ...approvedJob, usageAudit: [...approvedAudit, { attemptId: params.attemptId, event: 'reserved' }] };
+  };
+  retry.dependencies.finalizeGenerationAttempt = (_id, params) => ({ ...approvedJob, usageAudit: [...approvedAudit,
+    { attemptId: params.attemptId, event: 'reserved' }, { attemptId: params.attemptId, event: 'finalized' }] });
+  const retried = await executeGenerationJob(approvedJob, retry.dependencies);
+  assert.notEqual(retry.dependencies.newAttemptId, recordedId);
+  assert.equal(retried.status, 'error');
+  const secondApprovalAudit = [...approvedAudit,
+    { attemptId: retry.dependencies.newAttemptId, event: 'reserved' },
+    { event: 'recovery-approved', recoveryAttemptId: retry.dependencies.newAttemptId }];
+  const third = createHarness({ ...base, usageAudit: secondApprovalAudit }, () => { throw new Error('third dispatch failed'); });
+  third.dependencies.reserveGenerationAttempt = (_id, params) => {
+    third.dependencies.newAttemptId = params.attemptId;
+    return { ...base, usageAudit: [...secondApprovalAudit, { attemptId: params.attemptId, event: 'reserved' }] };
+  };
+  third.dependencies.finalizeGenerationAttempt = (_id, params) => ({ ...base, usageAudit: [...secondApprovalAudit,
+    { attemptId: params.attemptId, event: 'reserved' }, { attemptId: params.attemptId, event: 'finalized' }] });
+  await executeGenerationJob({ ...base, usageAudit: secondApprovalAudit }, third.dependencies);
+  assert.notEqual(third.dependencies.newAttemptId, retry.dependencies.newAttemptId);
+  assert.notEqual(third.dependencies.newAttemptId, recordedId);
 });
 
 test('pauses finite-ceiling jobs for both reserved and finalized replay attempts', async () => {
