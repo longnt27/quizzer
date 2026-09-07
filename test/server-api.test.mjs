@@ -171,6 +171,9 @@ test('requires authentication for every sensitive service endpoint', async () =>
   assert.match(openApi, /\/settings:\n(?:.|\n)*?\n    patch:\n      operationId: updateSettings/);
   assert.match(openApi, /\/integrations\/llama-cpp\/configure:\n    post:/);
   assert.match(openApi, /\/integrations\/llama-cpp\/runtime\/start:/);
+  assert.match(openApi, /GenerationProfile:/);
+  assert.match(openApi, /minGroundingScore:/);
+  assert.match(openApi, /generationProfile: \{ \$ref: '#\/components\/schemas\/GenerationProfile' \}/);
 });
 
 test('reports and invokes local Ollama only after explicit setup confirmation', async () => {
