@@ -95,6 +95,15 @@ export default {
     }, ['darwin'])] : []),
     new MakerDeb({ options: { name: 'quizzer', productName: 'Quizzer', icon: 'assets/icons/quizzer.png', categories: ['Education'] } }),
     new MakerRpm({ options: { name: 'quizzer', productName: 'Quizzer', icon: 'assets/icons/quizzer.png', categories: ['Education'] } }),
-    new MakerAppImage({ options: { name: 'quizzer', productName: 'Quizzer', icon: 'assets/icons/quizzer.png', categories: ['Education'] } }, ['linux']),
+    new MakerAppImage({
+      options: {
+        name: 'quizzer',
+        productName: 'Quizzer',
+        icon: 'assets/icons/quizzer.png',
+        categories: ['Education'],
+        runtime: process.env.QUIZZER_APPIMAGE_RUNTIME
+          || resolve('node_modules/.cache/quizzer/appimage-runtime', process.arch === 'arm64' ? 'runtime-aarch64' : 'runtime-x86_64'),
+      },
+    }, ['linux']),
   ],
 };

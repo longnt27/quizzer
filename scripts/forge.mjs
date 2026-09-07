@@ -1,5 +1,10 @@
-import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
+import {
+  prepareAppImageRuntime,
+  resolveAppImageTarget,
+  resolveTargetArchFromArgs,
+  validateRuntimeFile,
+} from '../release/appimage-runtime.mjs';
 
 const command = process.argv[2];
 if (!['package', 'make'].includes(command)) {
@@ -11,8 +16,34 @@ if (!['package', 'make'].includes(command)) {
 const environment = { ...process.env };
 delete environment.CXXFLAGS;
 
+const extraArgs = process.argv.slice(3);
+if (command === 'make') {
+  let targetPlatform = process.platform;
+  for (let i = 0; i < extraArgs.length; i++) {
+    const arg = extraArgs[i];
+    if (arg === '--platform' && i + 1 < extraArgs.length) {
+      targetPlatform = extraArgs[i + 1];
+    } else if (arg.startsWith('--platform=')) {
+      targetPlatform = arg.slice('--platform='.length);
+    }
+  }
+
+  const platforms = targetPlatform.split(',').map(p => p.trim());
+  if (platforms.includes('linux')) {
+    const targetArch = resolveTargetArchFromArgs(extraArgs, process.arch);
+    let runtimePath;
+    if (environment.QUIZZER_APPIMAGE_RUNTIME) {
+      runtimePath = resolve(environment.QUIZZER_APPIMAGE_RUNTIME);
+      await validateRuntimeFile(runtimePath, resolveAppImageTarget(targetArch));
+    } else {
+      runtimePath = await prepareAppImageRuntime({ architecture: targetArch });
+    }
+    environment.QUIZZER_APPIMAGE_RUNTIME = runtimePath;
+  }
+}
+
 const forgeCli = fileURLToPath(new URL('../node_modules/@electron-forge/cli/dist/electron-forge.js', import.meta.url));
-const child = spawn(process.execPath, [forgeCli, command, ...process.argv.slice(3)], {
+const child = spawn(process.execPath, [forgeCli, command, ...extraArgs], {
   env: environment,
   stdio: 'inherit',
 });

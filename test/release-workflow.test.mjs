@@ -15,6 +15,8 @@ const ordered = (source, first, second) => {
 test('release verifies packaged signatures before collecting artifacts', async () => {
   const workflow = await readFile(workflowPath, 'utf8');
 
+  ordered(workflow, 'Install Linux packaging tools', 'Cache verified AppImage runtime');
+  ordered(workflow, 'Cache verified AppImage runtime', 'Build signed desktop distributables');
   ordered(workflow, 'Build signed desktop distributables', 'Verify Apple signatures and notarization');
   ordered(workflow, 'Build signed desktop distributables', 'Notarize macOS distributables');
   ordered(workflow, 'Notarize macOS distributables', 'Verify Apple signatures and notarization');
@@ -24,6 +26,8 @@ test('release verifies packaged signatures before collecting artifacts', async (
   ordered(workflow, 'Verify Windows signatures', 'Normalize release artifacts');
   ordered(workflow, 'Verify Linux packages and AppImage', 'Normalize release artifacts');
   assert.match(workflow, /sudo apt-get install --yes fakeroot rpm squashfs-tools/);
+  assert.match(workflow, /2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d/);
+  assert.match(workflow, /00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444/);
   assert.match(workflow, /APPIMAGE_PATH="\$\(require_single_artifact '\*\.appimage'\)"/);
   assert.match(workflow, /AI_MAGIC="\$\(dd if="\$APPIMAGE_PATH" bs=1 skip=8 count=3 2>\/dev\/null\)"/);
   assert.match(workflow, /codesign --verify --strict --verbose=2 out\/cli\/quizzer/);

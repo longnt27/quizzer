@@ -62,6 +62,9 @@ test('configures deterministic Linux distributables including AppImage with plat
   assert.equal(appImage.configOrConfigFetcher.options.productName, 'Quizzer');
   assert.equal(appImage.configOrConfigFetcher.options.icon, 'assets/icons/quizzer.png');
   assert.deepEqual(appImage.configOrConfigFetcher.options.categories, ['Education']);
+  assert.ok(appImage.configOrConfigFetcher.options.runtime, 'MakerAppImage configures runtime explicitly');
+  assert.notEqual(appImage.configOrConfigFetcher.options.runtime, undefined);
+  assert.doesNotMatch(appImage.configOrConfigFetcher.options.runtime, /continuous/, 'MakerAppImage must never fall back to continuous');
 
   const deb = makers.find(m => m.name === 'deb');
   assert.ok(deb, 'MakerDeb is configured');
