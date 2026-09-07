@@ -34,19 +34,17 @@ export const useConfiguredProviders = () => {
     const refresh = async () => {
       const settings = getProviderSettings();
       const available = new Set<GenerationProvider>(localApiProviders().map(provider => provider.id));
+      let integrationStatus: IntegrationStatus | undefined;
       try {
         const response = await serviceFetch('/api/integrations');
         const status = await response.json() as IntegrationStatus;
         if (response.ok) {
+          integrationStatus = status;
           for (const provider of PROVIDERS) {
             if (provider.kind === 'agent' && status[provider.id as AgentProvider]?.connected) available.add(provider.id);
           }
           if (status.ollama?.serverReady && status.ollama.models?.some(model => model.name
             && ollamaModelMatches(model.name, settings.models.ollama))) available.add('ollama');
-          if (status['llama-cpp']?.serverReady && (!status['llama-cpp'].models?.length
-            || status['llama-cpp'].models.some(model => model.id === settings.models['llama-cpp']))) {
-            available.add('llama-cpp');
-          }
         }
       } catch { /* API providers remain usable if the status check is temporarily unavailable. */ }
       try {
@@ -56,6 +54,14 @@ export const useConfiguredProviders = () => {
         ]);
         if (settingsRes.ok) {
           const settingsPayload = await settingsRes.json() as { values?: Record<string, unknown> };
+          const serviceLlamaModel = typeof settingsPayload?.values?.['providers.llama-cpp.model'] === 'string'
+            ? settingsPayload.values['providers.llama-cpp.model'].trim()
+            : '';
+          if (serviceLlamaModel && integrationStatus?.['llama-cpp']?.serverReady
+            && (!integrationStatus['llama-cpp'].models?.length
+              || integrationStatus['llama-cpp'].models.some(model => model.id === serviceLlamaModel))) {
+            available.add('llama-cpp');
+          }
           const endpoint = typeof settingsPayload?.values?.['providers.openai-compatible.endpoint'] === 'string'
             ? settingsPayload.values['providers.openai-compatible.endpoint']
             : undefined;

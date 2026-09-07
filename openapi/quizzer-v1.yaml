@@ -126,7 +126,7 @@ paths:
               type: object
               required: [endpoint, model, confirmed]
               properties:
-                endpoint: { type: string, format: uri, pattern: '^http://(?:localhost|127\\.|\\[::1\\])' }
+                endpoint: { type: string, format: uri, pattern: '^http://(?:127\\.|\\[::1\\])' }
                 model: { type: string, minLength: 1, maxLength: 200 }
                 confirmed: { type: boolean, const: true }
       responses:

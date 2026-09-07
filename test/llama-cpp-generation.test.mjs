@@ -15,7 +15,10 @@ const schema = { type: 'object', properties: { answer: { type: 'string' } }, req
 test('keeps llama.cpp local-only and resolves its OpenAI-compatible endpoint', () => {
   assert.equal(validateLlamaCppEndpoint(DEFAULT_LLAMA_CPP_ENDPOINT), DEFAULT_LLAMA_CPP_ENDPOINT);
   assert.equal(validateLlamaCppModel(DEFAULT_LLAMA_CPP_MODEL), DEFAULT_LLAMA_CPP_MODEL);
-  assert.equal(llamaCppCompletionsUrl('http://localhost:8080/v1'), 'http://localhost:8080/v1/chat/completions');
+  assert.equal(llamaCppCompletionsUrl('http://127.0.0.42:8080/v1'), 'http://127.0.0.42:8080/v1/chat/completions');
+  assert.equal(llamaCppCompletionsUrl('http://[::1]:8080/v1'), 'http://[::1]:8080/v1/chat/completions');
+  assert.throws(() => validateLlamaCppEndpoint('http://localhost:8080/v1'), /loopback/);
+  assert.throws(() => validateLlamaCppEndpoint('http://127.999.0.1:8080/v1'), /valid URL|loopback/);
   assert.throws(() => validateLlamaCppEndpoint('https://models.example.test/v1'), /loopback/);
   assert.throws(() => validateLlamaCppEndpoint('http://192.168.1.5:8080/v1'), /loopback/);
 });
@@ -72,4 +75,33 @@ test('bounds chunked health and model status responses before buffering them', a
   }, undefined);
   assert.equal(modelStatus.serverReady, true);
   assert.deepEqual(modelStatus.models, []);
+});
+
+test('cancels an in-flight status read when the caller aborts', async () => {
+  const controller = new AbortController();
+  let cancelled = false;
+  const statusPromise = getLlamaCppStatus({ endpoint: DEFAULT_LLAMA_CPP_ENDPOINT }, async (_url, options) => new Response(new ReadableStream({
+    pull() { return new Promise(() => {}); },
+    cancel() { cancelled = true; },
+  }), { status: 200 }), controller.signal);
+  await new Promise(resolve => setTimeout(resolve, 10));
+  const reason = Object.assign(new Error('caller cancelled'), { name: 'AbortError' });
+  controller.abort(reason);
+  await assert.rejects(statusPromise, error => error === reason);
+  assert.equal(cancelled, true);
+});
+
+test('does not buffer a status body when no bounded body metadata is available', async () => {
+  let textCalled = false;
+  const response = {
+    status: 200,
+    ok: true,
+    headers: new Headers(),
+    body: undefined,
+    text: async () => { textCalled = true; return '{}'; },
+  };
+  const status = await getLlamaCppStatus({ endpoint: DEFAULT_LLAMA_CPP_ENDPOINT }, async () => response);
+  assert.equal(status.serverReady, false);
+  assert.match(status.error, /invalid or oversized/);
+  assert.equal(textCalled, false);
 });

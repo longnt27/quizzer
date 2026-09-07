@@ -5,7 +5,7 @@ import type { GenerationProvider, InterfaceMode } from '../types';
 import {
   AGENT_PROVIDERS, API_PROVIDERS, PROVIDERS, getApiKey, getProviderSettings,
   forgetRememberedApiKey, isOpenAILoopbackEndpoint, loadRememberedApiKeys, migrateLegacyGeminiKey, rememberApiKey,
-  ollamaModelMatches, setApiKey, setProviderSettings, type AgentProvider,
+  isNumericLoopbackEndpoint, ollamaModelMatches, setApiKey, setProviderSettings, type AgentProvider,
 } from '../utils/providerSettings';
 import { getMessageApi } from '../utils/messageProvider';
 import { getModalApi } from '../utils/modalProvider';
@@ -161,7 +161,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
         setLlamaCppEndpoint(settings.values['providers.llama-cpp.endpoint']);
       }
       if (typeof settings.values['providers.llama-cpp.model'] === 'string') {
-        setModels(current => current['llama-cpp'] ? current : { ...current, 'llama-cpp': settings.values['providers.llama-cpp.model'] as string });
+        setModels(current => ({ ...current, 'llama-cpp': settings.values['providers.llama-cpp.model'] as string }));
       }
       setExternalError('');
     } catch (error) {
@@ -397,7 +397,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       provider.id === 'openai-compatible'
         ? Boolean(models['openai-compatible']?.trim()) && (Boolean(apiKeys['openai-compatible']?.trim()) || isOpenAILoopbackEndpoint(openaiCompatibleEndpoint))
         : provider.id === 'llama-cpp'
-          ? Boolean(status?.['llama-cpp']?.serverReady && models['llama-cpp']?.trim())
+          ? Boolean(status?.['llama-cpp']?.serverReady && isNumericLoopbackEndpoint(llamaCppEndpoint) && models['llama-cpp']?.trim())
         : provider.kind === 'api'
           ? Boolean(apiKeys[provider.id]?.trim())
           : provider.kind === 'local'
@@ -459,7 +459,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       provider.id === 'openai-compatible'
         ? Boolean(models['openai-compatible']?.trim()) && (Boolean(apiKeys['openai-compatible']?.trim()) || isOpenAILoopbackEndpoint(openaiCompatibleEndpoint))
         : provider.id === 'llama-cpp'
-          ? Boolean(status?.['llama-cpp']?.serverReady && models['llama-cpp']?.trim())
+          ? Boolean(status?.['llama-cpp']?.serverReady && isNumericLoopbackEndpoint(llamaCppEndpoint) && models['llama-cpp']?.trim())
         : provider.kind === 'api'
         ? Boolean(apiKeys[provider.id]?.trim())
         : provider.kind === 'local'
@@ -603,14 +603,14 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
         <section className="plugin-card">
           <div className="plugin-card-heading">
             <div><Typography.Title level={5}>llama.cpp local model</Typography.Title><Typography.Text type="secondary">Connect Quizzer to a local llama.cpp server using its OpenAI-compatible API. The endpoint must stay on loopback; Quizzer does not download models or send source content remotely.</Typography.Text></div>
-            {statusTag(Boolean(status?.['llama-cpp']?.serverReady && models['llama-cpp']?.trim()), false, 'Ready')}
+            {statusTag(Boolean(status?.['llama-cpp']?.serverReady && isNumericLoopbackEndpoint(llamaCppEndpoint) && models['llama-cpp']?.trim()), false, 'Ready')}
           </div>
           <Space direction="vertical" style={{ width: '100%' }}>
             <Input value={llamaCppEndpoint} onChange={event => setLlamaCppEndpoint(event.target.value)} addonBefore="Local endpoint" placeholder="http://127.0.0.1:8080/v1" />
             <Input value={models['llama-cpp']} onChange={event => setModels(current => ({ ...current, 'llama-cpp': event.target.value }))} addonBefore="Model" placeholder="For example: local-model" />
             <Typography.Text type="secondary">Saving this configuration is an explicit setup confirmation. Only unauthenticated HTTP loopback endpoints are accepted.</Typography.Text>
             {status?.['llama-cpp']?.error && <Alert type="warning" showIcon message="llama.cpp server is not ready" description={status['llama-cpp'].error} />}
-            {status?.['llama-cpp']?.serverReady && Boolean(models['llama-cpp']?.trim()) && <Space><Switch checked={enabledProviders['llama-cpp']} onChange={value => setEnabledProviders(current => ({ ...current, 'llama-cpp': value }))} /><Typography.Text>Enabled for generation</Typography.Text></Space>}
+            {status?.['llama-cpp']?.serverReady && isNumericLoopbackEndpoint(llamaCppEndpoint) && Boolean(models['llama-cpp']?.trim()) && <Space><Switch checked={enabledProviders['llama-cpp']} onChange={value => setEnabledProviders(current => ({ ...current, 'llama-cpp': value }))} /><Typography.Text>Enabled for generation</Typography.Text></Space>}
           </Space>
         </section>
 

@@ -49,6 +49,20 @@ export const isOpenAILoopbackEndpoint = (endpoint?: string) => {
   }
 };
 
+export const isNumericLoopbackEndpoint = (endpoint?: string) => {
+  if (!endpoint || typeof endpoint !== 'string') return false;
+  try {
+    const url = new URL(endpoint);
+    const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    const octets = host.split('.');
+    return url.protocol === 'http:' && (host === '::1'
+      || (octets.length === 4 && octets[0] === '127'
+        && octets.slice(1).every(octet => /^\d{1,3}$/.test(octet) && Number(octet) <= 255)));
+  } catch {
+    return false;
+  }
+};
+
 export const ollamaModelMatches = (installed: string, configured: string) => installed === configured
   || (!configured.includes(':') && installed === `${configured}:latest`)
   || (!installed.includes(':') && configured === `${installed}:latest`);

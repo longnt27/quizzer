@@ -212,6 +212,38 @@ test('service worker routes to openai-compatible provider and respects endpoint 
   assert.equal(harness.completion().test.questions[0].provenance.model, 'custom-model');
 });
 
+test('service worker routes llama.cpp jobs to the local endpoint setting', async () => {
+  const routes = [
+    { provider: 'llama-cpp', model: 'llama-3.2-q4', privacy: 'local', paid: false, approved: true },
+  ];
+  const options = optionsFor({
+    provider: 'llama-cpp',
+    questionCounts: { multipleChoice: 1, fillBlank: 0, reasoning: 0, coding: 0 },
+    routeChain: routes,
+  });
+  options.model = 'llama-3.2-q4';
+  options.resolvedSettings = {
+    ...options.resolvedSettings,
+    'providers.openai-compatible.endpoint': 'https://remote.example.test/v1',
+    'providers.llama-cpp.endpoint': 'http://127.0.0.42:8080/v1',
+  };
+  const job = {
+    id: 'job-llama-cpp', testId: 'test-llama-cpp', name: 'llama.cpp quiz', status: 'running',
+    workerId: 'service-worker', leaseId: 'lease-llama-cpp', createdAt: 1, updatedAt: 1,
+    documentIds: ['doc-one'], options, questions: [], rejected: 0, rounds: {}, activeRouteIndex: 0,
+  };
+  let capturedRequest;
+  const harness = createHarness(job, request => {
+    capturedRequest = request;
+    return JSON.stringify({ questions: [candidateFor('multiple-choice')] });
+  });
+  const result = await executeGenerationJob(job, harness.dependencies);
+  assert.equal(result.status, 'completed');
+  assert.equal(capturedRequest.provider, 'llama-cpp');
+  assert.equal(capturedRequest.endpoint, 'http://127.0.0.42:8080/v1');
+  assert.equal(capturedRequest.resolvedSettings['providers.openai-compatible.endpoint'], 'https://remote.example.test/v1');
+});
+
 test('service worker pauses safely when no approved provider route remains', async () => {
   const options = optionsFor({ questionCounts: { multipleChoice: 1, fillBlank: 0, reasoning: 0, coding: 0 } });
   const job = {
