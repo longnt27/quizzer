@@ -79,11 +79,7 @@ const boundedStatusText = async (response, signal) => {
       try { reader.releaseLock?.(); } catch { /* Ignore reader cleanup errors. */ }
     }
   }
-  if (length === undefined) throw new Error('llama.cpp status response has no bounded readable body');
-  const text = await response.text();
-  if (Buffer.byteLength(text) !== length) throw new Error('llama.cpp status response length did not match Content-Length');
-  if (Buffer.byteLength(text) > MAX_STATUS_BYTES) throw new Error('llama.cpp status response is too large');
-  return text;
+  throw new Error('llama.cpp status response has no readable streaming body');
 };
 
 const statusUrl = (endpoint, path) => {

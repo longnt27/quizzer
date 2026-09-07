@@ -1,6 +1,6 @@
 import type { GenerationProvider, ProviderRoute } from '../types';
-import { serviceJson } from './serviceApi';
-import { getKnownProviderRouteMetadata } from './providerPricing';
+import { serviceJson } from './serviceApi.ts';
+import { getKnownProviderRouteMetadata } from './providerPricing.ts';
 
 const PROVIDER_SETTINGS_KEY = 'quizzer.providerSettings';
 const API_KEY_PREFIX = 'quizzer.apiKey.';

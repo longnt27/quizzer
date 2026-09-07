@@ -91,12 +91,12 @@ test('cancels an in-flight status read when the caller aborts', async () => {
   assert.equal(cancelled, true);
 });
 
-test('does not buffer a status body when no bounded body metadata is available', async () => {
+test('does not buffer a status body when no readable streaming body is available', async () => {
   let textCalled = false;
   const response = {
     status: 200,
     ok: true,
-    headers: new Headers(),
+    headers: new Headers({ 'content-length': '2' }),
     body: undefined,
     text: async () => { textCalled = true; return '{}'; },
   };
