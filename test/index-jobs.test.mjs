@@ -52,6 +52,26 @@ test('creates normalized index jobs and validates their public inputs', () => {
   assert.throws(() => createIndexJob({ documentIds: ['doc'], now: () => -1 }), /time/);
 });
 
+test('preserves a 10,000-document library checkpoint without truncation', async () => {
+  const documentIds = Array.from({ length: 10_000 }, (_, index) => `doc-${index}`);
+  const job = createIndexJob({ id: 'index-job-large-library', documentIds, now: () => 1 });
+  assert.equal(job.documentIds.length, 10_000);
+  assert.throws(() => createIndexJob({ documentIds: [...documentIds, 'one-too-many'] }), /between 1 and 10,000/);
+
+  const runner = memoryRunner(job, {
+    onYield: async () => {
+      await runner.dependencies.save(cancelIndexJob(runner.current(), () => 30));
+    },
+  });
+  const cancelled = await runIndexJob(job, runner.dependencies);
+  assert.equal(cancelled.status, 'cancelled');
+  assert.deepEqual(cancelled.completedDocumentIds, ['doc-0']);
+  assert.equal(cancelled.remainingDocumentIds.length, 9_999);
+  const resumed = resumeIndexJob(cancelled, () => 31);
+  assert.equal(resumed.documentIds.length, 10_000);
+  assert.equal(resumed.remainingDocumentIds.length, 9_999);
+});
+
 test('checkpoints each indexed document and completes idempotently', async () => {
   const job = createIndexJob({ id: 'index-job-2', documentIds: ['doc-a', 'doc-b'], now: () => 1 });
   const runner = memoryRunner(job);
