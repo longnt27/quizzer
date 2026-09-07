@@ -143,6 +143,7 @@ test('publishes accessible document and social metadata', async ({ page }) => {
 });
 
 test('supports keyboard access to navigation, download controls, and demo with reduced motion', async ({ page }) => {
+  await stubClipboard(page);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await failManifest(page);
   await page.goto('/');
