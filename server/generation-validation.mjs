@@ -262,7 +262,7 @@ const accountingEventKeys = new Set([
   'finalizedCostMicroUsd', 'reservationReleasedMicroUsd', 'reservationRetained', 'usage',
   'previousCeilingMicroUsd', 'newCeilingMicroUsd', 'reason', 'overCeiling', 'ceilingAtFinalizationMicroUsd',
   'reservationInputTokens', 'reservationOutputTokens', 'reservationCostKnown', 'reservationFingerprint',
-  'finalizationFingerprint',
+  'finalizationFingerprint', 'recoveryAttemptId',
 ]);
 const accountingAttemptId = value => {
   if (!boundedText(value, 1, 100) || !/^[A-Za-z0-9-]+$/.test(value)) throw new Error('Generation accounting attempt id is invalid');
@@ -288,6 +288,15 @@ export const validateGenerationUsageAudit = (input, { options, summary } = {}) =
       if (lastRaisedCeiling !== undefined && item.previousCeilingMicroUsd !== lastRaisedCeiling) throw new Error('Cost ceiling audit transitions are not contiguous');
       if (!boundedText(item.reason, 1, 500)) throw new Error('Cost ceiling raise reason is invalid');
       lastRaisedCeiling = item.newCeilingMicroUsd;
+      continue;
+    }
+    if (item.event === 'recovery-approved') {
+      if (typeof item.recoveryAttemptId !== 'string' || !/^attempt-[a-f0-9]{48}$/.test(item.recoveryAttemptId)
+        || !boundedText(item.reason, 1, 500)
+        || !input.some(previous => previous.attemptId === item.recoveryAttemptId
+          && ['reserved', 'finalized'].includes(previous.event))) {
+        throw new Error('Generation recovery approval is invalid');
+      }
       continue;
     }
     accountingAttemptId(item.attemptId);

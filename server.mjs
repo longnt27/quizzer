@@ -5,7 +5,7 @@ import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promi
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import {
-  backupDatabase, beginLegacyMigration, claimGenerationJob, completeGenerationJob, controlGenerationJob, createGenerationJobs, deleteRecord, finalizeGenerationAttempt, finalizeLegacyMigration, getGenerationAccounting, getRecord, listLegacyMigrations,
+  approveGenerationCostRecovery, backupDatabase, beginLegacyMigration, claimGenerationJob, completeGenerationJob, controlGenerationJob, createGenerationJobs, deleteRecord, finalizeGenerationAttempt, finalizeLegacyMigration, getGenerationAccounting, getRecord, listLegacyMigrations,
   listRecords, putRecord, raiseGenerationCostCeiling, renewGenerationJobLease, reserveGenerationAttempt, storageInfo, subscribeStorageChanges, syncStorage, updateGenerationJobWithLease,
 } from './server/storage.mjs';
 import { detectHardwareCapabilities } from './server/hardware-profile.mjs';
@@ -1429,6 +1429,15 @@ const handleVersionedApi = async (request, response, url) => {
         newCeilingMicroUsd: body?.newCeilingMicroUsd,
         reason: body?.reason,
         confirmed: body?.confirmed,
+      });
+      send(response, 200, { job: publicRecord(job), accounting: getGenerationAccounting(job.id) });
+      return true;
+    }
+    const recoveryMatch = /^\/api\/v1\/jobs\/([^/]+)\/accounting\/recovery$/.exec(url.pathname);
+    if (recoveryMatch && request.method === 'POST') {
+      const body = await readJson(request);
+      const job = approveGenerationCostRecovery(decodeURIComponent(recoveryMatch[1]), {
+        reason: body?.reason, confirmed: body?.confirmed,
       });
       send(response, 200, { job: publicRecord(job), accounting: getGenerationAccounting(job.id) });
       return true;

@@ -338,8 +338,8 @@ const providerErrorCode = error => error?.code
 
 const abortError = () => Object.assign(new Error('Generation cancelled'), { name: 'AbortError' });
 
-const accountingAttemptId = (jobId, type, round, slotIndexes, routeIndex = 0) => `attempt-${createHash('sha256')
-  .update(JSON.stringify({ jobId, type, round, slotIndexes, routeIndex }))
+const accountingAttemptId = (jobId, type, round, slotIndexes, routeIndex = 0, recoveryCount = 0) => `attempt-${createHash('sha256')
+  .update(JSON.stringify({ jobId, type, round, slotIndexes, routeIndex, recoveryCount }))
   .digest('hex').slice(0, 48)}`;
 
 // UTF-8 bytes are a conservative token upper bound (a token cannot contain
@@ -475,13 +475,19 @@ export const executeGenerationJob = async (claimedJob, dependencies) => {
         const finiteCeiling = options.costCeilingMicroUsd !== undefined && options.costCeilingMicroUsd !== null;
         const reserve = dependencies.reserveGenerationAttempt ?? dependencies.reserveProviderAttempt;
         const finalize = dependencies.finalizeGenerationAttempt ?? dependencies.finalizeProviderAttempt;
-        const attemptId = accountingAttemptId(job.id, type, round, requestedSlotIndexes, routeIndex);
+        const baseAttemptId = accountingAttemptId(job.id, type, round, requestedSlotIndexes, routeIndex);
+        const recoveryCount = (job.usageAudit ?? []).filter(item => item?.event === 'recovery-approved'
+          && item.recoveryAttemptId === baseAttemptId).length;
+        const attemptId = recoveryCount
+          ? accountingAttemptId(job.id, type, round, requestedSlotIndexes, routeIndex, recoveryCount)
+          : baseAttemptId;
         // A worker crash can leave a reservation (or a finalized charge) after
         // the output checkpoint was lost. Never replay that provider request:
         // the output may already have been charged and cannot be reconstructed.
         const priorAccountingEvent = (job.usageAudit ?? []).find(item => item?.attemptId === attemptId);
         if (priorAccountingEvent && (reserve || finalize)) {
           await persist({ status: 'paused', errorCode: 'cost_recovery',
+            recoveryAttemptId: attemptId,
             error: 'A prior generation request may have been charged, but its output was not checkpointed. Review the accounting history before retrying.',
           });
           return job;
