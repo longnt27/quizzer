@@ -34,6 +34,12 @@ export const validateOllamaModelName = value => {
   return value.trim();
 };
 
+export const ollamaModelMatches = (installed, configured) => typeof installed === 'string'
+  && typeof configured === 'string'
+  && (installed === configured
+    || (!configured.includes(':') && installed === `${configured}:latest`)
+    || (!installed.includes(':') && configured === `${installed}:latest`));
+
 export const validateMaxOutputTokens = value => {
   if (value === undefined) return undefined;
   if (!Number.isSafeInteger(value) || value < 1 || value > MAX_OUTPUT_TOKENS) {

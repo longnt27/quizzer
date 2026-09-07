@@ -110,10 +110,12 @@ test('validates types, ranges, unknown settings, and secret-like keys', () => {
   assert.deepEqual(validateSettings({ 'retrieval.vectorIndexPlugin': 'dev.quizzer.vector' }), { 'retrieval.vectorIndexPlugin': 'dev.quizzer.vector' });
   assert.deepEqual(validateSettings({ 'retrieval.planning': 'multi-query' }), { 'retrieval.planning': 'multi-query' });
   assert.deepEqual(validateSettings({ 'retrieval.hydeModel': 'library/qwen3:4b' }), { 'retrieval.hydeModel': 'library/qwen3:4b' });
+  assert.deepEqual(validateSettings({ 'embeddings.model': 'bge-m3:latest' }), { 'embeddings.model': 'bge-m3:latest' });
   assert.deepEqual(validateSettings({ 'providers.openai-compatible.endpoint': 'http://127.0.0.1:11434/v1' }), { 'providers.openai-compatible.endpoint': 'http://127.0.0.1:11434/v1' });
   assert.deepEqual(validateSettings({ 'providers.openai-compatible.endpoint': 'https://api.openai.com/v1' }), { 'providers.openai-compatible.endpoint': 'https://api.openai.com/v1' });
   assert.throws(() => validateSettings({ 'providers.openai-compatible.endpoint': 'http://api.openai.com/v1' }), /require HTTPS/i);
   assert.throws(() => validateSettings({ 'retrieval.hydeModel': '../remote' }), /invalid value/);
+  assert.throws(() => validateSettings({ 'embeddings.model': '../remote' }), /invalid value/);
   assert.throws(() => validateSettings({ 'retrieval.planning': 'remote-model' }), /must be one of/);
   assert.throws(() => validateSettings({ 'generation.concurrency': 99 }), /from 1 to 10/);
   assert.throws(() => validateSettings({ 'providers.codex.maxConcurrency': 0 }), /from 1 to 10/);
@@ -130,6 +132,9 @@ test('uses progressively stronger bounded query planning across hardware profile
   assert.equal(balanced.values['retrieval.planning'], 'multi-query');
   assert.equal(max.values['retrieval.planning'], 'hyde');
   assert.equal(max.values['retrieval.hydeModel'], 'qwen3:4b');
+  assert.equal(lite.values['embeddings.model'], 'all-minilm');
+  assert.equal(balanced.values['embeddings.model'], 'all-minilm');
+  assert.equal(max.values['embeddings.model'], 'bge-m3');
   assert.equal(SETTINGS_SCHEMA.properties['retrieval.planning'].enum.join(','), 'none,multi-query,hyde');
   assert.match('qwen3:4b', new RegExp(SETTINGS_SCHEMA.properties['retrieval.hydeModel'].pattern));
   assert.equal(SETTINGS_SCHEMA.properties['retrieval.planning']['x-quizzer-reindex-required'], false);

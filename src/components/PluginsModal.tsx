@@ -31,7 +31,7 @@ interface IntegrationStatus {
     mode: 'manual' | 'managed'; state: 'idle' | 'starting' | 'running' | 'stopping' | 'error'; configured: boolean; serverReady: boolean; host: string; port: number;
     executableName?: string; modelName?: string; pid?: number; lastError?: string; output?: string;
   } };
-  embeddings: { installed: boolean; runtimeInstalled: boolean; job: { state: JobState; message: string } };
+  embeddings: { installed: boolean; runtimeInstalled: boolean; model: string; job: { state: JobState; message: string } };
 }
 
 interface ExternalPlugin {
@@ -282,6 +282,27 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
           await refresh();
         } catch (error) {
           message.error(error instanceof Error ? error.message : 'Could not download the Ollama model');
+          throw error;
+        }
+      },
+    });
+  };
+
+  const installEmbeddingModel = () => {
+    const model = status?.embeddings.model;
+    if (!model) return message.warning('Embedding settings are still loading');
+    getModalApi().confirm({
+      title: `Download ${model} for dense retrieval?`,
+      content: model === 'bge-m3'
+        ? 'The Max profile uses the multilingual bge-m3 model. This download is approximately 1.2 GB, stays on this device, and rebuilds only the derived dense index.'
+        : 'Quizzer will install Ollama if needed and download this embedding model to this device. Source documents are not sent to a remote provider.',
+      okText: `Download ${model}`,
+      onOk: async () => {
+        try {
+          await serviceJson('/api/integrations/embeddings/install', 'POST', { model, confirmed: true });
+          await refresh();
+        } catch (error) {
+          message.error(error instanceof Error ? error.message : 'Could not download the embedding model');
           throw error;
         }
       },
@@ -584,7 +605,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
           </div>
           <Select aria-label="Dense embedding component" value={embedderPlugin} onChange={setEmbedderPlugin} style={{ width: '100%' }}
             options={[
-              { value: 'builtin', label: 'Built-in · Ollama all-minilm' },
+              { value: 'builtin', label: `Built-in · Ollama ${status?.embeddings.model ?? 'profile model'}` },
               ...embedderPlugins.map(plugin => ({ value: plugin.id, label: `${plugin.name ?? plugin.id} · ${plugin.id}` })),
             ]} />
           {interfaceMode === 'advanced' && <>
@@ -598,8 +619,8 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
               description="Choose an enabled, compatible vector-index plugin or switch back to built-in LanceDB before indexing." />}
           </>}
           {embedderPlugin === 'builtin' && !status?.embeddings?.installed && !embeddingsWorking && <Button icon={<CloudDownloadOutlined />}
-            onClick={() => void runAction('/api/integrations/embeddings/install')}>
-            {status?.embeddings?.runtimeInstalled ? 'Install all-minilm' : 'Install Ollama + all-minilm'}
+            onClick={installEmbeddingModel}>
+            {status?.embeddings?.runtimeInstalled ? `Download ${status.embeddings.model}` : `Install Ollama + ${status?.embeddings.model ?? 'embedding model'}`}
           </Button>}
           {embeddingReady && <Space><Switch checked={enabledTools.embeddings} onChange={value => setEnabledTools(current => ({ ...current, embeddings: value }))} /><Typography.Text>Enabled</Typography.Text></Space>}
           {embedderPlugin === 'builtin' && embeddingsWorking && <Space><Spin size="small" /> Installing semantic filter…</Space>}

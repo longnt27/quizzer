@@ -30,7 +30,7 @@ import { runGeneratorPlugin } from './server/plugin-generation.mjs';
 import { resolveEmbeddingProvider } from './server/plugin-embeddings.mjs';
 import { resolveVectorIndexProvider } from './server/plugin-vector-index.mjs';
 import { resolveDocumentExtractor, resolveOcrProvider } from './server/plugin-extraction.mjs';
-import { listOllamaModels, runOllamaGeneration, runOllamaHyde, validateOllamaModelName } from './server/ollama-generation.mjs';
+import { listOllamaModels, ollamaModelMatches, runOllamaGeneration, runOllamaHyde, validateOllamaModelName } from './server/ollama-generation.mjs';
 import {
   getLlamaCppStatus, runLlamaCppGeneration, validateLlamaCppEndpoint, validateLlamaCppModel,
 } from './server/llama-cpp-generation.mjs';
@@ -477,6 +477,7 @@ const integrationStatus = async () => {
     hasSystemMarker(),
     managedOcrWorks(),
   ]);
+  const embeddingModel = settings.values['embeddings.model'];
   return {
     marker: { installed: managedMarker || systemMarker, managed: managedMarker, job: integrationJobs.marker },
     codex: { installed: codexInstalled, connected: codexConnected, job: integrationJobs.codex },
@@ -500,8 +501,9 @@ const integrationStatus = async () => {
       job: integrationJobs.ollama,
     },
     embeddings: {
-      installed: ollama.models.some(model => /^all-minilm(?::\S+)?$/i.test(model.name)),
+      installed: ollama.models.some(model => ollamaModelMatches(model.name, embeddingModel)),
       runtimeInstalled: ollamaInstalled || ollama.serverReady,
+      model: embeddingModel,
       job: integrationJobs.embeddings,
     },
     ocr: { installed: managedOcr, managed: managedOcr, job: integrationJobs.ocr },
@@ -702,18 +704,20 @@ const pullOllamaModel = model => {
   return true;
 };
 
-const installEmbeddings = () => {
-  if (integrationJobs.embeddings.state === 'working' || integrationJobs.ollama.state === 'working') return;
-  integrationJobs.embeddings = { state: 'working', message: 'Preparing the local embedding runtime…' };
+const installEmbeddings = model => {
+  const modelName = validateOllamaModelName(model);
+  if (integrationJobs.embeddings.state === 'working' || integrationJobs.ollama.state === 'working') return false;
+  integrationJobs.embeddings = { state: 'working', message: `Preparing the local embedding runtime for ${modelName}…` };
   void (async () => {
     const update = output => { integrationJobs.embeddings.message = output || integrationJobs.embeddings.message; };
     const executable = await ensureOllamaRuntime(update);
-    integrationJobs.embeddings.message = 'Downloading all-minilm…';
-    await runCommand(executable, ['pull', 'all-minilm'], { timeout: 30 * 60_000, onOutput: update });
-    integrationJobs.embeddings = { state: 'complete', message: 'all-minilm is installed and semantic duplicate filtering is ready.' };
+    integrationJobs.embeddings.message = `Downloading ${modelName}…`;
+    await runCommand(executable, ['pull', modelName], { timeout: 60 * 60_000, onOutput: update });
+    integrationJobs.embeddings = { state: 'complete', message: `${modelName} is installed and dense retrieval is ready.` };
   })().catch(error => {
     integrationJobs.embeddings = { state: 'error', message: error instanceof Error ? error.message : 'Embedding installation failed' };
   });
+  return true;
 };
 
 const runCapturedCommand = (command, args, prompt, signal, timeout = 600_000) => new Promise((resolve, reject) => {
@@ -1696,8 +1700,24 @@ const serviceServer = createServer(async (request, response) => {
     }
   }
   if (request.method === 'POST' && request.url === '/api/integrations/embeddings/install') {
-    installEmbeddings();
-    return send(response, 202, { ok: true });
+    if (!request.headers['content-type']?.startsWith('application/json')) return send(response, 415, { error: 'JSON request required' });
+    try {
+      const body = await readJson(request);
+      if (!body || typeof body !== 'object' || Array.isArray(body)
+        || Object.keys(body).some(key => !['confirmed', 'model'].includes(key))) {
+        throw new Error('Embedding installation request is invalid');
+      }
+      if (body.confirmed !== true) throw new Error('Explicit confirmation is required before downloading an embedding model');
+      const settings = await loadResolvedSettings(appDataDirectory);
+      const configuredModel = validateOllamaModelName(settings.values['embeddings.model']);
+      if (body.model !== configuredModel) throw new Error('Embedding model changed; review the current profile and confirm again');
+      const started = installEmbeddings(configuredModel);
+      return send(response, started ? 202 : 409, started
+        ? { ok: true, model: configuredModel }
+        : { error: 'Another Ollama installation or model download is already running' });
+    } catch (error) {
+      return send(response, 400, { error: error instanceof Error ? error.message : 'Invalid embedding installation request' });
+    }
   }
   if (request.method === 'POST' && request.url === '/api/extract') {
     const lifetime = bindRequestCancellation(request, response, 'Extraction request disconnected');
