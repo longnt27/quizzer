@@ -5,6 +5,7 @@ import { dirname, join, relative } from 'node:path';
 import { rebuild } from '@electron/rebuild';
 import {
   isWindowsPlatform,
+  packagedElectronExecutable,
   playwrightCommandForPlatform,
   spawnOptionsForPlatform,
   terminationPlanForPlatform,
@@ -59,11 +60,11 @@ const restoreNativeArtifacts = async snapshot => {
 };
 
 const activeChildren = new Set();
-const run = (command, args) => new Promise((resolve, reject) => {
+const run = (command, args, environment = process.env) => new Promise((resolve, reject) => {
   const child = spawn(command, args, {
     cwd: projectDirectory,
     stdio: 'inherit',
-    env: process.env,
+    env: environment,
     ...spawnOptionsForPlatform(process.platform),
   });
   activeChildren.add(child);
@@ -153,13 +154,24 @@ try {
   });
   await run(process.execPath, ['node_modules/typescript/bin/tsc', '-b']);
   await run(process.execPath, ['node_modules/vite/bin/vite.js', 'build']);
+  await run(process.execPath, ['scripts/forge.mjs', 'package']);
+  const packagedExecutable = packagedElectronExecutable({
+    projectDirectory,
+    platform: process.platform,
+    architecture: process.arch,
+  });
+  const packagedDetails = await stat(packagedExecutable);
+  if (!packagedDetails.isFile()) throw new Error(`Packaged Electron executable is not a file: ${packagedExecutable}`);
   const playwrightCommand = playwrightCommandForPlatform({
     platform: process.platform,
     nodeExecutable: process.execPath,
     projectDirectory,
     useXvfb: process.env.ELECTRON_SHELL_USE_XVFB === '1',
   });
-  await run(playwrightCommand.command, playwrightCommand.args);
+  await run(playwrightCommand.command, playwrightCommand.args, {
+    ...process.env,
+    QUIZZER_PACKAGED_ELECTRON_EXECUTABLE: packagedExecutable,
+  });
 } finally {
   try {
     await stopChildren();

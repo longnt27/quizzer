@@ -1,4 +1,4 @@
-import { win32 as windowsPath } from 'node:path';
+import { posix as posixPath, win32 as windowsPath } from 'node:path';
 
 export const isWindowsPlatform = platform => platform === 'win32';
 
@@ -13,6 +13,15 @@ export const electronExecutableFromPackage = requireElectron => {
     throw new Error('The electron package must resolve to a native Electron executable, not a command shim');
   }
   return executable;
+};
+
+export const packagedElectronExecutable = ({ projectDirectory, platform, architecture }) => {
+  if (!['darwin', 'linux', 'win32'].includes(platform)) throw new Error(`Unsupported packaged Electron platform: ${platform}`);
+  if (!['x64', 'arm64'].includes(architecture)) throw new Error(`Unsupported packaged Electron architecture: ${architecture}`);
+  const path = platform === 'win32' ? windowsPath : posixPath;
+  const packageDirectory = path.join(projectDirectory, 'out', `Quizzer-${platform}-${architecture}`);
+  if (platform === 'darwin') return path.join(packageDirectory, 'Quizzer.app', 'Contents', 'MacOS', 'Quizzer');
+  return path.join(packageDirectory, platform === 'win32' ? 'quizzer.exe' : 'quizzer');
 };
 
 export const playwrightCommandForPlatform = ({

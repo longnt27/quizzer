@@ -381,6 +381,7 @@ Do not upload confidential material unless the selected provider and your accoun
 | `npm run lint` | Run ESLint |
 | `npm test` | Run unit and service integration tests |
 | `npm run test:e2e` | Run the isolated Chromium onboarding and mocked-generation workflow |
+| `npm run test:e2e:electron` | Rebuild SQLite for Electron, package the current-platform app with production fuses, and smoke-test the packaged sandboxed shell |
 | `npm run test:coverage` | Enforce 90% line and 80% branch coverage across core service modules |
 | `npm run eval:rag` | Run the offline English/Vietnamese retrieval quality gate |
 | `npm run license:check` | Verify application and landing dependency licenses against the release policy |
