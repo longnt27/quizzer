@@ -179,7 +179,7 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
       <Typography.Text type="secondary">Step {index + 1} of {ONBOARDING_STEPS.length}</Typography.Text>
       <Button type="primary" disabled={!requirementMet[step]} onClick={() => void next()}>{step === 'complete' ? 'Finish' : 'Continue'}</Button>
     </div>}>
-    <Progress percent={Math.round(index / (ONBOARDING_STEPS.length - 1) * 100)} showInfo={false} />
+    <Progress aria-label="Onboarding progress" percent={Math.round(index / (ONBOARDING_STEPS.length - 1) * 100)} showInfo={false} />
     <Steps size="small" current={index} direction="vertical" className="onboarding-steps"
       items={ONBOARDING_STEPS.map(item => ({ title: labels[item], status: profile.onboarding.completedSteps.includes(item) ? 'finish' : item === step ? 'process' : 'wait' }))} />
     <Divider />

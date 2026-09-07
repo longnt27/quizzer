@@ -137,7 +137,7 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
         <Button key="close" type="primary" onClick={() => setSyncDetailsOpen(false)}>Close</Button>,
       ]}>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          <Progress percent={sync.percent} status={sync.status === 'offline' ? 'exception' : sync.status === 'synced' ? 'success' : 'active'} />
+          <Progress aria-label="Library synchronization progress" percent={sync.percent} status={sync.status === 'offline' ? 'exception' : sync.status === 'synced' ? 'success' : 'active'} />
           <div>
             <Typography.Text strong>{sync.detail}</Typography.Text><br />
             <Typography.Text type="secondary">
