@@ -4,7 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db, type StoredAppProfile, type StoredGenerationJob } from '../db/db';
 import { applyServiceRecord, syncNow } from '../db/serverSync';
-import type { CoverageStrategy, GenerationOptions, GenerationProvider } from '../types';
+import type { CoverageStrategy, GenerationDifficulty, GenerationOptions, GenerationProvider } from '../types';
 import { getMessageApi } from '../utils/messageProvider';
 import { pumpGenerationQueue } from '../utils/generationQueue';
 import { getProviderDefinition, getProviderRoute, getProviderSettings } from '../utils/providerSettings';
@@ -28,6 +28,12 @@ const presets: Record<QuizPreset, { label: string; description: string; counts: 
   quick: { label: 'Quick review · 10 questions', description: 'Fast recall with a small reasoning check.', counts: [8, 1, 1, 0] },
   balanced: { label: 'Balanced learning · 20 questions', description: 'A practical mix of recall and explanation.', counts: [15, 3, 2, 0] },
   deep: { label: 'Deep practice · 30 questions', description: 'More reasoning, fill-in, and coding practice.', counts: [18, 6, 4, 2] },
+};
+
+const hardwareDefaults: Record<StoredAppProfile['hardwareProfile'], { contextBudget: number; rerank: boolean; batchSize: number }> = {
+  lite: { contextBudget: 4096, rerank: false, batchSize: 10 },
+  balanced: { contextBudget: 8192, rerank: true, batchSize: 15 },
+  max: { contextBudget: 16384, rerank: true, batchSize: 20 },
 };
 
 const uniqueTestName = (requestedName: string, usedNames: Set<string>) => {
@@ -57,6 +63,13 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
   const [multipleChoiceMode, setMultipleChoiceMode] = useState<'single' | 'multiple'>('single');
   const [coverageStrategy, setCoverageStrategy] = useState<CoverageStrategy>('balanced');
   const [customInstruction, setCustomInstruction] = useState(profile.defaultLearningInstruction ?? '');
+  const [difficulty, setDifficulty] = useState<GenerationDifficulty>('intermediate');
+  const [contextBudget, setContextBudget] = useState(hardwareDefaults[profile.hardwareProfile].contextBudget);
+  const [rerank, setRerank] = useState(hardwareDefaults[profile.hardwareProfile].rerank);
+  const [validationMaxRounds, setValidationMaxRounds] = useState(5);
+  const [minGroundingScore, setMinGroundingScore] = useState(0);
+  const [minInstructionMatches, setMinInstructionMatches] = useState(0);
+  const [jobBatchSize, setJobBatchSize] = useState(hardwareDefaults[profile.hardwareProfile].batchSize);
   const [preset, setPreset] = useState<QuizPreset>('balanced');
   const [promptProfileId, setPromptProfileId] = useState(BUILT_IN_PROMPT_PROFILE.id);
   const [approvedRouteSignature, setApprovedRouteSignature] = useState('');
@@ -109,6 +122,17 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
     setCodingCount(coding);
   };
 
+  const resetAdvancedControls = () => {
+    const defaults = hardwareDefaults[profile.hardwareProfile];
+    setDifficulty('intermediate');
+    setContextBudget(defaults.contextBudget);
+    setRerank(defaults.rerank);
+    setValidationMaxRounds(5);
+    setMinGroundingScore(0);
+    setMinInstructionMatches(0);
+    setJobBatchSize(defaults.batchSize);
+  };
+
   const create = async () => {
     if (!selected.length) return;
     if (questionCount < 1 || questionCount > 200) return message.error('Choose between 1 and 200 questions in total');
@@ -121,13 +145,15 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
       const resolved = await serviceRequest<ResolvedSettings>('/api/v1/settings');
       const hardwareProfile = resolved.values['hardware.profile'];
       const retrievalMode = resolved.values['retrieval.mode'];
-      const contextBudget = resolved.values['retrieval.contextBudget'];
-      const rerank = resolved.values['retrieval.rerank'];
+      const resolvedContextBudget = resolved.values['retrieval.contextBudget'];
+      const resolvedRerank = resolved.values['retrieval.rerank'];
       if (typeof hardwareProfile !== 'string' || !['lite', 'balanced', 'max'].includes(hardwareProfile)
         || (retrievalMode !== 'sparse' && retrievalMode !== 'hybrid')
-        || typeof contextBudget !== 'number' || typeof rerank !== 'boolean') {
+        || typeof resolvedContextBudget !== 'number' || typeof resolvedRerank !== 'boolean') {
         throw new Error('The resolved retrieval settings are invalid. Review Settings and try again.');
       }
+      const ragOverride = profile.interfaceMode === 'advanced'
+        && (contextBudget !== resolvedContextBudget || rerank !== resolvedRerank);
       const options: GenerationOptions = {
         provider, model: model.trim() || undefined, questionCount,
         questionCounts: { multipleChoice: multipleChoiceCount, fillBlank: fillBlankCount, reasoning: reasoningCount, coding: codingCount },
@@ -135,7 +161,14 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
         coverageStrategy: mode === 'combined' ? coverageStrategy : 'balanced',
         customInstruction: customInstruction.trim() || undefined,
         promptProfileSnapshot: snapshotPromptProfile(promptProfile),
-        ragProfile: { id: hardwareProfile, retrieval: retrievalMode, contextBudget, rerank },
+        ragProfile: { id: hardwareProfile, retrieval: retrievalMode, contextBudget, rerank, ...(ragOverride ? { override: true } : {}) },
+        ...(profile.interfaceMode === 'advanced' ? {
+          generationProfile: {
+            difficulty,
+            validation: { maxRounds: validationMaxRounds, minGroundingScore, minInstructionMatches },
+            batchSize: jobBatchSize,
+          },
+        } : {}),
         routeChain: proposedRoutes.map(route => ({ ...route, approved: true })),
         resolvedSettings: resolved.values,
         ...(profile.interfaceMode === 'advanced' && costCeilingDollars !== null
@@ -240,6 +273,31 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
             <label><Typography.Text strong>Reasoning</Typography.Text><InputNumber min={0} max={200} value={reasoningCount} onChange={value => setReasoningCount(value ?? 0)} /></label>
             <label><Typography.Text strong>Coding</Typography.Text><InputNumber min={0} max={200} value={codingCount} onChange={value => setCodingCount(value ?? 0)} /></label>
             <div className="question-count-total"><Typography.Text type="secondary">Total</Typography.Text><Typography.Text strong>{questionCount}</Typography.Text></div>
+          </div>}
+          {profile.interfaceMode === 'advanced' && <div>
+            <Typography.Text strong>Advanced generation controls</Typography.Text>
+            <Space direction="vertical" size="small" style={{ width: '100%', marginTop: 8 }}>
+              <Space wrap>
+                <label>Target difficulty <Select aria-label="Target difficulty" value={difficulty} onChange={setDifficulty} style={{ width: 170 }} options={[
+                  { value: 'introductory', label: 'Introductory' },
+                  { value: 'intermediate', label: 'Intermediate' },
+                  { value: 'advanced', label: 'Advanced' },
+                ]} /></label>
+                <label>Context budget <InputNumber aria-label="Per-test context budget" min={1024} max={65536} step={512} value={contextBudget} onChange={value => setContextBudget(value ?? 4096)} /></label>
+                <label>Questions per request <InputNumber aria-label="Per-test batch size" min={5} max={25} value={jobBatchSize} onChange={value => setJobBatchSize(value ?? 10)} /></label>
+              </Space>
+              <Space wrap>
+                <Checkbox checked={rerank} onChange={event => setRerank(event.target.checked)}>Rerank retrieved evidence</Checkbox>
+                <label>Validation rounds <InputNumber aria-label="Validation round limit" min={1} max={5} value={validationMaxRounds} onChange={value => setValidationMaxRounds(value ?? 5)} /></label>
+                <label>Minimum grounding score <InputNumber aria-label="Minimum grounding score" min={0} max={1} step={0.05} value={minGroundingScore} onChange={value => setMinGroundingScore(value ?? 0)} /></label>
+                <label>Minimum instruction matches <InputNumber aria-label="Minimum instruction matches" min={0} max={10} value={minInstructionMatches} onChange={value => setMinInstructionMatches(value ?? 0)} /></label>
+              </Space>
+              <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
+                Larger context budgets and reranking use more local memory. Higher validation thresholds may reject more candidates and refill fewer slots before the round limit. Requests within one test remain sequential and idempotent; shared Settings concurrency only controls separate tests.
+              </Typography.Paragraph>
+              <Typography.Text type="secondary">Estimated retrieval budget: up to {contextBudget.toLocaleString()} tokens per request · selected route receives only retrieved excerpts and relevant images.</Typography.Text>
+              <Button type="link" size="small" onClick={resetAdvancedControls} style={{ padding: 0, alignSelf: 'flex-start' }}>Reset controls to {profile.hardwareProfile} profile defaults</Button>
+            </Space>
           </div>}
           {profile.interfaceMode === 'advanced' && multipleChoiceCount > 0 && <div>
             <Typography.Text strong>Multiple-choice answer style</Typography.Text><br />
