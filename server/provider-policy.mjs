@@ -9,6 +9,7 @@ export const PROVIDER_POLICIES = Object.freeze({
   openai: Object.freeze({ label: 'OpenAI API', billing: 'usage-based', privacy: 'remote-api', defaultConcurrency: 3 }),
   openrouter: Object.freeze({ label: 'OpenRouter API', billing: 'usage-based', privacy: 'remote-api', defaultConcurrency: 3 }),
   deepseek: Object.freeze({ label: 'DeepSeek API', billing: 'usage-based', privacy: 'remote-api', defaultConcurrency: 2 }),
+  'openai-compatible': Object.freeze({ label: 'OpenAI-compatible API', billing: 'usage-based', privacy: 'remote-api', defaultConcurrency: 2 }),
 });
 
 export const providerConcurrencySettingKey = provider => `providers.${provider}.maxConcurrency`;

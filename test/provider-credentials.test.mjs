@@ -14,6 +14,14 @@ test('keeps provider credentials in memory and exposes names only', () => {
   store.set('gemini', '');
   assert.equal(store.get('gemini'), undefined);
   assert.equal(providerCredentialEnvironmentKey('deepseek'), 'QUIZZER_DEEPSEEK_API_KEY');
+  assert.equal(providerCredentialEnvironmentKey('openai-compatible'), 'QUIZZER_OPENAI_COMPATIBLE_API_KEY');
+
+  const compatStore = new ProviderCredentialStore({ QUIZZER_OPENAI_COMPATIBLE_API_KEY: 'compat-env-key' });
+  assert.deepEqual(compatStore.status(), { providers: ['openai-compatible'] });
+  assert.equal(compatStore.get('openai-compatible'), 'compat-env-key');
+  compatStore.set('openai-compatible', 'custom-key');
+  assert.equal(compatStore.get('openai-compatible'), 'custom-key');
+  assert.equal(JSON.stringify(compatStore.status()).includes('custom-key'), false);
 });
 
 test('rejects unknown providers and malformed credential collections', () => {

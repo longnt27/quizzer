@@ -156,6 +156,7 @@ test('reports and invokes local Ollama only after explicit setup confirmation', 
   const integrations = await (await authorized('/api/integrations')).json();
   assert.equal(integrations.ollama.serverReady, true);
   assert.equal(integrations.ollama.models[0].name, 'qwen3:4b');
+  assert.equal(integrations['openai-compatible'].available, true);
 
   const unconfirmedInstall = await authorized('/api/integrations/ollama/install', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
@@ -206,15 +207,16 @@ test('accepts volatile provider credentials without exposing their values', asyn
   const stored = await authorized('/api/v1/provider-credentials', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ values: { openai: 'service-secret', gemini: 'another-secret' } }),
+    body: JSON.stringify({ values: { openai: 'service-secret', gemini: 'another-secret', 'openai-compatible': 'compat-secret' } }),
   });
   assert.equal(stored.status, 200);
-  assert.deepEqual(await stored.json(), { providers: ['gemini', 'openai'] });
+  assert.deepEqual(await stored.json(), { providers: ['gemini', 'openai', 'openai-compatible'] });
 
   const status = await authorized('/api/v1/provider-credentials');
   const serialized = JSON.stringify(await status.json());
-  assert.equal(serialized, '{"providers":["gemini","openai"]}');
+  assert.equal(serialized, '{"providers":["gemini","openai","openai-compatible"]}');
   assert.equal(serialized.includes('service-secret'), false);
+  assert.equal(serialized.includes('compat-secret'), false);
 
   const rejected = await authorized('/api/v1/provider-credentials', {
     method: 'PUT',

@@ -1,5 +1,6 @@
 import { PROVIDER_POLICIES } from './provider-policy.mjs';
 import { validateOllamaModelName } from './ollama-generation.mjs';
+import { validateOpenAICompatibleModel, validateOpenAICompatibleEndpoint } from './openai-compatible-generation.mjs';
 import { validateSettings } from './settings.mjs';
 import { isDeepStrictEqual } from 'node:util';
 
@@ -79,6 +80,7 @@ export const validateProviderRoute = input => {
     throw new Error('Plugin provider routes require an installed generator plugin id as their model');
   }
   if (route.provider === 'ollama') validateOllamaModelName(route.model);
+  if (route.provider === 'openai-compatible') validateOpenAICompatibleModel(route.model);
   if (typeof route.paid !== 'boolean' || typeof route.approved !== 'boolean') throw new Error('Provider route approval and cost flags must be boolean');
   const expected = expectedRouteMetadata(route.provider);
   if (route.privacy !== expected.privacy || route.paid !== expected.paid) {
@@ -121,6 +123,7 @@ export const validateGenerationOptions = (input, { requireSnapshots = false, req
     throw new Error('Plugin generation requires an installed generator plugin id as its model');
   }
   if (options.provider === 'ollama') validateOllamaModelName(options.model);
+  if (options.provider === 'openai-compatible') validateOpenAICompatibleModel(options.model);
   boundedInteger(options.questionCount, 1, 200, 'Generation question count must be an integer from 1 to 200');
   if (options.questionCounts !== undefined) {
     const counts = requireObject(options.questionCounts, 'Generation question counts must be an object');
@@ -158,6 +161,9 @@ export const validateGenerationOptions = (input, { requireSnapshots = false, req
     requireObject(options.resolvedSettings, 'Resolved generation settings must be an object');
     validateJsonValue(options.resolvedSettings, 'Resolved generation settings');
     if (JSON.stringify(options.resolvedSettings).length > 100_000) throw new Error('Resolved generation settings are too large');
+    if (options.resolvedSettings['providers.openai-compatible.endpoint'] !== undefined) {
+      validateOpenAICompatibleEndpoint(options.resolvedSettings['providers.openai-compatible.endpoint']);
+    }
     if (requireCompleteSettings) {
       validateSettings(options.resolvedSettings, { partial: false });
       if (options.ragProfile && (options.resolvedSettings['hardware.profile'] !== options.ragProfile.id

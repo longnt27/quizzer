@@ -229,6 +229,28 @@ test('queues and controls a durable test generation job', async () => {
   assert.equal(paidCreated.job.options.routeChain[0].approved, true);
   await cli('jobs', 'cancel', paidCreated.job.id);
 
+  await assert.rejects(cli(
+    'test', 'create', '--document', documents.documents[0].id, '--provider', 'openai-compatible', '--model', 'my-model',
+  ), /--approve-paid/);
+  await assert.rejects(cli(
+    'test', 'create', '--document', documents.documents[0].id, '--provider', 'openai-compatible', '--approve-paid',
+  ), /--model/);
+  await assert.rejects(cli(
+    'test', 'create', '--document', documents.documents[0].id, '--provider', 'openai-compatible', '--model', 'my-model', '--approve-paid',
+    '--endpoint', 'http://remote.invalid/v1',
+  ), /require HTTPS/i);
+  const compatCreated = await cli(
+    'test', 'create', '--document', documents.documents[0].id, '--name', 'OpenAI compatible quiz',
+    '--questions', '2', '--provider', 'openai-compatible', '--model', 'my-custom-model', '--approve-paid',
+    '--endpoint', 'http://127.0.0.1:11434/v1',
+  );
+  assert.equal(compatCreated.job.options.provider, 'openai-compatible');
+  assert.equal(compatCreated.job.options.model, 'my-custom-model');
+  assert.equal(compatCreated.job.options.routeChain[0].paid, true);
+  assert.equal(compatCreated.job.options.routeChain[0].approved, true);
+  assert.equal(compatCreated.job.options.resolvedSettings['providers.openai-compatible.endpoint'], 'http://127.0.0.1:11434/v1');
+  await cli('jobs', 'cancel', compatCreated.job.id);
+
   const created = await cli(
     'test', 'create', '--document', documents.documents[0].id, '--name', 'Terraform fundamentals',
     '--questions', '5', '--instruction', 'Coding questions about Terraform only', '--provider', 'codex',

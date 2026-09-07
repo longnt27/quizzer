@@ -38,6 +38,66 @@ test('resolves profile, user, environment, CLI, and job settings in order', () =
   assert.deepEqual(publicProviderPolicies(resolved.values).openai, {
     billing: 'usage-based', privacy: 'remote-api', maxConcurrency: 4,
   });
+  assert.equal(providerConcurrencyLimits(resolved.values)['openai-compatible'], 2);
+  assert.deepEqual(publicProviderPolicies(resolved.values)['openai-compatible'], {
+    billing: 'usage-based', privacy: 'remote-api', maxConcurrency: 2,
+  });
+});
+
+test('resolves openai-compatible endpoint with JSONC, env, CLI, and job precedence', () => {
+  // Default fallback
+  const fallback = resolveSettings({ environment: {} });
+  assert.equal(fallback.values['providers.openai-compatible.endpoint'], 'https://api.openai.com/v1');
+  assert.equal(fallback.sources['providers.openai-compatible.endpoint'], 'default');
+
+  // JSONC override
+  const user = resolveSettings({
+    user: { 'providers.openai-compatible.endpoint': 'https://jsonc.example.com/v1' },
+    environment: {},
+  });
+  assert.equal(user.values['providers.openai-compatible.endpoint'], 'https://jsonc.example.com/v1');
+  assert.equal(user.sources['providers.openai-compatible.endpoint'], 'user');
+
+  // Environment override
+  const env1 = resolveSettings({
+    user: { 'providers.openai-compatible.endpoint': 'https://jsonc.example.com/v1' },
+    environment: { QUIZZER_OPENAI_COMPATIBLE_ENDPOINT: 'https://env1.example.com/v1' },
+  });
+  assert.equal(env1.values['providers.openai-compatible.endpoint'], 'https://env1.example.com/v1');
+  assert.equal(env1.sources['providers.openai-compatible.endpoint'], 'environment');
+
+  // Environment alias QUIZZER_OPENAI_COMPATIBLE_BASE_URL
+  const env2 = resolveSettings({
+    user: { 'providers.openai-compatible.endpoint': 'https://jsonc.example.com/v1' },
+    environment: { QUIZZER_OPENAI_COMPATIBLE_BASE_URL: 'https://env2.example.com/v1' },
+  });
+  assert.equal(env2.values['providers.openai-compatible.endpoint'], 'https://env2.example.com/v1');
+
+  // Environment alias QUIZZER_OPENAI_COMPATIBLE_BASE_ENDPOINT
+  const env3 = resolveSettings({
+    user: { 'providers.openai-compatible.endpoint': 'https://jsonc.example.com/v1' },
+    environment: { QUIZZER_OPENAI_COMPATIBLE_BASE_ENDPOINT: 'https://env3.example.com/v1' },
+  });
+  assert.equal(env3.values['providers.openai-compatible.endpoint'], 'https://env3.example.com/v1');
+
+  // CLI override beats environment and user
+  const cli = resolveSettings({
+    user: { 'providers.openai-compatible.endpoint': 'https://jsonc.example.com/v1' },
+    environment: { QUIZZER_OPENAI_COMPATIBLE_ENDPOINT: 'https://env1.example.com/v1' },
+    cli: { 'providers.openai-compatible.endpoint': 'https://cli.example.com/v1' },
+  });
+  assert.equal(cli.values['providers.openai-compatible.endpoint'], 'https://cli.example.com/v1');
+  assert.equal(cli.sources['providers.openai-compatible.endpoint'], 'cli');
+
+  // Job override beats CLI
+  const job = resolveSettings({
+    user: { 'providers.openai-compatible.endpoint': 'https://jsonc.example.com/v1' },
+    environment: { QUIZZER_OPENAI_COMPATIBLE_ENDPOINT: 'https://env1.example.com/v1' },
+    cli: { 'providers.openai-compatible.endpoint': 'https://cli.example.com/v1' },
+    job: { 'providers.openai-compatible.endpoint': 'http://127.0.0.1:11434/v1' },
+  });
+  assert.equal(job.values['providers.openai-compatible.endpoint'], 'http://127.0.0.1:11434/v1');
+  assert.equal(job.sources['providers.openai-compatible.endpoint'], 'job');
 });
 
 test('validates types, ranges, unknown settings, and secret-like keys', () => {
@@ -47,6 +107,9 @@ test('validates types, ranges, unknown settings, and secret-like keys', () => {
   assert.deepEqual(validateSettings({ 'retrieval.vectorIndexPlugin': 'dev.quizzer.vector' }), { 'retrieval.vectorIndexPlugin': 'dev.quizzer.vector' });
   assert.deepEqual(validateSettings({ 'retrieval.planning': 'multi-query' }), { 'retrieval.planning': 'multi-query' });
   assert.deepEqual(validateSettings({ 'retrieval.hydeModel': 'library/qwen3:4b' }), { 'retrieval.hydeModel': 'library/qwen3:4b' });
+  assert.deepEqual(validateSettings({ 'providers.openai-compatible.endpoint': 'http://127.0.0.1:11434/v1' }), { 'providers.openai-compatible.endpoint': 'http://127.0.0.1:11434/v1' });
+  assert.deepEqual(validateSettings({ 'providers.openai-compatible.endpoint': 'https://api.openai.com/v1' }), { 'providers.openai-compatible.endpoint': 'https://api.openai.com/v1' });
+  assert.throws(() => validateSettings({ 'providers.openai-compatible.endpoint': 'http://api.openai.com/v1' }), /require HTTPS/i);
   assert.throws(() => validateSettings({ 'retrieval.hydeModel': '../remote' }), /invalid value/);
   assert.throws(() => validateSettings({ 'retrieval.planning': 'remote-model' }), /must be one of/);
   assert.throws(() => validateSettings({ 'generation.concurrency': 99 }), /from 1 to 10/);

@@ -49,6 +49,21 @@ test('validates complete generation snapshots and provider policy metadata', () 
   assert.equal(validateProviderRoute(ollamaOptions.routeChain[0]), ollamaOptions.routeChain[0]);
   assert.throws(() => validateGenerationOptions({ ...ollamaOptions, model: undefined, routeChain: undefined }), /Ollama model/);
   assert.throws(() => validateProviderRoute({ ...ollamaOptions.routeChain[0], privacy: 'remote-api' }), /privacy and cost policy/);
+  const compatOptions = {
+    ...value,
+    provider: 'openai-compatible', model: 'custom-model',
+    routeChain: [{ provider: 'openai-compatible', model: 'custom-model', privacy: 'remote-api', paid: true, approved: true }],
+  };
+  assert.equal(validateGenerationOptions(compatOptions), compatOptions);
+  assert.equal(validateProviderRoute(compatOptions.routeChain[0]), compatOptions.routeChain[0]);
+  assert.throws(() => validateGenerationOptions({ ...compatOptions, model: undefined, routeChain: undefined }), /explicit model/i);
+  assert.throws(() => validateProviderRoute({ ...compatOptions.routeChain[0], model: undefined }), /explicit model/i);
+  assert.throws(() => validateProviderRoute({ ...compatOptions.routeChain[0], privacy: 'local' }), /privacy and cost policy/);
+  assert.throws(() => validateProviderRoute({ ...compatOptions.routeChain[0], paid: false }), /privacy and cost policy/);
+  assert.throws(() => validateGenerationOptions({
+    ...compatOptions,
+    resolvedSettings: { ...resolvedSettings, 'providers.openai-compatible.endpoint': 'http://remote.invalid/v1' },
+  }), /require HTTPS/i);
   assert.throws(() => validateGenerationOptions({
     ...value, questionCounts: { multipleChoice: 1, fillBlank: 0, reasoning: 0, coding: 0 },
   }), /sum to questionCount/);
