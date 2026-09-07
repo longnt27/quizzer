@@ -466,6 +466,27 @@ test('approves cost recovery exactly once for a deterministic prior attempt', ()
   assert.throws(() => approveGenerationCostRecovery('recovery-missing-history', { reason: 'missing history', confirmed: true }), /not present in accounting history/);
 });
 
+test('resumes legacy journals with consecutive ceiling raises using only the latest authorization', () => {
+  const options = { ...generationOptions(), costCeilingMicroUsd: 20 };
+  const id = 'legacy-consecutive-ceiling-job';
+  const firstRaise = { event: 'ceiling-raised', at: 10, previousCeilingMicroUsd: 3, newCeilingMicroUsd: 10, reason: 'first approval' };
+  const secondRaise = { event: 'ceiling-raised', at: 11, previousCeilingMicroUsd: 10, newCeilingMicroUsd: 20, reason: 'latest approval' };
+  putRecord('generationJobs', id, {
+    id, testId: 'legacy-consecutive-ceiling-test', name: 'Legacy consecutive ceiling', createdAt: 1, updatedAt: 1,
+    status: 'paused', errorCode: 'cost_ceiling', documentIds: ['accounting-doc'], options, questions: [], rejected: 0, rounds: {},
+    usageSummary: { inputTokens: 0, outputTokens: 0, totalTokens: 0, finalizedCostMicroUsd: 0, reservedCostMicroUsd: 0 },
+    usageAudit: [firstRaise, secondRaise],
+  });
+  assert.throws(() => raiseGenerationCostCeiling(id, { newCeilingMicroUsd: 30, reason: 'ambiguous', confirmed: true }), /already pending/);
+  const resumed = controlGenerationJob(id, 'resume', {}, 12);
+  assert.equal(resumed.data.status, 'queued');
+  assert.deepEqual(resumed.data.usageAudit[0], firstRaise);
+  assert.deepEqual(resumed.data.usageAudit[1], secondRaise);
+  assert.deepEqual(resumed.data.usageAudit[2], {
+    event: 'ceiling-resumed', at: 12, currentCeilingMicroUsd: 20, ceilingRaiseIndex: 1, ceilingRaiseAt: 11,
+  });
+});
+
 test('covers storage validation branches around sync, migration, leases, and completion', async () => {
   assert.throws(() => syncStorage({ cursor: -1 }), /Invalid storage sync request/);
   assert.throws(() => syncStorage({ migration: { id: 'bad-migration-0001', expectedRecords: 0, expectedHash: '0'.repeat(64) } }), /requires bootstrap/);

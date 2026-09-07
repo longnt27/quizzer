@@ -583,6 +583,9 @@ export const raiseGenerationCostCeiling = (id, {
   if (currentCeiling === undefined) throw new Error('An unlimited generation job has no ceiling to raise');
   if (newCeilingMicroUsd <= currentCeiling) throw new Error('A raised cost ceiling must be greater than its current ceiling');
   const { summary, audit } = accountingState(existing.data);
+  if (unmatchedCeilingRaises(audit).some(({ item }) => item.newCeilingMicroUsd === currentCeiling)) {
+    throw new Error('A cost ceiling raise is already pending; resume the job before raising it again');
+  }
   const nextOptions = { ...existing.data.options, costCeilingMicroUsd: newCeilingMicroUsd };
   const nextAudit = [...audit, {
     event: 'ceiling-raised', at: now, previousCeilingMicroUsd: currentCeiling,
@@ -773,10 +776,11 @@ export const controlGenerationJob = (id, action, changes = {}, now = Date.now())
     const { summary, audit } = accountingState(existing.data);
     const currentCeiling = accountingCeiling(existing.data);
     const pendingRaises = unmatchedCeilingRaises(audit);
-    if (currentCeiling === undefined || pendingRaises.length !== 1 || pendingRaises[0].item.newCeilingMicroUsd !== currentCeiling) {
-      throw new Error('Cost ceiling resume requires one matching unmatched ceiling raise');
+    const matchingRaise = pendingRaises.findLast(({ item }) => item.newCeilingMicroUsd === currentCeiling);
+    if (currentCeiling === undefined || !matchingRaise) {
+      throw new Error('Cost ceiling resume requires one matching unmatched ceiling raise (the latest matching authorization)');
     }
-    const [{ item: raise, index: ceilingRaiseIndex }] = pendingRaises;
+    const { item: raise, index: ceilingRaiseIndex } = matchingRaise;
     usageAudit = [...audit, {
       event: 'ceiling-resumed', at: now, currentCeilingMicroUsd: currentCeiling,
       ceilingRaiseIndex, ceilingRaiseAt: raise.at,
