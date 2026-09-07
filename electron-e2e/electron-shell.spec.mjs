@@ -37,8 +37,8 @@ test.describe('Quizzer desktop shell', () => {
 
   test.afterEach(async () => {
     if (app) {
-      await app.evaluate(({ app: electronApp }) => electronApp.quit());
-      await app.close();
+      await app.evaluate(({ app: electronApp }) => electronApp.quit()).catch(() => {});
+      await app.close().catch(() => {});
       app = undefined;
     }
     if (userDataDirectory) {
@@ -50,6 +50,7 @@ test.describe('Quizzer desktop shell', () => {
 
   test('loads the real custom-protocol renderer with a narrow isolated preload and navigates Home', async () => {
     const page = await app.firstWindow();
+    assert.equal(await app.evaluate(({ app: electronApp }) => electronApp.isPackaged), false);
     await expect(page).toHaveURL('quizzer://app/');
     await expect(page.getByRole('heading', { name: 'Welcome to Quizzer' })).toBeVisible();
 

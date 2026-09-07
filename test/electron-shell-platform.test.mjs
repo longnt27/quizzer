@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   electronExecutableFromPackage,
+  packagedElectronExecutable,
   playwrightCommandForPlatform,
   spawnOptionsForPlatform,
   terminationPlanForPlatform,
@@ -36,6 +37,17 @@ test('uses Windows taskkill tree termination instead of POSIX signals', () => {
 test('resolves a native Electron executable from the package instead of a command shim', () => {
   assert.equal(electronExecutableFromPackage(() => '/opt/quizzer/node_modules/electron/dist/electron'), '/opt/quizzer/node_modules/electron/dist/electron');
   assert.throws(() => electronExecutableFromPackage(() => 'C:\\quizzer\\node_modules\\.bin\\electron.cmd'), /native Electron executable/);
+});
+
+test('resolves packaged application executables for every supported platform and architecture', () => {
+  assert.equal(packagedElectronExecutable({ projectDirectory: '/workspace/quizzer', platform: 'darwin', architecture: 'arm64' }),
+    '/workspace/quizzer/out/Quizzer-darwin-arm64/Quizzer.app/Contents/MacOS/Quizzer');
+  assert.equal(packagedElectronExecutable({ projectDirectory: '/workspace/quizzer', platform: 'linux', architecture: 'x64' }),
+    '/workspace/quizzer/out/Quizzer-linux-x64/quizzer');
+  assert.equal(packagedElectronExecutable({ projectDirectory: 'C:\\workspace\\quizzer', platform: 'win32', architecture: 'arm64' }),
+    'C:\\workspace\\quizzer\\out\\Quizzer-win32-arm64\\quizzer.exe');
+  assert.throws(() => packagedElectronExecutable({ projectDirectory: '/workspace', platform: 'aix', architecture: 'x64' }), /Unsupported.*platform/);
+  assert.throws(() => packagedElectronExecutable({ projectDirectory: '/workspace', platform: 'linux', architecture: 'ia32' }), /Unsupported.*architecture/);
 });
 
 test('wraps only Linux Playwright smoke in xvfb when requested', () => {
