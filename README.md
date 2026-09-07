@@ -205,7 +205,7 @@ On macOS, double-click `start-tailscale.command` in Finder. On Windows, double-c
 
 The same launcher is available from a terminal as `npm run tailscale`. It binds Vite to the Tailscale interface rather than exposing Quizzer on every LAN interface.
 
-The launcher creates or reuses a private service token in Quizzer's application-data directory and supplies it to both the loopback service and the renderer. Requests made through the remote Vite page are therefore authenticated without displaying the token in the launcher output. The service remains bound to `127.0.0.1`; only Vite is reachable over the tailnet.
+The launcher creates or reuses a private service token in Quizzer's application-data directory and supplies it to the loopback service and Vite's server-side API proxy. The proxy adds the bearer credential to `/api` requests, replacing any browser-supplied credential, without placing the token in the renderer bundle or launcher output. The service remains bound to `127.0.0.1`; only Vite is reachable over the tailnet.
 
 ## Provider setup
 
