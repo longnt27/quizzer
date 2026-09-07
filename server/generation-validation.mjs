@@ -3,7 +3,10 @@ import { validateOllamaModelName } from './ollama-generation.mjs';
 import { validateOpenAICompatibleModel, validateOpenAICompatibleEndpoint } from './openai-compatible-generation.mjs';
 import { validateSettings } from './settings.mjs';
 import { isDeepStrictEqual } from 'node:util';
-import { validateCostCeiling, routePricing } from './generation-cost.mjs';
+import {
+  addUsageSummary, assertCostWithinCeiling, emptyUsageSummary, estimateRouteCost, normalizeProviderUsage, normalizeUsageSummary,
+  validateCostCeiling, validateMicroUsd, validateUsageInteger, routePricing,
+} from './generation-cost.mjs';
 
 const generationProviders = new Set(Object.keys(PROVIDER_POLICIES));
 const questionTypes = new Set(['multiple-choice', 'fill-blank', 'reasoning', 'coding']);
@@ -253,6 +256,91 @@ export const validateProviderAttempts = (input, options) => {
   return input;
 };
 
+const accountingEventKeys = new Set([
+  'event', 'attemptId', 'at', 'routeIndex', 'provider', 'model', 'reservedCostMicroUsd',
+  'finalizedCostMicroUsd', 'reservationReleasedMicroUsd', 'reservationRetained', 'usage',
+  'previousCeilingMicroUsd', 'newCeilingMicroUsd', 'reason',
+]);
+const accountingAttemptId = value => {
+  if (!boundedText(value, 1, 100) || !/^[A-Za-z0-9-]+$/.test(value)) throw new Error('Generation accounting attempt id is invalid');
+  return value;
+};
+
+/* Validates the append-only accounting journal and derives its exact summary. */
+export const validateGenerationUsageAudit = (input, { options, summary } = {}) => {
+  if (!Array.isArray(input) || input.length > 2_000) throw new Error('Generation usage audit must be an array of at most 2000 events');
+  const reservations = new Map();
+  const finalized = new Set();
+  let lastRaisedCeiling;
+  let derived = { ...emptyUsageSummary };
+  for (const item of input) {
+    requireObject(item, 'Generation usage audit event must be an object');
+    rejectUnknown(item, accountingEventKeys, 'Generation usage audit event');
+    boundedInteger(item.at, 0, Number.MAX_SAFE_INTEGER, 'Generation accounting event time is invalid');
+    if (item.event === 'ceiling-raised') {
+      rejectUnknown(item, new Set(['event', 'at', 'previousCeilingMicroUsd', 'newCeilingMicroUsd', 'reason']), 'Generation ceiling audit event');
+      validateMicroUsd(item.previousCeilingMicroUsd, 'Previous cost ceiling');
+      validateMicroUsd(item.newCeilingMicroUsd, 'New cost ceiling');
+      if (item.newCeilingMicroUsd <= item.previousCeilingMicroUsd) throw new Error('A raised cost ceiling must be greater than its previous ceiling');
+      if (lastRaisedCeiling !== undefined && item.previousCeilingMicroUsd !== lastRaisedCeiling) throw new Error('Cost ceiling audit transitions are not contiguous');
+      if (!boundedText(item.reason, 1, 500)) throw new Error('Cost ceiling raise reason is invalid');
+      lastRaisedCeiling = item.newCeilingMicroUsd;
+      continue;
+    }
+    accountingAttemptId(item.attemptId);
+    boundedInteger(item.routeIndex, 0, 999, 'Generation accounting route index is invalid');
+    if (!generationProviders.has(item.provider)) throw new Error('Generation accounting provider is invalid');
+    if (item.model !== undefined && !boundedText(item.model, 1, 200)) throw new Error('Generation accounting model is invalid');
+    const eventRoute = options?.routeChain?.[item.routeIndex];
+    if (eventRoute && (eventRoute.provider !== item.provider || (eventRoute.model ?? undefined) !== (item.model ?? undefined))) {
+      throw new Error('Generation accounting event does not match its route-chain entry');
+    }
+    if (item.event === 'reserved') {
+      if (reservations.has(item.attemptId) || finalized.has(item.attemptId)) throw new Error('Generation accounting attempt was reserved more than once');
+      validateMicroUsd(item.reservedCostMicroUsd, 'Reserved cost');
+      if (item.reservationRetained !== undefined || item.finalizedCostMicroUsd !== undefined || item.usage !== undefined) throw new Error('Reservation event contains finalization fields');
+      reservations.set(item.attemptId, item.reservedCostMicroUsd);
+      derived = addUsageSummary(derived, undefined, 0, item.reservedCostMicroUsd);
+    } else if (item.event === 'finalized') {
+      if (!reservations.has(item.attemptId) || finalized.has(item.attemptId)) throw new Error('Generation accounting finalization has no open reservation');
+      const reservation = reservations.get(item.attemptId);
+      validateMicroUsd(item.finalizedCostMicroUsd, 'Finalized cost');
+      validateMicroUsd(item.reservationReleasedMicroUsd, 'Released reservation');
+      if (typeof item.reservationRetained !== 'boolean') throw new Error('Generation accounting reservation state is invalid');
+      let usage;
+      if (item.usage !== undefined) usage = normalizeProviderUsage(item.usage);
+      if (item.reservationReleasedMicroUsd > reservation) throw new Error('Generation accounting released reservation exceeds its reservation');
+      const estimatedCost = usage && eventRoute ? estimateRouteCost(eventRoute, usage) : undefined;
+      if (estimatedCost === undefined) {
+        if (item.reservationReleasedMicroUsd !== 0 || !item.reservationRetained || item.finalizedCostMicroUsd !== 0) throw new Error('Unknown usage must retain its full reservation');
+      } else if (item.reservationReleasedMicroUsd !== reservation || item.reservationRetained || item.finalizedCostMicroUsd !== estimatedCost) {
+        throw new Error('Finalized accounting does not match the route pricing');
+      }
+      if (item.reservationReleasedMicroUsd > derived.reservedCostMicroUsd) throw new Error('Generation accounting reservation balance is invalid');
+      derived = addUsageSummary(derived, usage, item.finalizedCostMicroUsd, 0);
+      // Reservations are outstanding balances, so finalization releases the
+      // original reservation after the append-only event is validated.
+      derived.reservedCostMicroUsd -= item.reservationReleasedMicroUsd;
+      reservations.delete(item.attemptId);
+      finalized.add(item.attemptId);
+    } else {
+      throw new Error('Generation usage audit event type is invalid');
+    }
+  }
+  if (lastRaisedCeiling !== undefined && options?.costCeilingMicroUsd !== lastRaisedCeiling) throw new Error('Generation cost ceiling does not match its audit');
+  if (summary !== undefined) {
+    const normalized = normalizeUsageSummary(summary);
+    if (JSON.stringify(normalized) !== JSON.stringify(derived)) throw new Error('Generation usage summary does not match its audit');
+  }
+  return derived;
+};
+
+export const validateGenerationAccounting = (summary, audit, options) => {
+  const derived = validateGenerationUsageAudit(audit ?? [], { options, summary });
+  assertCostWithinCeiling(options?.costCeilingMicroUsd, derived.finalizedCostMicroUsd, derived.reservedCostMicroUsd);
+  return derived;
+};
+
 export const validateProviderAttemptTransition = (input, previous, options, acceptedCount) => {
   validateProviderAttempts(input, options);
   const prior = previous ?? [];
@@ -341,7 +429,6 @@ export const validateNewGenerationJob = input => {
   const job = requireObject(input, 'Generation job must be an object');
   rejectUnknown(job, new Set([
     'id', 'testId', 'name', 'createdAt', 'updatedAt', 'status', 'documentIds', 'options', 'questions', 'rejected', 'rounds',
-    'costCeilingMicroUsd', 'usageSummary', 'usageAudit',
   ]), 'New generation job');
   for (const key of ['id', 'testId']) if (!boundedText(job[key], 1, 100)) throw new Error(`Generation job ${key} is invalid`);
   if (!boundedText(job.name, 1, 200)) throw new Error('Generation job name must contain 1-200 characters');
@@ -352,14 +439,6 @@ export const validateNewGenerationJob = input => {
     throw new Error('Generation job document ids are invalid');
   }
   validateGenerationOptions(job.options, { requireSnapshots: true, requireCompleteSettings: true });
-  if (job.costCeilingMicroUsd !== undefined) validateCostCeiling(job.costCeilingMicroUsd);
-  if (job.usageSummary !== undefined) {
-    requireObject(job.usageSummary, 'Generation usage summary must be an object');
-    for (const key of ['inputTokens', 'outputTokens', 'totalTokens', 'finalizedCostMicroUsd', 'reservedCostMicroUsd']) {
-      boundedInteger(job.usageSummary[key], 0, Number.MAX_SAFE_INTEGER, `Generation usage ${key} is invalid`);
-    }
-  }
-  if (job.usageAudit !== undefined && (!Array.isArray(job.usageAudit) || job.usageAudit.length > 1000)) throw new Error('Generation usage audit is invalid');
   if (!Array.isArray(job.questions) || job.questions.length) throw new Error('New generation jobs must start without questions');
   if (job.rejected !== 0) throw new Error('New generation jobs must start without rejected questions');
   if (!isObject(job.rounds) || Object.keys(job.rounds).length) throw new Error('New generation jobs must start without generation rounds');
