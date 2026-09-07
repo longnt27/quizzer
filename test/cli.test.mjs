@@ -231,6 +231,14 @@ test('queues and controls a durable test generation job', async () => {
   );
   assert.equal(paidCreated.job.options.routeChain[0].paid, true);
   assert.equal(paidCreated.job.options.routeChain[0].approved, true);
+  const ceilingCreated = await cli(
+    'test', 'create', '--document', documents.documents[0].id, '--name', 'Capped remote quiz',
+    '--questions', '2', '--provider', 'openai', '--model', 'gpt-5-mini', '--approve-paid', '--cost-ceiling', '$1.25',
+  );
+  assert.equal(ceilingCreated.job.options.costCeilingMicroUsd, 1_250_000);
+  assert.equal((await cli('jobs', 'show', ceilingCreated.job.id)).accounting.summary.finalizedCostMicroUsd, 0);
+  assert.equal((await cli('jobs', 'list')).jobs.find(job => job.id === ceilingCreated.job.id).accounting.summary.reservedCostMicroUsd, 0);
+  await cli('jobs', 'cancel', ceilingCreated.job.id);
   await cli('jobs', 'cancel', paidCreated.job.id);
 
   await assert.rejects(cli(

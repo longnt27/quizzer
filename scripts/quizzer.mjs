@@ -36,8 +36,9 @@ Usage:
   quizzer index <document-id>|--all [--force] [--idempotency-key key] [--json]
   quizzer retrieve <query> [--document <id>] [--tag <tag>] [--limit 10] [--json]
   quizzer test create --document <id> [--document <id>] [--name name] [--questions 20]
-                      [--instruction text] [--provider provider] [--model model] [--endpoint url] [--approve-paid] [--json]
-  quizzer jobs list|show <id>|cancel <id> [--json]
+                      [--instruction text] [--provider provider] [--model model] [--endpoint url] [--approve-paid]
+                      [--cost-ceiling USD|unlimited] [--json]
+  quizzer jobs list|show <id>|cancel <id>|raise-ceiling <id> --cost-ceiling USD --reason text --confirm-cost [--resume] [--json]
   quizzer jobs resume <id> [--provider provider] [--model model] [--endpoint url] [--approve-paid] [--json]
   quizzer resume <job-id> [--provider provider] [--model model] [--endpoint url] [--approve-paid] [--json]
   quizzer migrations list [--json]
@@ -51,7 +52,7 @@ Usage:
 const parseArguments = arguments_ => {
   const positionals = [];
   const flags = new Map();
-  const booleanFlags = new Set(['all', 'approve-paid', 'force', 'help', 'json', 'registry', 'yes']);
+  const booleanFlags = new Set(['all', 'approve-paid', 'confirm-cost', 'force', 'help', 'json', 'registry', 'resume', 'yes']);
   for (let index = 0; index < arguments_.length; index += 1) {
     const argument = arguments_[index];
     if (!argument.startsWith('--')) { positionals.push(argument); continue; }
@@ -116,6 +117,15 @@ const writeResult = (value, human) => {
   else process.stdout.write(`${human}\n`);
 };
 const fail = message => { throw new Error(message); };
+const parseCostCeiling = raw => {
+  if (raw === undefined || raw === null || String(raw).trim().toLowerCase() === 'unlimited') return undefined;
+  const value = String(raw).trim().replace(/^\$/, '');
+  if (!/^\d{1,12}(?:\.\d{1,6})?$/.test(value)) fail('--cost-ceiling must be a non-negative USD amount (for example 1.50) or unlimited');
+  const [whole, fraction = ''] = value.split('.');
+  const micros = BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, '0'));
+  if (micros > BigInt(Number.MAX_SAFE_INTEGER)) fail('--cost-ceiling is too large');
+  return Number(micros);
+};
 const providerPolicy = provider => PROVIDER_POLICIES[provider] ?? fail(`Unsupported provider: ${provider}`);
 const requirePaidApproval = (provider, policy) => {
   if (policy.billing === 'usage-based' && flag('approve-paid') !== 'true') {
@@ -471,6 +481,7 @@ const runTestCreate = async () => {
   const jobId = randomUUID();
   const name = flag('name', `Quiz ${new Date(now).toLocaleDateString()}`);
   const customInstruction = flag('instruction', undefined);
+  const costCeilingMicroUsd = parseCostCeiling(flag('cost-ceiling', undefined));
   const privacy = policy.privacy;
   const job = {
     id: jobId,
@@ -484,6 +495,7 @@ const runTestCreate = async () => {
       provider,
       ...(model ? { model } : {}),
       questionCount,
+      ...(costCeilingMicroUsd === undefined ? {} : { costCeilingMicroUsd }),
       ...(customInstruction ? { customInstruction } : {}),
       ragProfile: {
         id: settings.profile,
@@ -506,7 +518,7 @@ const runJobs = async (action, explicitId) => {
   const database = await storage();
   if (action === 'list') {
     const jobs = [
-      ...database.listRecords('generationJobs').map(record => ({ ...record.data, kind: 'generation' })),
+      ...database.listRecords('generationJobs').map(record => ({ ...record.data, kind: 'generation', accounting: database.getGenerationAccounting(record.id) })),
       ...database.listRecords('indexJobs').map(record => record.data),
     ].sort((left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0));
     return writeResult({ jobs }, jobs.length ? jobs.map(job => `${job.id}  ${job.status}  ${job.kind === 'index' ? `Index ${job.documentIds.length} document(s)` : job.name}`).join('\n') : 'No jobs');
@@ -517,13 +529,26 @@ const runJobs = async (action, explicitId) => {
   const indexRecord = generationRecord ? undefined : database.getRecord('indexJobs', id);
   const record = generationRecord ?? indexRecord;
   if (!record) fail(`Job not found: ${id}`);
+  if (action === 'raise-ceiling') {
+    const newCeilingMicroUsd = parseCostCeiling(flag('cost-ceiling', undefined));
+    if (newCeilingMicroUsd === undefined) fail('jobs raise-ceiling requires a finite --cost-ceiling');
+    const reason = flag('reason', undefined);
+    if (!reason) fail('jobs raise-ceiling requires --reason');
+    if (flag('confirm-cost') !== 'true') fail('Raising a cost ceiling requires explicit confirmation. Re-run with --confirm-cost.');
+    const raised = database.raiseGenerationCostCeiling(id, { newCeilingMicroUsd, reason, confirmed: true });
+    if (flag('resume') === 'true') {
+      const resumed = database.controlGenerationJob(id, 'resume', { resetRounds: false }).data;
+      return writeResult({ job: resumed, accounting: database.getGenerationAccounting(id) }, `Raised ceiling and queued ${resumed.name}`);
+    }
+    return writeResult({ job: raised.data, accounting: database.getGenerationAccounting(id) }, `Raised ceiling for ${raised.data.name}`);
+  }
   if (action === 'show') return writeResult(
-    { job: record.data },
+    { job: record.data, ...(generationRecord ? { accounting: database.getGenerationAccounting(id) } : {}) },
     indexRecord
       ? `Index ${record.data.documentIds.length} document(s)\nStatus: ${record.data.status}\nCompleted: ${record.data.completedDocumentIds.length}`
       : `${record.data.name}\nStatus: ${record.data.status}\nAccepted: ${record.data.questions?.length ?? 0}`,
   );
-  if (action !== 'resume' && action !== 'cancel') fail('Use jobs list, show, resume, or cancel');
+  if (action !== 'resume' && action !== 'cancel') fail('Use jobs list, show, resume, cancel, or raise-ceiling');
   if (indexRecord) {
     if (action === 'cancel') {
       const job = cancelIndexJob(indexRecord.data);
