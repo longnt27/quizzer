@@ -1,16 +1,33 @@
 # Quizzer
 
-Quizzer is a local-first study application that turns a reusable document library into validated mixed-format quizzes. Documents are uploaded and extracted once, tagged for later discovery, and then selected whenever you want to create either separate quizzes or one combined quiz.
+[![CI](https://github.com/Somethings1/quizzer/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Somethings1/quizzer/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Somethings1/quizzer?include_prereleases&sort=semver)](https://github.com/Somethings1/quizzer/releases)
+[![License](https://img.shields.io/github/license/Somethings1/quizzer)](LICENSE)
+[![Security policy](https://img.shields.io/badge/security-policy-2ea44f)](SECURITY.md)
 
-> **Project status:** active development. Local data and the generation pipeline are usable, but this project has not yet published a stable release or completed a security audit.
+Quizzer is a local-first desktop application and CLI that turns your PDF, Markdown, and text library into evidence-backed quizzes. Import a document once, then create focused tests with citations, custom learning goals, durable progress, and your choice of local models, signed-in coding agents, or API providers.
 
-The Quizzer 1.0 foundation now includes a resumable first-run walkthrough, Simple and Advanced creation modes, hardware-aware Lite/Balanced/Max recommendations, per-test learning instructions, source-span provenance, and a separately deployable product site. Existing libraries bypass forced onboarding and receive a dismissible upgrade summary instead.
+> [!IMPORTANT]
+> Quizzer is preparing its first public beta (`1.0.0-beta.1`). No signed installer has been published yet. Until one appears on [GitHub Releases](https://github.com/Somethings1/quizzer/releases), build from source and do not rely on the installer commands below. Pushing a version tag validates and builds artifacts; a maintainer must separately approve the release workflow's publish action.
 
-Production installers remain a release gate: their stable URLs become active only after CI has produced, signed, notarized, and published every artifact in the versioned [release manifest schema](release/release-manifest.schema.json). Until then, download actions fall back to GitHub Releases rather than guessing an artifact URL.
+The current beta foundation includes a resumable first-run walkthrough, reversible Simple and Advanced modes, hardware-aware Lite/Balanced/Max profiles, per-test learning instructions, source-span provenance, and crash-safe indexing and generation. Existing libraries are preserved during upgrade and are not forced through first-run setup.
 
-## Install Quizzer
+## Contents
 
-After a validated release is published, macOS and Linux users can install the desktop app and standalone CLI per-user with:
+- [Install](#install)
+- [Supported systems](#supported-systems)
+- [What Quizzer does](#what-quizzer-does)
+- [Build from source](#build-from-source)
+- [Provider setup](#provider-setup)
+- [Creating a quiz](#creating-a-quiz)
+- [Data and privacy](#data-and-privacy)
+- [CLI and development commands](#cli-and-development-commands)
+- [Contributing and support](#contributing-and-support)
+- [Security](#security)
+
+## Install
+
+Once a validated release is published, macOS and Linux users can install the desktop app and standalone CLI per-user with:
 
 ```sh
 curl -fsSL https://github.com/Somethings1/quizzer/releases/latest/download/install.sh | sh
@@ -22,9 +39,19 @@ On Windows, run this in PowerShell:
 irm https://github.com/Somethings1/quizzer/releases/latest/download/install.ps1 | iex
 ```
 
-These installers do not require Node.js, Python, or Git. They select the current x64 or arm64 artifacts, verify the canonical Ed25519 release metadata and SHA-256 checksum, require Quizzer's pinned Apple Team ID or Windows signing-certificate SHA-256 before executing a downloaded verifier, install `quizzer` on the user PATH, register the desktop application, and launch onboarding. Existing application directories are retained with a timestamped `.previous-*` name on Unix-like systems for rollback.
+The scripts do not require Node.js, Python, or Git. They select the correct x64 or arm64 build, verify the Ed25519-signed release manifest and SHA-256 checksum, require the pinned Apple Team ID or Windows certificate fingerprint before running a downloaded verifier, install `quizzer` on the user PATH, register the desktop application, and launch onboarding.
 
-The two commands above are the only supported distribution entrypoints: POSIX `sh` on macOS/Linux and PowerShell on Windows. Quizzer is not published through npm, Homebrew, WinGet, or another package-manager repository. These scripts download signed GitHub Release payloads directly, so native packages may still appear in the release bundle for installation and signed updates without requiring a package manager.
+These scripts are the only supported distribution entrypoints. Quizzer is not published through npm, Homebrew, WinGet, or another package-manager repository. Native packages in a release bundle exist for installation and signed updates; users do not need a package manager.
+
+## Supported systems
+
+| Operating system | Architectures | Supported baseline |
+| --- | --- | --- |
+| Windows | x64, arm64 | Windows 10/11 on x64; Windows 11 on arm64 |
+| macOS | Intel x64, Apple silicon | macOS 13 or newer |
+| Linux | x64, arm64 | Current 64-bit Ubuntu/Debian and Fedora-class distributions |
+
+Quizzer does not support 32-bit or obsolete operating systems. Lite is the CPU-only baseline. Local generation in Balanced or Max depends on the selected model's RAM, storage, and acceleration requirements; remote and signed-in agent providers remain available on lower-spec hardware.
 
 ### Signed desktop updates and verified staging
 
@@ -49,44 +76,16 @@ Quizzer includes an in-app signed update workflow designed for safety and defens
 | --- | --- |
 | ![Responsive quiz-taking interface on mobile](docs/screenshots/mobile-quiz-dark.jpg) | ![Responsive test summary on mobile](docs/screenshots/mobile-summary-dark.jpg) |
 
-## Features
+## What Quizzer does
 
-- Local document library with PDF, Markdown, and text uploads
-- Visible extraction progress with per-file retry on failure
-- Responsive mobile navigation and quiz layouts
-- Persistent light and dark themes
-- Tags and tag-aware document search
-- Extracted-content viewer
-- Separate quiz generation for each selected document
-- Combined quiz generation across selected documents
-- Configurable question count and provider model override
-- Configurable mix of multiple-choice, fill-in-the-blank, reasoning, and coding questions
-- Single-answer or multiple-correct-answer generation for multiple-choice questions
-- Fill-in-the-blank grading across generated variants, shorthand, symbols, and omitted repeated qualifiers
-- Learner self-assessment against reference answers for reasoning and coding questions
-- Practice mode with immediate per-question answers and explanations
-- Automatic recovery of unfinished test and practice sessions
-- In-app Plugins & models panel for setup and defaults
-- Codex, Claude Code, and Antigravity agent integrations using existing CLI authentication
-- Local Ollama and llama.cpp generation plus Gemini, Anthropic Claude, OpenAI, OpenRouter, DeepSeek, and custom OpenAI-compatible API integrations
-- Structured provider output and runtime question validation
-- Live generation progress by test, question type, and retry round
-- Persistent background generation queue, usable while you take completed tests
-- Configurable 1–10 concurrent test instances
-- Configurable 5–25 questions per provider request, defaulting to 20
-- Mid-generation cancellation that stops all active provider processes
-- Provider failover that preserves accepted questions after quota, authentication, or service failures
-- Automatic recovery from reloads and network interruptions at the latest verified checkpoint
-- Bounded refill attempts: valid questions survive when another candidate is rejected
-- Exact and lexical near-duplicate filtering
-- Optional local semantic duplicate filtering through Ollama
-- Optional Marker PDF conversion with tables, equations, and extracted figures
-- Optional local RapidOCR analysis for text inside extracted figures
-- Fresh AI-generated practice for concepts missed on the latest attempt
-- Server-side SQLite storage with an offline IndexedDB cache
-- Original-file previews and document-scoped RAG chats with Markdown answers and source references
-- Always-on SQLite FTS5/BM25 retrieval with optional local LanceDB vector search and reciprocal-rank fusion
-- Hardware-aware, bounded query condensation/decomposition with optional explicitly local HyDE planning
+- **Build a reusable library.** Import PDF, Markdown, or text; inspect extraction; organize sources with tags; and retry individual failures without repeating successful work.
+- **Generate grounded questions.** Create separate or combined quizzes with multiple-choice, fill-in-the-blank, reasoning, and coding questions. Every accepted question retains stable source provenance and citations.
+- **Match the workflow to the user.** Simple mode presents a short source → goal → preset → privacy review flow. Advanced mode exposes coverage, prompts, RAG, provider routes, context budgets, concurrency, batching, and validation thresholds without changing stored capabilities.
+- **Choose where AI runs.** Use Ollama or llama.cpp locally, existing Codex/Claude/Antigravity sign-in, supported APIs, custom OpenAI-compatible endpoints, or out-of-process generator plugins.
+- **Resume safely.** Indexing, generation, quiz attempts, and practice sessions checkpoint durably. A restart, network failure, or quota limit preserves completed work and resumes only unfinished slots.
+- **Review with evidence.** Practice mode provides immediate feedback, explanations, citations, and Ask AI retrieval scoped to the selected documents.
+- **Scale retrieval by hardware.** Lite always provides SQLite FTS5/BM25. Balanced and Max can add embeddings, LanceDB, hybrid fusion, reranking, OCR, visual extraction, and bounded local query planning.
+- **Extend components safely.** Versioned plugins can provide extraction, OCR, embedding, vector indexing, reranking, and generation through cancellable JSON-RPC processes with explicit permissions.
 
 ## How it works
 
@@ -120,7 +119,11 @@ Retrieval planning is disabled in Lite, uses deterministic English/Vietnamese mu
 
 All variant rankings are fused by stable source-span ID before reranking and maximal-marginal-relevance diversity. Quizzer then applies the requested result and token limits once and expands parent/neighbor context only for the selected spans. Retrieval preview and `quizzer retrieve` expose the selected planning mode, bounded variants, and any safe fallback.
 
-## Source development requirements
+## Build from source
+
+Building from source is the supported path until the first signed beta is available.
+
+### Requirements
 
 - Node.js 20 or newer
 - npm
@@ -128,7 +131,7 @@ All variant rankings are fused by stable source-span ID before reranking and max
 
 Marker, image OCR, and the local semantic duplicate filter are optional and installable from Quizzer. None is required for the basic document and quiz flow.
 
-## Quick start
+### Quick start
 
 ```sh
 git clone https://github.com/Somethings1/quizzer.git
@@ -346,7 +349,7 @@ Under **Plugins & models**, Quizzer shows the embedding model resolved for the a
 
 Do not upload confidential material unless the selected provider and your account's data-handling terms are appropriate for it.
 
-## Commands
+## CLI and development commands
 
 | Command | Purpose |
 | --- | --- |
@@ -421,6 +424,13 @@ Open **Plugins & models**, install **Image OCR**, and leave its **Enabled** togg
 
 The generation pipeline reached its bounded retry limit after rejecting malformed or duplicate candidates. The accepted questions are retained. Try filling the missing concepts again or reduce the requested count for a small source document.
 
+## Project documentation
+
+- [OpenAPI v1 contract](openapi/quizzer-v1.yaml) — authenticated settings, onboarding, plugins, documents, retrieval, jobs, backups, and progress APIs.
+- [Plugin SDK](plugin-sdk/README.md) — manifest format, capabilities, permissions, lifecycle, and JSON-RPC runtime.
+- [Signed plugin registry](docs/plugin-registry.md) — registry trust model, installation, updates, and rollback.
+- [Release manifest schema](release/release-manifest.schema.json) — canonical signed artifact metadata consumed by installers, updates, and the landing page.
+
 ## Development notes
 
 - Provider-specific behavior belongs in the local service; the UI works with Quizzer's internal generation contract.
@@ -435,6 +445,16 @@ The generation pipeline reached its bounded retry limit after rejecting malforme
 - Complete large-library, full-disk, network-loss, missing-model, and plugin-crash stress runs against release builds.
 - Finish independent security and WCAG reviews, then address their findings.
 - Supply production signing/notarization identities and trusted release keys, publish the beta, and complete two successful update/rollback cycles before stable promotion.
+
+Maintainers can follow the fail-closed publication procedure in [RELEASING.md](RELEASING.md). A tag alone never publishes a GitHub Release.
+
+## Contributing and support
+
+Bug reports, feature proposals, and focused pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before making a change and follow the [Code of Conduct](CODE_OF_CONDUCT.md) when participating.
+
+- Use [GitHub Issues](https://github.com/Somethings1/quizzer/issues) for reproducible bugs and scoped feature requests.
+- Use [GitHub Discussions](https://github.com/Somethings1/quizzer/discussions) for questions and broader product ideas.
+- Use GitHub's private vulnerability reporting flow for security issues; never post credentials, private documents, or exploit details in a public issue.
 
 ## Security
 
