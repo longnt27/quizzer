@@ -32,8 +32,16 @@ export const estimateChunkTokens = value => {
   return Math.max(1, lexical + Math.ceil(punctuation / 3), cjk, Math.ceil(text.length / 4));
 };
 
-const abortError = () => Object.assign(new Error('Document chunking cancelled'), { name: 'AbortError' });
-const throwIfAborted = signal => { if (signal?.aborted) throw signal.reason ?? abortError(); };
+const abortError = reason => {
+  const error = Object.assign(new Error('Document chunking cancelled'), { name: 'AbortError' });
+  if (reason !== undefined) error.cause = reason;
+  return error;
+};
+const throwIfAborted = signal => {
+  if (!signal?.aborted) return;
+  if (signal.reason instanceof Error) throw signal.reason;
+  throw abortError(signal.reason);
+};
 
 const trimRange = (content, start, end) => {
   while (start < end && /\s/u.test(content[start])) start += 1;
@@ -68,7 +76,7 @@ const lineRecords = content => {
   return records;
 };
 
-const structuralUnits = (content, signal) => {
+const structuralUnits = (content, signal, maxUnits = MAX_DOCUMENT_CHUNKS) => {
   const lines = lineRecords(content);
   const units = [];
   const breadcrumbs = [];
@@ -81,6 +89,7 @@ const structuralUnits = (content, signal) => {
     const trimmed = trimRange(content, start, end);
     if (trimmed.end <= trimmed.start) return;
     units.push({ start: trimmed.start, end: trimmed.end, kind, page: unitPage, breadcrumb: breadcrumbs.filter(Boolean).join(' › ') });
+    if (units.length > maxUnits) throw new Error(`Document exceeds the ${maxUnits}-chunk limit`);
   };
   while (index < lines.length) {
     if ((index & 255) === 0) throwIfAborted(signal);
@@ -102,20 +111,29 @@ const structuralUnits = (content, signal) => {
     if (fenced) {
       const fence = fenced[1].slice(0, 3);
       index += 1;
-      while (index < lines.length && !new RegExp(`^\\s*${fence}`).test(lines[index].text)) index += 1;
+      while (index < lines.length && !new RegExp(`^\\s*${fence}`).test(lines[index].text)) {
+        if ((index & 255) === 0) throwIfAborted(signal);
+        index += 1;
+      }
       if (index < lines.length) index += 1;
       push(start, index, 'code', page);
       continue;
     }
     if (tableLine(line.text) && (tableDivider(lines[index + 1]?.text ?? '') || tableLine(lines[index + 1]?.text ?? ''))) {
       index += 1;
-      while (index < lines.length && lines[index].text.trim() && tableLine(lines[index].text)) index += 1;
+      while (index < lines.length && lines[index].text.trim() && tableLine(lines[index].text)) {
+        if ((index & 255) === 0) throwIfAborted(signal);
+        index += 1;
+      }
       push(start, index, 'table', page);
       continue;
     }
     if (listMatch(line.text)) {
       index += 1;
-      while (index < lines.length && lines[index].text.trim() && (listMatch(lines[index].text) || /^\s{2,}\S/.test(lines[index].text))) index += 1;
+      while (index < lines.length && lines[index].text.trim() && (listMatch(lines[index].text) || /^\s{2,}\S/.test(lines[index].text))) {
+        if ((index & 255) === 0) throwIfAborted(signal);
+        index += 1;
+      }
       push(start, index, 'list', page);
       continue;
     }
@@ -124,7 +142,10 @@ const structuralUnits = (content, signal) => {
     while (index < lines.length && lines[index].text.trim()
       && pageMarker(lines[index].text) === undefined && !headingMatch(lines[index].text)
       && !/^\s*(```+|~~~+)/.test(lines[index].text)
-      && !listMatch(lines[index].text) && !imageMatch(lines[index].text)) index += 1;
+      && !listMatch(lines[index].text) && !imageMatch(lines[index].text)) {
+      if ((index & 255) === 0) throwIfAborted(signal);
+      index += 1;
+    }
     push(start, index, 'paragraph', page);
   }
   return units;
@@ -132,7 +153,16 @@ const structuralUnits = (content, signal) => {
 
 const splitByLines = (content, unit, targetTokens, signal) => {
   if (estimateChunkTokens(content.slice(unit.start, unit.end)) <= targetTokens) return [unit];
-  const lines = lineRecords(content).filter(line => line.end > unit.start && line.start < unit.end);
+  const lines = [];
+  let lineStart = unit.start;
+  while (lineStart < unit.end) {
+    const newline = content.indexOf('\n', lineStart);
+    const rawEnd = newline < 0 ? unit.end : Math.min(unit.end, newline);
+    const lineEnd = rawEnd > lineStart && content[rawEnd - 1] === '\r' ? rawEnd - 1 : rawEnd;
+    lines.push({ start: lineStart, end: lineEnd });
+    if (newline < 0 || newline >= unit.end) break;
+    lineStart = newline + 1;
+  }
   const pieces = [];
   let start = unit.start;
   let end = start;
@@ -150,13 +180,16 @@ const splitByLines = (content, unit, targetTokens, signal) => {
       // A single line can be larger than the budget; split only at character
       // boundaries so the resulting spans remain valid UTF-16 source ranges.
       let cursor = start;
+      let pieceIndex = 0;
       while (cursor < end) {
+        if ((pieceIndex & 255) === 0) throwIfAborted(signal);
         let cursorEnd = Math.min(end, cursor + targetTokens * 4);
         while (cursorEnd > cursor && estimateChunkTokens(content.slice(cursor, cursorEnd)) > targetTokens) cursorEnd -= 1;
         if (cursorEnd <= cursor) cursorEnd = Math.min(end, cursor + 1);
         const trimmed = trimRange(content, cursor, cursorEnd);
         if (trimmed.end > trimmed.start) pieces.push({ ...unit, start: trimmed.start, end: trimmed.end });
         cursor = cursorEnd;
+        pieceIndex += 1;
       }
       start = end;
       end = start;
@@ -169,9 +202,30 @@ const splitByLines = (content, unit, targetTokens, signal) => {
   return pieces;
 };
 
+const coalesceHeadings = (content, units, targetTokens) => {
+  const merged = [];
+  for (let index = 0; index < units.length; index += 1) {
+    const current = units[index];
+    const next = units[index + 1];
+    if (current?.kind === 'heading' && next && current.page === next.page
+      && estimateChunkTokens(content.slice(current.start, next.end)) <= targetTokens) {
+      merged.push({ ...next, start: current.start, breadcrumb: next.breadcrumb || current.breadcrumb });
+      index += 1;
+    } else merged.push(current);
+  }
+  return merged;
+};
+
 const structuralChunkDocument = (documentId, content, { signal, childTokens = CHILD_CHUNK_TARGET_TOKENS, parentTokens = PARENT_SECTION_TARGET_TOKENS } = {}) => {
   throwIfAborted(signal);
-  const units = structuralUnits(content, signal).flatMap(unit => splitByLines(content, unit, childTokens, signal));
+  const units = [];
+  for (const unit of coalesceHeadings(content, structuralUnits(content, signal), childTokens)) {
+    const pieces = splitByLines(content, unit, childTokens, signal);
+    if (units.length + pieces.length > MAX_DOCUMENT_CHUNKS) {
+      throw new Error(`Document ${documentId} exceeds the ${MAX_DOCUMENT_CHUNKS}-chunk limit`);
+    }
+    units.push(...pieces);
+  }
   const children = [];
   let parentOrdinal = -1;
   let parentTokenCount = 0;
@@ -200,7 +254,6 @@ const structuralChunkDocument = (documentId, content, { signal, childTokens = CH
       sectionKind: unit.kind,
       tokenCount: tokens,
     });
-    if (children.length > MAX_DOCUMENT_CHUNKS) throw new Error(`Document ${documentId} exceeds the ${MAX_DOCUMENT_CHUNKS}-chunk limit`);
     parentTokenCount += tokens;
   }
   // A malformed extractor can produce duplicate/overlapping units. Keep the

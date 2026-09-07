@@ -56,6 +56,20 @@ test('structural chunking honors cancellation before large work', () => {
   assert.throws(() => chunkDocument('cancelled', 'content', { signal: controller.signal }), error => error.name === 'AbortError');
 });
 
+test('structural chunking rejects oversized chunk counts incrementally', () => {
+  const tooMany = Array.from({ length: 10_001 }, (_value, index) => `paragraph ${index}`).join('\n\n');
+  assert.throws(() => chunkDocument('too-many', tooMany), /10,?000-chunk limit/);
+});
+
+test('many short paragraphs remain deterministic and bounded', () => {
+  const content = Array.from({ length: 2_000 }, (_value, index) => `Entry ${index}: nội dung kiểm thử.`).join('\n\n');
+  const chunks = chunkDocument('many-paragraphs', content);
+  assert.ok(chunks.length > 1);
+  assert.ok(chunks.length <= 2_000);
+  assert.equal(chunks.at(-1).end, content.length);
+  assert.ok(chunks.every(chunk => chunk.end > chunk.start && chunk.tokenCount && chunk.tokenCount <= 512));
+});
+
 test('re-extracts only from the verified original and retains bounded converter provenance', async () => {
   const path = join(directory, 'reextract.md');
   const objectStore = new ObjectStore(join(directory, 'reextract-data'));
