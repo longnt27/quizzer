@@ -23,6 +23,9 @@ const reviewedDependencyLicense = (packageName, version, declaredLicense) => {
   if (packageName === 'unorm' && version === '1.6.0' && declaredLicense === 'MIT or GPL-2.0') return 'MIT';
   if (declaredLicense) return declaredLicense;
   if (packageName === 'color-convert' && version === '0.5.3') return 'MIT';
+  // npm omits this darwin-only optional dependency from node_modules on Linux,
+  // and its lockfile entry does not carry the upstream package's MIT field.
+  if (packageName === 'fsevents' && version === '2.3.3') return 'MIT';
   if (packageName.startsWith('@rollup/rollup-')) return 'MIT';
   if (packageName.startsWith('@napi-rs/canvas-')) return 'MIT';
   return undefined;

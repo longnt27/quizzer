@@ -120,7 +120,8 @@ jobs:
           - runner: macos-15-intel
             platform: macos
             architecture: x64
-          - runner: windows-2025
+          # Keep x64 native-addon compilation on supported Visual Studio 2022.
+          - runner: windows-2022
             platform: windows
             architecture: x64
           - runner: windows-11-arm

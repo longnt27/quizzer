@@ -85,3 +85,10 @@ test('release signing and publication use the protected release environment', as
   assert.match(desktopJob, /\n    environment: release\n/);
   assert.match(publishJob, /\n    environment: release\n/);
 });
+
+test('release compiles Windows x64 native addons with the supported Visual Studio toolchain', async () => {
+  const workflow = await readFile(workflowPath, 'utf8');
+
+  assert.match(workflow, /runner: windows-2022\n\s+platform: windows\n\s+architecture: x64/);
+  assert.doesNotMatch(workflow, /runner: windows-2025/);
+});

@@ -55,7 +55,9 @@ jobs:
           - runner: ubuntu-24.04
             platform: linux
             xvfb: '1'
-          - runner: windows-2025
+          # VS 2022 is the newest toolchain supported by Electron Forge's
+          # current native-addon rebuild stack. windows-2025 moved to VS 18.
+          - runner: windows-2022
             platform: windows
             xvfb: '0'
           - runner: macos-15
