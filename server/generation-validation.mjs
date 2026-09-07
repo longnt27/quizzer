@@ -162,6 +162,9 @@ export const validateGenerationOptions = (input, { requireSnapshots = false, req
     const activeRoute = options.routeChain.find(route => routeMatchesOptions(route, options));
     if (!activeRoute) throw new Error('Generation provider and model must match a route in the route chain');
     if (!activeRoute.approved) throw new Error('The active provider route must be explicitly approved');
+    if (options.costCeilingMicroUsd !== undefined && options.routeChain.some(route => !route.pricing)) {
+      throw new Error('A finite cost ceiling requires explicit input and output pricing for every approved failover route; add prices in Advanced mode or leave the ceiling unlimited');
+    }
   }
   if (options.resolvedSettings !== undefined) {
     requireObject(options.resolvedSettings, 'Resolved generation settings must be an object');

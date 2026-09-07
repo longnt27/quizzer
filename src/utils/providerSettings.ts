@@ -1,5 +1,6 @@
 import type { GenerationProvider, ProviderRoute } from '../types';
 import { serviceJson } from './serviceApi';
+import { getKnownProviderRouteMetadata } from './providerPricing';
 
 const PROVIDER_SETTINGS_KEY = 'quizzer.providerSettings';
 const API_KEY_PREFIX = 'quizzer.apiKey.';
@@ -28,7 +29,7 @@ export const PROVIDERS: readonly ProviderDefinition[] = [
   { id: 'anthropic', label: 'Claude – API', kind: 'api', description: 'Calls the native Anthropic Messages API.', defaultModel: 'claude-sonnet-4-5-20250929', keyLabel: 'Anthropic API key' },
   { id: 'openai', label: 'OpenAI – API', kind: 'api', description: 'Calls the OpenAI Responses API.', defaultModel: 'gpt-5-mini', keyLabel: 'OpenAI API key' },
   { id: 'openrouter', label: 'OpenRouter – API', kind: 'api', description: 'Uses an OpenRouter model through its unified API.', defaultModel: 'openai/gpt-4o-mini', keyLabel: 'OpenRouter API key' },
-  { id: 'deepseek', label: 'DeepSeek – API', kind: 'api', description: 'Calls DeepSeek through its OpenAI-compatible API.', defaultModel: 'deepseek-chat', keyLabel: 'DeepSeek API key' },
+  { id: 'deepseek', label: 'DeepSeek – API', kind: 'api', description: 'Calls DeepSeek through its OpenAI-compatible API.', defaultModel: 'deepseek-v4-flash', keyLabel: 'DeepSeek API key' },
   { id: 'openai-compatible', label: 'OpenAI-compatible – Custom', kind: 'api', description: 'Calls a custom OpenAI-compatible chat completions endpoint.', defaultModel: '', keyLabel: 'OpenAI-compatible API key (optional for loopback)' },
 ] as const;
 
@@ -59,6 +60,7 @@ export const getProviderRoute = (provider: GenerationProvider, model?: string, a
     privacy: definition.kind === 'plugin' || definition.kind === 'local' ? 'local' : definition.kind === 'agent' ? 'signed-in-agent' : 'remote-api',
     paid: definition.kind === 'api',
     approved,
+    ...getKnownProviderRouteMetadata(provider, model?.trim() || undefined),
   };
 };
 

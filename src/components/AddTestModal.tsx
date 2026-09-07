@@ -8,6 +8,7 @@ import type { CoverageStrategy, GenerationOptions, GenerationProvider } from '..
 import { getMessageApi } from '../utils/messageProvider';
 import { pumpGenerationQueue } from '../utils/generationQueue';
 import { getProviderDefinition, getProviderRoute, getProviderSettings } from '../utils/providerSettings';
+import { getProviderPricing } from '../utils/providerPricing';
 import { useConfiguredProviders } from '../utils/useConfiguredProviders';
 import { BUILT_IN_PROMPT_PROFILE, snapshotPromptProfile } from '../utils/promptProfiles';
 import { serviceJson, serviceRequest } from '../utils/serviceApi';
@@ -60,6 +61,8 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
   const [promptProfileId, setPromptProfileId] = useState(BUILT_IN_PROMPT_PROFILE.id);
   const [approvedRouteSignature, setApprovedRouteSignature] = useState('');
   const [costCeilingDollars, setCostCeilingDollars] = useState<number | null>(null);
+  const [customInputPrice, setCustomInputPrice] = useState<number | null>(null);
+  const [customOutputPrice, setCustomOutputPrice] = useState<number | null>(null);
   const [query, setQuery] = useState('');
   const [saving, setSaving] = useState(false);
   const message = getMessageApi();
@@ -68,13 +71,18 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
   const promptProfiles = [BUILT_IN_PROMPT_PROFILE, ...customPromptProfiles];
   const promptProfile = promptProfiles.find(item => item.id === promptProfileId) ?? BUILT_IN_PROMPT_PROFILE;
   const selected = documents.filter(document => selectedIds.includes(document.id));
+  const primaryKnownPricing = getProviderPricing(provider, model.trim() || undefined);
+  const primaryPricing = primaryKnownPricing ?? (customInputPrice !== null && customOutputPrice !== null
+    ? { inputMicroUsdPerMillionTokens: Math.round(customInputPrice * 1_000_000), outputMicroUsdPerMillionTokens: Math.round(customOutputPrice * 1_000_000) } : undefined);
   const proposedRoutes = [
-    getProviderRoute(provider, model, false),
+    { ...getProviderRoute(provider, model, false), ...(primaryPricing ? { pricing: primaryPricing } : {}) },
     ...failoverProviders.filter(item => item !== provider).map(item => getProviderRoute(item, settings.models[item], false)),
   ];
   const routeSignature = JSON.stringify(proposedRoutes.map(route => ({
     provider: route.provider, model: route.model, privacy: route.privacy, paid: route.paid,
+    pricing: route.pricing, usage: route.usage,
   })));
+  const finiteCeilingPricingMessage = 'A finite cost ceiling requires explicit input and output pricing for every approved failover route; add prices in Advanced mode or leave the ceiling unlimited';
   const requiresRouteApproval = proposedRoutes.some(route => route.privacy !== 'local');
   const routesApproved = !requiresRouteApproval || approvedRouteSignature === routeSignature;
   const visible = (() => {
@@ -106,6 +114,7 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
     if (questionCount < 1 || questionCount > 200) return message.error('Choose between 1 and 200 questions in total');
     if (!configured.providers.some(item => item.id === provider)) return message.error('Connect an AI provider in Plugins & models first');
     if (!routesApproved) return message.error('Approve the selected AI routes before queueing this test');
+    if (costCeilingDollars !== null && proposedRoutes.some(route => !route.pricing)) return message.error(finiteCeilingPricingMessage);
     setSaving(true);
     try {
       await syncNow();
@@ -204,6 +213,21 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
               options={promptProfiles.map(item => ({ value: item.id, label: `${item.name} · v${item.version}${item.builtIn ? ' · built in' : ''}` }))} />
             <Typography.Paragraph type="secondary" style={{ margin: '6px 0 0' }}>{promptProfile.description || 'Custom generation, grading, and retrieval instructions.'}</Typography.Paragraph>
             <Button type="link" size="small" onClick={onOpenPromptStudio}>Open Prompt Studio</Button>
+          </div>}
+          {profile.interfaceMode === 'advanced' && costCeilingDollars !== null && proposedRoutes.some(route => !route.pricing) && <Alert type="error" showIcon
+            message="Finite ceiling needs pricing for every approved route"
+            description={finiteCeilingPricingMessage} />}
+          {profile.interfaceMode === 'advanced' && provider && !primaryKnownPricing && getProviderDefinition(provider).kind === 'api' && <div>
+            <Typography.Text strong>Custom model pricing <Typography.Text type="secondary">(USD per 1M tokens)</Typography.Text></Typography.Text>
+            <Space wrap style={{ width: '100%', marginTop: 8 }}>
+              <InputNumber aria-label="Input price per million tokens" min={0} max={100000} precision={6} step={0.01} value={customInputPrice}
+                onChange={setCustomInputPrice} addonBefore="Input $" />
+              <InputNumber aria-label="Output price per million tokens" min={0} max={100000} precision={6} step={0.01} value={customOutputPrice}
+                onChange={setCustomOutputPrice} addonBefore="Output $" />
+            </Space>
+            <Typography.Paragraph type="secondary" style={{ margin: '6px 0 0' }}>
+              Quizzer does not guess prices for unknown models. Enter the provider’s current input and output rates before using a finite ceiling; the values are snapshotted into this test.
+            </Typography.Paragraph>
           </div>}
           {profile.interfaceMode === 'simple' && <div>
             <Typography.Text strong>Recommended preset</Typography.Text>

@@ -797,7 +797,7 @@ const providerRunners = {
     label: 'OpenRouter', endpoint: 'https://openrouter.ai/api/v1/chat/completions', defaultModel: 'openai/gpt-4o-mini', jsonSchema: true, supportsImages: true, providerRouting: true,
   }),
   deepseek: (body, signal) => runBuiltinOpenAICompatible(body, signal, {
-    label: 'DeepSeek', endpoint: 'https://api.deepseek.com/chat/completions', defaultModel: 'deepseek-chat', jsonSchema: false, supportsImages: false,
+    label: 'DeepSeek', endpoint: 'https://api.deepseek.com/chat/completions', defaultModel: 'deepseek-v4-flash', jsonSchema: false, supportsImages: false,
   }),
   'openai-compatible': async (body, signal) => {
     const endpoint = body.endpoint

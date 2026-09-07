@@ -90,12 +90,22 @@ export type GenerationProvider =
   | 'deepseek'
   | 'openai-compatible';
 
+/** Immutable per-million-token prices captured when a generation job is created. */
+export interface ProviderPricing {
+  inputMicroUsdPerMillionTokens: number;
+  outputMicroUsdPerMillionTokens: number;
+}
+
+export type ProviderUsageCapability = 'provider-reported' | 'unavailable';
+
 export interface ProviderRoute {
   provider: GenerationProvider;
   model?: string;
   privacy: 'local' | 'signed-in-agent' | 'remote-api';
   paid: boolean;
   approved: boolean;
+  pricing?: ProviderPricing;
+  usage?: ProviderUsageCapability;
 }
 
 export interface ProviderAttempt {
