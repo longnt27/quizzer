@@ -8,7 +8,7 @@ let rememberedApiKeys: Partial<Record<GenerationProvider, string>> = {};
 
 export type ProviderKind = 'agent' | 'api' | 'local' | 'plugin';
 export type AgentProvider = 'codex' | 'claude-agent' | 'antigravity-agent';
-export type ApiProvider = Exclude<GenerationProvider, AgentProvider | 'ollama' | 'plugin'>;
+export type ApiProvider = Exclude<GenerationProvider, AgentProvider | 'ollama' | 'llama-cpp' | 'plugin'>;
 
 export interface ProviderDefinition {
   id: GenerationProvider;
@@ -22,6 +22,7 @@ export interface ProviderDefinition {
 export const PROVIDERS: readonly ProviderDefinition[] = [
   { id: 'plugin', label: 'Local generator – Plugin', kind: 'plugin', description: 'Runs an installed generator plugin out of process on this device.', defaultModel: '' },
   { id: 'ollama', label: 'Ollama – Local', kind: 'local', description: 'Runs an installed Ollama model entirely on this device.', defaultModel: '' },
+  { id: 'llama-cpp', label: 'llama.cpp – Local', kind: 'local', description: 'Connects to a local llama.cpp server without downloading or uploading models.', defaultModel: 'local-model' },
   { id: 'codex', label: 'Codex – Agent', kind: 'agent', description: 'Uses the Codex CLI and your ChatGPT sign-in.', defaultModel: '' },
   { id: 'claude-agent', label: 'Claude – Agent', kind: 'agent', description: 'Uses the Claude Code CLI and its signed-in account.', defaultModel: '' },
   { id: 'antigravity-agent', label: 'Antigravity – Agent', kind: 'agent', description: 'Uses the Antigravity CLI and its signed-in account.', defaultModel: '' },

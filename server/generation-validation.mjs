@@ -1,6 +1,7 @@
 import { PROVIDER_POLICIES } from './provider-policy.mjs';
 import { validateOllamaModelName } from './ollama-generation.mjs';
 import { validateOpenAICompatibleModel, validateOpenAICompatibleEndpoint } from './openai-compatible-generation.mjs';
+import { validateLlamaCppEndpoint, validateLlamaCppModel } from './llama-cpp-generation.mjs';
 import { validateSettings } from './settings.mjs';
 import { isDeepStrictEqual } from 'node:util';
 import { createHash } from 'node:crypto';
@@ -85,6 +86,7 @@ export const validateProviderRoute = input => {
     throw new Error('Plugin provider routes require an installed generator plugin id as their model');
   }
   if (route.provider === 'ollama') validateOllamaModelName(route.model);
+  if (route.provider === 'llama-cpp') validateLlamaCppModel(route.model);
   if (route.provider === 'openai-compatible') validateOpenAICompatibleModel(route.model);
   if (typeof route.paid !== 'boolean' || typeof route.approved !== 'boolean') throw new Error('Provider route approval and cost flags must be boolean');
   if (route.pricing !== undefined) routePricing(route);
@@ -128,6 +130,7 @@ export const validateGenerationOptions = (input, { requireSnapshots = false, req
     throw new Error('Plugin generation requires an installed generator plugin id as its model');
   }
   if (options.provider === 'ollama') validateOllamaModelName(options.model);
+  if (options.provider === 'llama-cpp') validateLlamaCppModel(options.model);
   if (options.provider === 'openai-compatible') validateOpenAICompatibleModel(options.model);
   boundedInteger(options.questionCount, 1, 200, 'Generation question count must be an integer from 1 to 200');
   if (options.questionCounts !== undefined) {
@@ -172,6 +175,9 @@ export const validateGenerationOptions = (input, { requireSnapshots = false, req
     if (JSON.stringify(options.resolvedSettings).length > 100_000) throw new Error('Resolved generation settings are too large');
     if (options.resolvedSettings['providers.openai-compatible.endpoint'] !== undefined) {
       validateOpenAICompatibleEndpoint(options.resolvedSettings['providers.openai-compatible.endpoint']);
+    }
+    if (options.resolvedSettings['providers.llama-cpp.endpoint'] !== undefined) {
+      validateLlamaCppEndpoint(options.resolvedSettings['providers.llama-cpp.endpoint']);
     }
     if (requireCompleteSettings) {
       validateSettings(options.resolvedSettings, { partial: false });

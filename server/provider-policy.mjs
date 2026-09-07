@@ -1,6 +1,7 @@
 export const PROVIDER_POLICIES = Object.freeze({
   plugin: Object.freeze({ label: 'Local generator plugin', billing: 'local', privacy: 'local', defaultConcurrency: 1 }),
   ollama: Object.freeze({ label: 'Ollama local model', billing: 'local', privacy: 'local', defaultConcurrency: 1, configurableConcurrency: false }),
+  'llama-cpp': Object.freeze({ label: 'llama.cpp local model', billing: 'local', privacy: 'local', defaultConcurrency: 1, configurableConcurrency: false }),
   codex: Object.freeze({ label: 'Codex agent', billing: 'account', privacy: 'signed-in-agent', defaultConcurrency: 1 }),
   'claude-agent': Object.freeze({ label: 'Claude agent', billing: 'account', privacy: 'signed-in-agent', defaultConcurrency: 1 }),
   'antigravity-agent': Object.freeze({ label: 'Antigravity agent', billing: 'account', privacy: 'signed-in-agent', defaultConcurrency: 1 }),

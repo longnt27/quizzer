@@ -158,6 +158,8 @@ test('requires authentication for every sensitive service endpoint', async () =>
   assert.equal(capabilities.providerPolicies.codex.maxConcurrency, 1);
   assert.equal(capabilities.providerPolicies.openai.billing, 'usage-based');
   assert.deepEqual(capabilities.providerPolicies.ollama, { billing: 'local', privacy: 'local', maxConcurrency: 1 });
+  assert.deepEqual(capabilities.providerPolicies['llama-cpp'], { billing: 'local', privacy: 'local', maxConcurrency: 1 });
+  assert.match(capabilities.providers.join(','), /llama-cpp/);
   const contract = await authorized('/api/v1/openapi.yaml');
   assert.equal(contract.status, 200);
   assert.match(contract.headers.get('content-type'), /application\/yaml/);
@@ -171,6 +173,7 @@ test('reports and invokes local Ollama only after explicit setup confirmation', 
   assert.equal(integrations.ollama.serverReady, true);
   assert.equal(integrations.ollama.models[0].name, 'qwen3:4b');
   assert.equal(integrations['openai-compatible'].available, true);
+  assert.equal(integrations['llama-cpp'].configured, true);
 
   const unconfirmedInstall = await authorized('/api/integrations/ollama/install', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
@@ -180,6 +183,23 @@ test('reports and invokes local Ollama only after explicit setup confirmation', 
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'qwen3:4b' }),
   });
   assert.equal(unconfirmedPull.status, 400);
+
+  const unconfirmedConfigure = await authorized('/api/integrations/llama-cpp/configure', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ endpoint: 'http://127.0.0.1:8080/v1', model: 'llama-3.2-q4' }),
+  });
+  assert.equal(unconfirmedConfigure.status, 400);
+  const remoteConfigure = await authorized('/api/integrations/llama-cpp/configure', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ endpoint: 'https://remote.example.test/v1', model: 'llama-3.2-q4', confirmed: true }),
+  });
+  assert.equal(remoteConfigure.status, 400);
+  const configured = await authorized('/api/integrations/llama-cpp/configure', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ endpoint: 'http://127.0.0.1:8080/v1', model: 'llama-3.2-q4', confirmed: true }),
+  });
+  assert.equal(configured.status, 200);
+  assert.equal((await configured.json()).settings.values['providers.llama-cpp.model'], 'llama-3.2-q4');
 
   const generated = await authorized('/api/generate', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },

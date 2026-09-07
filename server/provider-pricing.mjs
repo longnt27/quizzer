@@ -17,7 +17,7 @@ export const getProviderUsageCapability = provider =>
   ['gemini', 'anthropic', 'openai', 'openrouter', 'deepseek', 'openai-compatible'].includes(provider)
     ? 'provider-reported' : 'unavailable';
 export const getKnownProviderRouteMetadata = (provider, model) => ({
-  pricing: getProviderPricing(provider, model) ?? (['plugin', 'ollama', 'codex', 'claude-agent', 'antigravity-agent'].includes(provider)
+  pricing: getProviderPricing(provider, model) ?? (['plugin', 'ollama', 'llama-cpp', 'codex', 'claude-agent', 'antigravity-agent'].includes(provider)
     ? { inputMicroUsdPerMillionTokens: 0, outputMicroUsdPerMillionTokens: 0 } : undefined),
   usage: getProviderUsageCapability(provider),
 });

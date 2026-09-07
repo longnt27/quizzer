@@ -11,6 +11,7 @@ interface IntegrationStatus {
   'claude-agent'?: { connected?: boolean };
   'antigravity-agent'?: { connected?: boolean };
   ollama?: { serverReady?: boolean; models?: Array<{ name?: string }> };
+  'llama-cpp'?: { configured?: boolean; serverReady?: boolean; models?: Array<{ id?: string }> };
 }
 
 interface PluginCollection {
@@ -42,6 +43,10 @@ export const useConfiguredProviders = () => {
           }
           if (status.ollama?.serverReady && status.ollama.models?.some(model => model.name
             && ollamaModelMatches(model.name, settings.models.ollama))) available.add('ollama');
+          if (status['llama-cpp']?.serverReady && (!status['llama-cpp'].models?.length
+            || status['llama-cpp'].models.some(model => model.id === settings.models['llama-cpp']))) {
+            available.add('llama-cpp');
+          }
         }
       } catch { /* API providers remain usable if the status check is temporarily unavailable. */ }
       try {

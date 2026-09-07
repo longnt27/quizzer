@@ -34,6 +34,9 @@ test('resolves profile, user, environment, CLI, and job settings in order', () =
   assert.equal(resolved.sources['providers.openai.maxConcurrency'], 'environment');
   assert.equal(providerConcurrencyLimits(resolved.values).openai, 4);
   assert.equal(providerConcurrencyLimits(resolved.values).ollama, 1);
+  assert.equal(providerConcurrencyLimits(resolved.values)['llama-cpp'], 1);
+  assert.equal(resolved.values['providers.llama-cpp.endpoint'], 'http://127.0.0.1:8080/v1');
+  assert.equal(resolved.values['providers.llama-cpp.model'], 'local-model');
   assert.equal('providers.ollama.maxConcurrency' in resolved.values, false);
   assert.deepEqual(publicProviderPolicies(resolved.values).openai, {
     billing: 'usage-based', privacy: 'remote-api', maxConcurrency: 4,

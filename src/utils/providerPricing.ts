@@ -22,7 +22,7 @@ export const getProviderUsageCapability = (provider: GenerationProvider): Provid
     ? 'provider-reported' : 'unavailable';
 
 export const getKnownProviderRouteMetadata = (provider: GenerationProvider, model?: string) => ({
-  pricing: getProviderPricing(provider, model) ?? (['plugin', 'ollama', 'codex', 'claude-agent', 'antigravity-agent'].includes(provider)
+  pricing: getProviderPricing(provider, model) ?? (['plugin', 'ollama', 'llama-cpp', 'codex', 'claude-agent', 'antigravity-agent'].includes(provider)
     ? { inputMicroUsdPerMillionTokens: 0, outputMicroUsdPerMillionTokens: 0 } : undefined),
   usage: getProviderUsageCapability(provider),
 });

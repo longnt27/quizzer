@@ -31,6 +31,9 @@ import { resolveEmbeddingProvider } from './server/plugin-embeddings.mjs';
 import { resolveVectorIndexProvider } from './server/plugin-vector-index.mjs';
 import { resolveDocumentExtractor, resolveOcrProvider } from './server/plugin-extraction.mjs';
 import { listOllamaModels, runOllamaGeneration, runOllamaHyde, validateOllamaModelName } from './server/ollama-generation.mjs';
+import {
+  getLlamaCppStatus, runLlamaCppGeneration, validateLlamaCppEndpoint, validateLlamaCppModel,
+} from './server/llama-cpp-generation.mjs';
 import { runOpenAICompatibleGeneration } from './server/openai-compatible-generation.mjs';
 import { normalizeProviderUsage } from './server/provider-usage.mjs';
 import {
@@ -215,6 +218,7 @@ const integrationJobs = {
   'claude-agent': { state: 'idle', message: '' },
   'antigravity-agent': { state: 'idle', message: '' },
   ollama: { state: 'idle', message: '' },
+  'llama-cpp': { state: 'idle', message: '' },
   embeddings: { state: 'idle', message: '' },
   ocr: { state: 'idle', message: '' },
 };
@@ -431,7 +435,8 @@ const managedOcrWorks = async () => {
 
 const integrationStatus = async () => {
   const ollamaExecutable = await ollamaCommand();
-  const [codexInstalled, codexConnected, claudeInstalled, claudeConnected, antigravityInstalled, ollamaInstalled, ollama, managedMarker, systemMarker, managedOcr] = await Promise.all([
+  const settings = await loadResolvedSettings(appDataDirectory);
+  const [codexInstalled, codexConnected, claudeInstalled, claudeConnected, antigravityInstalled, ollamaInstalled, ollama, llamaCpp, managedMarker, systemMarker, managedOcr] = await Promise.all([
     commandWorks('codex', ['--version']),
     commandWorks('codex', ['login', 'status']),
     commandWorks('claude', ['--version']),
@@ -439,6 +444,7 @@ const integrationStatus = async () => {
     commandWorks('agy', ['--version']),
     commandWorks(ollamaExecutable, ['--version']),
     listOllamaModels(globalThis.fetch, AbortSignal.timeout(3_000)).catch(() => ({ serverReady: false, models: [] })),
+    getLlamaCppStatus({ endpoint: settings.values['providers.llama-cpp.endpoint'] }, globalThis.fetch, AbortSignal.timeout(3_500)),
     managedMarkerWorks(),
     hasSystemMarker(),
     managedOcrWorks(),
@@ -458,6 +464,7 @@ const integrationStatus = async () => {
     openrouter: { available: true },
     deepseek: { available: true },
     'openai-compatible': { available: true },
+    'llama-cpp': llamaCpp,
     ollama: {
       installed: ollamaInstalled || ollama.serverReady,
       serverReady: ollama.serverReady,
@@ -787,6 +794,15 @@ const runAntigravityAgent = async ({ prompt, schema, model }, signal) => {
 const providerRunners = {
   plugin: (body, signal) => runGeneratorPlugin(body, signal, { loadManager: getPluginManager }),
   ollama: runOllamaGeneration,
+  'llama-cpp': async (body, signal) => runLlamaCppGeneration({
+    ...body,
+    endpoint: body.endpoint
+      || body.resolvedSettings?.['providers.llama-cpp.endpoint']
+      || (await loadResolvedSettings(appDataDirectory)).values['providers.llama-cpp.endpoint'],
+    model: body.model
+      || body.resolvedSettings?.['providers.llama-cpp.model']
+      || (await loadResolvedSettings(appDataDirectory)).values['providers.llama-cpp.model'],
+  }, signal),
   codex: runCodex,
   'claude-agent': runClaudeAgent,
   'antigravity-agent': runAntigravityAgent,
@@ -1036,6 +1052,20 @@ const handleVersionedApi = async (request, response, url) => {
     if (request.method === 'GET' && url.pathname === '/api/v1/openapi.yaml') {
       response.writeHead(200, { 'Content-Type': 'application/yaml; charset=utf-8', 'Cache-Control': 'no-store' });
       response.end(openApiDocument);
+      return true;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/v1/integrations/llama-cpp/configure') {
+      const body = await readJson(request);
+      if (body?.confirmed !== true) throw new Error('Explicit confirmation is required before configuring llama.cpp');
+      const endpoint = validateLlamaCppEndpoint(body?.endpoint);
+      const model = validateLlamaCppModel(body?.model);
+      const current = await readUserSettings(appDataDirectory);
+      await writeUserSettings(appDataDirectory, {
+        ...current,
+        'providers.llama-cpp.endpoint': endpoint,
+        'providers.llama-cpp.model': model,
+      });
+      send(response, 200, { ok: true, settings: await loadResolvedSettings(appDataDirectory) });
       return true;
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/capabilities') {
@@ -1563,6 +1593,24 @@ const serviceServer = createServer(async (request, response) => {
   }
   if (request.method === 'GET' && request.url === '/api/integrations') {
     return send(response, 200, await integrationStatus());
+  }
+  if (request.method === 'POST' && ['/api/integrations/llama-cpp/configure', '/api/v1/integrations/llama-cpp/configure'].includes(request.url)) {
+    if (!request.headers['content-type']?.startsWith('application/json')) return send(response, 415, { error: 'JSON request required' });
+    try {
+      const body = await readJson(request);
+      if (body?.confirmed !== true) throw new Error('Explicit confirmation is required before configuring llama.cpp');
+      const endpoint = validateLlamaCppEndpoint(body?.endpoint);
+      const model = validateLlamaCppModel(body?.model);
+      const current = await readUserSettings(appDataDirectory);
+      await writeUserSettings(appDataDirectory, {
+        ...current,
+        'providers.llama-cpp.endpoint': endpoint,
+        'providers.llama-cpp.model': model,
+      });
+      return send(response, 200, { ok: true, settings: await loadResolvedSettings(appDataDirectory) });
+    } catch (error) {
+      return send(response, 400, { error: error instanceof Error ? error.message : 'Invalid llama.cpp configuration' });
+    }
   }
   if (request.method === 'POST' && request.url === '/api/integrations/marker/install') {
     if (!request.headers['content-type']?.startsWith('application/json')) return send(response, 415, { error: 'JSON request required' });

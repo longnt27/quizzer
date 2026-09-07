@@ -85,7 +85,7 @@ Quizzer includes an in-app signed update workflow designed for safety and defens
 - Automatic recovery of unfinished test and practice sessions
 - In-app Plugins & models panel for setup and defaults
 - Codex, Claude Code, and Antigravity agent integrations using existing CLI authentication
-- Local Ollama generation plus Gemini, Anthropic Claude, OpenAI, OpenRouter, DeepSeek, and custom OpenAI-compatible API integrations
+- Local Ollama and llama.cpp generation plus Gemini, Anthropic Claude, OpenAI, OpenRouter, DeepSeek, and custom OpenAI-compatible API integrations
 - Structured provider output and runtime question validation
 - Live generation progress by test, question type, and retry round
 - Persistent background generation queue, usable while you take completed tests
@@ -222,6 +222,10 @@ The Create Test dialog starts with those defaults and lets you choose a differen
 Choose an already installed Ollama model or enter a model name under **Plugins & models → Local generation**. Quizzer asks for confirmation before installing Ollama or downloading a model, shows live pull progress, and never chooses a model download automatically. Local requests go only to Ollama's loopback service, use JSON Schema structured output with deterministic temperature, and can include up to six bounded source images for a compatible vision model. If the runtime stops or the selected model is unavailable, the durable job pauses with its accepted questions intact so another approved route can continue only the unfinished slots.
 
 The source CLI uses the same route with `quizzer test create ... --provider ollama --model qwen3:4b`. The model is required and must already be installed; the CLI never downloads one implicitly.
+
+### llama.cpp local generation
+
+Quizzer can connect to a locally managed llama.cpp server through its OpenAI-compatible `/v1` endpoint. Configure **Plugins & models → Local generation → llama.cpp local model** with a loopback endpoint such as `http://127.0.0.1:8080/v1` and the model identifier served by that process, then explicitly save the configuration. Quizzer never downloads or launches llama.cpp in this slice, accepts no remote endpoint for this provider, and keeps the route local, non-billable, bounded, cancellable, and resumable. The CLI supports the same route with `quizzer test create --provider llama-cpp --model <served-model> --endpoint http://127.0.0.1:8080/v1`.
 
 ### Codex Agent
 

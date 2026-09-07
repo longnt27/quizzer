@@ -50,6 +50,18 @@ test('validates complete generation snapshots and provider policy metadata', () 
   assert.equal(validateProviderRoute(ollamaOptions.routeChain[0]), ollamaOptions.routeChain[0]);
   assert.throws(() => validateGenerationOptions({ ...ollamaOptions, model: undefined, routeChain: undefined }), /Ollama model/);
   assert.throws(() => validateProviderRoute({ ...ollamaOptions.routeChain[0], privacy: 'remote-api' }), /privacy and cost policy/);
+  const llamaCppOptions = {
+    ...value,
+    provider: 'llama-cpp', model: 'llama-3.2-q4',
+    routeChain: [{ provider: 'llama-cpp', model: 'llama-3.2-q4', privacy: 'local', paid: false, approved: true }],
+  };
+  assert.equal(validateGenerationOptions(llamaCppOptions), llamaCppOptions);
+  assert.equal(validateProviderRoute(llamaCppOptions.routeChain[0]), llamaCppOptions.routeChain[0]);
+  assert.throws(() => validateGenerationOptions({ ...llamaCppOptions, model: undefined, routeChain: [{ ...llamaCppOptions.routeChain[0], model: undefined }] }), /explicit model/);
+  assert.throws(() => validateGenerationOptions({
+    ...llamaCppOptions,
+    resolvedSettings: { ...resolvedSettings, 'providers.llama-cpp.endpoint': 'https://remote.example.test/v1' },
+  }), /loopback/);
   const compatOptions = {
     ...value,
     provider: 'openai-compatible', model: 'custom-model',
