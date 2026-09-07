@@ -25,7 +25,7 @@ export const normalizeProviderUsage = (provider, payload) => {
   const fieldNames = provider === "ollama"
     ? ["prompt_eval_count", "eval_count"]
     : provider === "gemini"
-      ? ["promptTokenCount", "candidatesTokenCount", "totalTokenCount"]
+      ? ["promptTokenCount", "candidatesTokenCount", "thoughtsTokenCount", "totalTokenCount"]
       : provider === "anthropic"
         ? ["input_tokens", "output_tokens"]
         : provider === "openai-responses"
@@ -35,7 +35,7 @@ export const normalizeProviderUsage = (provider, payload) => {
   const usage = provider === "ollama"
     ? normalized(source.prompt_eval_count, source.eval_count)
     : provider === "gemini"
-      ? normalized(source.promptTokenCount, (source.candidatesTokenCount || 0) + (source.thoughtsTokenCount || 0), source.totalTokenCount)
+      ? normalized(source.promptTokenCount, token(source.candidatesTokenCount) === undefined ? undefined : token(source.candidatesTokenCount) + (source.thoughtsTokenCount === undefined ? 0 : token(source.thoughtsTokenCount)), source.totalTokenCount)
       : provider === "anthropic"
         ? normalized(source.input_tokens, source.output_tokens)
         : provider === "openai-responses"
@@ -45,7 +45,7 @@ export const normalizeProviderUsage = (provider, payload) => {
   const fields = provider === "ollama"
     ? [source.prompt_eval_count, source.eval_count]
     : provider === "gemini"
-      ? [source.promptTokenCount, source.candidatesTokenCount, source.totalTokenCount]
+      ? [source.promptTokenCount, source.candidatesTokenCount, source.thoughtsTokenCount, source.totalTokenCount]
       : provider === "anthropic"
         ? [source.input_tokens, source.output_tokens]
         : provider === "openai-responses"
