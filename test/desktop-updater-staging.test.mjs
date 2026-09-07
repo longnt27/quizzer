@@ -7,7 +7,7 @@ import test from 'node:test';
 import { DesktopUpdater } from '../desktop/updater.mjs';
 import { privateKeyFromBase64, signReleaseManifest } from '../release/manifest.mjs';
 
-const setupTestEnvironment = async () => {
+const setupTestEnvironment = async (platform = 'macos', architecture = 'arm64', format = 'zip') => {
   const directory = await mkdtemp(join(tmpdir(), 'quizzer-updater-test-'));
   const keyPair = generateKeyPairSync('ed25519');
   const encodedPrivateKey = keyPair.privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64');
@@ -24,11 +24,11 @@ const setupTestEnvironment = async () => {
     publicKeyId: 'quizzer-release-test',
     signature: '',
     artifacts: [{
-      name: 'quizzer-1.2.0-macos-arm64.zip',
-      platform: 'macos',
-      architecture: 'arm64',
-      format: 'zip',
-      url: 'https://github.com/Somethings1/quizzer/releases/download/v1.2.0/quizzer-1.2.0-macos-arm64.zip',
+      name: `quizzer-1.2.0-${platform}-${architecture}.${format}`,
+      platform,
+      architecture,
+      format,
+      url: `https://github.com/Somethings1/quizzer/releases/download/v1.2.0/quizzer-1.2.0-${platform}-${architecture}.${format}`,
       size: artifactContent.length,
       sha256,
       minimumOs: 'macOS 13',
@@ -244,3 +244,26 @@ test('downloadUpdate streams through web ReadableStream getReader and updates pr
   }
 });
 
+test('downloadUpdate makes a verified Linux AppImage executable before staging completes', async () => {
+  const env = await setupTestEnvironment('linux', 'x64', 'appimage');
+  try {
+    const updater = new DesktopUpdater({
+      userDataDir: env.directory,
+      currentVersion: '1.0.0',
+      platform: 'linux',
+      architecture: 'x64',
+      trustedKeys: { 'quizzer-release-test': env.keyPair.publicKey },
+      fetch: async url => url.endsWith('release-manifest.json')
+        ? { ok: true, text: async () => JSON.stringify(env.signed) }
+        : { ok: true, arrayBuffer: async () => env.artifactContent },
+    });
+
+    await updater.checkForUpdates();
+    await updater.downloadUpdate();
+
+    const staged = await stat(join(env.directory, 'updates', 'staging', 'quizzer-1.2.0-linux-x64.appimage'));
+    assert.notEqual(staged.mode & 0o100, 0);
+  } finally {
+    await rm(env.directory, { recursive: true, force: true });
+  }
+});

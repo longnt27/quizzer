@@ -1,6 +1,6 @@
 import { createHash, createPublicKey, KeyObject } from 'node:crypto';
 import { createReadStream, readFileSync } from 'node:fs';
-import { lstat, mkdir, open, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, open, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { verifyReleaseManifestSignature } from '../release/manifest.mjs';
@@ -9,6 +9,17 @@ import { isValidArtifactName, MAX_DESKTOP_PACKAGE_SIZE, validateReleaseManifest 
 export const SUPPORTED_CHANNELS = Object.freeze(['stable', 'beta']);
 export const CANONICAL_REPOSITORY = 'Somethings1/quizzer';
 export const MAX_METADATA_BYTES = 1024 * 1024; // 1 MiB
+
+const writeAll = async (fileHandle, bytes) => {
+  let offset = 0;
+  while (offset < bytes.byteLength) {
+    const { bytesWritten } = await fileHandle.write(bytes, offset, bytes.byteLength - offset, null);
+    if (!Number.isInteger(bytesWritten) || bytesWritten <= 0) {
+      throw new Error('Unable to make progress while writing the update artifact');
+    }
+    offset += bytesWritten;
+  }
+};
 
 export const detectPlatform = (platform = process.platform) => {
   if (platform === 'darwin' || platform === 'macos') return 'macos';
@@ -816,7 +827,7 @@ export class DesktopUpdater {
             throw new Error(`Downloaded artifact exceeded expected size: ${bytesReceived} > ${artifact.size}`);
           }
           hasher.update(value);
-          await fileHandle.write(value);
+          await writeAll(fileHandle, value);
           this.downloadProgress = {
             bytesDownloaded: bytesReceived,
             totalBytes: artifact.size,
@@ -830,7 +841,7 @@ export class DesktopUpdater {
           throw new Error(`Downloaded artifact exceeded expected size: ${bytesReceived} > ${artifact.size}`);
         }
         hasher.update(buffer);
-        await fileHandle.write(buffer);
+        await writeAll(fileHandle, buffer);
         this.downloadProgress = {
           bytesDownloaded: bytesReceived,
           totalBytes: artifact.size,
@@ -851,6 +862,9 @@ export class DesktopUpdater {
       }
 
       await rename(tempPath, finalPath);
+      if (this.platform === 'linux' && artifact.format === 'appimage') {
+        await chmod(finalPath, 0o700);
+      }
 
       const stagedPayload = {
         stagedAt: new Date().toISOString(),

@@ -122,6 +122,17 @@ export const validateRuntimeFile = async (filePath, target) => {
   return true;
 };
 
+export const writeAll = async (fileHandle, bytes) => {
+  let offset = 0;
+  while (offset < bytes.byteLength) {
+    const { bytesWritten } = await fileHandle.write(bytes, offset, bytes.byteLength - offset, null);
+    if (!Number.isInteger(bytesWritten) || bytesWritten <= 0) {
+      throw new Error('Unable to make progress while writing the AppImage runtime');
+    }
+    offset += bytesWritten;
+  }
+};
+
 export const prepareAppImageRuntime = async (options = {}) => {
   const baseTarget = resolveAppImageTarget(options.architecture || process.arch);
   const target = {
@@ -241,7 +252,7 @@ export const prepareAppImageRuntime = async (options = {}) => {
             throw new Error(`Downloaded AppImage runtime exceeded expected size (${bytesReceived} > ${target.size})`);
           }
           hasher.update(value);
-          await fileHandle.write(value);
+          await writeAll(fileHandle, value);
         }
       } else {
         const arrayBuffer = await response.arrayBuffer();
@@ -251,7 +262,7 @@ export const prepareAppImageRuntime = async (options = {}) => {
           throw new Error(`Downloaded AppImage runtime exceeded expected size (${bytesReceived} > ${target.size})`);
         }
         hasher.update(buffer);
-        await fileHandle.write(buffer);
+        await writeAll(fileHandle, buffer);
       }
       await fileHandle.sync();
     } finally {
