@@ -9,7 +9,7 @@ import {
 } from '../utils/providerSettings';
 import { getMessageApi } from '../utils/messageProvider';
 import { getModalApi } from '../utils/modalProvider';
-import { serviceFetch, serviceJson, serviceRequest } from '../utils/serviceApi';
+import { executeTwoPhaseAction, serviceFetch, serviceJson, serviceRequest } from '../utils/serviceApi';
 
 type JobState = 'idle' | 'working' | 'complete' | 'error';
 type AgentStatus = { installed: boolean; connected: boolean; job: { state: JobState; message: string } };
@@ -39,11 +39,33 @@ interface ExternalPlugin {
   permissions?: { network: string[]; filesystem: string[]; secrets: string[]; subprocess: boolean };
   enabled: boolean;
   trust?: 'signed' | 'unsigned-local';
+  source?: 'local' | 'registry';
+  registryId?: string;
+  availableVersion?: string;
+  updateAvailable?: boolean;
   compatible: boolean;
   status: 'installed' | 'blocked' | 'broken';
   warning?: string;
   error?: string;
   rollbackAvailable?: boolean;
+}
+
+interface RegistryPlugin {
+  id: string;
+  name: string;
+  description?: string;
+  version: string;
+  capabilities: string[];
+  platforms: { os: string; architectures: string[] }[];
+  resources?: { memoryMB: number; diskMB: number; accelerators?: string[] };
+  permissions: { network: string[]; filesystem: string[]; secrets: string[]; subprocess: boolean };
+  manifestUrl: string;
+  downloadBaseUrl?: string;
+  downloadSize?: number;
+  installed: boolean;
+  installedVersion?: string | null;
+  updateAvailable?: boolean;
+  compatible: boolean;
 }
 
 interface PluginCollection { plugins: ExternalPlugin[]; }
@@ -75,6 +97,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const [status, setStatus] = useState<IntegrationStatus | null>(null);
   const [statusError, setStatusError] = useState('');
   const [externalPlugins, setExternalPlugins] = useState<ExternalPlugin[]>([]);
+  const [registryPlugins, setRegistryPlugins] = useState<RegistryPlugin[]>([]);
   const [extractorPlugin, setExtractorPlugin] = useState('builtin');
   const [ocrPlugin, setOcrPlugin] = useState('builtin');
   const [embedderPlugin, setEmbedderPlugin] = useState('builtin');
@@ -113,11 +136,13 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const refreshExternal = useCallback(async () => {
     setExternalLoading(true);
     try {
-      const [collection, settings] = await Promise.all([
+      const [collection, registryRes, settings] = await Promise.all([
         serviceRequest<PluginCollection>('/api/v1/plugins'),
+        serviceRequest<{ plugins: RegistryPlugin[] }>('/api/v1/plugins/registry').catch(() => ({ plugins: [] })),
         serviceRequest<{ values: Record<string, unknown> }>('/api/v1/settings'),
       ]);
       setExternalPlugins(collection.plugins);
+      setRegistryPlugins(registryRes.plugins || []);
       setDeveloperMode(settings.values['plugins.developerMode'] === true);
       setExtractorPlugin(typeof settings.values['extraction.extractorPlugin'] === 'string'
         ? settings.values['extraction.extractorPlugin'] : 'builtin');
@@ -251,6 +276,84 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       await refreshExternal();
     } catch (error) {
       message.error(error instanceof Error ? error.message : `Could not ${action} plugin`);
+    } finally {
+      setPluginAction('');
+    }
+  };
+
+  const confirmRegistrySecurity = (title: string, okText: string, reasons: string[]) => new Promise<boolean>(resolve => {
+    let settled = false;
+    const settle = (value: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    getModalApi().confirm({
+      title,
+      content: (
+        <Space direction="vertical">
+          <Typography.Text>Quizzer verified the signed plugin manifest. Confirm these permissions and resource effects:</Typography.Text>
+          <ul>
+            {(reasons.length ? reasons : ['Security confirmation required']).map(reason => (
+              <li key={reason}><Typography.Text strong>{reason}</Typography.Text></li>
+            ))}
+          </ul>
+        </Space>
+      ),
+      okText,
+      onOk: () => settle(true),
+      onCancel: () => settle(false),
+    });
+  });
+
+  const installRegistryPlugin = async (registryPlugin: RegistryPlugin) => {
+    setPluginAction(`registry:${registryPlugin.id}:install`);
+    try {
+      const result = await executeTwoPhaseAction(
+        confirmationToken => serviceJson<{ plugin: ExternalPlugin }>('/api/v1/plugins/install', 'POST', {
+          id: registryPlugin.id,
+          ...(confirmationToken ? { confirmed: true, confirmationToken } : {}),
+        }),
+        {
+          onConfirmationRequired: reasons => confirmRegistrySecurity(
+            `Install ${registryPlugin.name || registryPlugin.id}?`,
+            'Confirm and install',
+            reasons,
+          ),
+        },
+      );
+      if (!result) return;
+      message.success(`${result.plugin.name ?? result.plugin.id} installed`);
+      await refreshExternal();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Could not install registry plugin');
+    } finally {
+      setPluginAction('');
+    }
+  };
+
+  const updateRegistryPlugin = async (plugin: ExternalPlugin) => {
+    setPluginAction(`${plugin.id}:update`);
+    try {
+      const result = await executeTwoPhaseAction(
+        confirmationToken => serviceJson<{ plugin: ExternalPlugin }>(
+          `/api/v1/plugins/${encodeURIComponent(plugin.id)}/update`,
+          'POST',
+          confirmationToken ? { confirmed: true, confirmationToken } : {},
+        ),
+        {
+          onConfirmationRequired: reasons => confirmRegistrySecurity(
+            `Update ${plugin.name ?? plugin.id} to v${plugin.availableVersion || 'latest'}?`,
+            'Confirm and update',
+            reasons,
+          ),
+        },
+      );
+      if (!result) return;
+      message.success(`Updated ${result.plugin?.name ?? plugin.name ?? plugin.id} to v${result.plugin?.version ?? plugin.availableVersion}`);
+      await refreshExternal();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Could not update plugin');
     } finally {
       setPluginAction('');
     }
@@ -584,8 +687,10 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
                 <Typography.Title level={5}>{plugin.name ?? plugin.id}</Typography.Title>
                 <Space size={[4, 4]} wrap>
                   {plugin.version && <Tag>v{plugin.version}</Tag>}
+                  <Tag color={plugin.source === 'registry' ? 'cyan' : 'default'}>{plugin.source === 'registry' ? 'Registry' : 'Local'}</Tag>
                   <Tag color={plugin.trust === 'signed' ? 'success' : 'warning'}>{plugin.trust === 'signed' ? 'Signed' : 'Unsigned local'}</Tag>
                   <Tag color={plugin.compatible ? 'blue' : 'error'}>{plugin.compatible ? 'Compatible' : 'Incompatible'}</Tag>
+                  {plugin.updateAvailable && <Tag color="orange">Update to v{plugin.availableVersion} available</Tag>}
                   {plugin.capabilities?.map(capability => <Tag key={capability}>{capability}</Tag>)}
                 </Space>
               </div>
@@ -612,6 +717,12 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
               {health && <Alert showIcon icon={health.ok ? <CheckCircleOutlined /> : undefined} type={health.ok ? 'success' : 'error'}
                 message={health.ok ? `Healthy · ${health.durationMs} ms` : 'Health check failed'} description={health.error} />}
               <Space wrap>
+                {plugin.updateAvailable && (
+                  <Button type="primary" icon={<CloudDownloadOutlined />} disabled={Boolean(pluginAction) || interfaceMode !== 'advanced'}
+                    loading={busy && pluginAction.endsWith(':update')} onClick={() => updateRegistryPlugin(plugin)}>
+                    Update to v{plugin.availableVersion}
+                  </Button>
+                )}
                 <Button disabled={Boolean(pluginAction)} loading={busy && pluginAction.endsWith(':health')} onClick={() => void runExternalAction(plugin, 'health')}>Health check</Button>
                 <Button disabled={Boolean(pluginAction) || !plugin.compatible || plugin.status === 'broken'} loading={busy && (pluginAction.endsWith(':enable') || pluginAction.endsWith(':disable'))}
                   onClick={() => void runExternalAction(plugin, plugin.enabled ? 'disable' : 'enable')}>{plugin.enabled ? 'Disable' : 'Enable'}</Button>
@@ -620,6 +731,71 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
               </Space>
             </Space>
           </section>;
+        })}
+
+        <Divider orientation="left" plain>Registry catalog</Divider>
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
+          Signed plugins distributed via official GitHub Releases. Platform compatibility and Ed25519 signatures are verified before installation.
+        </Typography.Paragraph>
+        {externalLoading && !registryPlugins.length ? <div className="plugin-loading"><Spin /></div> : !registryPlugins.length ? (
+          <Alert type="info" showIcon message="No registry plugins available" description="Configure trusted registry keys and registry catalog URL to browse available remote plugins." />
+        ) : registryPlugins.map(plugin => {
+          const installedMatch = externalPlugins.find(p => (p.registryId || p.id) === plugin.id);
+          const isInstalled = Boolean(installedMatch);
+          const busy = pluginAction === `registry:${plugin.id}:install` || pluginAction === `${plugin.id}:update`;
+          return (
+            <section className={`plugin-card${!plugin.compatible ? ' plugin-card-warning' : ''}`} key={`registry-${plugin.id}`}>
+              <div className="plugin-card-heading">
+                <div>
+                  <Typography.Title level={5}>{plugin.name ?? plugin.id}</Typography.Title>
+                  <Space size={[4, 4]} wrap>
+                    <Tag>v{plugin.version}</Tag>
+                    <Tag color="cyan">Registry</Tag>
+                    <Tag color={plugin.compatible ? 'blue' : 'error'}>{plugin.compatible ? 'Compatible' : 'Incompatible'}</Tag>
+                    {isInstalled && <Tag color={installedMatch?.updateAvailable ? 'orange' : 'green'}>{installedMatch?.updateAvailable ? 'Update available' : 'Installed'}</Tag>}
+                    {plugin.capabilities?.map(capability => <Tag key={capability}>{capability}</Tag>)}
+                  </Space>
+                </div>
+                <Tag color={isInstalled ? (installedMatch?.updateAvailable ? 'warning' : 'success') : 'default'}>
+                  {isInstalled ? (installedMatch?.updateAvailable ? 'Out of date' : 'Installed') : 'Available'}
+                </Tag>
+              </div>
+              <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                {plugin.description && <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>{plugin.description}</Typography.Paragraph>}
+                <Typography.Text type="secondary">
+                  Platforms: {plugin.platforms.map(p => `${p.os} (${p.architectures.join(', ')})`).join('; ')}
+                  {plugin.downloadSize ? ` · Download size: ${(plugin.downloadSize / (1024 * 1024)).toFixed(1)} MB` : ''}
+                </Typography.Text>
+                {plugin.permissions && (
+                  <div className="plugin-permissions">
+                    <Typography.Text strong>Permissions</Typography.Text>
+                    <Space size={[4, 4]} wrap>
+                      {plugin.permissions.filesystem.map(value => <Tag key={`fs-${value}`}>Files: {value}</Tag>)}
+                      {plugin.permissions.network.map(value => <Tag color="gold" key={`net-${value}`}>Network: {value}</Tag>)}
+                      {plugin.permissions.secrets.map(value => <Tag color="purple" key={`secret-${value}`}>Secret: {value}</Tag>)}
+                      {plugin.permissions.subprocess && <Tag color="volcano">Subprocess</Tag>}
+                      {!plugin.permissions.filesystem.length && !plugin.permissions.network.length && !plugin.permissions.secrets.length && !plugin.permissions.subprocess && <Tag color="green">No elevated permissions</Tag>}
+                    </Space>
+                  </div>
+                )}
+                <Space wrap>
+                  {isInstalled && installedMatch?.updateAvailable ? (
+                    <Button type="primary" icon={<CloudDownloadOutlined />} disabled={Boolean(pluginAction) || !plugin.compatible || interfaceMode !== 'advanced'}
+                      loading={busy} onClick={() => updateRegistryPlugin(installedMatch)}>
+                      Update to v{plugin.version}
+                    </Button>
+                  ) : isInstalled ? (
+                    <Button disabled>Installed (v{installedMatch?.version})</Button>
+                  ) : (
+                    <Button type="primary" icon={<CloudDownloadOutlined />} disabled={Boolean(pluginAction) || !plugin.compatible || interfaceMode !== 'advanced'}
+                      loading={busy} onClick={() => installRegistryPlugin(plugin)}>
+                      Install
+                    </Button>
+                  )}
+                </Space>
+              </Space>
+            </section>
+          );
         })}
 
         <Divider style={{ margin: '4px 0' }} />
