@@ -422,11 +422,14 @@ test('approves cost recovery exactly once for a deterministic prior attempt', ()
   const options = { ...generationOptions(), costCeilingMicroUsd: 10 };
   options.routeChain = [{ ...options.routeChain[0], pricing: { inputMicroUsdPerMillionTokens: 1, outputMicroUsdPerMillionTokens: 1 } }];
   const id = 'recovery-storage-job';
-  putRecord('generationJobs', id, { id, testId: 'recovery-storage-test', name: 'Recovery', createdAt: 1, updatedAt: 1,
+  const recoveryRecord = { id, testId: 'recovery-storage-test', name: 'Recovery', createdAt: 1, updatedAt: 1,
     status: 'paused', errorCode: 'cost_recovery', recoveryAttemptId: 'attempt-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', documentIds: ['accounting-doc'],
     options, questions: [], rejected: 0, rounds: {}, usageSummary: { inputTokens: 0, outputTokens: 0, totalTokens: 0, finalizedCostMicroUsd: 0, reservedCostMicroUsd: 1 },
     usageAudit: [{ event: 'reserved', attemptId: 'attempt-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', at: 2, routeIndex: 0, provider: 'codex', reservedCostMicroUsd: 1, reservationInputTokens: 1, reservationOutputTokens: 0, reservationCostKnown: true,
-      reservationFingerprint: sha256(JSON.stringify({ routeIndex: 0, bounds: { inputTokens: 1, outputTokens: 0, totalTokens: 1 }, reservationCostMicroUsd: 1, reservationCostKnown: true })) }] });
+      reservationFingerprint: sha256(JSON.stringify({ routeIndex: 0, bounds: { inputTokens: 1, outputTokens: 0, totalTokens: 1 }, reservationCostMicroUsd: 1, reservationCostKnown: true })) }] };
+  putRecord('generationJobs', id, recoveryRecord);
+  putRecord('generationJobs', 'recovery-unapproved', { ...recoveryRecord, id: 'recovery-unapproved', testId: 'recovery-unapproved-test', usageAudit: [...recoveryRecord.usageAudit], recoveryAttemptId: 'attempt-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' });
+  assert.throws(() => controlGenerationJob('recovery-unapproved', 'resume', {}, 3), /one matching recovery approval/);
   assert.throws(() => approveGenerationCostRecovery(id, { reason: 'missing confirmation' }), /explicit confirmation/);
   assert.equal(approveGenerationCostRecovery(id, { reason: 'Acknowledge possible duplicate billing', confirmed: true }).data.usageAudit.at(-1).event, 'recovery-approved');
   assert.equal(approveGenerationCostRecovery(id, { reason: 'Acknowledge possible duplicate billing', confirmed: true }).data.usageAudit.length, 2);
@@ -435,6 +438,8 @@ test('approves cost recovery exactly once for a deterministic prior attempt', ()
   const approvedRecord = getRecord('generationJobs', id);
   putRecord('generationJobs', id, { ...approvedRecord.data, workerId: 'active-recovery-worker', leaseId: 'active-recovery-lease', leaseExpiresAt: 999_999 });
   assert.throws(() => approveGenerationCostRecovery(id, { reason: 'Acknowledge possible duplicate billing', confirmed: true }), /no active generation lease/);
+  putRecord('generationJobs', id, { ...getRecord('generationJobs', id).data, workerId: undefined, leaseId: undefined, leaseExpiresAt: undefined });
+  assert.equal(controlGenerationJob(id, 'resume', {}, 4).data.status, 'queued');
   putRecord('generationJobs', 'recovery-wrong-state', { id: 'recovery-wrong-state', testId: 'recovery-wrong-test', name: 'Wrong state',
     status: 'waiting', errorCode: 'cost_ceiling', documentIds: ['accounting-doc'], options, questions: [], rejected: 0, rounds: {} });
   assert.throws(() => approveGenerationCostRecovery('recovery-wrong-state', { reason: 'wrong state', confirmed: true }), /paused for cost_recovery/);

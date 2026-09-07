@@ -753,6 +753,13 @@ export const controlGenerationJob = (id, action, changes = {}, now = Date.now())
   if (action === 'resume' && ['running', 'completed'].includes(existing.data.status)) {
     throw new Error(`A ${existing.data.status} generation job cannot be resumed`);
   }
+  if (action === 'resume' && existing.data.status === 'paused' && existing.data.errorCode === 'cost_recovery') {
+    const recoveryAttemptId = existing.data.recoveryAttemptId;
+    accountingId(recoveryAttemptId, 'recovery attempt id');
+    const approvals = (existing.data.usageAudit ?? []).filter(item => item.event === 'recovery-approved'
+      && item.recoveryAttemptId === recoveryAttemptId);
+    if (approvals.length !== 1) throw new Error('Cost recovery resume requires one matching recovery approval');
+  }
   if (action === 'cancel' && existing.data.status === 'cancelled') return existing;
   const resume = action === 'resume';
   const data = {
