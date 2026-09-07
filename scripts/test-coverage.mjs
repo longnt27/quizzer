@@ -15,17 +15,17 @@ const coverageRoots = ['server/*.mjs', 'plugin-sdk/*.mjs', 'release/*.mjs', 'des
 // sibling. Baselines are measured floors at introduction; raise them as gaps
 // close. The target for every entry is >=90% lines and >=80% branches.
 const criticalModules = [
-  { module: 'server/settings.mjs', baseline: [98, 90] }, // config
-  { module: 'server/storage.mjs', baseline: [96, 73] }, // migrations/accounting/jobs
+  { module: 'server/settings.mjs', baseline: [99, 92] }, // config
+  { module: 'server/storage.mjs', baseline: [99, 86] }, // migrations/accounting/jobs
   { module: 'server/index-jobs.mjs', baseline: [100, 87] }, // indexing
-  { module: 'server/retrieval-index.mjs', baseline: [93, 80] }, // retrieval
+  { module: 'server/retrieval-index.mjs', baseline: [93, 82] }, // retrieval
   { module: 'server/plugin-generation.mjs', baseline: [100, 88] }, // plugins
-  { module: 'server/builtin-provider-generation.mjs', baseline: [100, 65] }, // provider routing
-  { module: 'server/provider-policy.mjs', baseline: [90, 70] }, // provider policy
-  { module: 'server/openai-compatible-generation.mjs', baseline: [92, 84] }, // provider adapter
-  { module: 'server/generation-validation.mjs', baseline: [96, 80] }, // validators
-  { module: 'server/generation-cost.mjs', baseline: [83, 72] }, // cost/accounting
-  { module: 'server/generation-worker.mjs', baseline: [100, 82] }, // job transitions
+  { module: 'server/builtin-provider-generation.mjs', baseline: [100, 86] }, // provider routing
+  { module: 'server/provider-policy.mjs', baseline: [100, 100] }, // provider policy
+  { module: 'server/openai-compatible-generation.mjs', baseline: [94, 86] }, // provider adapter
+  { module: 'server/generation-validation.mjs', baseline: [99, 89] }, // validators
+  { module: 'server/generation-cost.mjs', baseline: [100, 83] }, // cost/accounting
+  { module: 'server/generation-worker.mjs', baseline: [100, 87] }, // job transitions
 ];
 
 const runTestsOnce = (args, label) => new Promise((resolve, reject) => {
