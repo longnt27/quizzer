@@ -16,7 +16,12 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    { name: 'chromium', testMatch: /.*\.spec\.ts/, use: { ...devices['Desktop Chrome'] } },
+    { name: 'firefox', testMatch: /cross-browser-smoke\.spec\.ts/, use: { ...devices['Desktop Firefox'] } },
+    // WebKit coverage for the Vite-served app is deferred pending an
+    // unresolved boot incompatibility; Electron itself remains Chromium.
+  ],
   webServer: {
     command: 'node scripts/e2e-dev.mjs',
     url: `http://127.0.0.1:${port}`,

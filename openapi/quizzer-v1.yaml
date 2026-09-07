@@ -677,6 +677,31 @@ paths:
         '400': { $ref: '#/components/responses/InvalidRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /jobs/{jobId}/accounting/recovery:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    post:
+      operationId: approveGenerationJobCostRecovery
+      summary: Acknowledge possible duplicate billing and approve one recovery retry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CostRecoveryApproval' }
+      responses:
+        '200':
+          description: Updated job and accounting audit
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [job, accounting]
+                properties:
+                  job: { $ref: '#/components/schemas/GenerationJob' }
+                  accounting: { $ref: '#/components/schemas/GenerationAccounting' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /jobs/claim:
     post:
       operationId: claimGenerationJob
@@ -1235,6 +1260,7 @@ components:
         creationFingerprint: { type: string, pattern: '^[a-f0-9]{64}$' }
         usageSummary: { $ref: '#/components/schemas/UsageSummary' }
         usageAudit: { type: array, items: { type: object } }
+        recoveryAttemptId: { type: string, pattern: '^attempt-[a-f0-9]{48}$' }
         rejections:
           type: array
           maxItems: 5000
@@ -1271,6 +1297,13 @@ components:
       additionalProperties: false
       properties:
         newCeilingMicroUsd: { type: integer, minimum: 0, maximum: 9000000000000000 }
+        reason: { type: string, minLength: 1, maxLength: 500 }
+        confirmed: { type: boolean, const: true }
+    CostRecoveryApproval:
+      type: object
+      required: [reason, confirmed]
+      additionalProperties: false
+      properties:
         reason: { type: string, minLength: 1, maxLength: 500 }
         confirmed: { type: boolean, const: true }
     GenerationJobPatch:
