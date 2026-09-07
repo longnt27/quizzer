@@ -582,7 +582,7 @@ const runJobs = async (action, explicitId) => {
       ? `Index ${record.data.documentIds.length} document(s)\nStatus: ${record.data.status}\nCompleted: ${record.data.completedDocumentIds.length}`
       : `${record.data.name}\nStatus: ${record.data.status}\nAccepted: ${record.data.questions?.length ?? 0}`,
   );
-  if (action !== 'resume' && action !== 'cancel') fail('Use jobs list, show, resume, cancel, or raise-ceiling');
+  if (action !== 'resume' && action !== 'cancel') fail('Use jobs list, show, resume, cancel, raise-ceiling, or approve-recovery');
   if (indexRecord) {
     if (action === 'cancel') {
       const job = cancelIndexJob(indexRecord.data);

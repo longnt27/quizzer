@@ -291,6 +291,7 @@ export const validateGenerationUsageAudit = (input, { options, summary } = {}) =
       continue;
     }
     if (item.event === 'recovery-approved') {
+      rejectUnknown(item, new Set(['event', 'at', 'recoveryAttemptId', 'reason']), 'Generation recovery approval event');
       if (typeof item.recoveryAttemptId !== 'string' || !/^attempt-[a-f0-9]{48}$/.test(item.recoveryAttemptId)
         || !boundedText(item.reason, 1, 500)
         || !input.slice(0, index).some(previous => previous.attemptId === item.recoveryAttemptId

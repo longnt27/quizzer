@@ -430,6 +430,8 @@ test('approves cost recovery exactly once for a deterministic prior attempt', ()
   assert.throws(() => approveGenerationCostRecovery(id, { reason: 'missing confirmation' }), /explicit confirmation/);
   assert.equal(approveGenerationCostRecovery(id, { reason: 'Acknowledge possible duplicate billing', confirmed: true }).data.usageAudit.at(-1).event, 'recovery-approved');
   assert.equal(approveGenerationCostRecovery(id, { reason: 'Acknowledge possible duplicate billing', confirmed: true }).data.usageAudit.length, 2);
+  putRecord('generationJobs', id, { ...getRecord('generationJobs', id).data, workerId: undefined, leaseId: undefined, leaseExpiresAt: undefined });
+  assert.throws(() => approveGenerationCostRecovery(id, { reason: 'Conflicting acknowledgement', confirmed: true }), /already consumed/);
   const approvedRecord = getRecord('generationJobs', id);
   putRecord('generationJobs', id, { ...approvedRecord.data, workerId: 'active-recovery-worker', leaseId: 'active-recovery-lease', leaseExpiresAt: 999_999 });
   assert.throws(() => approveGenerationCostRecovery(id, { reason: 'Acknowledge possible duplicate billing', confirmed: true }), /no active generation lease/);
