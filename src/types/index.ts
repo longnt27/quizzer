@@ -109,6 +109,29 @@ export interface ProviderAttempt {
   message?: string;
 }
 
+/** Durable, service-owned usage accounting for a generation job. Values are
+ * integer micro-USD (one millionth of a US dollar). Older jobs may omit it. */
+export interface GenerationUsageSummary {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  finalizedCostMicroUsd: number;
+  reservedCostMicroUsd: number;
+}
+
+export interface GenerationUsageAuditEntry {
+  event: 'reserved' | 'finalized' | 'ceiling-raised';
+  attemptId?: string;
+  at: number;
+  provider?: GenerationProvider;
+  model?: string;
+  overCeiling?: boolean;
+  reservationRetained?: boolean;
+  reason?: string;
+  previousCeilingMicroUsd?: number;
+  newCeilingMicroUsd?: number;
+}
+
 export interface PromptProfileSnapshot {
   id: string;
   version: number;
@@ -179,6 +202,8 @@ export interface GenerationOptions {
   ragProfile?: RAGProfile;
   routeChain?: ProviderRoute[];
   resolvedSettings?: Record<string, unknown>;
+  /** Omit for an unlimited job. Stored as integer micro-USD. */
+  costCeilingMicroUsd?: number;
 }
 
 export interface TestSession {

@@ -59,6 +59,7 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
   const [preset, setPreset] = useState<QuizPreset>('balanced');
   const [promptProfileId, setPromptProfileId] = useState(BUILT_IN_PROMPT_PROFILE.id);
   const [approvedRouteSignature, setApprovedRouteSignature] = useState('');
+  const [costCeilingDollars, setCostCeilingDollars] = useState<number | null>(null);
   const [query, setQuery] = useState('');
   const [saving, setSaving] = useState(false);
   const message = getMessageApi();
@@ -128,6 +129,9 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
         ragProfile: { id: hardwareProfile, retrieval: retrievalMode, contextBudget, rerank },
         routeChain: proposedRoutes.map(route => ({ ...route, approved: true })),
         resolvedSettings: resolved.values,
+        ...(profile.interfaceMode === 'advanced' && costCeilingDollars !== null
+          ? { costCeilingMicroUsd: Math.round(costCeilingDollars * 1_000_000) }
+          : {}),
       };
       const requestedSources = mode === 'combined'
         ? [{ name: name.trim() || 'Combined quiz', documentIds: selected.map(document => document.id) }]
@@ -220,6 +224,14 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
                 { label: 'Exactly one correct answer', value: 'single' },
                 { label: 'Multiple correct answers', value: 'multiple' },
               ]} />
+          </div>}
+          {profile.interfaceMode === 'advanced' && <div>
+            <Typography.Text strong>Generation cost ceiling <Typography.Text type="secondary">(optional)</Typography.Text></Typography.Text>
+            <InputNumber aria-label="Generation cost ceiling in US dollars" min={0} max={9_000_000_000} precision={2} step={1} value={costCeilingDollars}
+              onChange={value => setCostCeilingDollars(value)} addonBefore="$" addonAfter="USD" style={{ width: '100%', marginTop: 8 }} />
+            <Typography.Paragraph type="secondary" style={{ margin: '6px 0 0' }}>
+              Leave blank for unlimited. This is an approximate maximum for provider-priced generation; Quizzer stores it internally as micro-USD (1 USD = 1,000,000 micro-USD) and pauses before an approved ceiling would be exceeded.
+            </Typography.Paragraph>
           </div>}
           {profile.interfaceMode === 'advanced' && mode === 'combined' && selected.length > 1 && <div>
             <Typography.Text strong>Document coverage</Typography.Text><br />
