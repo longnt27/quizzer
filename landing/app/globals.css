@@ -130,6 +130,8 @@ footer { padding: 36px max(24px, calc((100vw - 1160px) / 2)); display: flex; ali
 
 .hero-copy, .product-frame, .download-panel, .install-list, .install-list article, .command-row { min-width: 0; }
 .install-list { grid-template-columns: minmax(0, 1fr); }
+.artifact-details, .checksum { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.artifact-details { margin-top: 8px !important; color: #a9bad1 !important; font-size: 11px; }
 .checksum { max-width: 100%; }
 
 @media (max-width: 980px) {

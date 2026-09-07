@@ -29,6 +29,7 @@ export default defineConfig({
     env: {
       ...process.env,
       NEXT_PUBLIC_QUIZZER_RELEASE_PUBLIC_KEY: releasePublicKey,
+      NEXT_PUBLIC_QUIZZER_RELEASE_PUBLIC_KEY_ID: 'playwright-test-key',
     },
   },
 });
