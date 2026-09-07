@@ -431,6 +431,12 @@ test('approves cost recovery exactly once for a deterministic prior attempt', ()
   assert.equal(approveGenerationCostRecovery(id, { reason: 'Acknowledge possible duplicate billing', confirmed: true }).data.usageAudit.at(-1).event, 'recovery-approved');
   assert.equal(approveGenerationCostRecovery(id, { reason: 'Acknowledge possible duplicate billing', confirmed: true }).data.usageAudit.length, 2);
   assert.throws(() => approveGenerationCostRecovery(id, { reason: 'again', confirmed: true }), /already consumed/);
+  putRecord('generationJobs', 'recovery-wrong-state', { id: 'recovery-wrong-state', testId: 'recovery-wrong-test', name: 'Wrong state',
+    status: 'waiting', errorCode: 'cost_ceiling', documentIds: ['accounting-doc'], options, questions: [], rejected: 0, rounds: {} });
+  assert.throws(() => approveGenerationCostRecovery('recovery-wrong-state', { reason: 'wrong state', confirmed: true }), /paused for cost_recovery/);
+  putRecord('generationJobs', 'recovery-missing-history', { id: 'recovery-missing-history', testId: 'recovery-missing-test', name: 'Missing history',
+    status: 'paused', errorCode: 'cost_recovery', recoveryAttemptId: 'attempt-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', documentIds: ['accounting-doc'], options, questions: [], rejected: 0, rounds: {} });
+  assert.throws(() => approveGenerationCostRecovery('recovery-missing-history', { reason: 'missing history', confirmed: true }), /not present in accounting history/);
 });
 
 test('covers storage validation branches around sync, migration, leases, and completion', async () => {
@@ -458,21 +464,21 @@ test('covers storage validation branches around sync, migration, leases, and com
   assert.throws(() => completeGenerationJob('accounting-job', { completionId: 'bad-completion', test: null }), /completed test record/);
   assert.throws(() => completeGenerationJob('accounting-job', { completionId: 'valid-completion', test: { id: 'x', questions: [] }, patch: [] }), /completion patch/);
   const edgeJob = { id: 'coverage-edge-job', testId: 'coverage-edge-test', name: 'Coverage edge', createdAt: 20, updatedAt: 20,
-    status: 'queued', documentIds: ['accounting-doc'], options: { ...generationOptions(), routeChain: [{ ...generationOptions().routeChain[0],
+    status: 'running', workerId: 'coverage-edge-worker', leaseId: 'coverage-edge-lease', leaseExpiresAt: 100_000, documentIds: ['accounting-doc'], options: { ...generationOptions(), routeChain: [{ ...generationOptions().routeChain[0],
       pricing: { inputMicroUsdPerMillionTokens: 1, outputMicroUsdPerMillionTokens: 1 } }] }, questions: [], rejected: 0, rounds: {} };
-  createGenerationJobs([edgeJob]);
-  const edgeClaim = claimGenerationJob({ workerId: 'coverage-edge-worker', leaseMs: 10_000, now: 200, providerConcurrency: { codex: 10 } });
-  assert.throws(() => finalizeGenerationAttempt(edgeJob.id, { workerId: 'coverage-edge-worker', leaseId: edgeClaim.data.leaseId,
+  putRecord('generationJobs', edgeJob.id, edgeJob);
+  const edgeLease = 'coverage-edge-lease';
+  assert.throws(() => finalizeGenerationAttempt(edgeJob.id, { workerId: 'coverage-edge-worker', leaseId: edgeLease,
     attemptId: 'coverage-missing-attempt', usage: { inputTokens: 1, outputTokens: 1 }, now: 201 }), /no reservation/);
-  reserveGenerationAttempt(edgeJob.id, { workerId: 'coverage-edge-worker', leaseId: edgeClaim.data.leaseId,
+  reserveGenerationAttempt(edgeJob.id, { workerId: 'coverage-edge-worker', leaseId: edgeLease,
     attemptId: 'coverage-malformed-attempt', routeIndex: 0, maxInputTokens: 1, maxOutputTokens: 1, now: 202 });
-  finalizeGenerationAttempt(edgeJob.id, { workerId: 'coverage-edge-worker', leaseId: edgeClaim.data.leaseId,
+  finalizeGenerationAttempt(edgeJob.id, { workerId: 'coverage-edge-worker', leaseId: edgeLease,
     attemptId: 'coverage-malformed-attempt', usage: { unsupported: true }, now: 203 });
-  assert.throws(() => completeGenerationJob(edgeJob.id, { workerId: 'coverage-edge-worker', leaseId: edgeClaim.data.leaseId,
+  assert.throws(() => completeGenerationJob(edgeJob.id, { workerId: 'coverage-edge-worker', leaseId: edgeLease,
     completionId: 'coverage-mismatch-completion', test: { id: edgeJob.testId, questions: [{ type: 'coding' }] }, patch: { questions: [] }, now: 204 }), /must match the stored test/);
   const edgeStored = getRecord('generationJobs', edgeJob.id);
   putRecord('generationJobs', edgeJob.id, { ...edgeStored.data, options: { ...edgeStored.data.options, provider: 'other-provider' } });
-  reserveGenerationAttempt(edgeJob.id, { workerId: 'coverage-edge-worker', leaseId: edgeClaim.data.leaseId,
+  reserveGenerationAttempt(edgeJob.id, { workerId: 'coverage-edge-worker', leaseId: edgeLease,
     attemptId: 'coverage-failover-attempt', routeIndex: 0, maxInputTokens: 1, maxOutputTokens: 1, now: 205 });
   const legacyCeiling = { id: 'legacy-ceiling-job', testId: 'legacy-ceiling-test', name: 'Legacy ceiling', createdAt: 1, updatedAt: 1,
     status: 'waiting', documentIds: ['accounting-doc'], costCeilingMicroUsd: 5, options: generationOptions(), questions: [], rejected: 0, rounds: {} };

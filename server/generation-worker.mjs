@@ -476,8 +476,10 @@ export const executeGenerationJob = async (claimedJob, dependencies) => {
         const reserve = dependencies.reserveGenerationAttempt ?? dependencies.reserveProviderAttempt;
         const finalize = dependencies.finalizeGenerationAttempt ?? dependencies.finalizeProviderAttempt;
         const baseAttemptId = accountingAttemptId(job.id, type, round, requestedSlotIndexes, routeIndex);
-        const recoveryCount = (job.usageAudit ?? []).filter(item => item?.event === 'recovery-approved'
-          && item.recoveryAttemptId === baseAttemptId).length;
+        // Approval ordinals are job-wide: a second crash references the first
+        // retry attempt, not the original base attempt. This keeps every
+        // approved retry identity distinct across an arbitrary crash chain.
+        const recoveryCount = (job.usageAudit ?? []).filter(item => item?.event === 'recovery-approved').length;
         const attemptId = recoveryCount
           ? accountingAttemptId(job.id, type, round, requestedSlotIndexes, routeIndex, recoveryCount)
           : baseAttemptId;

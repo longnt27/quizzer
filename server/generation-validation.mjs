@@ -276,7 +276,7 @@ export const validateGenerationUsageAudit = (input, { options, summary } = {}) =
   const finalized = new Set();
   let lastRaisedCeiling;
   let derived = { ...emptyUsageSummary };
-  for (const item of input) {
+  for (const [index, item] of input.entries()) {
     requireObject(item, 'Generation usage audit event must be an object');
     rejectUnknown(item, accountingEventKeys, 'Generation usage audit event');
     boundedInteger(item.at, 0, Number.MAX_SAFE_INTEGER, 'Generation accounting event time is invalid');
@@ -293,9 +293,13 @@ export const validateGenerationUsageAudit = (input, { options, summary } = {}) =
     if (item.event === 'recovery-approved') {
       if (typeof item.recoveryAttemptId !== 'string' || !/^attempt-[a-f0-9]{48}$/.test(item.recoveryAttemptId)
         || !boundedText(item.reason, 1, 500)
-        || !input.some(previous => previous.attemptId === item.recoveryAttemptId
+        || !input.slice(0, index).some(previous => previous.attemptId === item.recoveryAttemptId
           && ['reserved', 'finalized'].includes(previous.event))) {
         throw new Error('Generation recovery approval is invalid');
+      }
+      if (input.slice(0, index).some(previous => previous.event === 'recovery-approved'
+        && previous.recoveryAttemptId === item.recoveryAttemptId)) {
+        throw new Error('Generation recovery approval is duplicated');
       }
       continue;
     }
