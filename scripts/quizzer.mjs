@@ -21,6 +21,7 @@ import { PROVIDER_POLICIES } from '../server/provider-policy.mjs';
 import { resolveDocumentExtractor, resolveOcrProvider } from '../server/plugin-extraction.mjs';
 import { resolveEmbeddingProvider } from '../server/plugin-embeddings.mjs';
 import { resolveVectorIndexProvider } from '../server/plugin-vector-index.mjs';
+import { runOllamaHyde } from '../server/ollama-generation.mjs';
 
 const usage = `Quizzer CLI
 
@@ -98,6 +99,11 @@ const createRetrievalIndex = () => new RetrievalIndex({
       throw new Error(`Reranker plugin ${id} is not installed, enabled, and compatible`);
     }
     return (await manager.invoke(id, 'rag.rerank', params, options)).result;
+  },
+  invokeLocalHyde: async (query, options) => {
+    if (options?.localOnly !== true) throw new Error('HyDE generation requires local-only routing');
+    const settings = await loadResolvedSettings(appDataDirectory);
+    return runOllamaHyde({ query, model: settings.values['retrieval.hydeModel'] }, options.signal);
   },
   onDenseIssue: issue => process.stderr.write(`Dense indexing unavailable; sparse retrieval remains ready: ${issue.message}\n`),
 });

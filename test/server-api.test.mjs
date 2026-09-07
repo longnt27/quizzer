@@ -34,7 +34,10 @@ const embeddingServer = createServer((request, response) => {
     const payload = JSON.parse(body);
     if (request.url === '/api/generate') {
       response.writeHead(200, { 'Content-Type': 'application/json' });
-      response.end(JSON.stringify({ model: payload.model, response: '{"questions":[]}', done: true }));
+      const output = payload.format?.required?.includes('passage')
+        ? JSON.stringify({ passage: 'Terraform remote state locking coordinates concurrent writers.' })
+        : '{"questions":[]}';
+      response.end(JSON.stringify({ model: payload.model, response: output, done: true }));
       return;
     }
     const input = payload.input;
@@ -363,6 +366,21 @@ test('provides onboarding, document, job, and event operations', async () => {
   assert.equal(evidence.results[0].documentId, 'doc-1');
   assert.match(evidence.results[0].sourceSpanId, /^doc-1:span:/);
   assert.deepEqual(evidence.results[0].retrievalChannels, ['sparse', 'dense']);
+
+  const hydeSettingsResponse = await authorized('/api/v1/settings', {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ values: { 'retrieval.planning': 'hyde', 'retrieval.hydeModel': 'qwen3:4b' } }),
+  });
+  assert.equal(hydeSettingsResponse.status, 200);
+  const hydeResponse = await authorized('/api/v1/retrieval/preview', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: 'remote state locking', documentIds: ['doc-1'], limit: 3 }),
+  });
+  const hydeEvidence = await hydeResponse.json();
+  assert.equal(hydeEvidence.planningTrace.mode, 'hyde');
+  assert.equal(hydeEvidence.planningTrace.hyde, true);
+  assert.equal(hydeEvidence.planningTrace.fallback, false);
+  assert.ok(hydeEvidence.planningTrace.variants.includes('Terraform remote state locking coordinates concurrent writers.'));
 
   const reextractedResponse = await authorized('/api/v1/documents/doc-1/reextract', { method: 'POST' });
   assert.equal(reextractedResponse.status, 200);

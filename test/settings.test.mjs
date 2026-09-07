@@ -46,6 +46,8 @@ test('validates types, ranges, unknown settings, and secret-like keys', () => {
   assert.deepEqual(validateSettings({ 'extraction.extractorPlugin': 'dev.quizzer.extractor' }), { 'extraction.extractorPlugin': 'dev.quizzer.extractor' });
   assert.deepEqual(validateSettings({ 'retrieval.vectorIndexPlugin': 'dev.quizzer.vector' }), { 'retrieval.vectorIndexPlugin': 'dev.quizzer.vector' });
   assert.deepEqual(validateSettings({ 'retrieval.planning': 'multi-query' }), { 'retrieval.planning': 'multi-query' });
+  assert.deepEqual(validateSettings({ 'retrieval.hydeModel': 'library/qwen3:4b' }), { 'retrieval.hydeModel': 'library/qwen3:4b' });
+  assert.throws(() => validateSettings({ 'retrieval.hydeModel': '../remote' }), /invalid value/);
   assert.throws(() => validateSettings({ 'retrieval.planning': 'remote-model' }), /must be one of/);
   assert.throws(() => validateSettings({ 'generation.concurrency': 99 }), /from 1 to 10/);
   assert.throws(() => validateSettings({ 'providers.codex.maxConcurrency': 0 }), /from 1 to 10/);
@@ -61,7 +63,9 @@ test('uses progressively stronger bounded query planning across hardware profile
   assert.equal(lite.values['retrieval.planning'], 'none');
   assert.equal(balanced.values['retrieval.planning'], 'multi-query');
   assert.equal(max.values['retrieval.planning'], 'hyde');
+  assert.equal(max.values['retrieval.hydeModel'], 'qwen3:4b');
   assert.equal(SETTINGS_SCHEMA.properties['retrieval.planning'].enum.join(','), 'none,multi-query,hyde');
+  assert.match('qwen3:4b', new RegExp(SETTINGS_SCHEMA.properties['retrieval.hydeModel'].pattern));
   assert.equal(SETTINGS_SCHEMA.properties['retrieval.planning']['x-quizzer-reindex-required'], false);
 });
 
