@@ -4,6 +4,10 @@ import { basename, extname, resolve } from 'node:path';
 import { isStoredObjectReference, materializeDocumentImages } from './object-store.mjs';
 
 export const DOCUMENT_EXTRACTION_SCHEMA_VERSION = 1;
+export const STRUCTURAL_CHUNKER_VERSION = 1;
+export const CHILD_CHUNK_TARGET_TOKENS = 512;
+export const PARENT_SECTION_TARGET_TOKENS = 2048;
+export const MAX_DOCUMENT_CHUNKS = 10_000;
 export const PDFJS_PARSER_VERSION = 'pdfjs-5.3.31';
 export const UTF8_PARSER_VERSION = 'utf8-1';
 
@@ -14,6 +18,201 @@ const textExtensions = new Map([
 ]);
 
 const sha256 = value => createHash('sha256').update(value).digest('hex');
+
+// This is deliberately conservative and deterministic. It is not intended to
+// emulate a provider tokenizer: word/number runs, CJK/Vietnamese characters,
+// and punctuation all contribute bounded units, with a four-character floor
+// for prose and a one-character floor for code-like text.
+export const estimateChunkTokens = value => {
+  const text = String(value ?? '').normalize('NFKC');
+  if (!text) return 0;
+  const lexical = text.match(/[\p{L}\p{N}_]+/gu)?.length ?? 0;
+  const punctuation = text.match(/[^\p{L}\p{N}_\s]/gu)?.length ?? 0;
+  const cjk = text.match(/[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]/gu)?.length ?? 0;
+  return Math.max(1, lexical + Math.ceil(punctuation / 3), cjk, Math.ceil(text.length / 4));
+};
+
+const abortError = () => Object.assign(new Error('Document chunking cancelled'), { name: 'AbortError' });
+const throwIfAborted = signal => { if (signal?.aborted) throw signal.reason ?? abortError(); };
+
+const trimRange = (content, start, end) => {
+  while (start < end && /\s/u.test(content[start])) start += 1;
+  while (end > start && /\s/u.test(content[end - 1])) end -= 1;
+  return { start, end };
+};
+
+const pageMarker = line => {
+  const explicit = line.match(/^\s*---\s*Page\s+(\d+)\s*---\s*$/iu);
+  if (explicit) return Number(explicit[1]);
+  const legacy = line.match(/^\s*\{(\d+)\}-{20,}\s*$/u);
+  return legacy ? Number(legacy[1]) + 1 : undefined;
+};
+
+const headingMatch = line => line.match(/^\s*(#{1,6})\s+(.+?)\s*#*\s*$/u);
+const listMatch = line => /^\s*(?:[-+*]|\d+[.)])\s+/.test(line);
+const imageMatch = line => /!\[[^\]]*\]\([^)]*\)|^\s*\[\[\s*(?:image|figure|diagram)\b[^\]]*\]\]/iu.test(line);
+const tableLine = line => /^\s*\|.*\|\s*$/.test(line) || /^\s*[^|\n]+\s*\|\s*[^|\n]+/.test(line);
+const tableDivider = line => /^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
+
+const lineRecords = content => {
+  const records = [];
+  let start = 0;
+  while (start <= content.length) {
+    const newline = content.indexOf('\n', start);
+    const rawEnd = newline < 0 ? content.length : newline;
+    const end = rawEnd > start && content[rawEnd - 1] === '\r' ? rawEnd - 1 : rawEnd;
+    records.push({ start, end, rawEnd, text: content.slice(start, end) });
+    if (newline < 0) break;
+    start = newline + 1;
+  }
+  return records;
+};
+
+const structuralUnits = (content, signal) => {
+  const lines = lineRecords(content);
+  const units = [];
+  const breadcrumbs = [];
+  let page;
+  let index = 0;
+  const push = (startLine, endLine, kind, unitPage = page) => {
+    if (endLine <= startLine) return;
+    const start = lines[startLine].start;
+    const end = lines[endLine - 1].end;
+    const trimmed = trimRange(content, start, end);
+    if (trimmed.end <= trimmed.start) return;
+    units.push({ start: trimmed.start, end: trimmed.end, kind, page: unitPage, breadcrumb: breadcrumbs.filter(Boolean).join(' › ') });
+  };
+  while (index < lines.length) {
+    if ((index & 255) === 0) throwIfAborted(signal);
+    const line = lines[index];
+    const markerPage = pageMarker(line.text);
+    if (markerPage !== undefined) { page = markerPage; index += 1; continue; }
+    if (!line.text.trim()) { index += 1; continue; }
+    const heading = headingMatch(line.text);
+    if (heading) {
+      const depth = heading[1].length;
+      breadcrumbs.length = depth - 1;
+      breadcrumbs[depth - 1] = heading[2].trim();
+      push(index, index + 1, 'heading', page);
+      index += 1;
+      continue;
+    }
+    const start = index;
+    const fenced = /^\s*(```+|~~~+)/.exec(line.text);
+    if (fenced) {
+      const fence = fenced[1].slice(0, 3);
+      index += 1;
+      while (index < lines.length && !new RegExp(`^\\s*${fence}`).test(lines[index].text)) index += 1;
+      if (index < lines.length) index += 1;
+      push(start, index, 'code', page);
+      continue;
+    }
+    if (tableLine(line.text) && (tableDivider(lines[index + 1]?.text ?? '') || tableLine(lines[index + 1]?.text ?? ''))) {
+      index += 1;
+      while (index < lines.length && lines[index].text.trim() && tableLine(lines[index].text)) index += 1;
+      push(start, index, 'table', page);
+      continue;
+    }
+    if (listMatch(line.text)) {
+      index += 1;
+      while (index < lines.length && lines[index].text.trim() && (listMatch(lines[index].text) || /^\s{2,}\S/.test(lines[index].text))) index += 1;
+      push(start, index, 'list', page);
+      continue;
+    }
+    if (imageMatch(line.text)) { push(index, index + 1, 'image', page); index += 1; continue; }
+    index += 1;
+    while (index < lines.length && lines[index].text.trim()
+      && pageMarker(lines[index].text) === undefined && !headingMatch(lines[index].text)
+      && !/^\s*(```+|~~~+)/.test(lines[index].text)
+      && !listMatch(lines[index].text) && !imageMatch(lines[index].text)) index += 1;
+    push(start, index, 'paragraph', page);
+  }
+  return units;
+};
+
+const splitByLines = (content, unit, targetTokens, signal) => {
+  if (estimateChunkTokens(content.slice(unit.start, unit.end)) <= targetTokens) return [unit];
+  const lines = lineRecords(content).filter(line => line.end > unit.start && line.start < unit.end);
+  const pieces = [];
+  let start = unit.start;
+  let end = start;
+  for (const [lineIndex, line] of lines.entries()) {
+    if ((lineIndex & 255) === 0) throwIfAborted(signal);
+    const candidateEnd = Math.min(unit.end, line.end);
+    const candidate = content.slice(start, candidateEnd);
+    if (end > start && estimateChunkTokens(candidate) > targetTokens) {
+      const trimmed = trimRange(content, start, end);
+      if (trimmed.end > trimmed.start) pieces.push({ ...unit, start: trimmed.start, end: trimmed.end });
+      start = line.start;
+    }
+    end = candidateEnd;
+    if (estimateChunkTokens(content.slice(start, end)) > targetTokens && end > start) {
+      // A single line can be larger than the budget; split only at character
+      // boundaries so the resulting spans remain valid UTF-16 source ranges.
+      let cursor = start;
+      while (cursor < end) {
+        let cursorEnd = Math.min(end, cursor + targetTokens * 4);
+        while (cursorEnd > cursor && estimateChunkTokens(content.slice(cursor, cursorEnd)) > targetTokens) cursorEnd -= 1;
+        if (cursorEnd <= cursor) cursorEnd = Math.min(end, cursor + 1);
+        const trimmed = trimRange(content, cursor, cursorEnd);
+        if (trimmed.end > trimmed.start) pieces.push({ ...unit, start: trimmed.start, end: trimmed.end });
+        cursor = cursorEnd;
+      }
+      start = end;
+      end = start;
+    }
+  }
+  if (end > start) {
+    const trimmed = trimRange(content, start, end);
+    if (trimmed.end > trimmed.start) pieces.push({ ...unit, start: trimmed.start, end: trimmed.end });
+  }
+  return pieces;
+};
+
+const structuralChunkDocument = (documentId, content, { signal, childTokens = CHILD_CHUNK_TARGET_TOKENS, parentTokens = PARENT_SECTION_TARGET_TOKENS } = {}) => {
+  throwIfAborted(signal);
+  const units = structuralUnits(content, signal).flatMap(unit => splitByLines(content, unit, childTokens, signal));
+  const children = [];
+  let parentOrdinal = -1;
+  let parentTokenCount = 0;
+  for (const unit of units) {
+    throwIfAborted(signal);
+    const tokens = estimateChunkTokens(content.slice(unit.start, unit.end));
+    const startsNewParent = parentOrdinal < 0 || (unit.kind === 'heading' && parentTokenCount > 0)
+      || parentTokenCount && parentTokenCount + tokens > parentTokens;
+    if (startsNewParent) {
+      parentOrdinal += 1;
+      parentTokenCount = 0;
+    }
+    const index = children.length;
+    const parentId = `${documentId}:parent:${parentOrdinal}`;
+    const contentText = content.slice(unit.start, unit.end);
+    const textHash = sha256(contentText);
+    children.push({
+      id: `${documentId}:span:${index}:${textHash.slice(0, 12)}`,
+      index,
+      page: unit.page,
+      start: unit.start,
+      end: unit.end,
+      textHash,
+      parentId,
+      breadcrumb: unit.breadcrumb,
+      sectionKind: unit.kind,
+      tokenCount: tokens,
+    });
+    if (children.length > MAX_DOCUMENT_CHUNKS) throw new Error(`Document ${documentId} exceeds the ${MAX_DOCUMENT_CHUNKS}-chunk limit`);
+    parentTokenCount += tokens;
+  }
+  // A malformed extractor can produce duplicate/overlapping units. Keep the
+  // first deterministic span and never expose ambiguous citation ranges.
+  const seen = new Set();
+  return children.filter(chunk => {
+    const key = `${chunk.start}:${chunk.end}:${chunk.textHash}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).map((chunk, index) => ({ ...chunk, index }));
+};
 
 const extractPdf = async data => {
   const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
@@ -62,20 +261,24 @@ export const extractDocumentBuffer = async (data, {
   if (!extracted || typeof extracted !== 'object' || typeof extracted.content !== 'string') {
     throw new Error('The document extractor returned an invalid result');
   }
-  if (!extracted.content.trim()) throw new Error('The document contains no extractable text');
+  // Canonicalize line endings once, before source spans are created. Every
+  // consumer (citations, browser fallback, and indexes) then shares offsets.
+  const normalizedContent = extracted.content.replace(/\r\n?/g, '\n');
+  if (!normalizedContent.trim()) throw new Error('The document contains no extractable text');
   const extractedAt = now();
   if (!Number.isSafeInteger(extractedAt) || extractedAt < 0) throw new Error('Invalid extraction time');
   return {
     ...extracted,
+    content: normalizedContent,
     images: await applyImageOcr(extracted.images, ocr, signal),
     mimeType: source.mimeType,
     extractionSchemaVersion: DOCUMENT_EXTRACTION_SCHEMA_VERSION,
     extractedAt,
-    extractionContentHash: sha256(extracted.content),
+    extractionContentHash: sha256(normalizedContent),
   };
 };
 
-export const chunkDocument = (documentId, content, targetCharacters = 2200) => {
+const legacyChunkDocument = (documentId, content, targetCharacters = 2200) => {
   const blocks = content.replace(/\r\n?/g, '\n').split(/\n{2,}/);
   const chunks = [];
   let text = '';
@@ -113,6 +316,24 @@ export const chunkDocument = (documentId, content, targetCharacters = 2200) => {
   return chunks.map(chunk => ({ ...chunk, page: pageForOffset(content, chunk.start) }));
 };
 
+/**
+ * Build stable source spans. The default structural mode recognizes document
+ * blocks and packs them into bounded child and parent sections. A numeric third
+ * argument intentionally retains the pre-structural character API for old
+ * callers and stored documents that still request it.
+ */
+export const chunkDocument = (documentId, content, options = undefined) => {
+  if (typeof documentId !== 'string' || !documentId) throw new Error('A document id is required');
+  if (typeof content !== 'string') throw new Error('Document content must be text');
+  if (typeof options === 'number') return legacyChunkDocument(documentId, content, options);
+  const resolved = options && typeof options === 'object' ? options : {};
+  const childTokens = Number.isSafeInteger(resolved.childTokens) && resolved.childTokens >= 32 && resolved.childTokens <= 4_096
+    ? resolved.childTokens : CHILD_CHUNK_TARGET_TOKENS;
+  const parentTokens = Number.isSafeInteger(resolved.parentTokens) && resolved.parentTokens >= childTokens && resolved.parentTokens <= 16_384
+    ? resolved.parentTokens : PARENT_SECTION_TARGET_TOKENS;
+  return structuralChunkDocument(documentId, content, { ...resolved, childTokens, parentTokens });
+};
+
 const pageForOffset = (content, offset) => {
   const markers = [...content.matchAll(/---\s*Page\s+(\d+)\s*---/gi)].filter(match => (match.index ?? 0) <= offset);
   const page = Number(markers.at(-1)?.[1]);
@@ -146,9 +367,10 @@ export const importDocumentFile = async (path, {
     contentHash: sha256(data),
     parserVersion: extracted.parserVersion,
     extractionSchemaVersion: extracted.extractionSchemaVersion,
+    chunkingVersion: STRUCTURAL_CHUNKER_VERSION,
     extractedAt: extracted.extractedAt,
     extractionContentHash: extracted.extractionContentHash,
-    chunks: chunkDocument(id, extracted.content),
+    chunks: chunkDocument(id, extracted.content, { signal }),
     images: extracted.images,
     originalFile: objectStore ? await objectStore.putBuffer(data, originalMetadata) : {
       __quizzerBlob: true,
@@ -189,10 +411,11 @@ export const reextractDocument = async (document, {
     pageCount: extracted.pageCount,
     parserVersion: extracted.parserVersion,
     extractionSchemaVersion: extracted.extractionSchemaVersion,
+    chunkingVersion: STRUCTURAL_CHUNKER_VERSION,
     extractedAt: extracted.extractedAt,
     extractionContentHash: extracted.extractionContentHash,
     extractionHistory: history,
-    chunks: chunkDocument(document.id, extracted.content),
+    chunks: chunkDocument(document.id, extracted.content, { signal }),
     images: extracted.images,
     indexedAt: undefined,
     indexVersion: undefined,

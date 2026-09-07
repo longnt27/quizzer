@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { chunkDocument } from './document-import.mjs';
+import { chunkDocument, STRUCTURAL_CHUNKER_VERSION, estimateChunkTokens } from './document-import.mjs';
 
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 const normalizedTokens = value => String(value).normalize('NFKC').toLowerCase().match(/[\p{L}\p{N}_-]+/gu) ?? [];
@@ -35,6 +35,7 @@ const documentVersionHash = document => sha256(JSON.stringify({
   parserVersion: document.parserVersion || 'unknown',
   extractionContentHash: document.extractionContentHash || sha256(document.content),
   length: document.content.length,
+  chunker: document.chunkingVersion || STRUCTURAL_CHUNKER_VERSION,
 }));
 
 export class SparseDocumentIndex {
@@ -57,7 +58,11 @@ export class SparseDocumentIndex {
         tags TEXT NOT NULL DEFAULT '[]',
         content TEXT NOT NULL,
         content_hash TEXT NOT NULL,
-        indexed_at INTEGER NOT NULL
+        indexed_at INTEGER NOT NULL,
+        source_start INTEGER,
+        source_end INTEGER,
+        section_kind TEXT NOT NULL DEFAULT 'paragraph',
+        token_count INTEGER NOT NULL DEFAULT 0
       );
       CREATE INDEX IF NOT EXISTS rag_chunks_document_idx ON rag_chunks(document_id, chunk_index);
       CREATE INDEX IF NOT EXISTS rag_chunks_parent_idx ON rag_chunks(parent_id, chunk_index);
@@ -75,14 +80,19 @@ export class SparseDocumentIndex {
         INSERT INTO rag_chunks_fts(rowid, content, breadcrumb) VALUES (new.rowid, new.content, new.breadcrumb);
       END;
     `);
+    const columns = new Set(this.database.prepare('PRAGMA table_info(rag_chunks)').all().map(column => column.name));
+    for (const [name, definition] of [
+      ['source_start', 'INTEGER'], ['source_end', 'INTEGER'],
+      ['section_kind', "TEXT NOT NULL DEFAULT 'paragraph'"], ['token_count', 'INTEGER NOT NULL DEFAULT 0'],
+    ]) if (!columns.has(name)) this.database.exec(`ALTER TABLE rag_chunks ADD COLUMN ${name} ${definition}`);
     this.deleteDocumentStatement = this.database.prepare('DELETE FROM rag_chunks WHERE document_id = ?');
     this.insertChunkStatement = this.database.prepare(`
       INSERT INTO rag_chunks (
         span_id, document_id, document_name, version_hash, chunk_index, parent_id, page,
-        breadcrumb, tags, content, content_hash, indexed_at
+        breadcrumb, tags, content, content_hash, indexed_at, source_start, source_end, section_kind, token_count
       ) VALUES (
         @spanId, @documentId, @documentName, @versionHash, @chunkIndex, @parentId, @page,
-        @breadcrumb, @tags, @content, @contentHash, @indexedAt
+        @breadcrumb, @tags, @content, @contentHash, @indexedAt, @sourceStart, @sourceEnd, @sectionKind, @tokenCount
       )
     `);
     this.replaceDocument = this.database.transaction((documentId, chunks) => {
@@ -126,13 +136,19 @@ export class SparseDocumentIndex {
         documentName: String(document.name || record.id),
         versionHash,
         chunkIndex,
-        parentId: `${record.id}:parent:${Math.floor(chunkIndex / 4)}`,
+        parentId: typeof chunk.parentId === 'string' && chunk.parentId.trim()
+          ? (chunk.parentId.startsWith(`${record.id}:`) ? chunk.parentId : `${record.id}:${chunk.parentId}`)
+          : `${record.id}:parent:${Math.floor(chunkIndex / 4)}`,
         page: Number.isSafeInteger(chunk.page) ? chunk.page : null,
-        breadcrumb: breadcrumbAt(headings, start),
+        breadcrumb: typeof chunk.breadcrumb === 'string' ? chunk.breadcrumb : breadcrumbAt(headings, start),
         tags,
         content,
         contentHash,
         indexedAt,
+        sourceStart: start,
+        sourceEnd: end,
+        sectionKind: typeof chunk.sectionKind === 'string' ? chunk.sectionKind : 'paragraph',
+        tokenCount: Number.isSafeInteger(chunk.tokenCount) ? chunk.tokenCount : estimateChunkTokens(content),
       };
     }).filter(chunk => chunk.content);
     if (!chunks.length) throw new Error(`Document ${record.id} contains no indexable chunks`);
@@ -212,13 +228,15 @@ export class SparseDocumentIndex {
     const selectedRows = [];
     let estimatedTokens = 0;
     for (const row of diverse) {
-      const rowTokens = Math.ceil(row.content.length / 4);
+      const rowTokens = Number.isSafeInteger(row.token_count) && row.token_count > 0
+        ? row.token_count : estimateChunkTokens(row.content);
       if (selectedRows.length && estimatedTokens + rowTokens > boundedBudget) continue;
       selectedRows.push(row);
       estimatedTokens += rowTokens;
     }
     const neighborStatement = this.database.prepare(`
-      SELECT span_id AS sourceSpanId, chunk_index AS chunkIndex, page, breadcrumb, content
+      SELECT span_id AS sourceSpanId, chunk_index AS chunkIndex, page, breadcrumb, section_kind AS sectionKind,
+        source_start AS start, source_end AS end, content
       FROM rag_chunks WHERE document_id = ? AND chunk_index BETWEEN ? AND ? AND span_id <> ? ORDER BY chunk_index
     `);
     const parentStatement = this.database.prepare('SELECT content FROM rag_chunks WHERE parent_id = ? ORDER BY chunk_index');
@@ -235,6 +253,10 @@ export class SparseDocumentIndex {
         parentId: row.parent_id,
         page: row.page ?? undefined,
         breadcrumb: row.breadcrumb || undefined,
+        sectionKind: row.section_kind || undefined,
+        start: Number.isSafeInteger(row.source_start) ? row.source_start : undefined,
+        end: Number.isSafeInteger(row.source_end) ? row.source_end : undefined,
+        tokenCount: Number.isSafeInteger(row.token_count) ? row.token_count : undefined,
         content: row.content,
         excerpt: row.content.slice(0, 480),
         score: Number((1 / (60 + index + 1)).toFixed(6)),
@@ -269,7 +291,8 @@ export class SparseDocumentIndex {
     }
     const rowStatement = this.database.prepare('SELECT * FROM rag_chunks WHERE span_id = ?');
     const neighborStatement = this.database.prepare(`
-      SELECT span_id AS sourceSpanId, chunk_index AS chunkIndex, page, breadcrumb, content
+      SELECT span_id AS sourceSpanId, chunk_index AS chunkIndex, page, breadcrumb, section_kind AS sectionKind,
+        source_start AS start, source_end AS end, content
       FROM rag_chunks WHERE document_id = ? AND chunk_index BETWEEN ? AND ? AND span_id <> ? ORDER BY chunk_index
     `);
     const parentStatement = this.database.prepare('SELECT content FROM rag_chunks WHERE parent_id = ? ORDER BY chunk_index');
@@ -299,6 +322,10 @@ export class SparseDocumentIndex {
         parentId: row.parent_id,
         page: row.page ?? undefined,
         breadcrumb: row.breadcrumb || undefined,
+        sectionKind: row.section_kind || undefined,
+        start: Number.isSafeInteger(row.source_start) ? row.source_start : undefined,
+        end: Number.isSafeInteger(row.source_end) ? row.source_end : undefined,
+        tokenCount: Number.isSafeInteger(row.token_count) ? row.token_count : undefined,
         content: row.content,
         excerpt: row.content.slice(0, 480),
         neighbors,

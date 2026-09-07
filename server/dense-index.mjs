@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
-import { chunkDocument } from './document-import.mjs';
+import { chunkDocument, STRUCTURAL_CHUNKER_VERSION, estimateChunkTokens } from './document-import.mjs';
 import { materializeRuntimeAsset, runningAsSingleExecutable } from './runtime-assets.mjs';
 
 const TABLE_PREFIX = 'quizzer_chunks_';
+const STRUCTURAL_TABLE_SUFFIX = '_s1';
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 const sqlString = value => `'${String(value).replaceAll("'", "''")}'`;
 let lanceDbModule;
@@ -19,6 +20,7 @@ export const denseDocumentVersionHash = (document, embeddingModel) => sha256(JSO
   extractionContentHash: document.extractionContentHash || sha256(document.content),
   embeddingModel,
   length: document.content.length,
+  chunker: document.chunkingVersion || STRUCTURAL_CHUNKER_VERSION,
 }));
 
 export const denseSourceRows = record => {
@@ -40,8 +42,15 @@ export const denseSourceRows = record => {
       document_id: record.id,
       document_name: String(document.name || record.id),
       chunk_index: chunkIndex,
-      parent_id: `${record.id}:parent:${Math.floor(chunkIndex / 4)}`,
+      parent_id: typeof chunk.parentId === 'string' && chunk.parentId.trim()
+        ? (chunk.parentId.startsWith(`${record.id}:`) ? chunk.parentId : `${record.id}:${chunk.parentId}`)
+        : `${record.id}:parent:${Math.floor(chunkIndex / 4)}`,
       page: Number.isSafeInteger(chunk.page) ? chunk.page : -1,
+      source_start: start,
+      source_end: end,
+      section_kind: typeof chunk.sectionKind === 'string' ? chunk.sectionKind : 'paragraph',
+      breadcrumb: typeof chunk.breadcrumb === 'string' ? chunk.breadcrumb : '',
+      token_count: Number.isSafeInteger(chunk.tokenCount) ? chunk.tokenCount : estimateChunkTokens(content),
       tags_json: JSON.stringify(Array.isArray(document.tags) ? document.tags : []),
       content,
       content_hash: contentHash,
@@ -77,7 +86,7 @@ export const embedDenseRows = async (rows, embed, { batchSize = 250 } = {}) => {
   return { vectors, dimension };
 };
 
-const tableNameFor = (embeddingModel, dimension) => `${TABLE_PREFIX}${sha256(embeddingModel).slice(0, 12)}_${dimension}`;
+const tableNameFor = (embeddingModel, dimension) => `${TABLE_PREFIX}${sha256(embeddingModel).slice(0, 12)}_${dimension}${STRUCTURAL_TABLE_SUFFIX}`;
 const tablePrefixForModel = embeddingModel => `${TABLE_PREFIX}${sha256(embeddingModel).slice(0, 12)}_`;
 
 export class DenseDocumentIndex {
@@ -160,7 +169,8 @@ export class DenseDocumentIndex {
     let query = table.vectorSearch(vector).distanceType('cosine');
     if (documentIds.length) query = query.where(`document_id IN (${[...new Set(documentIds)].map(sqlString).join(', ')})`);
     const rows = await query.select([
-      'span_id', 'document_id', 'document_name', 'chunk_index', 'parent_id', 'page', 'tags_json', 'content', 'content_hash', 'version_hash',
+      'span_id', 'document_id', 'document_name', 'chunk_index', 'parent_id', 'page', 'source_start', 'source_end',
+      'section_kind', 'breadcrumb', 'token_count', 'tags_json', 'content', 'content_hash', 'version_hash',
       '_distance',
     ]).limit(Math.min(100, limit)).toArray();
     return rows.map(row => ({
@@ -170,6 +180,11 @@ export class DenseDocumentIndex {
       chunkIndex: Number(row.chunk_index),
       parentId: row.parent_id,
       page: Number(row.page) >= 0 ? Number(row.page) : undefined,
+      start: Number.isSafeInteger(Number(row.source_start)) ? Number(row.source_start) : undefined,
+      end: Number.isSafeInteger(Number(row.source_end)) ? Number(row.source_end) : undefined,
+      sectionKind: row.section_kind || undefined,
+      breadcrumb: row.breadcrumb || undefined,
+      tokenCount: Number.isSafeInteger(Number(row.token_count)) ? Number(row.token_count) : undefined,
       tags: JSON.parse(row.tags_json),
       excerpt: row.content,
       contentHash: row.content_hash,
