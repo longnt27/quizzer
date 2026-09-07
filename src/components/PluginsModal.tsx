@@ -73,7 +73,16 @@ interface RegistryPlugin {
 }
 
 interface PluginCollection { plugins: ExternalPlugin[]; }
-interface HealthResult { ok: boolean; result?: unknown; error?: string; durationMs: number; }
+interface HealthResult {
+  ok: boolean;
+  result?: unknown;
+  error?: string;
+  durationMs: number;
+  declaredMemoryMB?: number;
+  scopedFileBytes?: number;
+  resourceSamples?: number;
+  peakRssBytes?: number;
+}
 
 interface Props { interfaceMode: InterfaceMode; onClose: () => void; }
 
@@ -828,7 +837,16 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
                 </Space>
               </div>}
               {health && <Alert showIcon icon={health.ok ? <CheckCircleOutlined /> : undefined} type={health.ok ? 'success' : 'error'}
-                message={health.ok ? `Healthy · ${health.durationMs} ms` : 'Health check failed'} description={health.error} />}
+                message={health.ok ? `Healthy · ${health.durationMs} ms` : 'Health check failed'}
+                description={<Space direction="vertical" size={0}>
+                  {health.error && <Typography.Text>{health.error}</Typography.Text>}
+                  <Typography.Text type="secondary">
+                    {health.peakRssBytes !== undefined
+                      ? `Observed peak: ${(health.peakRssBytes / 1024 / 1024).toFixed(1)} MB RSS across ${health.resourceSamples ?? 0} sample${health.resourceSamples === 1 ? '' : 's'}`
+                      : 'Working-memory sampling is unavailable on this platform'}
+                    {health.declaredMemoryMB !== undefined && ` · Declared requirement: ${health.declaredMemoryMB.toLocaleString()} MB`}
+                  </Typography.Text>
+                </Space>} />}
               <Space wrap>
                 {plugin.updateAvailable && (
                   <Button type="primary" icon={<CloudDownloadOutlined />} disabled={Boolean(pluginAction) || interfaceMode !== 'advanced'}

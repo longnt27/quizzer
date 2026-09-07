@@ -1,6 +1,9 @@
 import { spawn } from 'node:child_process';
 import { defaultAppDataDirectory, databasePathFor } from '../server/paths.mjs';
 import { ensureServiceToken } from '../server/auth.mjs';
+import { terminateChild } from '../server/process-control.mjs';
+
+export { terminateChild } from '../server/process-control.mjs';
 
 /**
  * Build the environment shared by the loopback service and Vite.
@@ -33,32 +36,6 @@ const waitForExit = child => {
     child.once('exit', finish);
     child.once('close', finish);
   });
-};
-
-export const terminateChild = (child, signal = 'SIGTERM', {
-  platform = process.platform,
-  spawnProcess = spawn,
-} = {}) => {
-  if (!child || child.exitCode !== null || child.signalCode) return;
-  if (platform === 'win32' && child.pid) {
-    // Node's signal emulation does not reliably terminate npm's process tree.
-    try {
-      const force = signal === 'SIGKILL';
-      const args = ['/pid', String(child.pid), '/T', ...(force ? ['/F'] : [])];
-      const killer = spawnProcess('taskkill', args, { stdio: 'ignore' });
-      let failed = false;
-      const fallback = () => {
-        if (failed) return;
-        failed = true;
-        try { child.kill(signal); } catch { /* Already exited. */ }
-      };
-      killer.once?.('error', fallback);
-      killer.once?.('exit', code => { if (code !== 0) fallback(); });
-      killer.once?.('close', code => { if (code !== 0) fallback(); });
-    } catch { try { child.kill(signal); } catch { /* Already exited. */ } }
-    return;
-  }
-  try { child.kill(signal); } catch { /* Already exited. */ }
 };
 
 export const stopChildren = async (children, signal = 'SIGTERM', {

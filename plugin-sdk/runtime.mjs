@@ -1,13 +1,100 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
-import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
+import { terminateChild } from '../server/process-control.mjs';
 import { runningAsSingleExecutable } from '../server/runtime-assets.mjs';
 import { validatePluginPath } from './manifest.mjs';
 
 const retainedEnvironment = ['PATH', 'SystemRoot', 'ComSpec', 'PATHEXT', 'TMP', 'TEMP', 'TMPDIR', 'LANG', 'LC_ALL'];
+const resourceSampleIntervalMs = 250;
+
+const boundedCommandOutput = (command, arguments_) => new Promise((resolve, reject) => {
+  const child = spawn(command, arguments_, { shell: false, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
+  let output = '';
+  const timer = setTimeout(() => child.kill('SIGKILL'), 1_000);
+  timer.unref?.();
+  child.stdout.on('data', chunk => {
+    output += chunk;
+    if (output.length > 4_096) child.kill('SIGKILL');
+  });
+  child.once('error', error => { clearTimeout(timer); reject(error); });
+  child.once('close', code => {
+    clearTimeout(timer);
+    if (code === 0) resolve(output.trim());
+    else reject(new Error(`Resource monitor exited with code ${code}`));
+  });
+});
+
+const residentBytesFor = async pid => {
+  if (!Number.isSafeInteger(pid) || pid <= 0) return undefined;
+  if (process.platform === 'linux') {
+    const status = await readFile(`/proc/${pid}/status`, 'utf8');
+    const match = /^VmRSS:\s+(\d+)\s+kB$/m.exec(status);
+    return match ? Number(match[1]) * 1_024 : undefined;
+  }
+  if (process.platform === 'darwin') {
+    const output = await boundedCommandOutput('/bin/ps', ['-o', 'rss=', '-p', String(pid)]);
+    const kilobytes = Number(output);
+    return Number.isFinite(kilobytes) && kilobytes >= 0 ? Math.round(kilobytes * 1_024) : undefined;
+  }
+  if (process.platform === 'win32') {
+    const powershell = process.env.SystemRoot
+      ? join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+      : 'powershell.exe';
+    const output = await boundedCommandOutput(powershell, [
+      '-NoLogo', '-NoProfile', '-NonInteractive', '-Command',
+      `(Get-Process -Id ${pid} -ErrorAction Stop).WorkingSet64`,
+    ]);
+    const bytes = Number(output);
+    return Number.isFinite(bytes) && bytes >= 0 ? Math.round(bytes) : undefined;
+  }
+  return undefined;
+};
+
+const monitorPluginProcess = pid => {
+  let peakRssBytes;
+  let sampleCount = 0;
+  let pending;
+  const sample = () => {
+    if (pending) return pending;
+    pending = residentBytesFor(pid)
+      .then(bytes => {
+        if (bytes === undefined) return;
+        peakRssBytes = Math.max(peakRssBytes ?? 0, bytes);
+        sampleCount += 1;
+      })
+      .catch(() => {})
+      .finally(() => { pending = undefined; });
+    return pending;
+  };
+  void sample();
+  const timer = setInterval(() => void sample(), resourceSampleIntervalMs);
+  timer.unref?.();
+  return {
+    sample,
+    finish: async () => {
+      clearInterval(timer);
+      if (pending) await pending;
+      return {
+        resourceSamples: sampleCount,
+        ...(peakRssBytes === undefined ? {} : { peakRssBytes }),
+      };
+    },
+  };
+};
+
+const terminatePluginProcess = (child, signal) => {
+  if (process.platform !== 'win32' && Number.isSafeInteger(child?.pid) && child.pid > 0) {
+    try {
+      process.kill(-child.pid, signal);
+      return;
+    } catch { /* Fall back to the direct child if its process group already exited. */ }
+  }
+  terminateChild(child, signal);
+};
 
 const pluginEnvironment = ({ manifest, temporaryDirectory, persistentDataDirectory, secrets }) => {
   const environment = {
@@ -107,6 +194,7 @@ export const invokePluginProcess = async ({
   const requestId = randomUUID();
   const startedAt = Date.now();
   let child;
+  let resourceMonitor;
   try {
     const scopedFiles = await materializeScopedFiles(temporaryDirectory, manifest, files, fileLimits);
     return await new Promise((resolve, reject) => {
@@ -114,19 +202,37 @@ export const invokePluginProcess = async ({
       let stdout = '';
       let stderr = '';
       let outcome;
-      const finish = (error, result) => {
+      let forceKillTimer;
+      const finish = async (error, result) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        clearTimeout(forceKillTimer);
         signal?.removeEventListener('abort', cancel);
-        if (error) reject(error);
-        else resolve({ result, metrics: { durationMs: Date.now() - startedAt } });
+        const observed = await resourceMonitor?.finish() ?? { resourceSamples: 0 };
+        const metrics = {
+          durationMs: Date.now() - startedAt,
+          declaredMemoryMB: manifest.resources.memoryMB,
+          scopedFileBytes: scopedFiles.reduce((sum, file) => sum + file.size, 0),
+          ...observed,
+        };
+        if (error) {
+          if (error && typeof error === 'object' && Object.isExtensible(error)) error.pluginMetrics = metrics;
+          reject(error);
+        } else resolve({ result, metrics });
       };
       const stop = (error, result) => {
         if (settled || outcome) return;
         outcome = { error, result };
-        if (!child) return finish(error, result);
-        child.kill('SIGTERM');
+        if (!child) { void finish(error, result); return; }
+        void resourceMonitor?.sample().finally(() => {
+          if (settled) return;
+          terminatePluginProcess(child, 'SIGTERM');
+          forceKillTimer = setTimeout(() => {
+            if (!settled) terminatePluginProcess(child, 'SIGKILL');
+          }, 1_000);
+          forceKillTimer.unref?.();
+        });
       };
       const cancel = () => {
         stop(Object.assign(new Error('Plugin invocation cancelled'), { name: 'AbortError' }));
@@ -142,9 +248,11 @@ export const invokePluginProcess = async ({
         shell: false,
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
+        detached: process.platform !== 'win32',
       });
+      resourceMonitor = monitorPluginProcess(child.pid);
       signal?.addEventListener('abort', cancel, { once: true });
-      child.on('error', error => finish(error));
+      child.on('error', error => void finish(error));
       child.stderr.on('data', chunk => { stderr = `${stderr}${chunk}`.slice(-131_072); });
       child.stdout.on('data', chunk => {
         stdout += chunk;
@@ -166,8 +274,8 @@ export const invokePluginProcess = async ({
         }
       });
       child.on('close', code => {
-        if (outcome) finish(outcome.error, outcome.result);
-        else if (!settled) finish(new Error(stderr.trim() || `Plugin ${manifest.id} exited with code ${code} before responding`));
+        if (outcome) void finish(outcome.error, outcome.result);
+        else if (!settled) void finish(new Error(stderr.trim() || `Plugin ${manifest.id} exited with code ${code} before responding`));
       });
       child.stdin.end(`${JSON.stringify({
         jsonrpc: '2.0', id: requestId, method, params,
