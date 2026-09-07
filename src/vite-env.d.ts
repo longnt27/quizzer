@@ -4,6 +4,10 @@ interface ImportMetaEnv {
   readonly VITE_QUIZZER_API_TOKEN?: string;
 }
 
+declare module '*.mjs' {
+  export const authorizationHeaderForToken: (token?: string) => string | undefined;
+}
+
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }

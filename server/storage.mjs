@@ -11,14 +11,15 @@ import {
   validateMicroUsd, validateUsageInteger,
 } from './generation-cost.mjs';
 import { validateOnboardingState } from './onboarding.mjs';
+import { databasePathFor, defaultAppDataDirectory } from './paths.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream, mkdirSync } from 'node:fs';
 import { chmod, mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 const collections = new Set(['tests', 'documents', 'generationJobs', 'indexJobs', 'testDrafts', 'profiles', 'promptProfiles']);
-const databasePath = process.env.QUIZZER_DATABASE_PATH
-  || join(process.env.QUIZZER_APP_DATA_DIR || process.cwd(), '.quizzer-data', 'quizzer.sqlite');
+const appDataDirectory = defaultAppDataDirectory();
+const databasePath = process.env.QUIZZER_DATABASE_PATH || databasePathFor(appDataDirectory);
 
 mkdirSync(dirname(databasePath), { recursive: true });
 
@@ -36,7 +37,7 @@ const schemaVersion = Number(database.pragma('user_version', { simple: true }));
 if (schemaVersion > 2) throw new Error(`Quizzer database schema ${schemaVersion} is newer than this server supports`);
 let schemaBackupPath;
 if (schemaVersion === 1) {
-  const backupDirectory = join(process.env.QUIZZER_APP_DATA_DIR || dirname(databasePath), 'backups', 'schema');
+  const backupDirectory = join(appDataDirectory, 'backups', 'schema');
   await mkdir(backupDirectory, { recursive: true, mode: 0o700 });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   schemaBackupPath = join(backupDirectory, `before-schema-v2-${stamp}.sqlite`);
@@ -249,7 +250,7 @@ export const beginLegacyMigration = async migrationInput => {
     }
     return existing;
   }
-  const backupDirectory = join(process.env.QUIZZER_APP_DATA_DIR || dirname(databasePath), 'backups', 'migrations');
+  const backupDirectory = join(appDataDirectory, 'backups', 'migrations');
   await mkdir(backupDirectory, { recursive: true, mode: 0o700 });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const backupPath = join(backupDirectory, `before-indexeddb-${stamp}-${migration.id.slice(0, 12)}.sqlite`);
