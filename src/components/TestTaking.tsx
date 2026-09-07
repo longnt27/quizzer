@@ -498,7 +498,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                       <Paragraph style={{ fontSize: 16, margin: 0 }}> {timeLimit ? `Time Left: ${formatTime(remaining)}` : `Elapsed: ${formatTime(remaining)}`} </Paragraph>
                     </Space>
                 </Row>
-                <Row className="quiz-body">
+                <Row className="quiz-body" data-onboarding-target="practice">
                     <Row className="quiz-actions" justify="space-between" align="middle">
                         <Button type={reviewMarks[questionIndex] ? 'primary' : 'default'} onClick={() => setReviewMarks((prev) => ({ ...prev, [questionIndex]: !prev[questionIndex] }))}> {reviewMarks[questionIndex] ? '✓ Marked' : 'Mark for Review'} </Button>
                         <Title level={3} style={{ margin: 0 }}>Question {currentIndex + 1}</Title>
@@ -583,7 +583,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                       </div>
                     )}
                     {practice && submitted && questionType === 'multiple-choice' && 'answer' in q && (
-                      <div className="practice-feedback">
+                      <div className="practice-feedback" data-onboarding-target="practice-feedback">
                         <Alert type={currentCorrect ? 'success' : 'error'} showIcon message={currentCorrect ? 'Correct' : 'Not quite'} />
                         {choices.map((choice, index) => {
                           const selectedChoice = answers[questionIndex]?.includes(choice.content);
@@ -595,18 +595,18 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                       </div>
                     )}
                     {practice && submitted && questionType === 'fill-blank' && 'acceptedAnswers' in q && (
-                      <div className="practice-feedback">
+                      <div className="practice-feedback" data-onboarding-target="practice-feedback">
                         <Alert type={currentCorrect ? 'success' : 'error'} showIcon message={currentCorrect ? 'Correct' : 'Not quite'}
                           description={<div>Accepted answer{q.acceptedAnswers.length === 1 ? '' : 's'}: <strong>{q.acceptedAnswers.join(' · ')}</strong></div>} />
                         <Typography.Paragraph type="secondary">{q.explanation}</Typography.Paragraph>
                       </div>
                     )}
                     {practice && submitted && <QuestionCitations provenance={q.provenance} />}
-                    {practice && submitted && <Button className="practice-ask-ai" icon={<RobotOutlined />} onClick={() => setAskQuestionIndex(questionIndex)}>
+                    {practice && submitted && <Button data-onboarding-target="ask-ai" className="practice-ask-ai" icon={<RobotOutlined />} onClick={() => setAskQuestionIndex(questionIndex)}>
                       Ask AI about this answer <span className="practice-shortcut">?</span>
                     </Button>}
                     {practice && !submitted && answered && <div className="practice-check-row">
-                      <Button type="primary" size="large" onClick={submitPracticeAnswer}>Check answer <span className="practice-shortcut">Enter</span></Button>
+                      <Button data-onboarding-target="practice-check" type="primary" size="large" onClick={submitPracticeAnswer}>Check answer <span className="practice-shortcut">Enter</span></Button>
                     </div>}
                     <Row justify="space-between" style={{ marginTop: 64, width: '100%' }}>
                         <div>{currentIndex > 0 && <Button onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}>Previous</Button>}</div>

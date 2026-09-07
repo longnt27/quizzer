@@ -149,7 +149,7 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
         { value: 'automatic' as const, label: 'Automatic (configured extractor)' },
         { value: 'basic', label: 'Basic PDF text extraction' },
       ]} />
-      <Upload.Dragger multiple showUploadList={false} beforeUpload={addFile} accept=".pdf,.txt,.md">
+      <Upload.Dragger data-onboarding-target="document" multiple showUploadList={false} beforeUpload={addFile} accept=".pdf,.txt,.md">
         <p className="ant-upload-drag-icon"><InboxOutlined /></p>
         <p className="ant-upload-text">Drop PDF, text, or Markdown documents here</p>
       </Upload.Dragger>

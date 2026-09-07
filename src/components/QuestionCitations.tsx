@@ -14,7 +14,7 @@ export default function QuestionCitations({ provenance }: Props) {
     provenance?.documentIds.length ? db.documents.bulkGet(provenance.documentIds) : [], [documentKey]) ?? [];
   if (!provenance?.sourceSpanIds.length) return null;
   const names = new Map(documents.flatMap(document => document ? [[document.id, document.name] as const] : []));
-  return <section className="question-citations" aria-label="Grounding sources">
+  return <section data-onboarding-target="citations" className="question-citations" aria-label="Grounding sources">
     <Space><DatabaseOutlined /><Typography.Text strong>Grounding sources</Typography.Text></Space>
     <Typography.Paragraph type="secondary">
       These stable source spans were used to generate this question.

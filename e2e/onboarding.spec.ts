@@ -42,6 +42,7 @@ const fulfillGeneration = async (route: Route) => {
 };
 
 test('resumes real onboarding and finishes through durable quiz practice', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   let simulateQuota = false;
   const quotaRequests: Array<{ provider: string; type: string; count: number }> = [];
   await page.route('**/api/integrations', route => route.fulfill({
@@ -84,9 +85,18 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('heading', { name: 'Configure your AI' })).toBeVisible();
   await expect(page.getByText('AI is ready')).toBeVisible();
+  await expect(page.locator('[data-onboarding-target="provider"]').filter({ visible: true }).first()).toBeVisible();
+  await expect(page.locator('.onboarding-coachmark')).toBeVisible();
+  expect(await page.locator('.onboarding-coachmark').evaluate(element => ({ animation: getComputedStyle(element).animationName, duration: getComputedStyle(element).transitionDuration }))).toEqual({ animation: 'none', duration: '0s' });
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.onboarding-coachmark')).toBeHidden();
+  await page.getByRole('button', { name: 'Resume setup' }).last().click();
+  await expect(page.locator('.onboarding-coachmark')).toBeVisible();
   await page.getByRole('button', { name: 'Continue' }).click();
 
   await expect(page.getByRole('heading', { name: 'Import a real document' })).toBeVisible();
+  await expect(page.locator('[data-onboarding-target="document"]').filter({ visible: true }).first()).toBeVisible();
+  await expect(page.locator('.onboarding-coachmark')).toBeVisible();
   await page.locator('.onboarding-drawer').getByRole('button').filter({ hasText: 'Add document' }).click();
   await page.locator('input[type="file"]').setInputFiles({
     name: 'coordination.md',
@@ -99,6 +109,8 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await page.getByRole('button', { name: 'Continue' }).click();
 
   await expect(page.getByRole('heading', { name: 'What do you want to learn?' })).toBeVisible();
+  await expect(page.locator('[data-onboarding-target="create-test"]').filter({ visible: true }).first()).toBeVisible();
+  await expect(page.locator('.onboarding-coachmark')).toBeVisible();
   await page.getByPlaceholder('For example: coding questions about Terraform only').fill('Focus on safe concurrent updates.');
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('heading', { name: 'Create your first quiz' })).toBeVisible();
@@ -125,6 +137,8 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await page.locator('.ant-radio-button-wrapper').filter({ hasText: 'Practice mode' }).click();
   await page.getByRole('button', { name: 'Start Practice' }).click();
   await expect(page.getByRole('heading', { name: 'Question 1' })).toBeVisible();
+  await expect(page.locator('[data-onboarding-target="practice"]').filter({ visible: true }).first()).toBeVisible();
+  await expect(page.locator('.onboarding-coachmark')).toBeVisible();
 
   const multipleChoice = page.locator('.quiz-body .ant-radio-wrapper').first();
   const fillBlank = page.getByPlaceholder('Type the missing word or phrase');
@@ -135,6 +149,9 @@ test('resumes real onboarding and finishes through durable quiz practice', async
 
   await page.getByRole('button', { name: /Check answer/ }).click();
   await expect(page.getByRole('button', { name: /Ask AI about this answer/ })).toBeVisible();
+  await expect(page.locator('[data-onboarding-target="practice-feedback"]').filter({ visible: true }).first()).toBeVisible();
+  await expect(page.locator('[data-onboarding-target="citations"]').filter({ visible: true }).first()).toBeVisible();
+  await expect(page.locator('[data-onboarding-target="ask-ai"]').filter({ visible: true }).first()).toBeVisible();
   await page.getByRole('button', { name: 'Pause' }).click();
 
   await page.getByRole('button', { name: 'Resume setup' }).click();

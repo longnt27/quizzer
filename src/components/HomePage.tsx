@@ -81,7 +81,7 @@ export default function HomePage({ profile, onAddDocument, onAddTest, onOpenGene
         <Typography.Title level={2}>Welcome to Quizzer</Typography.Title>
         <Typography.Paragraph type="secondary">Turn your own documents into focused, source-grounded practice.</Typography.Paragraph>
       </div>
-      <Segmented aria-label="Interface mode" value={profile.interfaceMode} onChange={value => void setInterfaceMode(value as InterfaceMode)}
+      <Segmented data-onboarding-target="mode" aria-label="Interface mode" value={profile.interfaceMode} onChange={value => void setInterfaceMode(value as InterfaceMode)}
         options={[{ label: 'Simple', value: 'simple' }, { label: 'Advanced', value: 'advanced' }]} />
     </div>
 
@@ -107,9 +107,9 @@ export default function HomePage({ profile, onAddDocument, onAddTest, onOpenGene
 
     <Card title="Start here">
       <Space wrap>
-        <Button type="primary" icon={<FileAddOutlined />} onClick={onAddDocument}>Add documents</Button>
-        <Button icon={<FormOutlined />} onClick={onAddTest}>Create test</Button>
-        <Button icon={<ApiOutlined />} onClick={onOpenPlugins}>Configure AI</Button>
+        <Button data-onboarding-target="document" type="primary" icon={<FileAddOutlined />} onClick={onAddDocument}>Add documents</Button>
+        <Button data-onboarding-target="create-test" icon={<FormOutlined />} onClick={onAddTest}>Create test</Button>
+        <Button data-onboarding-target="provider" icon={<ApiOutlined />} onClick={onOpenPlugins}>Configure AI</Button>
         <Button icon={<SyncOutlined />} onClick={onOpenGeneration}>View activity</Button>
       </Space>
     </Card>
