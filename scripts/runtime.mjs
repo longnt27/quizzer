@@ -42,16 +42,30 @@ export const terminateChild = (child, signal = 'SIGTERM', {
   if (platform === 'win32' && child.pid) {
     // Node's signal emulation does not reliably terminate npm's process tree.
     try {
-      const killer = spawnProcess('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
-      killer.once?.('error', () => { try { child.kill(); } catch { /* Already exited. */ } });
-    } catch { try { child.kill(); } catch { /* Already exited. */ } }
+      const force = signal === 'SIGKILL';
+      const args = ['/pid', String(child.pid), '/T', ...(force ? ['/F'] : [])];
+      const killer = spawnProcess('taskkill', args, { stdio: 'ignore' });
+      let failed = false;
+      const fallback = () => {
+        if (failed) return;
+        failed = true;
+        try { child.kill(signal); } catch { /* Already exited. */ }
+      };
+      killer.once?.('error', fallback);
+      killer.once?.('exit', code => { if (code !== 0) fallback(); });
+      killer.once?.('close', code => { if (code !== 0) fallback(); });
+    } catch { try { child.kill(signal); } catch { /* Already exited. */ } }
     return;
   }
   try { child.kill(signal); } catch { /* Already exited. */ }
 };
 
-export const stopChildren = async (children, signal = 'SIGTERM', { timeoutMs = 5_000 } = {}) => {
-  for (const child of children) terminateChild(child, signal);
+export const stopChildren = async (children, signal = 'SIGTERM', {
+  timeoutMs = 5_000,
+  platform = process.platform,
+  spawnProcess = spawn,
+} = {}) => {
+  for (const child of children) terminateChild(child, signal, { platform, spawnProcess });
   const settled = Promise.all(children.map(waitForExit));
   if (!Number.isFinite(timeoutMs) || timeoutMs < 0) return settled;
   await Promise.race([
@@ -59,7 +73,7 @@ export const stopChildren = async (children, signal = 'SIGTERM', { timeoutMs = 5
     new Promise(resolve => setTimeout(resolve, timeoutMs)),
   ]);
   if (children.some(child => child.exitCode === null && !child.signalCode)) {
-    for (const child of children) terminateChild(child, 'SIGKILL');
+    for (const child of children) terminateChild(child, 'SIGKILL', { platform, spawnProcess });
     await Promise.race([
       settled,
       new Promise(resolve => setTimeout(resolve, Math.min(timeoutMs || 1_000, 1_000))),
@@ -68,7 +82,12 @@ export const stopChildren = async (children, signal = 'SIGTERM', { timeoutMs = 5
 };
 
 /** Wait for the first child failure/exit, then tear down its siblings. */
-export const superviseChildren = async (children) => {
+export const superviseChildren = async (children, {
+  processHandle = process,
+  platform = process.platform,
+  spawnProcess = spawn,
+  timeoutMs = 5_000,
+} = {}) => {
   let signal;
   let signalResolve;
   const signalPromise = new Promise(resolve => { signalResolve = resolve; });
@@ -76,8 +95,10 @@ export const superviseChildren = async (children) => {
     signal = value;
     signalResolve(value);
   };
-  process.once('SIGINT', onSignal);
-  process.once('SIGTERM', onSignal);
+  const onInterrupt = () => onSignal('SIGINT');
+  const onTerminate = () => onSignal('SIGTERM');
+  processHandle.once('SIGINT', onInterrupt);
+  processHandle.once('SIGTERM', onTerminate);
   const firstExit = Promise.race(children.map(child => new Promise(resolve => {
     child.once('error', error => resolve({ child, code: 1, error }));
     child.once('exit', (code, childSignal) => resolve({
@@ -86,9 +107,12 @@ export const superviseChildren = async (children) => {
       signal: childSignal,
     }));
   })));
-  const result = await Promise.race([firstExit, signalPromise.then(value => ({ code: 130, signal: value }))]);
-  process.removeListener('SIGINT', onSignal);
-  process.removeListener('SIGTERM', onSignal);
-  await stopChildren(children, signal ? 'SIGINT' : 'SIGTERM');
+  const result = await Promise.race([firstExit, signalPromise.then(value => ({
+    code: value === 'SIGTERM' ? 143 : 130,
+    signal: value,
+  }))]);
+  processHandle.removeListener('SIGINT', onInterrupt);
+  processHandle.removeListener('SIGTERM', onTerminate);
+  await stopChildren(children, signal || 'SIGTERM', { timeoutMs, platform, spawnProcess });
   return result;
 };
