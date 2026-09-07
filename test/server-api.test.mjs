@@ -232,6 +232,63 @@ test('exposes the plugin contract and bounded lifecycle collection', async () =>
   const collection = await (await authorized('/api/v1/plugins')).json();
   assert.ok(collection.builtIn.some(plugin => plugin.id === 'quizzer.index.fts5'));
   assert.deepEqual(collection.plugins, []);
+
+  // Registry endpoints
+  const registryDirect = await (await authorized('/api/v1/plugins/registry')).json();
+  assert.ok(Array.isArray(registryDirect.plugins));
+
+  const registryParam = await (await authorized('/api/v1/plugins?registry=true')).json();
+  assert.ok(Array.isArray(registryParam.plugins));
+
+  // Invalid install payload
+  const badInstall = await authorized('/api/v1/plugins/install', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  assert.equal(badInstall.status, 400);
+
+  for (const body of [
+    { path: '/tmp/plugin', confirmed: true },
+    { id: 'registry-plugin', confirmed: true },
+    { id: 'registry-plugin', confirmationToken: '0'.repeat(64) },
+    { id: 'Invalid_Plugin' },
+    { path: `bad\0path` },
+    { id: 'registry-plugin', unexpected: true },
+  ]) {
+    const response = await authorized('/api/v1/plugins/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    assert.equal(response.status, 400, JSON.stringify(body));
+  }
+
+  // Non-existent plugin update/rollback returns 400
+  const badUpdate = await authorized('/api/v1/plugins/nonexistent/update', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  assert.equal(badUpdate.status, 400);
+  for (const body of [
+    { confirmed: true },
+    { confirmed: false, confirmationToken: '0'.repeat(64) },
+    { confirmed: 'true' },
+    { unexpected: true },
+  ]) {
+    const response = await authorized('/api/v1/plugins/nonexistent/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    assert.equal(response.status, 400, JSON.stringify(body));
+  }
+
+  const badRollback = await authorized('/api/v1/plugins/nonexistent/rollback', {
+    method: 'POST',
+  });
+  assert.equal(badRollback.status, 400);
 });
 
 test('stores and streams authenticated content-addressed objects', async () => {

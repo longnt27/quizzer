@@ -1254,6 +1254,18 @@ const handleVersionedApi = async (request, response, url) => {
       send(response, 200, { schema: pluginManifestSchema });
       return true;
     }
+    if (request.method === 'GET' && (url.pathname === '/api/v1/plugins/registry' || (url.pathname === '/api/v1/plugins' && url.searchParams.get('registry') === 'true'))) {
+      const manager = await getPluginManager();
+      const lifetime = bindRequestCancellation(request, response, 'Plugin registry request disconnected');
+      try {
+        send(response, 200, { plugins: await manager.listRegistry({ signal: lifetime.signal }) });
+      } catch (error) {
+        if (!response.destroyed) send(response, 200, { plugins: [], warning: error instanceof Error ? error.message : String(error) });
+      } finally {
+        lifetime.dispose();
+      }
+      return true;
+    }
     if (request.method === 'GET' && url.pathname === '/api/v1/plugins') {
       const manager = await getPluginManager();
       send(response, 200, { builtIn: builtInPlugins, plugins: await manager.list() });
@@ -1261,21 +1273,98 @@ const handleVersionedApi = async (request, response, url) => {
     }
     if (request.method === 'POST' && url.pathname === '/api/v1/plugins/install') {
       const body = await readJson(request);
-      if (typeof body?.path !== 'string' || !body.path) throw new Error('A local plugin directory path is required');
+      if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        throw new Error('Install request body must be an object');
+      }
+      if (body.path !== undefined && body.id !== undefined) {
+        throw new Error('Install request cannot specify both path and id');
+      }
+      if (body.path === undefined && body.id === undefined) {
+        throw new Error('Install request must specify exactly one of path or id');
+      }
       const manager = await getPluginManager();
+      if (body.id !== undefined) {
+        const allowedKeys = new Set(['id', 'confirmed', 'confirmationToken']);
+        const unknownKeys = Object.keys(body).filter(key => !allowedKeys.has(key));
+        if (unknownKeys.length) throw new Error(`Unknown field(s) in registry install request: ${unknownKeys.join(', ')}`);
+        if (typeof body.id !== 'string' || !/^[a-z0-9](?:[a-z0-9.-]{0,126}[a-z0-9])?$/.test(body.id)) {
+          throw new Error(`Invalid plugin id: ${body.id}`);
+        }
+        if (body.confirmed !== undefined && typeof body.confirmed !== 'boolean') throw new Error('confirmed must be a boolean');
+        if (body.confirmed === true && !/^[a-f0-9]{64}$/.test(body.confirmationToken ?? '')) {
+          throw new Error('A valid confirmationToken is required when confirmed is true');
+        }
+        if (body.confirmed !== true && body.confirmationToken !== undefined) {
+          throw new Error('confirmationToken requires confirmed to be true');
+        }
+        const lifetime = bindRequestCancellation(request, response, 'Plugin installation request disconnected');
+        try {
+          const plugin = await manager.installFromRegistry(body.id, {
+            confirmed: body.confirmed === true,
+            confirmationToken: body.confirmationToken,
+            signal: lifetime.signal,
+          });
+          send(response, 201, { plugin });
+        } finally {
+          lifetime.dispose();
+        }
+        return true;
+      }
+      const unknownKeys = Object.keys(body).filter(key => key !== 'path');
+      if (unknownKeys.length) throw new Error(`Unknown field(s) in local install request: ${unknownKeys.join(', ')}`);
+      if (typeof body.path !== 'string' || !body.path.trim() || body.path.length > 4_096 || body.path.includes('\0')) {
+        throw new Error('Plugin path must be a non-empty string');
+      }
       send(response, 201, { plugin: await manager.install(body.path) });
       return true;
     }
-    const pluginActionMatch = /^\/api\/v1\/plugins\/([^/]+)\/(enable|disable|health|rollback)$/.exec(url.pathname);
+    const pluginActionMatch = /^\/api\/v1\/plugins\/([^/]+)\/(enable|disable|health|rollback|update)$/.exec(url.pathname);
     if (pluginActionMatch && request.method === 'POST') {
       const id = decodeURIComponent(pluginActionMatch[1]);
       const action = pluginActionMatch[2];
       const manager = await getPluginManager();
-      const result = action === 'health'
-        ? { health: await manager.health(id) }
-        : action === 'rollback'
-          ? { plugin: await manager.rollback(id) }
-          : { plugin: await manager.setEnabled(id, action === 'enable') };
+      let result;
+      if (action === 'health') {
+        result = { health: await manager.health(id) };
+      } else if (action === 'rollback') {
+        result = { plugin: await manager.rollback(id) };
+      } else if (action === 'update') {
+        const hasBody = (request.headers['content-length'] !== undefined && request.headers['content-length'] !== '0')
+          || request.headers['transfer-encoding'] !== undefined;
+        let body = {};
+        if (hasBody) {
+          body = await readJson(request);
+          if (!body || typeof body !== 'object' || Array.isArray(body)) {
+            throw new Error('Update request body must be an object');
+          }
+          const allowedKeys = new Set(['confirmed', 'confirmationToken']);
+          const unknownKeys = Object.keys(body).filter(k => !allowedKeys.has(k));
+          if (unknownKeys.length > 0) {
+            throw new Error(`Unknown field(s) in update request: ${unknownKeys.join(', ')}`);
+          }
+          if (body.confirmed !== undefined && typeof body.confirmed !== 'boolean') {
+            throw new Error('confirmed must be a boolean');
+          }
+          if (body.confirmed === true && !/^[a-f0-9]{64}$/.test(body.confirmationToken ?? '')) {
+            throw new Error('A valid confirmationToken is required when confirmed is true');
+          }
+          if (body.confirmed !== true && body.confirmationToken !== undefined) {
+            throw new Error('confirmationToken requires confirmed to be true');
+          }
+        }
+        const lifetime = bindRequestCancellation(request, response, 'Plugin update request disconnected');
+        try {
+          result = { plugin: await manager.update(id, {
+            confirmed: body.confirmed === true,
+            confirmationToken: body.confirmationToken,
+            signal: lifetime.signal,
+          }) };
+        } finally {
+          lifetime.dispose();
+        }
+      } else {
+        result = { plugin: await manager.setEnabled(id, action === 'enable') };
+      }
       send(response, 200, result);
       return true;
     }
@@ -1511,7 +1600,16 @@ const handleVersionedApi = async (request, response, url) => {
       return true;
     }
   } catch (error) {
-    if (!response.destroyed) send(response, 400, { error: error instanceof Error ? error.message : 'Invalid API request' });
+    if (!response.destroyed) {
+      const payload = { error: error instanceof Error ? error.message : 'Invalid API request' };
+      if (error?.confirmationRequired) {
+        payload.code = 'plugin_confirmation_required';
+        payload.confirmationRequired = true;
+        payload.reasons = error.reasons;
+        payload.details = error.details;
+      }
+      send(response, 400, payload);
+    }
     return true;
   }
   send(response, 404, { error: 'Not found' });
