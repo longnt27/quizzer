@@ -171,6 +171,9 @@ test('requires authentication for every sensitive service endpoint', async () =>
   assert.match(openApi, /\/settings:\n(?:.|\n)*?\n    patch:\n      operationId: updateSettings/);
   assert.match(openApi, /\/integrations\/llama-cpp\/configure:\n    post:/);
   assert.match(openApi, /\/integrations\/llama-cpp\/runtime\/start:/);
+  assert.match(openApi, /GenerationProfile:/);
+  assert.match(openApi, /minGroundingScore:/);
+  assert.match(openApi, /generationProfile: \{ \$ref: '#\/components\/schemas\/GenerationProfile' \}/);
 });
 
 test('reports and invokes local Ollama only after explicit setup confirmation', async () => {
@@ -403,7 +406,11 @@ test('provides onboarding, document, job, and event operations', async () => {
     provider: 'gemini', model: 'gemini-2.5-flash', questionCount: 1,
     questionCounts: { multipleChoice: 1, fillBlank: 0, reasoning: 0, coding: 0 },
     multipleChoiceMode: 'single', coverageStrategy: 'balanced',
-    ragProfile: { id: 'balanced', retrieval: 'hybrid', contextBudget: 8_192, rerank: true },
+    ragProfile: { id: 'balanced', retrieval: 'hybrid', contextBudget: 4_096, rerank: false, override: true },
+    generationProfile: {
+      difficulty: 'advanced', batchSize: 20,
+      validation: { maxRounds: 3, minGroundingScore: 0.65, minInstructionMatches: 1 },
+    },
     routeChain: [{ provider: 'gemini', model: 'gemini-2.5-flash', privacy: 'remote-api', paid: true, approved: true }],
     resolvedSettings: creationSettings.values,
   };
@@ -415,7 +422,10 @@ test('provides onboarding, document, job, and event operations', async () => {
     }] }),
   });
   assert.equal(createdJobs.status, 201);
-  assert.equal((await createdJobs.json()).jobs[0].id, 'job-1');
+  const createdJob = (await createdJobs.json()).jobs[0];
+  assert.equal(createdJob.id, 'job-1');
+  assert.deepEqual(createdJob.options.generationProfile, generationOptions.generationProfile);
+  assert.equal(createdJob.options.ragProfile.override, true);
   const forgedSync = await authorized('/api/storage/sync', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ changes: [{

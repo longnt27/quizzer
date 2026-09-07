@@ -155,6 +155,20 @@ test('bounds prompt, route, instruction, and resolved-setting snapshots', () => 
   assert.throws(() => validateGenerationOptions({
     ...value, resolvedSettings: { ...resolvedSettings, 'retrieval.contextBudget': 4_096 },
   }, { requireCompleteSettings: true }), /RAG profile must match/);
+  const advanced = {
+    ...value,
+    ragProfile: { ...value.ragProfile, contextBudget: 4_096, rerank: false, override: true },
+    generationProfile: {
+      difficulty: 'advanced', batchSize: 20,
+      validation: { maxRounds: 3, minGroundingScore: 0.65, minInstructionMatches: 1 },
+    },
+  };
+  assert.equal(validateGenerationOptions(advanced, { requireSnapshots: true, requireCompleteSettings: true }), advanced);
+  assert.throws(() => validateGenerationOptions({ ...advanced, generationProfile: { ...advanced.generationProfile, difficulty: 'expert' } }), /difficulty is invalid/);
+  assert.throws(() => validateGenerationOptions({ ...advanced, generationProfile: { ...advanced.generationProfile, batchSize: 4 } }), /batch size must be an integer from 5 to 25/);
+  assert.throws(() => validateGenerationOptions({ ...advanced, generationProfile: { ...advanced.generationProfile, validation: { ...advanced.generationProfile.validation, minGroundingScore: 2 } } }), /grounding score must be a number from 0 to 1/);
+  assert.throws(() => validateGenerationOptions({ ...advanced, generationProfile: { ...advanced.generationProfile, validation: { ...advanced.generationProfile.validation, maxRounds: 6 } } }), /maximum rounds must be an integer from 1 to 5/);
+  assert.throws(() => validateGenerationOptions({ ...advanced, generationProfile: { ...advanced.generationProfile, extra: true } }), /unsupported fields: extra/);
 });
 
 test('keeps generation semantics and route history immutable across failover', () => {
@@ -171,6 +185,11 @@ test('keeps generation semantics and route history immutable across failover', (
   assert.throws(() => validateGenerationOptionsTransition(value, {
     ...continued, customInstruction: 'Replace the original learning goal.',
   }, { allowRouteApproval: true }), /customInstruction cannot change/);
+  assert.throws(() => validateGenerationOptionsTransition({ ...value, generationProfile: {
+    difficulty: 'intermediate', batchSize: 10, validation: { maxRounds: 5, minGroundingScore: 0, minInstructionMatches: 0 },
+  } }, { ...continued, generationProfile: {
+    difficulty: 'advanced', batchSize: 10, validation: { maxRounds: 5, minGroundingScore: 0, minInstructionMatches: 0 },
+  } }, { allowRouteApproval: true }), /generationProfile cannot change/);
   assert.throws(() => validateGenerationOptionsTransition(value, {
     ...continued, routeChain: [codexRoute, value.routeChain[0]],
   }, { allowRouteApproval: true }), /removed, reordered, or changed/);

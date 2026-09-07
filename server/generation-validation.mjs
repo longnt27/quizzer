@@ -33,6 +33,9 @@ const rejectUnknown = (value, allowed, label) => {
 const boundedInteger = (value, minimum, maximum, message) => {
   if (!Number.isSafeInteger(value) || value < minimum || value > maximum) throw new Error(message);
 };
+const boundedNumber = (value, minimum, maximum, message) => {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < minimum || value > maximum) throw new Error(message);
+};
 
 const validateJsonValue = (value, path, depth = 0) => {
   if (depth > 8) throw new Error(`${path} is nested too deeply`);
@@ -100,11 +103,24 @@ export const validateProviderRoute = input => {
 
 const validateRagProfile = input => {
   const profile = requireObject(input, 'RAG profile must be an object');
-  rejectUnknown(profile, new Set(['id', 'retrieval', 'contextBudget', 'rerank']), 'RAG profile');
+  rejectUnknown(profile, new Set(['id', 'retrieval', 'contextBudget', 'rerank', 'override']), 'RAG profile');
   if (!/^[a-z0-9][a-z0-9.-]{0,127}$/.test(profile.id ?? '')) throw new Error('RAG profile id is invalid');
   if (!['sparse', 'hybrid'].includes(profile.retrieval)) throw new Error('RAG retrieval mode is invalid');
   boundedInteger(profile.contextBudget, 256, 65_536, 'RAG context budget must be an integer from 256 to 65536');
   if (typeof profile.rerank !== 'boolean') throw new Error('RAG reranking flag must be boolean');
+  if (profile.override !== undefined && typeof profile.override !== 'boolean') throw new Error('RAG profile override flag must be boolean');
+};
+
+const validateGenerationProfile = input => {
+  const profile = requireObject(input, 'Generation profile must be an object');
+  rejectUnknown(profile, new Set(['difficulty', 'validation', 'batchSize']), 'Generation profile');
+  if (!['introductory', 'intermediate', 'advanced'].includes(profile.difficulty)) throw new Error('Generation difficulty is invalid');
+  boundedInteger(profile.batchSize, 5, 25, 'Generation profile batch size must be an integer from 5 to 25');
+  const validation = requireObject(profile.validation, 'Generation validation profile must be an object');
+  rejectUnknown(validation, new Set(['maxRounds', 'minGroundingScore', 'minInstructionMatches']), 'Generation validation profile');
+  boundedInteger(validation.maxRounds, 1, 5, 'Generation validation maximum rounds must be an integer from 1 to 5');
+  boundedNumber(validation.minGroundingScore, 0, 1, 'Generation minimum grounding score must be a number from 0 to 1');
+  boundedInteger(validation.minInstructionMatches, 0, 10, 'Generation minimum instruction matches must be an integer from 0 to 10');
 };
 
 const routeMatchesOptions = (route, options) => route.provider === options.provider
@@ -114,7 +130,7 @@ const routeMatchesOptions = (route, options) => route.provider === options.provi
 const routeWithoutApproval = ({ approved, ...route }) => route;
 const immutableGenerationOptionKeys = [
   'questionCount', 'questionCounts', 'multipleChoiceMode', 'coverageStrategy', 'customInstruction',
-  'promptProfileSnapshot', 'ragProfile', 'resolvedSettings', 'costCeilingMicroUsd',
+  'promptProfileSnapshot', 'ragProfile', 'generationProfile', 'resolvedSettings', 'costCeilingMicroUsd',
 ];
 
 export const validateGenerationOptions = (input, { requireSnapshots = false, requireCompleteSettings = false } = {}) => {
@@ -122,7 +138,7 @@ export const validateGenerationOptions = (input, { requireSnapshots = false, req
   rejectUnknown(options, new Set([
     'provider', 'model', 'questionCount', 'questionCounts', 'multipleChoiceMode', 'coverageStrategy',
     'customInstruction', 'promptProfileSnapshot', 'ragProfile', 'routeChain', 'resolvedSettings',
-    'costCeilingMicroUsd',
+    'generationProfile', 'costCeilingMicroUsd',
   ]), 'Generation options');
   if (!generationProviders.has(options.provider)) throw new Error(`Unsupported generation provider: ${options.provider}`);
   if (options.model !== undefined && !boundedText(options.model, 1, 200)) throw new Error('Generation model is invalid');
@@ -155,6 +171,7 @@ export const validateGenerationOptions = (input, { requireSnapshots = false, req
   if (options.costCeilingMicroUsd !== undefined) validateCostCeiling(options.costCeilingMicroUsd);
   if (options.promptProfileSnapshot !== undefined) validatePromptSnapshot(options.promptProfileSnapshot);
   if (options.ragProfile !== undefined) validateRagProfile(options.ragProfile);
+  if (options.generationProfile !== undefined) validateGenerationProfile(options.generationProfile);
   if (options.routeChain !== undefined) {
     if (!Array.isArray(options.routeChain) || !options.routeChain.length || options.routeChain.length > 10) {
       throw new Error('Provider route chain must contain 1-10 routes');
@@ -183,8 +200,8 @@ export const validateGenerationOptions = (input, { requireSnapshots = false, req
       validateSettings(options.resolvedSettings, { partial: false });
       if (options.ragProfile && (options.resolvedSettings['hardware.profile'] !== options.ragProfile.id
         || options.resolvedSettings['retrieval.mode'] !== options.ragProfile.retrieval
-        || options.resolvedSettings['retrieval.contextBudget'] !== options.ragProfile.contextBudget
-        || options.resolvedSettings['retrieval.rerank'] !== options.ragProfile.rerank)) {
+        || (options.ragProfile.override !== true && (options.resolvedSettings['retrieval.contextBudget'] !== options.ragProfile.contextBudget
+          || options.resolvedSettings['retrieval.rerank'] !== options.ragProfile.rerank)))) {
         throw new Error('RAG profile must match the complete resolved settings snapshot');
       }
     }

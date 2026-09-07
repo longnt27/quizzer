@@ -180,6 +180,23 @@ export interface RAGProfile {
   retrieval: 'sparse' | 'hybrid';
   contextBudget: number;
   rerank: boolean;
+  /** True when this job intentionally overrides the selected hardware profile. */
+  override?: boolean;
+}
+
+export type GenerationDifficulty = 'introductory' | 'intermediate' | 'advanced';
+
+export interface GenerationValidationProfile {
+  maxRounds: number;
+  minGroundingScore: number;
+  minInstructionMatches: number;
+}
+
+/** Immutable per-test controls disclosed by Advanced mode. */
+export interface GenerationProfile {
+  difficulty: GenerationDifficulty;
+  validation: GenerationValidationProfile;
+  batchSize: number;
 }
 
 export type OnboardingStep = 'welcome' | 'hardware' | 'provider' | 'document' | 'instruction' | 'generate' | 'practice' | 'complete';
@@ -216,6 +233,7 @@ export interface GenerationOptions {
   customInstruction?: string;
   promptProfileSnapshot?: PromptProfileSnapshot;
   ragProfile?: RAGProfile;
+  generationProfile?: GenerationProfile;
   routeChain?: ProviderRoute[];
   resolvedSettings?: Record<string, unknown>;
   /** Omit for an unlimited job. Stored as integer micro-USD. */

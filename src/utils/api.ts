@@ -1,4 +1,4 @@
-import type { GenerationOptions, GenerationProvider, QuestionCounts, QuestionProvenance, QuestionType, QuizQuestion } from '../types';
+import type { GenerationDifficulty, GenerationOptions, GenerationProvider, QuestionCounts, QuestionProvenance, QuestionType, QuizQuestion } from '../types';
 import { getApiKey, getProviderSettings } from './providerSettings';
 import { getGenerationBatchSize } from './generationSettings';
 import { renderGenerationPrompt } from './promptProfiles';
@@ -340,7 +340,7 @@ const acceptedQuestionSummary = (accepted: QuizQuestion[]) => {
   return lines.join('\n') || '(none)';
 };
 
-const buildPrompt = (content: string, type: QuestionType, count: number, accepted: QuizQuestion[], focus?: string, multipleChoiceMode?: GenerationOptions['multipleChoiceMode'], template?: string) => renderGenerationPrompt({
+const buildPrompt = (content: string, type: QuestionType, count: number, accepted: QuizQuestion[], focus?: string, multipleChoiceMode?: GenerationOptions['multipleChoiceMode'], template?: string, difficulty?: GenerationDifficulty) => renderGenerationPrompt({
   template,
   content,
   type,
@@ -353,6 +353,7 @@ const buildPrompt = (content: string, type: QuestionType, count: number, accepte
       : '',
   instruction: focus ?? '',
   acceptedQuestions: acceptedQuestionSummary(accepted),
+  difficulty,
 });
 
 export const getRequestedCounts = (options: GenerationOptions): QuestionCounts => {
@@ -385,7 +386,7 @@ export async function generateQuiz(
   let activeOptions = initialCheckpoint?.options ?? options;
   let rejected = initialCheckpoint?.rejected ?? 0;
   const rounds: Partial<Record<QuestionType, number>> = { ...(initialCheckpoint?.rounds ?? {}) };
-  const maxRounds = 5;
+  const maxRounds = activeOptions.generationProfile?.validation?.maxRounds ?? 5;
 
   const targets: [QuestionType, number][] = [
     ['multiple-choice', counts.multipleChoice],
@@ -398,7 +399,7 @@ export async function generateQuiz(
     let round = (rounds[type] ?? 0) + 1;
     while (round <= maxRounds && typeAccepted < typeTarget) {
       const missing = typeTarget - typeAccepted;
-      const requested = Math.min(getGenerationBatchSize(), missing);
+      const requested = Math.min(activeOptions.generationProfile?.batchSize ?? getGenerationBatchSize(), missing);
       const parallelRequests = 1;
       await onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'requesting', provider: activeOptions.provider, parallelRequests });
       const source = sourceProvider
@@ -408,7 +409,8 @@ export async function generateQuiz(
       let candidates: unknown[];
       try {
         candidates = await requestCandidates(buildPrompt(source.content, type, requested, accepted, sourceFocus, activeOptions.multipleChoiceMode,
-          activeOptions.promptProfileSnapshot?.templates?.generation ?? activeOptions.promptProfileSnapshot?.template), schemas[type], activeOptions, signal, source.images ?? images);
+          activeOptions.promptProfileSnapshot?.templates?.generation ?? activeOptions.promptProfileSnapshot?.template,
+          activeOptions.generationProfile?.difficulty), schemas[type], activeOptions, signal, source.images ?? images);
       } catch (error) {
         const code = error instanceof ProviderRequestError ? error.code : undefined;
         if (onProviderFailure && (code === 'provider_limit' || code === 'provider_auth' || code === 'provider_unavailable')) {
