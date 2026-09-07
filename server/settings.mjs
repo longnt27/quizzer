@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { PROVIDER_POLICIES, providerConcurrencySettingKey } from './provider-policy.mjs';
 import { validateOpenAICompatibleEndpoint } from './openai-compatible-generation.mjs';
+import { validateLlamaCppEndpoint, validateLlamaCppModel, DEFAULT_LLAMA_CPP_ENDPOINT, DEFAULT_LLAMA_CPP_MODEL } from './llama-cpp-generation.mjs';
 
 const baseSettings = [
   {
@@ -138,6 +139,18 @@ const baseSettings = [
     visibility: 'advanced', resourceEffect: 'none', restartRequired: false, reindexRequired: false,
     environment: 'QUIZZER_OPENAI_COMPATIBLE_ENDPOINT',
   },
+  {
+    key: 'providers.llama-cpp.endpoint', type: 'string', default: DEFAULT_LLAMA_CPP_ENDPOINT,
+    title: 'llama.cpp endpoint', description: 'Local llama.cpp server endpoint. Only unauthenticated HTTP loopback addresses are accepted; Quizzer never sends this route to a remote host.',
+    visibility: 'advanced', resourceEffect: 'high', restartRequired: false, reindexRequired: false,
+    environment: 'QUIZZER_LLAMA_CPP_ENDPOINT',
+  },
+  {
+    key: 'providers.llama-cpp.model', type: 'string', default: DEFAULT_LLAMA_CPP_MODEL,
+    title: 'llama.cpp model', description: 'Model identifier served by the configured local llama.cpp server. Quizzer does not download models automatically.',
+    visibility: 'advanced', resourceEffect: 'high', restartRequired: false, reindexRequired: false,
+    environment: 'QUIZZER_LLAMA_CPP_MODEL',
+  },
 ];
 
 const providerConcurrencySettings = Object.entries(PROVIDER_POLICIES).filter(([, policy]) => policy.configurableConcurrency !== false).map(([provider, policy]) => ({
@@ -227,6 +240,8 @@ const validateValue = (definition, value) => {
   if (definition.key === 'providers.openai-compatible.endpoint') {
     validateOpenAICompatibleEndpoint(value);
   }
+  if (definition.key === 'providers.llama-cpp.endpoint') validateLlamaCppEndpoint(value);
+  if (definition.key === 'providers.llama-cpp.model') validateLlamaCppModel(value);
   return value;
 };
 

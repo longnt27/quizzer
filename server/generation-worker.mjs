@@ -526,11 +526,16 @@ export const executeGenerationJob = async (claimedJob, dependencies) => {
               throw error;
             }
           }
+          const providerEndpoint = options.provider === 'llama-cpp'
+            ? options.resolvedSettings?.['providers.llama-cpp.endpoint']
+            : options.provider === 'openai-compatible'
+              ? options.resolvedSettings?.['providers.openai-compatible.endpoint']
+              : undefined;
           const providerResponse = await dependencies.requestProvider({
             provider: options.provider, model: options.model,
             prompt, includeUsage: true, maxOutputTokens: boundedOutputTokens(requested),
             schema: generationQuestionSchemas[type], images: source.images,
-            endpoint: options.resolvedSettings?.['providers.openai-compatible.endpoint'],
+            ...(providerEndpoint ? { endpoint: providerEndpoint } : {}),
             resolvedSettings: options.resolvedSettings,
           }, controller.signal);
           if (accountingReserved) {

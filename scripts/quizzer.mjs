@@ -23,6 +23,7 @@ import { resolveEmbeddingProvider } from '../server/plugin-embeddings.mjs';
 import { resolveVectorIndexProvider } from '../server/plugin-vector-index.mjs';
 import { runOllamaHyde } from '../server/ollama-generation.mjs';
 import { validateOpenAICompatibleEndpoint } from '../server/openai-compatible-generation.mjs';
+import { DEFAULT_LLAMA_CPP_MODEL, validateLlamaCppEndpoint, validateLlamaCppModel } from '../server/llama-cpp-generation.mjs';
 import { getKnownProviderRouteMetadata } from '../server/provider-pricing.mjs';
 
 const usage = `Quizzer CLI
@@ -484,21 +485,24 @@ const runTestCreate = async () => {
   const questionCount = Number(flag('questions', '20'));
   if (!Number.isSafeInteger(questionCount) || questionCount < 1 || questionCount > 200) fail('--questions must be an integer from 1 to 200');
   const explicitEndpoint = flag('endpoint', flag('base-endpoint', undefined));
+  const requestedProvider = flag('provider', undefined);
   if (explicitEndpoint) validateOpenAICompatibleEndpoint(explicitEndpoint);
   const cliOverrides = {
-    ...(explicitEndpoint ? { 'providers.openai-compatible.endpoint': explicitEndpoint } : {}),
+    ...(explicitEndpoint ? { [requestedProvider === 'llama-cpp' ? 'providers.llama-cpp.endpoint' : 'providers.openai-compatible.endpoint']: explicitEndpoint } : {}),
   };
   const settings = await loadResolvedSettings(appDataDirectory, { cli: cliOverrides });
-  const provider = flag('provider', settings.values['generation.defaultProvider']);
-  if (explicitEndpoint && provider !== 'openai-compatible') {
-    fail('--endpoint and --base-endpoint require --provider openai-compatible');
+  const provider = requestedProvider ?? settings.values['generation.defaultProvider'];
+  if (explicitEndpoint && !['openai-compatible', 'llama-cpp'].includes(provider)) {
+    fail('--endpoint and --base-endpoint require --provider openai-compatible or llama-cpp');
   }
+  if (explicitEndpoint && provider === 'llama-cpp') validateLlamaCppEndpoint(explicitEndpoint);
   const policy = providerPolicy(provider);
   requirePaidApproval(provider, policy);
-  const model = flag('model', undefined);
+  const model = flag('model', provider === 'llama-cpp' ? settings.values['providers.llama-cpp.model'] : undefined);
   if (provider === 'openai-compatible' && (!model || !model.trim())) {
     fail('--model is required for openai-compatible');
   }
+  if (provider === 'llama-cpp') validateLlamaCppModel(model);
   const now = Date.now();
   const jobId = randomUUID();
   const name = flag('name', `Quiz ${new Date(now).toLocaleDateString()}`);
@@ -604,19 +608,23 @@ const runJobs = async (action, explicitId) => {
     const requestedModel = flag('model');
     const explicitEndpoint = flag('endpoint', flag('base-endpoint', undefined));
     if (requestedModel && !selectedProvider) fail('--model requires --provider when resuming a generation job');
-    if (explicitEndpoint && selectedProvider !== 'openai-compatible') {
-      fail('--endpoint and --base-endpoint require --provider openai-compatible when resuming a generation job');
+    if (explicitEndpoint && !['openai-compatible', 'llama-cpp'].includes(selectedProvider)) {
+      fail('--endpoint and --base-endpoint require --provider openai-compatible or llama-cpp when resuming a generation job');
     }
     if (selectedProvider) {
       const policy = providerPolicy(selectedProvider);
       requirePaidApproval(selectedProvider, policy);
       const selectedModel = requestedModel ?? (selectedProvider === generationRecord.data.options.provider
         ? generationRecord.data.options.model
-        : undefined);
+        : selectedProvider === 'llama-cpp'
+          ? generationRecord.data.options.resolvedSettings?.['providers.llama-cpp.model'] ?? DEFAULT_LLAMA_CPP_MODEL
+          : undefined);
       if (selectedProvider === 'openai-compatible' && (!selectedModel || !selectedModel.trim())) {
         fail('--model is required when resuming with openai-compatible');
       }
       if (explicitEndpoint) validateOpenAICompatibleEndpoint(explicitEndpoint);
+      if (selectedProvider === 'llama-cpp') validateLlamaCppModel(selectedModel);
+      if (explicitEndpoint && selectedProvider === 'llama-cpp') validateLlamaCppEndpoint(explicitEndpoint);
       const selectedRoute = {
         provider: selectedProvider,
         ...(selectedModel ? { model: selectedModel } : {}),
@@ -640,7 +648,7 @@ const runJobs = async (action, explicitId) => {
           routeChain,
           resolvedSettings: {
             ...(generationRecord.data.options.resolvedSettings ?? {}),
-            ...(explicitEndpoint ? { 'providers.openai-compatible.endpoint': explicitEndpoint } : {}),
+            ...(explicitEndpoint ? { [selectedProvider === 'llama-cpp' ? 'providers.llama-cpp.endpoint' : 'providers.openai-compatible.endpoint']: explicitEndpoint } : {}),
           },
         };
         const providerAttempts = [...(generationRecord.data.providerAttempts ?? []), {
@@ -660,7 +668,7 @@ const runJobs = async (action, explicitId) => {
           routeChain: [selectedRoute],
           resolvedSettings: {
             ...(generationRecord.data.options.resolvedSettings ?? {}),
-            ...(explicitEndpoint ? { 'providers.openai-compatible.endpoint': explicitEndpoint } : {}),
+            ...(explicitEndpoint ? { [selectedProvider === 'llama-cpp' ? 'providers.llama-cpp.endpoint' : 'providers.openai-compatible.endpoint']: explicitEndpoint } : {}),
           },
         };
         changes = {

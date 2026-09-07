@@ -5,7 +5,7 @@ import type { GenerationProvider, InterfaceMode } from '../types';
 import {
   AGENT_PROVIDERS, API_PROVIDERS, PROVIDERS, getApiKey, getProviderSettings,
   forgetRememberedApiKey, isOpenAILoopbackEndpoint, loadRememberedApiKeys, migrateLegacyGeminiKey, rememberApiKey,
-  ollamaModelMatches, setApiKey, setProviderSettings, type AgentProvider,
+  isNumericLoopbackEndpoint, ollamaModelMatches, setApiKey, setProviderSettings, type AgentProvider,
 } from '../utils/providerSettings';
 import { getMessageApi } from '../utils/messageProvider';
 import { getModalApi } from '../utils/modalProvider';
@@ -27,6 +27,7 @@ interface IntegrationStatus {
   'claude-agent': AgentStatus;
   'antigravity-agent': AgentStatus;
   ollama: { installed: boolean; serverReady: boolean; models: OllamaModel[]; job: { state: JobState; message: string } };
+  'llama-cpp': { configured: boolean; serverReady: boolean; models: Array<{ id: string }>; capabilities: string[]; error?: string };
   embeddings: { installed: boolean; runtimeInstalled: boolean; job: { state: JobState; message: string } };
 }
 
@@ -103,6 +104,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const [embedderPlugin, setEmbedderPlugin] = useState('builtin');
   const [vectorIndexPlugin, setVectorIndexPlugin] = useState('builtin');
   const [openaiCompatibleEndpoint, setOpenaiCompatibleEndpoint] = useState('https://api.openai.com/v1');
+  const [llamaCppEndpoint, setLlamaCppEndpoint] = useState('http://127.0.0.1:8080/v1');
   const [externalError, setExternalError] = useState('');
   const [externalLoading, setExternalLoading] = useState(true);
   const [developerMode, setDeveloperMode] = useState(false);
@@ -154,6 +156,12 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
         ? settings.values['retrieval.vectorIndexPlugin'] : 'builtin');
       if (typeof settings.values['providers.openai-compatible.endpoint'] === 'string') {
         setOpenaiCompatibleEndpoint(settings.values['providers.openai-compatible.endpoint']);
+      }
+      if (typeof settings.values['providers.llama-cpp.endpoint'] === 'string') {
+        setLlamaCppEndpoint(settings.values['providers.llama-cpp.endpoint']);
+      }
+      if (typeof settings.values['providers.llama-cpp.model'] === 'string') {
+        setModels(current => ({ ...current, 'llama-cpp': settings.values['providers.llama-cpp.model'] as string }));
       }
       setExternalError('');
     } catch (error) {
@@ -388,6 +396,8 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
     const available = PROVIDERS.filter(provider => enabledProviders[provider.id] && (
       provider.id === 'openai-compatible'
         ? Boolean(models['openai-compatible']?.trim()) && (Boolean(apiKeys['openai-compatible']?.trim()) || isOpenAILoopbackEndpoint(openaiCompatibleEndpoint))
+        : provider.id === 'llama-cpp'
+          ? Boolean(status?.['llama-cpp']?.serverReady && isNumericLoopbackEndpoint(llamaCppEndpoint) && models['llama-cpp']?.trim())
         : provider.kind === 'api'
           ? Boolean(apiKeys[provider.id]?.trim())
           : provider.kind === 'local'
@@ -407,6 +417,8 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       await serviceJson('/api/v1/settings', 'PATCH', { values: {
         'generation.defaultProvider': selectedProvider,
         'providers.openai-compatible.endpoint': openaiCompatibleEndpoint.trim() || 'https://api.openai.com/v1',
+        'providers.llama-cpp.endpoint': llamaCppEndpoint.trim() || 'http://127.0.0.1:8080/v1',
+        'providers.llama-cpp.model': models['llama-cpp']?.trim() || 'local-model',
         'extraction.marker': enabledTools.marker,
         'extraction.extractorPlugin': extractorPlugin,
         'extraction.ocr': enabledTools.ocr,
@@ -415,6 +427,13 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
         'embeddings.embedderPlugin': embedderPlugin,
         'retrieval.vectorIndexPlugin': vectorIndexPlugin,
       } });
+      if (models['llama-cpp']?.trim()) {
+        await serviceJson('/api/integrations/llama-cpp/configure', 'POST', {
+          endpoint: llamaCppEndpoint.trim() || 'http://127.0.0.1:8080/v1',
+          model: models['llama-cpp'].trim(),
+          confirmed: true,
+        });
+      }
       setProviderSettings({ defaultProvider: selectedProvider, models, enabledProviders, enabledTools });
       window.dispatchEvent(new Event('quizzer:settings-changed'));
       message.success('Plugin settings saved');
@@ -437,9 +456,11 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const selectedVectorIndex = vectorIndexPlugins.find(plugin => plugin.id === vectorIndexPlugin);
   const embeddingReady = embedderPlugin === 'builtin' ? Boolean(status?.embeddings?.installed) : Boolean(selectedEmbedder);
   const configuredProviderOptions = PROVIDERS.filter(provider => enabledProviders[provider.id] && (
-    provider.id === 'openai-compatible'
-      ? Boolean(models['openai-compatible']?.trim()) && (Boolean(apiKeys['openai-compatible']?.trim()) || isOpenAILoopbackEndpoint(openaiCompatibleEndpoint))
-      : provider.kind === 'api'
+      provider.id === 'openai-compatible'
+        ? Boolean(models['openai-compatible']?.trim()) && (Boolean(apiKeys['openai-compatible']?.trim()) || isOpenAILoopbackEndpoint(openaiCompatibleEndpoint))
+        : provider.id === 'llama-cpp'
+          ? Boolean(status?.['llama-cpp']?.serverReady && isNumericLoopbackEndpoint(llamaCppEndpoint) && models['llama-cpp']?.trim())
+        : provider.kind === 'api'
         ? Boolean(apiKeys[provider.id]?.trim())
         : provider.kind === 'local'
           ? Boolean(status?.ollama?.serverReady && status.ollama.models.some(model => ollamaModelMatches(model.name, models.ollama)))
@@ -576,6 +597,20 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
                 message={status.ollama.job.state === 'working' ? 'Local setup in progress' : status.ollama.job.state === 'complete' ? 'Local generation ready' : 'Local setup failed'}
                 description={<pre className="plugin-output">{status.ollama.job.message}</pre>} />
             )}
+          </Space>
+        </section>
+
+        <section className="plugin-card">
+          <div className="plugin-card-heading">
+            <div><Typography.Title level={5}>llama.cpp local model</Typography.Title><Typography.Text type="secondary">Connect Quizzer to a local llama.cpp server using its OpenAI-compatible API. The endpoint must stay on loopback; Quizzer does not download models or send source content remotely.</Typography.Text></div>
+            {statusTag(Boolean(status?.['llama-cpp']?.serverReady && isNumericLoopbackEndpoint(llamaCppEndpoint) && models['llama-cpp']?.trim()), false, 'Ready')}
+          </div>
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <Input value={llamaCppEndpoint} onChange={event => setLlamaCppEndpoint(event.target.value)} addonBefore="Local endpoint" placeholder="http://127.0.0.1:8080/v1" />
+            <Input value={models['llama-cpp']} onChange={event => setModels(current => ({ ...current, 'llama-cpp': event.target.value }))} addonBefore="Model" placeholder="For example: local-model" />
+            <Typography.Text type="secondary">Saving this configuration is an explicit setup confirmation. Only unauthenticated HTTP loopback endpoints are accepted.</Typography.Text>
+            {status?.['llama-cpp']?.error && <Alert type="warning" showIcon message="llama.cpp server is not ready" description={status['llama-cpp'].error} />}
+            {status?.['llama-cpp']?.serverReady && isNumericLoopbackEndpoint(llamaCppEndpoint) && Boolean(models['llama-cpp']?.trim()) && <Space><Switch checked={enabledProviders['llama-cpp']} onChange={value => setEnabledProviders(current => ({ ...current, 'llama-cpp': value }))} /><Typography.Text>Enabled for generation</Typography.Text></Space>}
           </Space>
         </section>
 

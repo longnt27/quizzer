@@ -85,7 +85,7 @@ Quizzer includes an in-app signed update workflow designed for safety and defens
 - Automatic recovery of unfinished test and practice sessions
 - In-app Plugins & models panel for setup and defaults
 - Codex, Claude Code, and Antigravity agent integrations using existing CLI authentication
-- Local Ollama generation plus Gemini, Anthropic Claude, OpenAI, OpenRouter, DeepSeek, and custom OpenAI-compatible API integrations
+- Local Ollama and llama.cpp generation plus Gemini, Anthropic Claude, OpenAI, OpenRouter, DeepSeek, and custom OpenAI-compatible API integrations
 - Structured provider output and runtime question validation
 - Live generation progress by test, question type, and retry round
 - Persistent background generation queue, usable while you take completed tests
@@ -223,6 +223,10 @@ Choose an already installed Ollama model or enter a model name under **Plugins &
 
 The source CLI uses the same route with `quizzer test create ... --provider ollama --model qwen3:4b`. The model is required and must already be installed; the CLI never downloads one implicitly.
 
+### llama.cpp local generation
+
+Quizzer can connect to a locally managed llama.cpp server through its OpenAI-compatible `/v1` endpoint. Configure **Plugins & models → Local generation → llama.cpp local model** with a loopback endpoint such as `http://127.0.0.1:8080/v1` and the model identifier served by that process, then explicitly save the configuration. Quizzer never downloads or launches llama.cpp in this slice, accepts no remote endpoint for this provider, and keeps the route local, non-billable, bounded, cancellable, and resumable. The CLI supports the same route with `quizzer test create --provider llama-cpp --model <served-model> --endpoint http://127.0.0.1:8080/v1`.
+
 ### Codex Agent
 
 Install the Codex CLI once, then select **Connect Codex** in **Plugins & models**. Quizzer starts the Codex device sign-in flow and displays its sign-in link and instructions in the popup. Quizzer invokes Codex ephemerally, uses a read-only sandbox, and supplies a JSON Schema for the final response. Leaving the model field blank uses the Codex default.
@@ -245,7 +249,7 @@ End users do not configure providers in a terminal. Provider installation, accou
 
 Quizzer supports any OpenAI-compatible chat completions endpoint (such as self-hosted models, vLLM, Ollama, LM Studio, or custom gateways) under **Plugins & models → API providers → OpenAI-compatible – Custom**.
 
-- **Base endpoint validation:** The base endpoint is centrally validated. Remote endpoints must use HTTPS; unencrypted HTTP is allowed strictly for loopback hosts (`localhost`, `127.0.0.1`, `[::1]`, and `127.0.0.0/8`). Userinfo credentials, query parameters, URL fragments, path traversal (`..`), redundant separators (`//`), encoded separators (`%2f`, `%5c`), backslashes, and null bytes are rejected. HTTP redirects are treated as configuration errors and rejected.
+- **Base endpoint validation:** The base endpoint is centrally validated. Remote endpoints must use HTTPS; unencrypted HTTP is allowed strictly for numeric loopback hosts (`127.0.0.0/8` and `[::1]`). The llama.cpp route rejects hostname aliases such as `localhost` so its local-only privacy guarantee does not depend on DNS resolution. Userinfo credentials, query parameters, URL fragments, path traversal (`..`), redundant separators (`//`), encoded separators (`%2f`, `%5c`), backslashes, and null bytes are rejected. HTTP redirects are treated as configuration errors and rejected.
 - **Configuration precedence:** The non-secret base endpoint resolves with strict precedence: CLI flag (`--endpoint` or `--base-endpoint`) > environment variable (`QUIZZER_OPENAI_COMPATIBLE_ENDPOINT`, `QUIZZER_OPENAI_COMPATIBLE_BASE_URL`, or `QUIZZER_OPENAI_COMPATIBLE_BASE_ENDPOINT`) > user settings JSONC (`providers.openai-compatible.endpoint`) > built-in default (`https://api.openai.com/v1`).
 - **Explicit model requirement:** OpenAI-compatible routes require an explicit model name; there is no implicit fallback model.
 - **Credentials protection:** Credentials use only the existing credential store (or `QUIZZER_OPENAI_COMPATIBLE_API_KEY` in environment / UI session or OS keychain) and never appear in settings files, logs, exports, or diagnostics. For loopback endpoints, API keys are optional.

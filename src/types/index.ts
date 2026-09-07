@@ -80,6 +80,7 @@ export interface QuestionProvenance {
 export type GenerationProvider =
   | 'plugin'
   | 'ollama'
+  | 'llama-cpp'
   | 'codex'
   | 'claude-agent'
   | 'antigravity-agent'

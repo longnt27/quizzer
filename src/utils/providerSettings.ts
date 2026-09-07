@@ -1,6 +1,6 @@
 import type { GenerationProvider, ProviderRoute } from '../types';
-import { serviceJson } from './serviceApi';
-import { getKnownProviderRouteMetadata } from './providerPricing';
+import { serviceJson } from './serviceApi.ts';
+import { getKnownProviderRouteMetadata } from './providerPricing.ts';
 
 const PROVIDER_SETTINGS_KEY = 'quizzer.providerSettings';
 const API_KEY_PREFIX = 'quizzer.apiKey.';
@@ -8,7 +8,7 @@ let rememberedApiKeys: Partial<Record<GenerationProvider, string>> = {};
 
 export type ProviderKind = 'agent' | 'api' | 'local' | 'plugin';
 export type AgentProvider = 'codex' | 'claude-agent' | 'antigravity-agent';
-export type ApiProvider = Exclude<GenerationProvider, AgentProvider | 'ollama' | 'plugin'>;
+export type ApiProvider = Exclude<GenerationProvider, AgentProvider | 'ollama' | 'llama-cpp' | 'plugin'>;
 
 export interface ProviderDefinition {
   id: GenerationProvider;
@@ -22,6 +22,7 @@ export interface ProviderDefinition {
 export const PROVIDERS: readonly ProviderDefinition[] = [
   { id: 'plugin', label: 'Local generator – Plugin', kind: 'plugin', description: 'Runs an installed generator plugin out of process on this device.', defaultModel: '' },
   { id: 'ollama', label: 'Ollama – Local', kind: 'local', description: 'Runs an installed Ollama model entirely on this device.', defaultModel: '' },
+  { id: 'llama-cpp', label: 'llama.cpp – Local', kind: 'local', description: 'Connects to a local llama.cpp server without downloading or uploading models.', defaultModel: 'local-model' },
   { id: 'codex', label: 'Codex – Agent', kind: 'agent', description: 'Uses the Codex CLI and your ChatGPT sign-in.', defaultModel: '' },
   { id: 'claude-agent', label: 'Claude – Agent', kind: 'agent', description: 'Uses the Claude Code CLI and its signed-in account.', defaultModel: '' },
   { id: 'antigravity-agent', label: 'Antigravity – Agent', kind: 'agent', description: 'Uses the Antigravity CLI and its signed-in account.', defaultModel: '' },
@@ -43,6 +44,20 @@ export const isOpenAILoopbackEndpoint = (endpoint?: string) => {
     const url = new URL(endpoint);
     const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
     return url.protocol === 'http:' && (host === 'localhost' || host === '127.0.0.1' || host === '::1' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host));
+  } catch {
+    return false;
+  }
+};
+
+export const isNumericLoopbackEndpoint = (endpoint?: string) => {
+  if (!endpoint || typeof endpoint !== 'string') return false;
+  try {
+    const url = new URL(endpoint);
+    const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    const octets = host.split('.');
+    return url.protocol === 'http:' && (host === '::1'
+      || (octets.length === 4 && octets[0] === '127'
+        && octets.slice(1).every(octet => /^\d{1,3}$/.test(octet) && Number(octet) <= 255)));
   } catch {
     return false;
   }
