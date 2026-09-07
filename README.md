@@ -34,9 +34,12 @@ Quizzer releases deterministically generate Homebrew Cask and standard multi-fil
   # Or directly from the attested release asset:
   brew install --cask https://github.com/Somethings1/quizzer/releases/download/v<version>/quizzer.rb
   ```
-- **WinGet multi-file manifests:** Generates standard multi-file manifests (`Quizzer.Quizzer.yaml`, `Quizzer.Quizzer.installer.yaml`, `Quizzer.Quizzer.locale.en-US.yaml`) targeting signed Windows installers across `x64` and `arm64`. Install locally using WinGet:
+- **WinGet multi-file manifests:** Generates standard multi-file manifests (`Somethings1.Quizzer.yaml`, `Somethings1.Quizzer.installer.yaml`, `Somethings1.Quizzer.locale.en-US.yaml`) targeting signed Windows installers across `x64` and `arm64`. Install locally using WinGet by pointing to the directory containing all three manifests:
   ```powershell
-  winget install --manifest ./Quizzer.Quizzer.yaml
+  # From the directory containing the downloaded manifests:
+  winget install --manifest .
+  # Or pointing to the nested manifest directory:
+  winget install --manifest ./manifests/s/Somethings1/Quizzer/<version>
   ```
 
 Every generated manifest is cryptographically verified with the release key before emission, verified to require exactly one macOS x64 DMG, one macOS arm64 DMG, and one supported Windows installer per architecture, and bundled as an attested GitHub release asset in CI. Note: Automated submission to external repositories (such as `homebrew/cask`, an external tap, or `microsoft/winget-pkgs`) is out of scope and not claimed; publication to external repositories is manual.

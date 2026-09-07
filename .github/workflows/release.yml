@@ -373,9 +373,9 @@ jobs:
             release-bundle/sbom.cdx.json
             release-bundle/landing-sbom.cdx.json
             release-bundle/quizzer.rb
-            release-bundle/Quizzer.Quizzer.yaml
-            release-bundle/Quizzer.Quizzer.installer.yaml
-            release-bundle/Quizzer.Quizzer.locale.en-US.yaml
+            release-bundle/Somethings1.Quizzer.yaml
+            release-bundle/Somethings1.Quizzer.installer.yaml
+            release-bundle/Somethings1.Quizzer.locale.en-US.yaml
       - uses: actions/upload-artifact@v4
         with:
           name: signed-release-${{ env.RELEASE_TAG }}
@@ -389,9 +389,9 @@ jobs:
             release-bundle/sbom.cdx.json
             release-bundle/landing-sbom.cdx.json
             release-bundle/quizzer.rb
-            release-bundle/Quizzer.Quizzer.yaml
-            release-bundle/Quizzer.Quizzer.installer.yaml
-            release-bundle/Quizzer.Quizzer.locale.en-US.yaml
+            release-bundle/Somethings1.Quizzer.yaml
+            release-bundle/Somethings1.Quizzer.installer.yaml
+            release-bundle/Somethings1.Quizzer.locale.en-US.yaml
           if-no-files-found: error
       - name: Publish GitHub Release
         if: github.event_name == 'workflow_dispatch' && inputs.publish
@@ -401,4 +401,4 @@ jobs:
         run: |
           PRERELEASE=()
           if [ "$RELEASE_CHANNEL" = beta ]; then PRERELEASE=(--prerelease); fi
-          gh release create "$RELEASE_TAG" release-bundle/quizzer-* release-bundle/install.sh release-bundle/install.ps1 release-bundle/release-manifest.json release-bundle/release-manifest.canonical.json release-bundle/release-manifest.sig release-bundle/sbom.cdx.json release-bundle/landing-sbom.cdx.json release-bundle/quizzer.rb release-bundle/Quizzer.Quizzer.yaml release-bundle/Quizzer.Quizzer.installer.yaml release-bundle/Quizzer.Quizzer.locale.en-US.yaml --verify-tag --generate-notes --title "Quizzer ${RELEASE_TAG#v}" "${PRERELEASE[@]}"
+          gh release create "$RELEASE_TAG" release-bundle/quizzer-* release-bundle/install.sh release-bundle/install.ps1 release-bundle/release-manifest.json release-bundle/release-manifest.canonical.json release-bundle/release-manifest.sig release-bundle/sbom.cdx.json release-bundle/landing-sbom.cdx.json release-bundle/quizzer.rb release-bundle/Somethings1.Quizzer.yaml release-bundle/Somethings1.Quizzer.installer.yaml release-bundle/Somethings1.Quizzer.locale.en-US.yaml --verify-tag --generate-notes --title "Quizzer ${RELEASE_TAG#v}" "${PRERELEASE[@]}"

@@ -55,12 +55,11 @@ test('release generates package manager manifests only after signing and bundles
   ordered(workflow, 'Generate package manager manifests', 'Attest release artifacts and manifest');
   assert.match(workflow, /npm run release:package-manifests -- --manifest release-bundle\/release-manifest\.json --output release-bundle/);
   assert.match(workflow, /release-bundle\/quizzer\.rb/);
-  assert.match(workflow, /release-bundle\/Quizzer\.Quizzer\.yaml/);
-  assert.match(workflow, /release-bundle\/Quizzer\.Quizzer\.installer\.yaml/);
-  assert.match(workflow, /release-bundle\/Quizzer\.Quizzer\.locale\.en-US\.yaml/);
+  assert.match(workflow, /release-bundle\/Somethings1\.Quizzer\.yaml/);
+  assert.match(workflow, /release-bundle\/Somethings1\.Quizzer\.installer\.yaml/);
+  assert.match(workflow, /release-bundle\/Somethings1\.Quizzer\.locale\.en-US\.yaml/);
   assert.match(workflow, /gh release create[^\n]+release-bundle\/quizzer\.rb/);
-  assert.match(workflow, /gh release create[^\n]+release-bundle\/Quizzer\.Quizzer\.yaml/);
-  assert.match(workflow, /gh release create[^\n]+release-bundle\/Quizzer\.Quizzer\.installer\.yaml/);
-  assert.match(workflow, /gh release create[^\n]+release-bundle\/Quizzer\.Quizzer\.locale\.en-US\.yaml/);
+  assert.match(workflow, /gh release create[^\n]+release-bundle\/Somethings1\.Quizzer\.yaml/);
+  assert.match(workflow, /gh release create[^\n]+release-bundle\/Somethings1\.Quizzer\.installer\.yaml/);
+  assert.match(workflow, /gh release create[^\n]+release-bundle\/Somethings1\.Quizzer\.locale\.en-US\.yaml/);
 });
-
