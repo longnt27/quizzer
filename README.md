@@ -11,9 +11,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Somethings1/quizzer/actions/workflows/ci.yml"><img alt="CI status" src="https://github.com/Somethings1/quizzer/actions/workflows/ci.yml/badge.svg?branch=main"></a>
-  <a href="https://github.com/Somethings1/quizzer/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/Somethings1/quizzer?include_prereleases&sort=semver"></a>
-  <a href="LICENSE"><img alt="Apache 2.0 license" src="https://img.shields.io/github/license/Somethings1/quizzer"></a>
+  <a href="https://github.com/longnt27/quizzer/actions/workflows/ci.yml"><img alt="CI status" src="https://github.com/longnt27/quizzer/actions/workflows/ci.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/longnt27/quizzer/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/longnt27/quizzer?include_prereleases&sort=semver"></a>
+  <a href="LICENSE"><img alt="Apache 2.0 license" src="https://img.shields.io/github/license/longnt27/quizzer"></a>
   <a href="SECURITY.md"><img alt="Security policy" src="https://img.shields.io/badge/security-policy-2ea44f"></a>
 </p>
 
@@ -39,13 +39,13 @@ No Node.js, Python, Git, or package manager is required.
 **macOS and Linux**
 
 ```sh
-curl -fsSL https://github.com/Somethings1/quizzer/releases/download/v1.0.0-beta.5/install.sh | sh
+curl -fsSL https://github.com/longnt27/quizzer/releases/download/v1.0.0-beta.5/install.sh | sh
 ```
 
 **Windows PowerShell**
 
 ```powershell
-irm https://github.com/Somethings1/quizzer/releases/download/v1.0.0-beta.5/install.ps1 | iex
+irm https://github.com/longnt27/quizzer/releases/download/v1.0.0-beta.5/install.ps1 | iex
 ```
 
 The installer detects x64 or arm64, verifies the release before installing, adds `quizzer` to your user PATH, registers the desktop app, and opens the guided setup. The command installers are Quizzer's supported distribution path.
@@ -204,7 +204,7 @@ Run `quizzer help` for every command. Usage-priced routes require explicit appro
 Source development requires Node.js 20 or newer:
 
 ```sh
-git clone https://github.com/Somethings1/quizzer.git
+git clone https://github.com/longnt27/quizzer.git
 cd quizzer
 npm ci
 npm run dev
@@ -224,7 +224,7 @@ npm run build
 
 The screenshot task starts an isolated local service and mocked provider, then recreates the README images from the current UI without opening a developer library or making paid calls.
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before sending a pull request and follow the [Code of Conduct](CODE_OF_CONDUCT.md). Use [GitHub Issues](https://github.com/Somethings1/quizzer/issues) for reproducible bugs, [GitHub Discussions](https://github.com/Somethings1/quizzer/discussions) for ideas and questions, and private vulnerability reporting for security issues.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before sending a pull request and follow the [Code of Conduct](CODE_OF_CONDUCT.md). Use [GitHub Issues](https://github.com/longnt27/quizzer/issues) for reproducible bugs, [GitHub Discussions](https://github.com/longnt27/quizzer/discussions) for ideas and questions, and private vulnerability reporting for security issues.
 
 ## Documentation
 
