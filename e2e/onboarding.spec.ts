@@ -89,7 +89,7 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await expect(onboarding.locator('.ant-steps-item')).toHaveCount(2);
   await onboarding.getByText('Simple', { exact: true }).click();
   await expect(onboarding.getByRole('radio', { name: /^Simple/ })).toBeChecked();
-  await expect(page.getByRole('button', { name: 'Switch to Advanced mode' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Switch to Advanced mode' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('heading', { name: 'Choose a hardware profile' })).toBeVisible();
   await expect(onboarding.locator('.ant-steps-item')).toHaveCount(3);

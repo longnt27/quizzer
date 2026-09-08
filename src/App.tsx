@@ -79,15 +79,12 @@ function AppShell({ dark, onToggleTheme, onThemeChange }: ShellProps) {
     onAddDocument: () => { setShowDocumentModal(true); setMobileMenuOpen(false); },
     onOpenPlugins: () => { setShowPluginsModal(true); setMobileMenuOpen(false); },
     onOpenSettings: () => { setShowSettingsModal(true); setMobileMenuOpen(false); },
-    onOpenCommandPalette: () => { setShowCommandPalette(true); setMobileMenuOpen(false); },
     onOpenPromptStudio: () => { setShowPromptStudio(true); setMobileMenuOpen(false); },
     onOpenGeneration: () => { setShowGenerationCenter(true); setMobileMenuOpen(false); },
     onOpenHome: () => select(null),
     onOpenTutorial: () => { setShowOnboarding(true); setMobileMenuOpen(false); },
     profile,
-    onToggleInterfaceMode: () => profile && void setInterfaceMode(profile.interfaceMode === 'simple' ? 'advanced' : 'simple'),
     dark,
-    onToggleTheme,
   };
 
   useEffect(() => {
