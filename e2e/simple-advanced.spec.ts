@@ -13,6 +13,7 @@ test('immediate reversible Simple/Advanced disclosure with stored data retained'
   const studioButton = page.getByRole('button', { name: 'Prompt Studio' });
   await expect(simpleToggle).toBeVisible();
   await expect(studioButton).toBeVisible();
+  await expect(page.getByText('System health', { exact: true })).toBeVisible();
 
   await studioButton.click();
   await page.getByRole('button', { name: 'Clone selected' }).click();
@@ -25,6 +26,7 @@ test('immediate reversible Simple/Advanced disclosure with stored data retained'
   await simpleToggle.click();
   await expect(advancedToggle).toBeVisible();
   await expect(studioButton).toBeHidden();
+  await expect(page.getByText('System health', { exact: true })).toHaveCount(0);
 
   await page.reload();
   await dismissOnboarding(page, false);
@@ -103,4 +105,63 @@ test('Advanced creation submits explicit per-test generation and RAG overrides',
   });
   expect(options.ragProfile).toMatchObject({ contextBudget: 12_288, rerank: true, override: true });
   expect(options.ragProfile?.contextBudget).not.toBe(options.resolvedSettings?.['retrieval.contextBudget']);
+});
+
+test('Simple creation is a plain source, length, and learning-goal flow', async ({ page }) => {
+  let createdJobs: Array<{ name: string; options: Record<string, unknown> }> = [];
+  await page.route('**/api/integrations', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      codex: { installed: true, connected: true },
+      marker: { installed: false, job: { state: 'idle', message: '' } },
+    }),
+  }));
+  await page.route('**/api/v1/jobs', async route => {
+    if (route.request().method() === 'POST') {
+      const body = route.request().postDataJSON() as { jobs?: Array<{ name: string; options: Record<string, unknown> }> };
+      createdJobs = body.jobs ?? [];
+    }
+    await route.continue();
+  });
+
+  await dismissOnboarding(page);
+  await setInterfaceMode(page, 'simple');
+  await expect(page.getByText('System health', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Add documents' }).last().click();
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'lease-basics.md',
+    mimeType: 'text/markdown',
+    buffer: Buffer.from('# Lease safety\n\nA lease grants one writer exclusive access and must be released in a finally block.'),
+  });
+  await expect(page.getByText('ready', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Add to library' }).click();
+
+  await page.getByRole('button', { name: 'Create test' }).last().click();
+  const dialog = page.locator('.ant-modal-content').filter({ hasText: 'Create tests from documents' });
+  await expect(dialog.getByRole('heading', { name: '1. Choose your documents' })).toBeVisible();
+  await expect(dialog.getByRole('heading', { name: '2. Choose a quiz length' })).toBeVisible();
+  await expect(dialog.getByRole('heading', { name: /3. Add a learning goal/ })).toBeVisible();
+  await expect(dialog.getByText('Generation runs in the background')).toHaveCount(0);
+  await expect(dialog.getByText('One combined test')).toHaveCount(0);
+  await expect(dialog.getByText('Prompt profile')).toHaveCount(0);
+  await expect(dialog.getByText('Rerank retrieved evidence')).toHaveCount(0);
+
+  await dialog.getByRole('checkbox', { name: 'Select lease-basics' }).check();
+  const quizLength = dialog.getByRole('combobox', { name: 'Quiz length' });
+  await quizLength.focus();
+  await quizLength.press('ArrowDown');
+  await page.locator('.ant-select-dropdown:visible').getByText('Quick · 10 questions').click();
+  await dialog.getByRole('textbox', { name: 'Learning goal' }).fill('Focus on safe cleanup.');
+  await dialog.getByRole('checkbox', { name: 'Allow Quizzer to send these excerpts for this test.' }).check();
+  await dialog.getByRole('button', { name: 'Create test' }).click();
+
+  await expect.poll(() => createdJobs.length).toBe(1);
+  expect(createdJobs[0].name).toBe('lease-basics quiz');
+  expect(createdJobs[0].options).toMatchObject({
+    questionCount: 10,
+    questionCounts: { multipleChoice: 8, fillBlank: 1, reasoning: 1, coding: 0 },
+    coverageStrategy: 'balanced',
+    customInstruction: 'Focus on safe cleanup.',
+  });
+  expect(createdJobs[0].options.generationProfile).toBeUndefined();
 });
