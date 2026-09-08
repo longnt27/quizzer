@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { App as AntdApp, Button, ConfigProvider, Drawer, Grid, Layout, theme } from 'antd';
 import { ApiOutlined, ExperimentOutlined, FileAddOutlined, FormOutlined, HomeOutlined, MenuOutlined, MoonOutlined, QuestionCircleOutlined, SettingOutlined, SwapOutlined, SyncOutlined, SunOutlined } from '@ant-design/icons';
 import Sidebar, { type LibrarySelection } from './components/Sidebar';
@@ -22,6 +22,7 @@ import HomePage from './components/HomePage';
 import OnboardingGuide from './components/OnboardingGuide';
 import { recordOnboardingDocument, recordOnboardingGeneration, restartOnboarding, setInterfaceMode } from './utils/appProfile';
 import { useRuntimeSettings } from './utils/useRuntimeSettings';
+import UpdateAvailableNotifier from './components/UpdateAvailableNotifier';
 import {
   SHORTCUT_ACTIONS,
   changeKeyboardShortcut,
@@ -82,6 +83,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
     setSession(null);
     setMobileMenuOpen(false);
   };
+  const openSettings = useCallback(() => setShowSettingsModal(true), []);
 
   const updateKeyboardShortcut = (actionId: ShortcutActionId, shortcut: string) => {
     const changed = changeKeyboardShortcut(keyboardShortcuts, actionId, shortcut);
@@ -152,6 +154,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
 
   return <>
     <GenerationWorker />
+    <UpdateAvailableNotifier onOpenSettings={openSettings} />
     <Layout className="app-shell">
       {!mobile && session?.mode !== 'taking' && <Sidebar {...sidebarProps} />}
       {mobile && session?.mode !== 'taking' && (
