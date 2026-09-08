@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Divider, Empty, Input, List, Modal, Space, Tabs, Tag, Typography } from 'antd';
+import { Alert, Button, Divider, Empty, Input, List, Modal, Popover, Space, Tabs, Tag, Typography } from 'antd';
 import { CopyOutlined, DeleteOutlined, DownloadOutlined, ExperimentOutlined, ReloadOutlined, SaveOutlined, UploadOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
@@ -20,10 +20,25 @@ const tabLabels: Record<PromptTemplateKind, string> = {
   rag: 'RAG',
 };
 
-const placeholderHelp: Record<PromptTemplateKind, string[]> = {
-  generation: ['count', 'questionType', 'typeInstructions', 'multipleChoiceRule', 'instruction', 'acceptedQuestions'],
-  grading: ['question', 'referenceAnswer', 'learnerAnswer'],
-  rag: ['query', 'contextBudget'],
+const placeholderHelp: Record<PromptTemplateKind, { name: string; description: string }[]> = {
+  generation: [
+    { name: 'count', description: 'The number of new question candidates requested in this generation batch.' },
+    { name: 'questionType', description: 'The requested output type: multiple-choice, fill-blank, reasoning, or coding.' },
+    { name: 'typeInstructions', description: 'Quizzer’s type-specific guidance for writing and answering this kind of question.' },
+    { name: 'multipleChoiceRule', description: 'The required number of correct choices. This is empty for non-multiple-choice questions.' },
+    { name: 'instruction', description: 'Optional focus supplied when the test is created, including source-specific guidance.' },
+    { name: 'acceptedQuestions', description: 'Questions already accepted for the test, supplied so the model avoids duplicates.' },
+    { name: 'difficulty', description: 'The configured cognitive difficulty: foundational, intermediate, or advanced.' },
+  ],
+  grading: [
+    { name: 'question', description: 'The question the learner answered.' },
+    { name: 'referenceAnswer', description: 'The expected answer used as the grading reference.' },
+    { name: 'learnerAnswer', description: 'The learner’s submitted answer to evaluate.' },
+  ],
+  rag: [
+    { name: 'query', description: 'The learning query used to retrieve relevant source passages.' },
+    { name: 'contextBudget', description: 'The maximum token budget available for retrieved context.' },
+  ],
 };
 
 const cloneProfile = (profile: PromptProfile): PromptProfile => ({
@@ -192,7 +207,7 @@ export default function PromptStudio({ onClose }: Props) {
       <div className="prompt-studio-layout">
         <aside className="prompt-profile-sidebar" aria-label="Prompt profiles">
           <Button block type="primary" icon={<CopyOutlined />} onClick={() => void cloneSelected()}>Clone selected</Button>
-          <Button block icon={<UploadOutlined />} onClick={() => fileInput.current?.click()}>Import JSON</Button>
+          <Button block icon={<DownloadOutlined />} onClick={() => fileInput.current?.click()}>Import JSON</Button>
           <input hidden ref={fileInput} type="file" accept="application/json,.json"
             onChange={event => { const file = event.target.files?.[0]; if (file) void importProfile(file); event.target.value = ''; }} />
           <List dataSource={profiles} locale={{ emptyText: <Empty description="No prompt profiles" /> }} renderItem={profile => <List.Item>
@@ -211,20 +226,22 @@ export default function PromptStudio({ onClose }: Props) {
                 placeholder="Describe when this profile should be used" onChange={event => setDraft(current => ({ ...current, description: event.target.value }))} />
             </div>
             <Space wrap>
-              <Button icon={<DownloadOutlined />} onClick={exportProfile}>Export</Button>
+              <Button icon={<UploadOutlined />} onClick={exportProfile}>Export</Button>
               {!selected.builtIn && <Button icon={<ReloadOutlined />} disabled={!changed} onClick={() => setDraft(cloneProfile(selected))}>Discard edits</Button>}
               {!selected.builtIn && <Button type="primary" icon={<SaveOutlined />} loading={saving} disabled={!changed || hasErrors || !draft.name.trim()} onClick={() => void save()}>Save new version</Button>}
               {!selected.builtIn && <Button danger icon={<DeleteOutlined />} onClick={remove}>Delete</Button>}
             </Space>
           </div>
-          {selected.builtIn && <Alert type="info" showIcon message="The built-in profile is read-only" description="Clone it to customize editable prose. Quizzer's security envelope and response schemas remain protected for every profile." />}
-          <Alert type="success" showIcon message="Security boundaries stay outside editable templates"
-            description="Source-as-untrusted handling, protocol checks, citation identifiers, and output schemas cannot be removed or overridden here." />
           <Tabs activeKey={activeTab} onChange={key => setActiveTab(key as PromptTemplateKind)} items={(Object.keys(tabLabels) as PromptTemplateKind[]).map(kind => ({
             key: kind,
             label: tabLabels[kind],
             children: <Space direction="vertical" size="small" style={{ width: '100%' }}>
-              <Space size={[4, 4]} wrap><Typography.Text type="secondary">Available placeholders:</Typography.Text>{placeholderHelp[kind].map(value => <Tag key={value}>{`{{${value}}}`}</Tag>)}</Space>
+              <Space size={[4, 4]} wrap>
+                <Typography.Text type="secondary">Available placeholders:</Typography.Text>
+                {placeholderHelp[kind].map(({ name, description }) => <Popover key={name} title={`{{${name}}}`} content={description} trigger={['hover', 'focus', 'click']}>
+                  <Tag tabIndex={0} aria-label={`${name} placeholder: ${description}`}>{`{{${name}}}`}</Tag>
+                </Popover>)}
+              </Space>
               <Input.TextArea className="prompt-template-editor" aria-label={`${tabLabels[kind]} prompt template`} rows={14}
                 value={draft.templates[kind]} disabled={Boolean(selected.builtIn)} onChange={event => updateTemplate(kind, event.target.value)} />
               {!!errors[kind]?.length && <Alert type="error" showIcon message={`${tabLabels[kind]} template needs attention`} description={errors[kind]!.join(' ')} />}
