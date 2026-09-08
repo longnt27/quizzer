@@ -9,6 +9,7 @@ import { serviceRestartDelay, waitForServiceReady } from './service-process.mjs'
 import { protectedBackgroundFallback, summarizeBackgroundState } from './background-policy.mjs';
 import { DesktopUpdater } from './updater.mjs';
 import { validateUpdaterCheckOptions, validateUpdaterApplyOptions } from './updater-ipc.mjs';
+import { RELEASE_TRUSTED_KEYS } from '../release/trust.mjs';
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'quizzer', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
 
@@ -315,6 +316,7 @@ app.whenReady().then(async () => {
     currentVersion: app.getVersion() || '1.0.0-beta.1',
     isPackaged: app.isPackaged,
     fetch: net.fetch,
+    trustedKeys: RELEASE_TRUSTED_KEYS,
   });
   await startService();
   serviceRecoveryEnabled = externalDevelopmentPort === undefined;

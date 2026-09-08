@@ -88,10 +88,25 @@ test('renders installers with the signing key and exact verifiable release metad
       windowsCertificateSha256: 'A'.repeat(64),
     }), /not signed by the supplied release key/);
 
+    const unsignedOutput = join(directory, 'native-unsigned');
+    const unsigned = await prepareReleaseInstallers({
+      manifestPath,
+      privateKeyBase64,
+      outputDirectory: unsignedOutput,
+      shellTemplatePath: new URL('../installers/install.sh.in', import.meta.url),
+      powershellTemplatePath: new URL('../installers/install.ps1.in', import.meta.url),
+    });
+    const [unsignedShell, unsignedPowershell] = await Promise.all([
+      readFile(unsigned.shell, 'utf8'), readFile(unsigned.powershell, 'utf8'),
+    ]);
+    assert.match(unsignedShell, /expected_apple_team_id=''/);
+    assert.match(unsignedShell, /not Apple-notarized/);
+    assert.match(unsignedPowershell, /\$ExpectedCertificateSha256 = ''/);
+    assert.match(unsignedPowershell, /no Windows publisher signature/);
+    await execute('sh', ['-n', unsigned.shell]);
+
     for (const pins of [
-      { appleTeamId: '', windowsCertificateSha256: 'A'.repeat(64), error: /APPLE_TEAM_ID/ },
       { appleTeamId: 'lowercase1', windowsCertificateSha256: 'A'.repeat(64), error: /APPLE_TEAM_ID/ },
-      { appleTeamId: 'ABCDE12345', windowsCertificateSha256: '', error: /CERTIFICATE_SHA256/ },
       { appleTeamId: 'ABCDE12345', windowsCertificateSha256: 'A'.repeat(40), error: /CERTIFICATE_SHA256/ },
     ]) {
       await assert.rejects(prepareReleaseInstallers({
