@@ -23,9 +23,9 @@ import OnboardingGuide from './components/OnboardingGuide';
 import { recordOnboardingDocument, recordOnboardingGeneration, restartOnboarding, setInterfaceMode } from './utils/appProfile';
 import { useRuntimeSettings } from './utils/useRuntimeSettings';
 
-interface ShellProps { dark: boolean; onToggleTheme: () => void; }
+interface ShellProps { dark: boolean; onToggleTheme: () => void; onThemeChange: (dark: boolean) => void; }
 
-function AppShell({ dark, onToggleTheme }: ShellProps) {
+function AppShell({ dark, onToggleTheme, onThemeChange }: ShellProps) {
   const [selection, setSelection] = useState<LibrarySelection>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDocumentModal, setShowDocumentModal] = useState(false);
@@ -153,7 +153,7 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
         setSelection({ kind: 'document', id }); setShowDocumentModal(false);
       }} />}
       {showPluginsModal && profile && <PluginsModal interfaceMode={profile.interfaceMode} onClose={() => setShowPluginsModal(false)} />}
-      {showSettingsModal && profile && <SettingsModal profile={profile} onClose={() => setShowSettingsModal(false)} />}
+      {showSettingsModal && profile && <SettingsModal profile={profile} dark={dark} onThemeChange={onThemeChange} onClose={() => setShowSettingsModal(false)} />}
       <CommandPalette open={showCommandPalette} commands={commands} onClose={() => setShowCommandPalette(false)} />
       {showPromptStudio && <PromptStudio onClose={() => setShowPromptStudio(false)} />}
       {showGenerationCenter && <GenerationCenter open onClose={() => setShowGenerationCenter(false)} onManagePlugins={() => setShowPluginsModal(true)} onOpenTest={id => {
@@ -191,7 +191,7 @@ export default function App() {
       },
     }}>
       <AntdApp>
-        <AppShell dark={dark} onToggleTheme={() => setDark(value => !value)} />
+        <AppShell dark={dark} onToggleTheme={() => setDark(value => !value)} onThemeChange={setDark} />
       </AntdApp>
     </ConfigProvider>
   );

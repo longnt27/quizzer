@@ -70,6 +70,7 @@ button, input, textarea, select { font: inherit; }
 .settings-row.is-changed { border-color: #1677ff; box-shadow: inset 3px 0 #1677ff; }
 .settings-copy { min-width: 0; display: grid; gap: 5px; }
 .settings-control { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; }
+.settings-control-single { grid-template-columns: 1fr; justify-items: end; }
 .settings-control > .ant-switch { justify-self: end; }
 .settings-control > .ant-input-number, .settings-control > .ant-select { width: 100%; }
 .command-palette-list { max-height: min(58vh, 520px); margin-top: 10px; overflow-y: auto; }
