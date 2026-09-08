@@ -229,6 +229,11 @@ jobs:
           ditto -c -k --keepParent out/cli/quizzer out/cli/quizzer-notarization.zip
           xcrun notarytool submit out/cli/quizzer-notarization.zip --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
           rm out/cli/quizzer-notarization.zip
+      - name: Use supported Node.js for Electron packaging
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
       - name: Build desktop distributables
         run: npm run make:desktop
       - name: Notarize macOS distributables
