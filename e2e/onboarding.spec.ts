@@ -85,11 +85,16 @@ test('resumes real onboarding and finishes through durable quiz practice', async
 
   await expect(page.getByRole('heading', { name: 'Learn from your own material' })).toBeVisible();
   const onboarding = page.locator('.onboarding-drawer');
+  await expect(onboarding.getByRole('progressbar', { name: 'Onboarding progress' })).toHaveCount(0);
+  await expect(onboarding.locator('.ant-steps-item')).toHaveCount(2);
   await onboarding.getByText('Simple', { exact: true }).click();
   await expect(onboarding.getByRole('radio', { name: /^Simple/ })).toBeChecked();
-  await expect(page.getByRole('button', { name: 'Switch to Advanced mode' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Switch to Advanced mode' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('heading', { name: 'Choose a hardware profile' })).toBeVisible();
+  await expect(onboarding.locator('.ant-steps-item')).toHaveCount(3);
+  await expect(page.getByRole('button', { name: 'Use recommendation' })).toHaveCount(0);
+  await expect(onboarding.getByRole('radio', { checked: true })).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'Continue' })).toBeEnabled({ timeout: 15_000 });
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('heading', { name: 'Configure your AI' })).toBeVisible();
@@ -99,9 +104,20 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await expect(page.getByRole('region', { name: 'Onboarding hint' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Dismiss walkthrough hint' })).toBeVisible();
   expect(await page.locator('.onboarding-coachmark').evaluate(element => ({ animation: getComputedStyle(element).animationName, duration: getComputedStyle(element).transitionDuration }))).toEqual({ animation: 'none', duration: '0s' });
+  await onboarding.getByRole('button', { name: 'Review AI settings' }).click();
+  const pluginsDialog = page.getByRole('dialog', { name: 'Plugins & models' });
+  await expect(pluginsDialog).toBeVisible();
+  await expect(pluginsDialog.getByRole('tab', { name: 'Document extraction' })).toBeVisible();
+  await expect(pluginsDialog.getByRole('tab', { name: 'Image OCR' })).toBeVisible();
+  await expect(pluginsDialog.getByRole('tab', { name: 'Embeddings' })).toBeVisible();
+  await expect(pluginsDialog.getByRole('tab', { name: 'Models' })).toBeVisible();
+  await expect(page.locator('.onboarding-coachmark')).toBeHidden();
+  await pluginsDialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.locator('.onboarding-coachmark')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('.onboarding-coachmark')).toBeHidden();
-  await page.getByRole('button', { name: 'Resume setup' }).last().click();
+  await onboarding.getByRole('button', { name: 'Close' }).click();
+  await page.getByRole('button', { name: 'Resume setup', exact: true }).click();
   await expect(page.locator('.onboarding-coachmark')).toBeVisible();
   await page.getByRole('button', { name: 'Continue' }).click();
 
@@ -109,6 +125,10 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await expect(page.locator('[data-onboarding-target="document"]').filter({ visible: true }).first()).toBeVisible();
   await expect(page.locator('.onboarding-coachmark')).toBeVisible();
   await page.locator('.onboarding-drawer').getByRole('button').filter({ hasText: 'Add document' }).click();
+  const documentDialog = page.getByRole('dialog', { name: 'Add documents' });
+  await expect(documentDialog).toBeVisible();
+  await expect(documentDialog.getByRole('combobox', { name: 'Document extraction method' })).toHaveCount(0);
+  await expect(page.locator('.onboarding-coachmark')).toBeHidden();
   await page.locator('input[type="file"]').setInputFiles({
     name: 'coordination.md',
     mimeType: 'text/markdown',
@@ -128,24 +148,27 @@ test('resumes real onboarding and finishes through durable quiz practice', async
 
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Create your first quiz' })).toBeVisible();
-  await expect(page.getByRole('radio', { name: 'Simple', exact: true })).toBeChecked();
   await expect(page.getByRole('button', { name: 'Continue' })).toBeDisabled();
   await page.locator('.onboarding-drawer').getByRole('button').filter({ hasText: 'Create test' }).click();
-  await page.getByText('coordination', { exact: true }).click();
-  await page.getByText('Balanced learning · 20 questions').click();
-  await page.getByText('Quick review · 10 questions').click();
-  await expect(page.getByRole('button', { name: 'Queue combined test' })).toBeDisabled();
-  await page.getByRole('checkbox', { name: /I approve sending selected excerpts/ }).check();
-  await page.getByRole('button', { name: 'Queue combined test' }).click();
+  const creationDialog = page.locator('.ant-modal-content').filter({ hasText: 'Create tests from documents' });
+  await creationDialog.getByRole('checkbox', { name: 'Select coordination' }).check();
+  const quizLength = creationDialog.getByRole('combobox', { name: 'Quiz length' });
+  await quizLength.focus();
+  await quizLength.press('ArrowDown');
+  await page.locator('.ant-select-dropdown:visible').getByText('Quick · 10 questions').click();
+  await expect(creationDialog.getByRole('textbox', { name: 'Learning goal' })).toHaveValue('Focus on safe concurrent updates.');
+  await expect(creationDialog.getByRole('button', { name: 'Create test' })).toBeDisabled();
+  await creationDialog.getByRole('checkbox', { name: 'Allow Quizzer to send these excerpts for this test.' }).check();
+  await creationDialog.getByRole('button', { name: 'Create test' }).click();
 
   await expect(page.getByText('Your quiz is being generated')).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText('Combined quiz is ready')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText('coordination quiz is ready')).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText('10 validated questions')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Continue' })).toBeEnabled();
   await page.getByRole('button', { name: 'Continue' }).click();
 
   await expect(page.getByRole('heading', { name: 'Try one question' })).toBeVisible();
-  await page.getByRole('button', { name: 'Open Combined quiz' }).click();
+  await page.getByRole('button', { name: 'Open coordination quiz' }).click();
   await page.locator('.ant-radio-button-wrapper').filter({ hasText: 'Practice mode' }).click();
   await page.getByRole('button', { name: 'Start Practice' }).click();
   await expect(page.getByRole('heading', { name: 'Question 1' })).toBeVisible();
@@ -186,16 +209,18 @@ test('resumes real onboarding and finishes through durable quiz practice', async
 
   simulateQuota = true;
   await page.getByRole('button', { name: 'Create test' }).last().click();
-  await page.locator('.ant-modal input.ant-input').first().fill('Quota recovery quiz');
-  await page.getByText('coordination', { exact: true }).click();
-  await page.getByText('Balanced learning · 20 questions').click();
-  await page.getByText('Quick review · 10 questions').click();
-  await expect(page.getByRole('button', { name: 'Queue combined test' })).toBeDisabled();
-  await page.getByRole('checkbox', { name: /I approve sending selected excerpts/ }).check();
-  await page.getByRole('button', { name: 'Queue combined test' }).click();
+  const recoveryDialog = page.locator('.ant-modal-content').filter({ hasText: 'Create tests from documents' });
+  await recoveryDialog.getByRole('checkbox', { name: 'Select coordination' }).check();
+  const recoveryQuizLength = recoveryDialog.getByRole('combobox', { name: 'Quiz length' });
+  await recoveryQuizLength.focus();
+  await recoveryQuizLength.press('ArrowDown');
+  await page.locator('.ant-select-dropdown:visible').getByText('Quick · 10 questions').click();
+  await expect(recoveryDialog.getByRole('button', { name: 'Create test' })).toBeDisabled();
+  await recoveryDialog.getByRole('checkbox', { name: 'Allow Quizzer to send these excerpts for this test.' }).check();
+  await recoveryDialog.getByRole('button', { name: 'Create test' }).click();
 
   await page.getByRole('button', { name: /need attention/ }).click();
-  const recoveryJob = page.locator('.generation-job').filter({ hasText: 'Quota recovery quiz' });
+  const recoveryJob = page.locator('.generation-job').filter({ hasText: 'coordination quiz (2)' });
   await expect(recoveryJob.getByText('paused', { exact: true })).toBeVisible({ timeout: 60_000 });
   await expect(recoveryJob.getByText('8/10', { exact: true })).toBeVisible();
   await expect(recoveryJob.getByText('Quota exhausted for this route')).toBeVisible();

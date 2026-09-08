@@ -42,7 +42,7 @@ Secrets are copied into the plugin environment only when their names appear in `
 
 Quizzer supports distribution through signed plugin registries defined by [`quizzer.catalog.schema.json`](quizzer.catalog.schema.json). Catalogs are signed using Ed25519 and verified against configured trusted keys (`QUIZZER_PLUGIN_REGISTRY_TRUSTED_KEYS`).
 
-- All release assets must be served from canonical versioned credential-free HTTPS GitHub Release URLs (`https://github.com/Somethings1/quizzer/releases/download/<tag>/...`). Unversioned `/latest/` URLs are prohibited.
+- All release assets must be served from canonical versioned credential-free HTTPS GitHub Release URLs (`https://github.com/longnt27/quizzer/releases/download/<tag>/...`). Unversioned `/latest/` URLs are prohibited.
 - Manual redirects are strictly bounded: at most one HTTPS 30x hop to credential-free `release-assets.githubusercontent.com` on the default port is accepted. Arbitrary hosts/ports, missing Location, and second redirect hops are rejected.
 - Every catalog file URL, SHA-256, and size is signed. File sizes must sum to `downloadSize`, catalog metadata must match the signed plugin manifest, and downloaded bytes must match both per-file and total declarations.
 - Permission and large-download approval in the desktop UI uses a service-issued, manifest-bound confirmation token so stale client previews cannot authorize changed content.

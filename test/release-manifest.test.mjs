@@ -15,7 +15,7 @@ const manifest = {
     platform: 'macos',
     architecture: 'arm64',
     format: 'dmg',
-    url: 'https://github.com/Somethings1/quizzer/releases/download/v1.0.0-beta.1/quizzer-macos-arm64.dmg',
+    url: 'https://github.com/longnt27/quizzer/releases/download/v1.0.0-beta.1/quizzer-macos-arm64.dmg',
     size: 100,
     sha256: 'a'.repeat(64),
     minimumOs: 'macOS 13',
@@ -79,8 +79,8 @@ test('reports every malformed release and artifact field', () => {
 
   assert.ok(validateReleaseManifest({ ...manifest, artifacts: [] }).errors.some(error => error.includes('artifacts')));
   for (const url of [
-    'http://github.com/Somethings1/quizzer/releases/download/v1/file.zip',
-    'https://example.com/Somethings1/quizzer/releases/download/v1/file.zip',
+    'http://github.com/longnt27/quizzer/releases/download/v1/file.zip',
+    'https://example.com/longnt27/quizzer/releases/download/v1/file.zip',
     'https://github.com/another/project/releases/download/v1/file.zip',
   ]) {
     assert.ok(validateReleaseManifest({ ...manifest, artifacts: [{ ...manifest.artifacts[0], url }] }).errors.some(error => error.includes('GitHub Release URL')));
@@ -139,4 +139,3 @@ test('bounds artifact size to defensible desktop package maximum', () => {
   assert.equal(validateReleaseManifest({ ...manifest, artifacts: [{ ...manifest.artifacts[0], size: 0 }] }).valid, false);
   assert.equal(validateReleaseManifest({ ...manifest, artifacts: [{ ...manifest.artifacts[0], size: -500 }] }).valid, false);
 });
-

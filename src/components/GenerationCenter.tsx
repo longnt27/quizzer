@@ -1,15 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Alert, Badge, Button, Checkbox, Empty, Input, InputNumber, List, Modal, Progress, Select, Slider, Space, Tag, Typography } from 'antd';
+import { Alert, Badge, Button, Checkbox, Empty, Input, InputNumber, List, Modal, Progress, Select, Space, Tag, Typography } from 'antd';
 import { CloseOutlined, DatabaseOutlined, LoadingOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type StoredGenerationJob, type StoredIndexJob } from '../db/db';
 import type { GenerationProvider } from '../types';
 import {
-  cancelGenerationJob, pumpGenerationQueue, removeGenerationJob, resumeGenerationJob, retryGenerationJob,
+  cancelGenerationJob, removeGenerationJob, resumeGenerationJob, retryGenerationJob,
 } from '../utils/generationQueue';
-import {
-  getGenerationBatchSize, getGenerationConcurrency, setGenerationBatchSize, setGenerationConcurrency,
-} from '../utils/generationSettings';
 import { getProviderDefinition, getProviderRoute, getProviderSettings } from '../utils/providerSettings';
 import { getMessageApi } from '../utils/messageProvider';
 import { useConfiguredProviders } from '../utils/useConfiguredProviders';
@@ -354,21 +351,6 @@ interface CenterProps { open: boolean; onClose: () => void; onOpenTest: (id: str
 export function GenerationCenter({ open, onClose, onOpenTest, onManagePlugins }: CenterProps) {
   const jobs = useLiveQuery(() => db.generationJobs.orderBy('createdAt').reverse().toArray(), []) ?? [];
   const indexJobs = useLiveQuery(() => db.indexJobs.orderBy('createdAt').reverse().toArray(), []) ?? [];
-  const [instances, setInstances] = useState(getGenerationConcurrency);
-  const [batchSize, setBatchSize] = useState(getGenerationBatchSize);
-  const message = getMessageApi();
-  useEffect(() => {
-    const refresh = () => {
-      setInstances(getGenerationConcurrency());
-      setBatchSize(getGenerationBatchSize());
-    };
-    window.addEventListener('quizzer:generation-settings', refresh);
-    return () => window.removeEventListener('quizzer:generation-settings', refresh);
-  }, []);
-  const persistSetting = async (key: 'generation.concurrency' | 'generation.batchSize', value: number) => {
-    try { await serviceJson('/api/v1/settings', 'PATCH', { values: { [key]: value } }); }
-    catch (error) { message.warning(error instanceof Error ? error.message : 'The setting is saved locally until the service reconnects'); }
-  };
   const clearFinished = async () => Promise.all([
     db.generationJobs.bulkDelete(jobs.filter(job => terminalStatuses.has(job.status)).map(job => job.id)),
     db.indexJobs.bulkDelete(indexJobs.filter(job => terminalStatuses.has(job.status)).map(job => job.id)),
@@ -376,21 +358,7 @@ export function GenerationCenter({ open, onClose, onOpenTest, onManagePlugins }:
   const hasFinished = jobs.some(job => terminalStatuses.has(job.status)) || indexJobs.some(job => terminalStatuses.has(job.status));
   return <Modal open={open} width={780} title="Activity" footer={null} onCancel={onClose}>
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      <Alert type="info" showIcon message="Background work survives reloads and connection interruptions"
-        description="Indexing checkpoints each document. Quiz generation stores every accepted question, so either workflow can continue from its last committed result." />
       <Typography.Title level={5} style={{ margin: 0 }}>Quiz generation</Typography.Title>
-      <div className="generation-concurrency">
-        <div><Typography.Text strong>Concurrent test instances</Typography.Text><br /><Typography.Text type="secondary">One provider request per test. Changes apply as running requests finish.</Typography.Text></div>
-        <Slider ariaLabelForHandle="Concurrent test instances" min={1} max={10} value={instances} marks={{ 1: '1', 5: '5', 10: '10' }} tooltip={{ formatter: value => `${value} instance${value === 1 ? '' : 's'}` }}
-          onChange={value => { setInstances(value); setGenerationConcurrency(value); void pumpGenerationQueue(); }}
-          onChangeComplete={value => void persistSetting('generation.concurrency', value)} />
-      </div>
-      <div className="generation-concurrency">
-        <div><Typography.Text strong>Questions per request</Typography.Text><br /><Typography.Text type="secondary">Larger batches are faster; smaller batches checkpoint more often.</Typography.Text></div>
-        <Slider ariaLabelForHandle="Questions per request" min={5} max={25} value={batchSize} marks={{ 5: '5', 10: '10', 20: '20', 25: '25' }} tooltip={{ formatter: value => `${value} questions` }}
-          onChange={value => { setBatchSize(value); setGenerationBatchSize(value); }}
-          onChangeComplete={value => void persistSetting('generation.batchSize', value)} />
-      </div>
       {hasFinished && <Button size="small" onClick={() => void clearFinished()}>Clear finished</Button>}
       <List locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No generation jobs" /> }} dataSource={jobs}
         renderItem={job => <JobItem job={job} onOpenTest={id => { onOpenTest(id); onClose(); }} onManagePlugins={onManagePlugins} />} />

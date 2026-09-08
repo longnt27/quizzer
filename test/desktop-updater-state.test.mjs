@@ -28,7 +28,7 @@ const setupTestEnv = async (version = '1.2.0') => {
       platform: 'macos',
       architecture: 'arm64',
       format: 'zip',
-      url: `https://github.com/Somethings1/quizzer/releases/download/v${version}/quizzer-${version}-macos-arm64.zip`,
+      url: `https://github.com/longnt27/quizzer/releases/download/v${version}/quizzer-${version}-macos-arm64.zip`,
       size: content.length,
       sha256,
       minimumOs: 'macOS 13',

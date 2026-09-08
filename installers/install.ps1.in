@@ -1,5 +1,5 @@
 $ErrorActionPreference = 'Stop'
-$ProgressPreference = 'SilentlyContinue'
+$ProgressPreference = 'Continue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $ReleaseBaseUrl = '__QUIZZER_RELEASE_BASE_URL__'
@@ -15,14 +15,21 @@ function Fail([string] $Message) {
 function Download-File([string] $Url, [string] $Destination) {
   $Uri = [Uri] $Url
   if ($Uri.Scheme -ne 'https') { Fail "Refusing a non-HTTPS download: $Url" }
-  Invoke-WebRequest -UseBasicParsing -Uri $Uri -OutFile $Destination
+  $Name = Split-Path -Leaf $Destination
+  Write-Host "`nDownloading $Name"
+  Write-Progress -Activity 'Downloading Quizzer' -Status $Name
+  try {
+    Invoke-WebRequest -UseBasicParsing -Uri $Uri -OutFile $Destination
+  } finally {
+    Write-Progress -Activity 'Downloading Quizzer' -Completed
+  }
 }
 
 function Assert-Artifact([object] $Artifact, [string] $ExpectedName, [string] $Destination) {
   if ($null -eq $Artifact -or $Artifact.Name -ne $ExpectedName) { Fail "Release metadata has no $ExpectedName artifact" }
   $Uri = [Uri] $Artifact.Url
   if ($Uri.Scheme -ne 'https' -or $Uri.Host -ne 'github.com' -or
-      -not $Uri.AbsolutePath.StartsWith('/Somethings1/quizzer/releases/download/') -or
+      -not $Uri.AbsolutePath.StartsWith('/longnt27/quizzer/releases/download/') -or
       -not $Uri.AbsolutePath.EndsWith("/$ExpectedName")) {
     Fail "Release metadata contains an untrusted URL for $ExpectedName"
   }

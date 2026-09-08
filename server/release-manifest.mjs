@@ -16,7 +16,7 @@ const trustedReleaseUrl = value => {
   try {
     const url = new URL(value);
     return url.protocol === 'https:' && url.hostname === 'github.com'
-      && url.pathname.startsWith('/Somethings1/quizzer/releases/download/');
+      && url.pathname.startsWith('/longnt27/quizzer/releases/download/');
   } catch { return false; }
 };
 

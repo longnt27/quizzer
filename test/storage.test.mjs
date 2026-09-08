@@ -516,6 +516,10 @@ test('covers storage validation branches around sync, migration, leases, and com
       pricing: { inputMicroUsdPerMillionTokens: 1, outputMicroUsdPerMillionTokens: 1 } }] }, questions: [], rejected: 0, rounds: {} };
   putRecord('generationJobs', edgeJob.id, edgeJob);
   const edgeLease = 'coverage-edge-lease';
+  assert.throws(() => updateGenerationJobWithLease(edgeJob.id, { workerId: 'coverage-edge-worker', leaseId: edgeLease,
+    patch: { recoveryAttemptId: 'bad' }, now: 200 }), /Invalid generation recovery attempt id/);
+  assert.throws(() => updateGenerationJobWithLease(edgeJob.id, { workerId: 'coverage-edge-worker', leaseId: edgeLease,
+    patch: { recoveryAttemptId: 'coverage-recovery-attempt', status: 'running' }, now: 200 }), /requires a cost_recovery pause/);
   assert.throws(() => finalizeGenerationAttempt(edgeJob.id, { workerId: 'coverage-edge-worker', leaseId: edgeLease,
     attemptId: 'coverage-missing-attempt', usage: { inputTokens: 1, outputTokens: 1 }, now: 201 }), /no reservation/);
   reserveGenerationAttempt(edgeJob.id, { workerId: 'coverage-edge-worker', leaseId: edgeLease,

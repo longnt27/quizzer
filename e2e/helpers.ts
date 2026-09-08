@@ -20,12 +20,16 @@ export async function dismissOnboarding(page: Page, navigate = true) {
 }
 
 export async function setInterfaceMode(page: Page, mode: 'simple' | 'advanced') {
-  const switchToTarget = page.getByRole('button', {
-    name: mode === 'advanced' ? 'Switch to Advanced mode' : 'Switch to Simple mode',
-  });
-  const targetIsActive = page.getByRole('button', {
-    name: mode === 'advanced' ? 'Switch to Simple mode' : 'Switch to Advanced mode',
-  });
-  if (await switchToTarget.isVisible()) await switchToTarget.click();
-  await expect(targetIsActive).toBeVisible();
+  await page.locator('.sidebar-footer:visible').getByRole('button', { name: 'Settings' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Settings' });
+  const row = dialog.locator('.settings-row').filter({ hasText: 'Interface mode' });
+  const target = mode === 'advanced' ? 'Advanced' : 'Simple';
+  if (!await row.getByText(target, { exact: true }).isVisible()) {
+    await row.locator('.ant-select-selector').click();
+    await page.locator('.ant-select-dropdown:visible').getByText(target, { exact: true }).click();
+    await dialog.getByRole('button', { name: 'Save changes' }).click();
+  } else {
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+  }
+  await expect(dialog).toBeHidden();
 }

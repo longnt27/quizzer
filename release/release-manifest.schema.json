@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/Somethings1/quizzer/releases/download/schema/release-manifest.schema.json",
+  "$id": "https://github.com/longnt27/quizzer/releases/download/schema/release-manifest.schema.json",
   "title": "Quizzer signed release manifest",
   "type": "object",
   "additionalProperties": false,

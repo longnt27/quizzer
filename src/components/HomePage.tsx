@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Badge, Button, Card, Col, Empty, List, Progress, Radio, Row, Space, Statistic, Tag, Typography } from 'antd';
+import { Alert, Badge, Button, Card, Col, Empty, List, Progress, Row, Space, Statistic, Tag, Typography } from 'antd';
 import { ApiOutlined, DatabaseOutlined, FileAddOutlined, FormOutlined, PlayCircleOutlined, ReloadOutlined, RocketOutlined, SafetyCertificateOutlined, SyncOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type StoredAppProfile } from '../db/db';
-import type { InterfaceMode } from '../types';
-import { CURRENT_WHATS_NEW_VERSION, ONBOARDING_STEPS, setInterfaceMode, updateAppProfile } from '../utils/appProfile';
+import { CURRENT_WHATS_NEW_VERSION, ONBOARDING_STEPS, updateAppProfile } from '../utils/appProfile';
 import { serviceRequest } from '../utils/serviceApi';
 import { useConfiguredProviders } from '../utils/useConfiguredProviders';
 
@@ -31,6 +30,7 @@ interface Props {
 
 export default function HomePage({ profile, onAddDocument, onAddTest, onOpenGeneration, onOpenPlugins, onOpenTest, onOpenTutorial }: Props) {
   const configured = useConfiguredProviders();
+  const advanced = profile.interfaceMode === 'advanced';
   const [systemHealth, setSystemHealth] = useState<{ index?: IndexHealth; plugins?: PluginHealth; error?: string; loading: boolean }>({ loading: true });
   const data = useLiveQuery(async () => {
     const [documents, testCount, tests, jobs, indexJobs, drafts] = await Promise.all([
@@ -62,10 +62,11 @@ export default function HomePage({ profile, onAddDocument, onAddTest, onOpenGene
     }
   }, []);
   useEffect(() => {
+    if (!advanced) return;
     void refreshHealth();
     const timer = window.setInterval(() => void refreshHealth(), 15_000);
     return () => window.clearInterval(timer);
-  }, [refreshHealth]);
+  }, [advanced, refreshHealth]);
 
   const pluginProblems = systemHealth.plugins?.plugins.filter(plugin => !plugin.compatible || plugin.status !== 'installed').length ?? 0;
   const healthRows = [
@@ -81,8 +82,6 @@ export default function HomePage({ profile, onAddDocument, onAddTest, onOpenGene
         <Typography.Title level={2}>Welcome to Quizzer</Typography.Title>
         <Typography.Paragraph type="secondary">Turn your own documents into focused, source-grounded practice.</Typography.Paragraph>
       </div>
-      <Radio.Group data-onboarding-target="mode" aria-label="Interface mode" optionType="button" buttonStyle="solid" value={profile.interfaceMode} onChange={event => void setInterfaceMode(event.target.value as InterfaceMode)}
-        options={[{ label: 'Simple', value: 'simple' }, { label: 'Advanced', value: 'advanced' }]} />
     </div>
 
     {showWhatsNew && <Alert closable type="info" showIcon icon={<RocketOutlined />} message="Quizzer 1.0 setup is here"
@@ -99,28 +98,28 @@ export default function HomePage({ profile, onAddDocument, onAddTest, onOpenGene
     </Card>}
 
     <Row gutter={[16, 16]}>
-      <Col xs={12} md={6}><Card><Statistic title="Documents" value={data?.documents ?? 0} prefix={<FileAddOutlined />} /></Card></Col>
-      <Col xs={12} md={6}><Card><Statistic title="Tests" value={data?.testCount ?? 0} prefix={<FormOutlined />} /></Card></Col>
-      <Col xs={12} md={6}><Card><Statistic title="Active jobs" value={activeJobCount} prefix={<SyncOutlined spin={hasRunningJob} />} /></Card></Col>
-      <Col xs={12} md={6}><Card><Statistic title="Profile" value={profile.hardwareProfile.toUpperCase()} prefix={<ApiOutlined />} /></Card></Col>
+      <Col xs={12} md={advanced ? 6 : 8}><Card><Statistic title="Documents" value={data?.documents ?? 0} prefix={<FileAddOutlined />} /></Card></Col>
+      <Col xs={12} md={advanced ? 6 : 8}><Card><Statistic title="Tests" value={data?.testCount ?? 0} prefix={<FormOutlined />} /></Card></Col>
+      <Col xs={12} md={advanced ? 6 : 8}><Card><Statistic title={advanced ? 'Active jobs' : 'In progress'} value={activeJobCount} prefix={<SyncOutlined spin={hasRunningJob} />} /></Card></Col>
+      {advanced && <Col xs={12} md={6}><Card><Statistic title="Profile" value={profile.hardwareProfile.toUpperCase()} prefix={<ApiOutlined />} /></Card></Col>}
     </Row>
 
     <Card title="Start here">
       <Space wrap>
         <Button data-onboarding-target="document" type="primary" icon={<FileAddOutlined />} onClick={onAddDocument}>Add documents</Button>
         <Button data-onboarding-target="create-test" icon={<FormOutlined />} onClick={onAddTest}>Create test</Button>
-        <Button data-onboarding-target="provider" icon={<ApiOutlined />} onClick={onOpenPlugins}>Configure AI</Button>
-        <Button icon={<SyncOutlined />} onClick={onOpenGeneration}>View activity</Button>
+        {(advanced || (!configured.loading && !configured.providers.length)) && <Button data-onboarding-target="provider" icon={<ApiOutlined />} onClick={onOpenPlugins}>Configure AI</Button>}
+        {(advanced || activeJobCount > 0) && <Button icon={<SyncOutlined />} onClick={onOpenGeneration}>View activity</Button>}
       </Space>
     </Card>
 
-    <Card title="System health" extra={<Button size="small" icon={<ReloadOutlined spin={systemHealth.loading} />} onClick={() => void refreshHealth()}>Refresh</Button>}>
+    {advanced && <Card title="System health" extra={<Button size="small" icon={<ReloadOutlined spin={systemHealth.loading} />} onClick={() => void refreshHealth()}>Refresh</Button>}>
       {systemHealth.error && <Alert type="error" showIcon message="Quizzer's local service could not be reached" description={systemHealth.error} style={{ marginBottom: 12 }} />}
       <List size="small" dataSource={healthRows} renderItem={item => <List.Item actions={item.label === 'AI routes' || item.label === 'Plugins'
         ? [<Button type="link" size="small" key="manage" onClick={onOpenPlugins}>Manage</Button>] : undefined}>
         <List.Item.Meta avatar={<span className="system-health-icon">{item.icon}</span>} title={<Space><Badge status={item.status} />{item.label}</Space>} description={item.detail} />
       </List.Item>} />
-    </Card>
+    </Card>}
 
     <Row gutter={[16, 16]}>
       <Col xs={24} lg={14}><Card title="Recent tests">

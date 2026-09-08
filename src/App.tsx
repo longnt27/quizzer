@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { App as AntdApp, Button, ConfigProvider, Drawer, Grid, Layout, theme } from 'antd';
 import { ApiOutlined, ExperimentOutlined, FileAddOutlined, FormOutlined, HomeOutlined, MenuOutlined, MoonOutlined, QuestionCircleOutlined, SettingOutlined, SwapOutlined, SyncOutlined, SunOutlined } from '@ant-design/icons';
 import Sidebar, { type LibrarySelection } from './components/Sidebar';
@@ -22,10 +22,20 @@ import HomePage from './components/HomePage';
 import OnboardingGuide from './components/OnboardingGuide';
 import { recordOnboardingDocument, recordOnboardingGeneration, restartOnboarding, setInterfaceMode } from './utils/appProfile';
 import { useRuntimeSettings } from './utils/useRuntimeSettings';
+import UpdateAvailableNotifier from './components/UpdateAvailableNotifier';
+import {
+  SHORTCUT_ACTIONS,
+  changeKeyboardShortcut,
+  formatKeyboardShortcut,
+  keyboardShortcutMatches,
+  loadKeyboardShortcuts,
+  saveKeyboardShortcuts,
+  type ShortcutActionId,
+} from './utils/keyboardShortcuts';
 
-interface ShellProps { dark: boolean; onToggleTheme: () => void; }
+interface ShellProps { dark: boolean; onThemeChange: (dark: boolean) => void; }
 
-function AppShell({ dark, onToggleTheme }: ShellProps) {
+function AppShell({ dark, onThemeChange }: ShellProps) {
   const [selection, setSelection] = useState<LibrarySelection>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDocumentModal, setShowDocumentModal] = useState(false);
@@ -37,10 +47,12 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
   const [showOnboarding, setShowOnboarding] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [session, setSession] = useState<TestSession | null>(null);
+  const [keyboardShortcuts, setKeyboardShortcuts] = useState(loadKeyboardShortcuts);
   const { message: messageApi, modal: modalApi } = AntdApp.useApp();
   const screens = Grid.useBreakpoint();
   const mobile = screens.md === false;
   const profile = useLiveQuery(() => db.profiles.get('default'), []) as StoredAppProfile | undefined;
+  const interfaceMode = profile?.interfaceMode;
   useRuntimeSettings(profile);
   setMessageApi(messageApi);
   setModalApi(modalApi);
@@ -66,10 +78,25 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
     return () => { active = false; };
   }, []);
 
-  const select = (next: LibrarySelection) => {
+  const select = useCallback((next: LibrarySelection) => {
     setSelection(next);
     setSession(null);
     setMobileMenuOpen(false);
+  }, []);
+  const openSettings = useCallback(() => setShowSettingsModal(true), []);
+
+  const updateKeyboardShortcut = (actionId: ShortcutActionId, shortcut: string) => {
+    const changed = changeKeyboardShortcut(keyboardShortcuts, actionId, shortcut);
+    if (!changed.ok) {
+      messageApi.error(changed.error);
+      return;
+    }
+    try {
+      saveKeyboardShortcuts(changed.shortcuts);
+      setKeyboardShortcuts(changed.shortcuts);
+    } catch {
+      messageApi.error('Could not save keyboard shortcuts');
+    }
   };
 
   const sidebarProps = {
@@ -79,47 +106,55 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
     onAddDocument: () => { setShowDocumentModal(true); setMobileMenuOpen(false); },
     onOpenPlugins: () => { setShowPluginsModal(true); setMobileMenuOpen(false); },
     onOpenSettings: () => { setShowSettingsModal(true); setMobileMenuOpen(false); },
-    onOpenCommandPalette: () => { setShowCommandPalette(true); setMobileMenuOpen(false); },
     onOpenPromptStudio: () => { setShowPromptStudio(true); setMobileMenuOpen(false); },
     onOpenGeneration: () => { setShowGenerationCenter(true); setMobileMenuOpen(false); },
     onOpenHome: () => select(null),
     onOpenTutorial: () => { setShowOnboarding(true); setMobileMenuOpen(false); },
     profile,
-    onToggleInterfaceMode: () => profile && void setInterfaceMode(profile.interfaceMode === 'simple' ? 'advanced' : 'simple'),
     dark,
-    onToggleTheme,
   };
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
-      if (event.key.toLowerCase() === 'k') {
-        event.preventDefault();
-        setShowCommandPalette(true);
-      } else if (event.key === ',') {
-        event.preventDefault();
-        setShowSettingsModal(true);
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (event.defaultPrevented || event.repeat || target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      const action = SHORTCUT_ACTIONS.find(candidate => keyboardShortcutMatches(event, keyboardShortcuts[candidate.id]));
+      if (!action || (action.id === 'prompts' && interfaceMode !== 'advanced')) return;
+      event.preventDefault();
+      switch (action.id) {
+        case 'command-palette': setShowCommandPalette(true); break;
+        case 'settings': setShowSettingsModal(true); break;
+        case 'home': select(null); break;
+        case 'test-create': setShowAddModal(true); break;
+        case 'document-add': setShowDocumentModal(true); break;
+        case 'activity': setShowGenerationCenter(true); break;
+        case 'plugins': setShowPluginsModal(true); break;
+        case 'prompts': setShowPromptStudio(true); break;
+        case 'mode': if (interfaceMode) void setInterfaceMode(interfaceMode === 'simple' ? 'advanced' : 'simple'); break;
+        case 'tutorial': void restartOnboarding().then(() => setShowOnboarding(true)); break;
+        case 'theme': onThemeChange(!dark); break;
       }
     };
     window.addEventListener('keydown', handleShortcut);
     return () => window.removeEventListener('keydown', handleShortcut);
-  }, []);
+  }, [dark, interfaceMode, keyboardShortcuts, onThemeChange, select]);
 
   const commands: PaletteCommand[] = [
-    { id: 'home', label: 'Go to Home', description: 'Open recent work, setup progress, and system status.', keywords: ['navigation'], icon: <HomeOutlined />, run: () => select(null) },
-    { id: 'test-create', label: 'Create a test', description: 'Choose sources and generate a new quiz.', keywords: ['quiz', 'generate'], icon: <FormOutlined />, run: () => setShowAddModal(true) },
-    { id: 'document-add', label: 'Add documents', description: 'Import and index source material.', keywords: ['import', 'pdf', 'text'], icon: <FileAddOutlined />, run: () => setShowDocumentModal(true) },
-    { id: 'activity', label: 'Open Activity', description: 'Review indexing and generation checkpoints.', keywords: ['activity', 'jobs', 'indexing'], icon: <SyncOutlined />, run: () => setShowGenerationCenter(true) },
-    { id: 'plugins', label: 'Open plugins & models', description: 'Configure providers, extraction, OCR, and external plugins.', keywords: ['provider', 'api', 'models'], icon: <ApiOutlined />, run: () => setShowPluginsModal(true) },
-    { id: 'settings', label: 'Open Settings', description: 'Search and edit resolved application settings.', shortcut: '⌘ ,', icon: <SettingOutlined />, run: () => setShowSettingsModal(true) },
-    ...(profile?.interfaceMode === 'advanced' ? [{ id: 'prompts', label: 'Open Prompt Studio', description: 'Edit, validate, preview, import, and export prompt profiles.', keywords: ['templates', 'generation', 'grading', 'rag'], icon: <ExperimentOutlined />, run: () => setShowPromptStudio(true) }] : []),
-    { id: 'mode', label: `Switch to ${profile?.interfaceMode === 'advanced' ? 'Simple' : 'Advanced'} mode`, description: 'Change disclosure without changing stored capabilities or data.', keywords: ['interface'], icon: <SwapOutlined />, run: () => profile && setInterfaceMode(profile.interfaceMode === 'simple' ? 'advanced' : 'simple') },
-    { id: 'tutorial', label: 'Restart tutorial', description: 'Return to the resumable first-run walkthrough.', keywords: ['help', 'onboarding'], icon: <QuestionCircleOutlined />, run: async () => { await restartOnboarding(); setShowOnboarding(true); } },
-    { id: 'theme', label: `Use ${dark ? 'light' : 'dark'} theme`, description: 'Change the application color theme.', keywords: ['appearance'], icon: dark ? <SunOutlined /> : <MoonOutlined />, run: onToggleTheme },
+    { id: 'home', label: 'Go to Home', description: 'Open recent work, setup progress, and system status.', keywords: ['navigation'], shortcut: formatKeyboardShortcut(keyboardShortcuts.home), icon: <HomeOutlined />, run: () => select(null) },
+    { id: 'test-create', label: 'Create a test', description: 'Choose sources and generate a new quiz.', keywords: ['quiz', 'generate'], shortcut: formatKeyboardShortcut(keyboardShortcuts['test-create']), icon: <FormOutlined />, run: () => setShowAddModal(true) },
+    { id: 'document-add', label: 'Add documents', description: 'Import and index source material.', keywords: ['import', 'pdf', 'text'], shortcut: formatKeyboardShortcut(keyboardShortcuts['document-add']), icon: <FileAddOutlined />, run: () => setShowDocumentModal(true) },
+    { id: 'activity', label: 'Open Activity', description: 'Review indexing and generation checkpoints.', keywords: ['activity', 'jobs', 'indexing'], shortcut: formatKeyboardShortcut(keyboardShortcuts.activity), icon: <SyncOutlined />, run: () => setShowGenerationCenter(true) },
+    { id: 'plugins', label: 'Open plugins & models', description: 'Configure providers, extraction, OCR, and external plugins.', keywords: ['provider', 'api', 'models'], shortcut: formatKeyboardShortcut(keyboardShortcuts.plugins), icon: <ApiOutlined />, run: () => setShowPluginsModal(true) },
+    { id: 'settings', label: 'Open Settings', description: 'Search and edit resolved application settings.', shortcut: formatKeyboardShortcut(keyboardShortcuts.settings), icon: <SettingOutlined />, run: () => setShowSettingsModal(true) },
+    ...(profile?.interfaceMode === 'advanced' ? [{ id: 'prompts', label: 'Open Prompt Studio', description: 'Edit, validate, preview, import, and export prompt profiles.', keywords: ['templates', 'generation', 'grading', 'rag'], shortcut: formatKeyboardShortcut(keyboardShortcuts.prompts), icon: <ExperimentOutlined />, run: () => setShowPromptStudio(true) }] : []),
+    { id: 'mode', label: `Switch to ${profile?.interfaceMode === 'advanced' ? 'Simple' : 'Advanced'} mode`, description: 'Change disclosure without changing stored capabilities or data.', keywords: ['interface'], shortcut: formatKeyboardShortcut(keyboardShortcuts.mode), icon: <SwapOutlined />, run: () => profile && setInterfaceMode(profile.interfaceMode === 'simple' ? 'advanced' : 'simple') },
+    { id: 'tutorial', label: 'Restart tutorial', description: 'Return to the resumable first-run walkthrough.', keywords: ['help', 'onboarding'], shortcut: formatKeyboardShortcut(keyboardShortcuts.tutorial), icon: <QuestionCircleOutlined />, run: async () => { await restartOnboarding(); setShowOnboarding(true); } },
+    { id: 'theme', label: `Use ${dark ? 'light' : 'dark'} theme`, description: 'Change the application color theme.', keywords: ['appearance'], shortcut: formatKeyboardShortcut(keyboardShortcuts.theme), icon: dark ? <SunOutlined /> : <MoonOutlined />, run: () => onThemeChange(!dark) },
   ];
 
   return <>
     <GenerationWorker />
+    <UpdateAvailableNotifier onOpenSettings={openSettings} />
     <Layout className="app-shell">
       {!mobile && session?.mode !== 'taking' && <Sidebar {...sidebarProps} />}
       {mobile && session?.mode !== 'taking' && (
@@ -153,7 +188,9 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
         setSelection({ kind: 'document', id }); setShowDocumentModal(false);
       }} />}
       {showPluginsModal && profile && <PluginsModal interfaceMode={profile.interfaceMode} onClose={() => setShowPluginsModal(false)} />}
-      {showSettingsModal && profile && <SettingsModal profile={profile} onClose={() => setShowSettingsModal(false)} />}
+      {showSettingsModal && profile && <SettingsModal profile={profile} dark={dark} onThemeChange={onThemeChange}
+        keyboardShortcuts={keyboardShortcuts} onKeyboardShortcutChange={updateKeyboardShortcut}
+        onOpenCommandPalette={() => { setShowSettingsModal(false); setShowCommandPalette(true); }} onClose={() => setShowSettingsModal(false)} />}
       <CommandPalette open={showCommandPalette} commands={commands} onClose={() => setShowCommandPalette(false)} />
       {showPromptStudio && <PromptStudio onClose={() => setShowPromptStudio(false)} />}
       {showGenerationCenter && <GenerationCenter open onClose={() => setShowGenerationCenter(false)} onManagePlugins={() => setShowPluginsModal(true)} onOpenTest={id => {
@@ -162,7 +199,8 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
       {profile && <OnboardingGuide open={showOnboarding && !profile.onboarding.completedAt && !profile.onboarding.skipped} profile={profile}
         onPause={() => setShowOnboarding(false)} onFinish={() => { setShowOnboarding(false); select(null); }}
         onOpenPlugins={() => setShowPluginsModal(true)} onAddDocument={() => setShowDocumentModal(true)} onAddTest={() => setShowAddModal(true)}
-        onOpenTest={id => { setSelection({ kind: 'test', id }); setShowOnboarding(false); }} />}
+        onOpenTest={id => { setSelection({ kind: 'test', id }); setShowOnboarding(false); }}
+        overlayOpen={showPluginsModal || showDocumentModal || showAddModal || showPromptStudio || showGenerationCenter || showSettingsModal || showCommandPalette} />}
       {session?.mode !== 'taking' && <GenerationActivity onOpen={() => setShowGenerationCenter(true)} />}
     </Layout>
   </>;
@@ -190,7 +228,7 @@ export default function App() {
       },
     }}>
       <AntdApp>
-        <AppShell dark={dark} onToggleTheme={() => setDark(value => !value)} />
+        <AppShell dark={dark} onThemeChange={setDark} />
       </AntdApp>
     </ConfigProvider>
   );

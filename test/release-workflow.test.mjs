@@ -3,6 +3,8 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const workflowPath = new URL('../.github/workflows/release.yml', import.meta.url);
+const mainBridgePath = new URL('../.github/workflows/release-from-main.yml', import.meta.url);
+const ciPath = new URL('../.github/workflows/ci.yml', import.meta.url);
 
 const ordered = (source, first, second) => {
   const firstIndex = source.indexOf(first);
@@ -74,7 +76,7 @@ test('release publishes only direct shell installer entrypoints and their verifi
   assert.match(workflow, /release-bundle\/install\.sh/);
   assert.match(workflow, /release-bundle\/install\.ps1/);
   assert.match(workflow, /gh release create[^\n]+release-bundle\/install\.sh release-bundle\/install\.ps1/);
-  assert.doesNotMatch(workflow, /release:package-manifests|quizzer\.rb|Somethings1\.Quizzer/);
+  assert.doesNotMatch(workflow, /release:package-manifests|quizzer\.rb/);
   assert.match(workflow, /npm run release:trust/);
   assert.match(workflow, /QUIZZER_RELEASE_PUBLIC_KEY: \$\{\{ vars\.QUIZZER_RELEASE_PUBLIC_KEY \}\}/);
 });
@@ -103,4 +105,29 @@ test('release compiles Windows x64 native addons with the supported Visual Studi
 
   assert.match(workflow, /runner: windows-2022\n\s+platform: windows\n\s+architecture: x64/);
   assert.doesNotMatch(workflow, /runner: windows-2025/);
+});
+
+test('CI validates integration and release branch pushes', async () => {
+  const workflow = await readFile(ciPath, 'utf8');
+  assert.match(workflow, /push:\n\s+branches: \[develop, main\]/);
+});
+
+test('main pushes validate, tag, and explicitly dispatch a publishing release', async () => {
+  const workflow = await readFile(mainBridgePath, 'utf8');
+
+  assert.match(workflow, /push:\n\s+branches: \[main\]/);
+  assert.match(workflow, /actions: write\n\s+contents: write/);
+  assert.match(workflow, /scripts\/validate-release-transition\.mjs/);
+  assert.match(workflow, /--previous-ref "\$BEFORE_SHA"/);
+  assert.match(workflow, /--expected-sha "\$PUSHED_SHA"/);
+  ordered(workflow, 'Validate release version transition', 'Create immutable release tag');
+  ordered(workflow, 'Create immutable release tag', 'Dispatch signed release pipeline');
+  assert.match(workflow, /git rev-list -n 1 "\$RELEASE_TAG"/);
+  assert.match(workflow, /refusing to move it to \$PUSHED_SHA/);
+  assert.match(workflow, /gh release view "\$RELEASE_TAG"/);
+  assert.match(workflow, /workflow_runs\[\].+head_sha == \$sha.+status == "queued"/);
+  assert.match(workflow, /gh workflow run release\.yml/);
+  assert.match(workflow, /--ref "\$RELEASE_TAG"/);
+  assert.match(workflow, /--field channel="\$RELEASE_CHANNEL"/);
+  assert.match(workflow, /--field publish=true/);
 });

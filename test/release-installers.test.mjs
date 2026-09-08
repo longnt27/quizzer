@@ -25,7 +25,7 @@ test('renders installers with the signing key and exact verifiable release metad
       channel: 'beta',
       publishedAt: '2026-09-05T00:00:00.000Z',
       publicKeyId: 'quizzer-release-test',
-      releaseUrl: 'https://github.com/Somethings1/quizzer/releases/download/v1.0.0-beta.1',
+      releaseUrl: 'https://github.com/longnt27/quizzer/releases/download/v1.0.0-beta.1',
       artifacts: [{
         path: artifactPath, name: 'quizzer-cli-1.0.0-beta.1-linux-x64',
         platform: 'linux', architecture: 'x64', format: 'sea', cli: true,
@@ -62,8 +62,12 @@ test('renders installers with the signing key and exact verifiable release metad
     assert.match(powershell, /releases\/download\/v1\.0\.0-beta\.1/);
     assert.match(shell, /expected_apple_team_id='ABCDE12345'/);
     assert.match(shell, /TeamIdentifier/);
+    assert.match(shell, /curl .*--progress-bar/);
+    assert.match(shell, /Downloading %s/);
     assert.match(powershell, /ExpectedCertificateSha256 = 'ABAB/);
     assert.match(powershell, /SignerCertificate\.RawData/);
+    assert.match(powershell, /\$ProgressPreference = 'Continue'/);
+    assert.match(powershell, /Write-Progress -Activity 'Downloading Quizzer'/);
     assert.ok(shell.indexOf('cli_team_id=') < shell.indexOf('"$cli_download" release verify'));
     assert.ok(powershell.indexOf('Assert-Authenticode $CliDownload') < powershell.indexOf('& $CliDownload release verify'));
     assert.equal((await stat(result.shell)).mode & 0o777, 0o755);

@@ -25,9 +25,9 @@ type QuizPreset = 'quick' | 'balanced' | 'deep';
 type ResolvedSettings = { profile: string; values: Record<string, string | number | boolean> };
 
 const presets: Record<QuizPreset, { label: string; description: string; counts: [number, number, number, number] }> = {
-  quick: { label: 'Quick review · 10 questions', description: 'Fast recall with a small reasoning check.', counts: [8, 1, 1, 0] },
-  balanced: { label: 'Balanced learning · 20 questions', description: 'A practical mix of recall and explanation.', counts: [15, 3, 2, 0] },
-  deep: { label: 'Deep practice · 30 questions', description: 'More reasoning, fill-in, and coding practice.', counts: [18, 6, 4, 2] },
+  quick: { label: 'Quick · 10 questions', description: 'A short review of the most important ideas.', counts: [8, 1, 1, 0] },
+  balanced: { label: 'Standard · 20 questions', description: 'A balanced quiz for learning and recall.', counts: [15, 3, 2, 0] },
+  deep: { label: 'Thorough · 30 questions', description: 'Broader practice with more written and coding questions.', counts: [18, 6, 4, 2] },
 };
 
 const hardwareDefaults: Record<StoredAppProfile['hardwareProfile'], { contextBudget: number; rerank: boolean; batchSize: number }> = {
@@ -79,7 +79,12 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
   const [query, setQuery] = useState('');
   const [saving, setSaving] = useState(false);
   const message = getMessageApi();
-  const questionCount = multipleChoiceCount + fillBlankCount + reasoningCount + codingCount;
+  const simple = profile.interfaceMode === 'simple';
+  const [presetMultipleChoice, presetFillBlank, presetReasoning, presetCoding] = presets[preset].counts;
+  const effectiveCounts = simple
+    ? { multipleChoice: presetMultipleChoice, fillBlank: presetFillBlank, reasoning: presetReasoning, coding: presetCoding }
+    : { multipleChoice: multipleChoiceCount, fillBlank: fillBlankCount, reasoning: reasoningCount, coding: codingCount };
+  const questionCount = effectiveCounts.multipleChoice + effectiveCounts.fillBlank + effectiveCounts.reasoning + effectiveCounts.coding;
   const selectedProvider = getProviderDefinition(provider);
   const promptProfiles = [BUILT_IN_PROMPT_PROFILE, ...customPromptProfiles];
   const promptProfile = promptProfiles.find(item => item.id === promptProfileId) ?? BUILT_IN_PROMPT_PROFILE;
@@ -113,14 +118,15 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
 
   const toggle = (id: string) => setSelectedIds(ids => ids.includes(id) ? ids.filter(item => item !== id) : [...ids, id]);
 
-  const applyPreset = (next: QuizPreset) => {
-    setPreset(next);
-    const [multipleChoice, fillBlank, reasoning, coding] = presets[next].counts;
-    setMultipleChoiceCount(multipleChoice);
-    setFillBlankCount(fillBlank);
-    setReasoningCount(reasoning);
-    setCodingCount(coding);
-  };
+  const documentPicker = <>
+    {documents.length > 6 && <Input.Search aria-label="Find documents" value={query} onChange={event => setQuery(event.target.value)} placeholder="Find documents" />}
+    <List bordered size="small" style={{ maxHeight: 290, overflowY: 'auto' }} dataSource={visible}
+      renderItem={document => <List.Item onClick={() => toggle(document.id)} style={{ cursor: 'pointer' }}>
+        <Checkbox aria-label={`Select ${document.name}`} checked={selectedIds.includes(document.id)} style={{ marginRight: 12 }} />
+        <List.Item.Meta title={document.name} description={document.tags.map(tag => <Tag key={tag}>{tag}</Tag>)} />
+      </List.Item>} />
+    <Typography.Text type="secondary">{selected.length} document{selected.length === 1 ? '' : 's'} selected</Typography.Text>
+  </>;
 
   const resetAdvancedControls = () => {
     const defaults = hardwareDefaults[profile.hardwareProfile];
@@ -156,7 +162,7 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
         && (contextBudget !== resolvedContextBudget || rerank !== resolvedRerank);
       const options: GenerationOptions = {
         provider, model: model.trim() || undefined, questionCount,
-        questionCounts: { multipleChoice: multipleChoiceCount, fillBlank: fillBlankCount, reasoning: reasoningCount, coding: codingCount },
+        questionCounts: effectiveCounts,
         multipleChoiceMode,
         coverageStrategy: mode === 'combined' ? coverageStrategy : 'balanced',
         customInstruction: customInstruction.trim() || undefined,
@@ -175,8 +181,13 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
           ? { costCeilingMicroUsd: Math.round(costCeilingDollars * 1_000_000) }
           : {}),
       };
-      const requestedSources = mode === 'combined'
-        ? [{ name: name.trim() || 'Combined quiz', documentIds: selected.map(document => document.id) }]
+      const requestedSources = simple
+        ? [{
+          name: selected.length === 1 ? `${selected[0].name} quiz` : `Quiz from ${selected.length} documents`,
+          documentIds: selected.map(document => document.id),
+        }]
+        : mode === 'combined'
+          ? [{ name: name.trim() || 'Combined quiz', documentIds: selected.map(document => document.id) }]
         : selected.map(document => ({ name: document.name, documentIds: [document.id] }));
       const [savedTests, existingJobs] = await Promise.all([db.tests.toArray(), db.generationJobs.toArray()]);
       const usedNames = new Set([
@@ -203,20 +214,21 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
   };
 
   return (
-    <Modal open width={760} title="Create tests from documents" onCancel={onClose} footer={(_, { CancelBtn }) => <>
+    <Modal open width={760} title="Create tests from documents" onCancel={onClose}
+      styles={{ body: { maxHeight: 'calc(100vh - 190px)', overflowY: 'auto' } }} footer={(_, { CancelBtn }) => <>
       {!saving && <CancelBtn />}
       {saving ? <Space><Spin size="small" /> Queueing tests…</Space>
         : selected.length > 0 && questionCount >= 1 && questionCount <= 200 && configured.providers.length > 0
-          ? <Button type="primary" disabled={!routesApproved} onClick={() => void create()}>{mode === 'combined' ? 'Queue combined test' : `Queue ${selected.length} separate test(s)`}</Button>
+          ? <Button type="primary" disabled={!routesApproved} onClick={() => void create()}>{simple ? 'Create test' : mode === 'combined' ? 'Queue combined test' : `Queue ${selected.length} separate test(s)`}</Button>
           : null}
     </>}>
       {!documents.length ? <Empty description="Add documents to your library before creating a test" /> : (
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          <Alert type="info" showIcon message="Generation runs in the background"
-            description="Completed tests appear immediately. Each configured instance works on a different test, while batches within a test run sequentially to reduce duplicates." />
-          <Radio.Group value={mode} onChange={event => setMode(event.target.value)} optionType="button" buttonStyle="solid"
-            options={[{ label: 'One combined test', value: 'combined' }, { label: 'Separate test per document', value: 'separate' }]} />
-          {mode === 'combined' && <Input value={name} onChange={event => setName(event.target.value)} addonBefore="Test name" />}
+          {!simple && <Alert type="info" showIcon message="Generation runs in the background"
+            description="Completed tests appear immediately. Each configured instance works on a different test, while batches within a test run sequentially to reduce duplicates." />}
+          {!simple && <Radio.Group value={mode} onChange={event => setMode(event.target.value)} optionType="button" buttonStyle="solid"
+            options={[{ label: 'One combined test', value: 'combined' }, { label: 'Separate test per document', value: 'separate' }]} />}
+          {!simple && mode === 'combined' && <Input value={name} onChange={event => setName(event.target.value)} addonBefore="Test name" />}
           {configured.loading && !configured.providers.length && <Space><Spin size="small" /><Typography.Text type="secondary">Checking connected providers…</Typography.Text></Space>}
           {!configured.loading && !configured.providers.length && <Alert type="warning" showIcon message="No AI provider is configured"
             description="Connect a CLI agent or add an API key before creating a test."
@@ -262,12 +274,23 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
               Quizzer does not guess prices for unknown models. Enter the provider’s current input and output rates before using a finite ceiling; the values are snapshotted into this test.
             </Typography.Paragraph>
           </div>}
-          {profile.interfaceMode === 'simple' && <div>
-            <Typography.Text strong>Recommended preset</Typography.Text>
-            <Select value={preset} onChange={applyPreset} style={{ width: '100%', marginTop: 8 }} options={Object.entries(presets).map(([value, item]) => ({ value, label: item.label }))} />
-            <Typography.Paragraph type="secondary" style={{ margin: '6px 0 0' }}>{presets[preset].description}</Typography.Paragraph>
+          {simple && <div className="simple-test-flow">
+            <section>
+              <Typography.Title level={5}>1. Choose your documents</Typography.Title>
+              {documentPicker}
+            </section>
+            <section>
+              <Typography.Title level={5}>2. Choose a quiz length</Typography.Title>
+              <Select aria-label="Quiz length" value={preset} onChange={setPreset} style={{ width: '100%' }} options={Object.entries(presets).map(([value, item]) => ({ value, label: item.label }))} />
+              <Typography.Paragraph type="secondary" style={{ margin: '6px 0 0' }}>{presets[preset].description}</Typography.Paragraph>
+            </section>
+            <section>
+              <Typography.Title level={5}>3. Add a learning goal <Typography.Text type="secondary">(optional)</Typography.Text></Typography.Title>
+              <Input.TextArea aria-label="Learning goal" data-onboarding-target="learning-instruction" rows={3} maxLength={2000} value={customInstruction} onChange={event => setCustomInstruction(event.target.value)}
+                placeholder="For example: Focus on the ideas I am most likely to forget" />
+            </section>
           </div>}
-          {profile.interfaceMode === 'advanced' && <div className="question-count-grid">
+          {!simple && profile.interfaceMode === 'advanced' && <div className="question-count-grid">
             <label><Typography.Text strong>Multiple choice</Typography.Text><InputNumber min={0} max={200} value={multipleChoiceCount} onChange={value => setMultipleChoiceCount(value ?? 0)} /></label>
             <label><Typography.Text strong>Fill in the blank</Typography.Text><InputNumber min={0} max={200} value={fillBlankCount} onChange={value => setFillBlankCount(value ?? 0)} /></label>
             <label><Typography.Text strong>Reasoning</Typography.Text><InputNumber min={0} max={200} value={reasoningCount} onChange={value => setReasoningCount(value ?? 0)} /></label>
@@ -327,19 +350,30 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
               Quizzer sends only the assigned page-aware chunks for each batch, keeping large combined tests within a fixed prompt budget.
             </Typography.Paragraph>
           </div>}
-          {mode === 'combined' && selected.length > questionCount && questionCount > 0 && <Alert type="warning" showIcon
+          {!simple && mode === 'combined' && selected.length > questionCount && questionCount > 0 && <Alert type="warning" showIcon
             message={`${questionCount} questions cannot represent all ${selected.length} documents`}
             description={coverageStrategy === 'ai-selected'
               ? 'AI-selected coverage will prioritize the most central material. Increase the question count if every document must appear.'
               : 'Quizzer will sample across the selection. Increase the question count to guarantee at least one question per document.'} />}
           {questionCount < 1 && <Alert type="error" showIcon message="Choose at least one question." />}
           {questionCount > 200 && <Alert type="error" showIcon message="A test can contain at most 200 questions." />}
-          <div>
+          {!simple && <div>
             <Typography.Text strong>Custom learning instruction <Typography.Text type="secondary">(optional)</Typography.Text></Typography.Text>
             <Input.TextArea data-onboarding-target="learning-instruction" rows={3} maxLength={2000} showCount value={customInstruction} onChange={event => setCustomInstruction(event.target.value)}
               placeholder="For example: coding questions about Terraform only" style={{ marginTop: 8 }} />
-          </div>
-          {!!configured.providers.length && <Alert type={proposedRoutes.some(route => route.paid) ? 'warning' : 'info'} showIcon
+          </div>}
+          {!!configured.providers.length && simple && requiresRouteApproval && <Alert type={proposedRoutes.some(route => route.paid) ? 'warning' : 'info'} showIcon
+            message={`Use ${selectedProvider.label} for this test?`}
+            description={<Space direction="vertical" size="small">
+              <Typography.Text>
+                Quizzer will send only the relevant excerpts from your selected documents to {selectedProvider.label}{proposedRoutes.some(route => route.paid) ? '. Provider charges may apply.' : '.'}
+              </Typography.Text>
+              <Checkbox checked={routesApproved} onChange={event => setApprovedRouteSignature(event.target.checked ? routeSignature : '')}>
+                Allow Quizzer to send these excerpts for this test.
+              </Checkbox>
+              <Button type="link" size="small" onClick={onManagePlugins} style={{ padding: 0, alignSelf: 'flex-start' }}>Change AI</Button>
+            </Space>} />}
+          {!!configured.providers.length && !simple && <Alert type={proposedRoutes.some(route => route.paid) ? 'warning' : 'info'} showIcon
             message="Data-sharing & cost approval"
             description={<Space direction="vertical" size="small">
               <Typography.Text>Only selected source excerpts and relevant images are sent. Review every route before approving:</Typography.Text>
@@ -349,16 +383,9 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
               <Checkbox checked={routesApproved} onChange={event => setApprovedRouteSignature(event.target.checked ? routeSignature : '')}>
                 I approve sending selected excerpts and relevant images to these routes{proposedRoutes.some(route => route.paid) ? ' and understand usage charges may apply' : ''}.
               </Checkbox>
-              {profile.interfaceMode === 'simple' && <Button type="link" size="small" onClick={onManagePlugins}>Change AI</Button>}
             </Space>} />}
-          {!saving && <Typography.Text type="secondary">Provider defaults are saved in <Button type="link" size="small" onClick={onManagePlugins}>Plugins & models</Button>. You can override the model for this job.</Typography.Text>}
-          <Input.Search value={query} onChange={event => setQuery(event.target.value)} placeholder="Filter documents by name or tag" />
-          <List bordered size="small" style={{ maxHeight: 290, overflowY: 'auto' }} dataSource={visible}
-            renderItem={document => <List.Item onClick={() => toggle(document.id)} style={{ cursor: 'pointer' }}>
-              <Checkbox checked={selectedIds.includes(document.id)} style={{ marginRight: 12 }} />
-              <List.Item.Meta title={document.name} description={document.tags.map(tag => <Tag key={tag}>{tag}</Tag>)} />
-            </List.Item>} />
-          <Typography.Text type="secondary">{selected.length} document(s) selected</Typography.Text>
+          {!simple && !saving && <Typography.Text type="secondary">Provider defaults are saved in <Button type="link" size="small" onClick={onManagePlugins}>Plugins & models</Button>. You can override the model for this job.</Typography.Text>}
+          {!simple && documentPicker}
         </Space>
       )}
     </Modal>

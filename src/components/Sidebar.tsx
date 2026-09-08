@@ -1,6 +1,6 @@
 import { useState, useSyncExternalStore } from 'react';
 import { Alert, Badge, Button, Empty, Input, Layout, List, Modal, Popconfirm, Progress, Space, Tabs, Tag, Typography } from 'antd';
-import { ApiOutlined, CloudSyncOutlined, DeleteOutlined, ExperimentOutlined, FileTextOutlined, FormOutlined, HomeOutlined, MacCommandOutlined, MoonOutlined, PlusOutlined, QuestionCircleOutlined, SearchOutlined, SettingOutlined, SwapOutlined, SyncOutlined, SunOutlined } from '@ant-design/icons';
+import { ApiOutlined, CloudSyncOutlined, DeleteOutlined, ExperimentOutlined, FileTextOutlined, FormOutlined, HomeOutlined, PlusOutlined, QuestionCircleOutlined, SearchOutlined, SettingOutlined, SyncOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type StoredAppProfile } from '../db/db';
 import { getMessageApi } from '../utils/messageProvider';
@@ -29,19 +29,16 @@ interface Props {
   onAddDocument: () => void;
   onOpenPlugins: () => void;
   onOpenSettings: () => void;
-  onOpenCommandPalette: () => void;
   onOpenPromptStudio: () => void;
   onOpenGeneration: () => void;
   onOpenHome: () => void;
   onOpenTutorial: () => void;
   profile?: StoredAppProfile;
-  onToggleInterfaceMode: () => void;
   dark: boolean;
-  onToggleTheme: () => void;
   embedded?: boolean;
 }
 
-export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument, onOpenPlugins, onOpenSettings, onOpenCommandPalette, onOpenPromptStudio, onOpenGeneration, onOpenHome, onOpenTutorial, profile, onToggleInterfaceMode, dark, onToggleTheme, embedded = false }: Props) {
+export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument, onOpenPlugins, onOpenSettings, onOpenPromptStudio, onOpenGeneration, onOpenHome, onOpenTutorial, profile, dark, embedded = false }: Props) {
   const tests = useLiveQuery(() => db.tests.orderBy('createdAt').reverse().toArray(), []) ?? [];
   const documents = useLiveQuery(() => db.documents.orderBy('createdAt').reverse().toArray(), []) ?? [];
   const [tab, setTab] = useState<'tests' | 'documents'>(selection?.kind === 'document' ? 'documents' : 'tests');
@@ -114,7 +111,13 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
         )}
       </div>
       <div className="sidebar-footer">
-        {profile && !profile.onboarding.completedAt && !profile.onboarding.skipped && <Button type="primary" icon={<QuestionCircleOutlined />} onClick={onOpenTutorial}>Resume setup</Button>}
+        {profile && <Button type={!profile.onboarding.completedAt && !profile.onboarding.skipped ? 'primary' : 'text'} icon={<QuestionCircleOutlined />}
+          onClick={async () => {
+            if (profile.onboarding.completedAt || profile.onboarding.skipped) await restartOnboarding();
+            onOpenTutorial();
+          }}>
+          {!profile.onboarding.completedAt && !profile.onboarding.skipped ? 'Resume setup' : 'Restart tutorial'}
+        </Button>}
         <Button type="text" icon={<CloudSyncOutlined spin={sync.status === 'syncing'} />} onClick={() => { setSyncDetailsOpen(true); void syncNow(); }}>
           <Badge status={sync.status === 'synced' ? 'success' : sync.status === 'offline' ? 'warning' : 'processing'} />
           {sync.status === 'offline' ? 'Offline — saved locally' : sync.lastSyncedAt ? 'Saved on server' : 'Syncing library'}
@@ -123,14 +126,6 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
         <Button data-onboarding-target="provider" type="text" icon={<ApiOutlined />} onClick={onOpenPlugins}>Plugins & models</Button>
         <Button type="text" icon={<SettingOutlined />} onClick={onOpenSettings}>Settings</Button>
         {profile?.interfaceMode === 'advanced' && <Button type="text" icon={<ExperimentOutlined />} onClick={onOpenPromptStudio}>Prompt Studio</Button>}
-        <Button type="text" icon={<MacCommandOutlined />} onClick={onOpenCommandPalette}>Command palette <span className="sidebar-shortcut">⌘/Ctrl K</span></Button>
-        {profile && <Button type="text" icon={<SwapOutlined />} onClick={onToggleInterfaceMode}>
-          Switch to {profile.interfaceMode === 'simple' ? 'Advanced' : 'Simple'} mode
-        </Button>}
-        <Button type="text" icon={<QuestionCircleOutlined />} onClick={async () => { await restartOnboarding(); onOpenTutorial(); }}>Restart tutorial</Button>
-        <Button type="text" icon={dark ? <SunOutlined /> : <MoonOutlined />} onClick={onToggleTheme}>
-          {dark ? 'Light mode' : 'Dark mode'}
-        </Button>
       </div>
       <Modal title="Library sync" open={syncDetailsOpen} onCancel={() => setSyncDetailsOpen(false)} footer={[
         <Button key="sync" loading={sync.status === 'syncing'} onClick={() => void syncNow()}>Sync now</Button>,

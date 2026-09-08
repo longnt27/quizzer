@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Do not open a public issue for a suspected vulnerability. Use [GitHub private vulnerability reporting](https://github.com/Somethings1/quizzer/security/advisories/new) and include:
+Do not open a public issue for a suspected vulnerability. Use [GitHub private vulnerability reporting](https://github.com/longnt27/quizzer/security/advisories/new) and include:
 
 - the affected version and platform;
 - reproduction steps or a minimal proof of concept;

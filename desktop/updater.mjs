@@ -7,7 +7,7 @@ import { verifyReleaseManifestSignature } from '../release/manifest.mjs';
 import { isValidArtifactName, MAX_DESKTOP_PACKAGE_SIZE, validateReleaseManifest } from '../server/release-manifest.mjs';
 
 export const SUPPORTED_CHANNELS = Object.freeze(['stable', 'beta']);
-export const CANONICAL_REPOSITORY = 'Somethings1/quizzer';
+export const CANONICAL_REPOSITORY = 'longnt27/quizzer';
 export const MAX_METADATA_BYTES = 1024 * 1024; // 1 MiB
 
 const writeAll = async (fileHandle, bytes) => {
