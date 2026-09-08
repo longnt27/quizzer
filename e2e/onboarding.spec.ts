@@ -123,6 +123,10 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await expect(page.locator('[data-onboarding-target="document"]').filter({ visible: true }).first()).toBeVisible();
   await expect(page.locator('.onboarding-coachmark')).toBeVisible();
   await page.locator('.onboarding-drawer').getByRole('button').filter({ hasText: 'Add document' }).click();
+  const documentDialog = page.getByRole('dialog', { name: 'Add documents' });
+  await expect(documentDialog).toBeVisible();
+  await expect(documentDialog.getByRole('combobox', { name: 'Document extraction method' })).toHaveCount(0);
+  await expect(page.locator('.onboarding-coachmark')).toBeHidden();
   await page.locator('input[type="file"]').setInputFiles({
     name: 'coordination.md',
     mimeType: 'text/markdown',
