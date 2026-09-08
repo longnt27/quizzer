@@ -1,0 +1,95 @@
+name: Release from main
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release-from-main
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  tag-and-dispatch:
+    if: github.repository == 'longnt27/quizzer'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate release version transition
+        id: release
+        shell: bash
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          PUSHED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          node scripts/validate-release-transition.mjs \
+            --previous-ref "$BEFORE_SHA" \
+            --expected-sha "$PUSHED_SHA" >> "$GITHUB_OUTPUT"
+      - name: Create immutable release tag
+        id: tag
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          PUSHED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          TAG_REF="refs/tags/${RELEASE_TAG}"
+          TAG_QUERY_FILE="$(mktemp)"
+          trap 'rm -f "$TAG_QUERY_FILE"' EXIT
+          set +e
+          git ls-remote --exit-code --refs origin "$TAG_REF" > "$TAG_QUERY_FILE"
+          TAG_QUERY_STATUS=$?
+          set -e
+          if [ "$TAG_QUERY_STATUS" -eq 0 ]; then
+            git fetch --force origin "${TAG_REF}:${TAG_REF}"
+            EXISTING_TARGET="$(git rev-list -n 1 "$RELEASE_TAG")"
+            if [ "$EXISTING_TARGET" != "$PUSHED_SHA" ]; then
+              echo "$RELEASE_TAG already exists at $EXISTING_TARGET; refusing to move it to $PUSHED_SHA" >&2
+              exit 1
+            fi
+            echo "created=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$TAG_QUERY_STATUS" -ne 2 ]; then
+            echo "Could not determine whether $RELEASE_TAG already exists" >&2
+            exit "$TAG_QUERY_STATUS"
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag --annotate "$RELEASE_TAG" "$PUSHED_SHA" --message "Quizzer ${RELEASE_TAG#v}"
+          git push origin "$TAG_REF"
+          echo "created=true" >> "$GITHUB_OUTPUT"
+      # Tags pushed with GITHUB_TOKEN do not recursively start tag workflows.
+      # workflow_dispatch is an explicit GitHub-supported exception, so dispatch Release directly.
+      - name: Dispatch signed release pipeline
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_CHANNEL: ${{ steps.release.outputs.channel }}
+          PUSHED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "$RELEASE_TAG is already published; no new release run is needed."
+            exit 0
+          fi
+          ACTIVE_RUN_ID="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/release.yml/runs?event=workflow_dispatch&per_page=100" \
+            | jq -r --arg sha "$PUSHED_SHA" '[.workflow_runs[] | select(.head_sha == $sha and (.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "pending" or .status == "requested"))] | first | .id // empty')"
+          if [ -n "$ACTIVE_RUN_ID" ]; then
+            echo "Release run $ACTIVE_RUN_ID is already active for $PUSHED_SHA; no duplicate was dispatched."
+            exit 0
+          fi
+          gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "$RELEASE_TAG" \
+            --field tag="$RELEASE_TAG" \
+            --field channel="$RELEASE_CHANNEL" \
+            --field publish=true

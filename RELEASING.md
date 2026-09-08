@@ -1,6 +1,6 @@
 # Releasing Quizzer
 
-Quizzer beta releases are built for six operating-system and architecture targets, assembled into one Ed25519-signed manifest, and published only after an explicit maintainer approval. Native Apple notarization and Windows publisher signing are optional until the project can justify their cost. A pushed tag starts validation but never publishes a GitHub Release by itself.
+Quizzer beta releases are built for six operating-system and architecture targets, assembled into one Ed25519-signed manifest, and published only after an explicit maintainer approval. Native Apple notarization and Windows publisher signing are optional until the project can justify their cost. `develop` is the integration branch; `main` contains release commits only.
 
 ## Required GitHub configuration
 
@@ -44,8 +44,8 @@ New publicly trusted Windows keys are normally HSM-backed and non-exportable. Wh
 
 ## Prepare a beta
 
-1. Start from a clean, up-to-date `main` branch whose required checks pass.
-2. Confirm `package.json` contains the intended prerelease version, such as `1.0.0-beta.1`, and that the lockfiles are current.
+1. Start from a clean, up-to-date `develop` branch whose required checks pass. Issue branches merge into `develop`, never directly into `main`.
+2. Set the intended prerelease version, such as `1.0.0-beta.1`, in both `package.json` and `package-lock.json`. The new version must be greater than the version on `main`.
 3. Run the local release gates:
 
    ```sh
@@ -62,20 +62,15 @@ New publicly trusted Windows keys are normally HSM-backed and non-exportable. Wh
    ```
 
 4. Complete clean-machine install, update, rollback, and recovery checks for the release candidate. Record the results outside the repository together with the artifact checksums.
-5. Create and push the signed version tag only after the commit is final:
+5. Open a release pull request from `develop` to `main`, verify its required checks, and squash-merge it as one release commit. Never push a release commit or tag directly.
 
-   ```sh
-   git tag -s v1.0.0-beta.1 -m "Quizzer 1.0.0 beta 1"
-   git push origin v1.0.0-beta.1
-   ```
-
-The tag-triggered workflow verifies source, tests the application and landing page, builds all six desktop and CLI targets, verifies Electron fuses, generates SBOMs and provenance, signs the release manifest, and uploads the complete candidate as a private workflow artifact. Native signing and notarization run only when their explicit enable variables are set.
+The `Release from main` workflow validates the exact pushed commit, confirms the package and lockfile versions match and increased, and creates the immutable `v<version>` tag. Because GitHub does not recursively start workflows for tags pushed by `GITHUB_TOKEN`, the bridge explicitly dispatches `release.yml` with the matching beta or stable channel and `publish=true`. It reuses an existing tag only when it points to the exact commit, skips an already published release or an active run, and leaves failed runs safe to retry. The dispatched workflow verifies source, tests the application and landing page, builds all six desktop and CLI targets, verifies Electron fuses, generates SBOMs and provenance, signs the release manifest, and publishes only after approval of the protected `release` environment. Native signing and notarization run only when their explicit enable variables are set.
 
 ## Publish
 
 1. Inspect every job and download the `signed-release-<tag>` workflow artifact.
 2. Verify that the bundle contains the expected desktop and CLI targets, `install.sh`, `install.ps1`, both SBOMs, the canonical manifest, and its detached signature.
-3. Run the **Release** workflow manually for the existing tag. Select the matching `beta` or `stable` channel and set **Publish the GitHub Release after validation** to true.
+3. Confirm that the main-branch bridge dispatched **Release** with the matching `beta` or `stable` channel and publishing enabled. After a failed run, rerun the bridge or manually dispatch **Release** for the existing tag.
 4. Approve the `release` environment deployment only after the rebuilt candidate passes.
 5. Confirm the GitHub Release is marked as a prerelease for beta versions and that both installer entrypoints resolve from the release page.
 6. Install through the public command on at least one clean machine before announcing the release.
@@ -84,6 +79,6 @@ The publish job uses `gh release create --verify-tag`; it cannot create a releas
 
 ## Promote or roll back
 
-Stable promotion requires all 1.0 gates in [README.md](README.md), including two successful update and rollback cycles. Do not retag a release or replace an asset in place: manifests bind versioned URLs, byte sizes, and hashes. Fix the issue on `main`, increment the version, and publish a new signed release.
+Stable promotion requires all 1.0 gates in [README.md](README.md), including two successful update and rollback cycles. Do not retag a release or replace an asset in place: manifests bind versioned URLs, byte sizes, and hashes. Fix the issue through `develop`, increment the version, and promote a new release commit to `main`.
 
 If a published release is unsafe, mark it unavailable in GitHub, communicate the affected version, and ship a higher signed version. Preserve artifacts and audit records needed for incident review. Users can invoke the in-app rollback only when Quizzer has retained and reverified a previously installed signed package.

@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/longnt27/quizzer/actions/workflows/ci.yml"><img alt="CI status" src="https://github.com/longnt27/quizzer/actions/workflows/ci.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/longnt27/quizzer/actions/workflows/ci.yml"><img alt="CI status" src="https://github.com/longnt27/quizzer/actions/workflows/ci.yml/badge.svg?branch=develop"></a>
   <a href="https://github.com/longnt27/quizzer/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/longnt27/quizzer?include_prereleases&sort=semver"></a>
   <a href="LICENSE"><img alt="Apache 2.0 license" src="https://img.shields.io/github/license/longnt27/quizzer"></a>
   <a href="SECURITY.md"><img alt="Security policy" src="https://img.shields.io/badge/security-policy-2ea44f"></a>
@@ -225,6 +225,8 @@ npm run build
 The screenshot task starts an isolated local service and mocked provider, then recreates the README images from the current UI without opening a developer library or making paid calls.
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before sending a pull request and follow the [Code of Conduct](CODE_OF_CONDUCT.md). Use [GitHub Issues](https://github.com/longnt27/quizzer/issues) for reproducible bugs, [GitHub Discussions](https://github.com/longnt27/quizzer/discussions) for ideas and questions, and private vulnerability reporting for security issues.
+
+Development changes merge into `develop`; `main` is reserved for tested, squash-merged release promotions. Releases are tagged and dispatched automatically after a versioned `develop` → `main` pull request is merged. See [RELEASING.md](RELEASING.md).
 
 ## Documentation
 
