@@ -68,14 +68,6 @@ jobs:
       - run: npx playwright install --with-deps chromium firefox
       - run: npm run test:e2e
       - run: npm run test:e2e:cost
-      - name: Generate landing CycloneDX SBOM
-        working-directory: landing
-        run: npm sbom --sbom-format cyclonedx > landing-sbom.cdx.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: landing-metadata
-          path: landing/landing-sbom.cdx.json
-          if-no-files-found: error
       - name: Generate CycloneDX SBOM
         run: npm sbom --sbom-format cyclonedx > sbom.cdx.json
       - uses: actions/upload-artifact@v4
@@ -106,6 +98,13 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium firefox webkit
       - run: npm run test:e2e
+      - name: Generate landing CycloneDX SBOM
+        run: npm sbom --sbom-format cyclonedx > landing-sbom.cdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: landing-metadata
+          path: landing/landing-sbom.cdx.json
+          if-no-files-found: error
 
   desktop:
     needs: verify
