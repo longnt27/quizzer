@@ -104,9 +104,18 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await expect(page.getByRole('region', { name: 'Onboarding hint' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Dismiss walkthrough hint' })).toBeVisible();
   expect(await page.locator('.onboarding-coachmark').evaluate(element => ({ animation: getComputedStyle(element).animationName, duration: getComputedStyle(element).transitionDuration }))).toEqual({ animation: 'none', duration: '0s' });
+  await onboarding.getByRole('button', { name: 'Review AI settings' }).click();
+  const pluginsDialog = page.getByRole('dialog', { name: 'Plugins & models' });
+  await expect(pluginsDialog).toBeVisible();
+  await expect(pluginsDialog.getByRole('tab', { name: 'Models' })).toBeVisible();
+  await expect(pluginsDialog.getByRole('tab', { name: 'Plugins' })).toBeVisible();
+  await expect(page.locator('.onboarding-coachmark')).toBeHidden();
+  await pluginsDialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.locator('.onboarding-coachmark')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('.onboarding-coachmark')).toBeHidden();
-  await page.getByRole('button', { name: 'Resume setup' }).last().click();
+  await onboarding.getByRole('button', { name: 'Close' }).click();
+  await page.getByRole('button', { name: 'Resume setup', exact: true }).click();
   await expect(page.locator('.onboarding-coachmark')).toBeVisible();
   await page.getByRole('button', { name: 'Continue' }).click();
 
