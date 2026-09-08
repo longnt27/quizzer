@@ -151,21 +151,25 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await expect(page.getByRole('radio', { name: 'Simple', exact: true })).toBeChecked();
   await expect(page.getByRole('button', { name: 'Continue' })).toBeDisabled();
   await page.locator('.onboarding-drawer').getByRole('button').filter({ hasText: 'Create test' }).click();
-  await page.getByText('coordination', { exact: true }).click();
-  await page.getByText('Balanced learning · 20 questions').click();
-  await page.getByText('Quick review · 10 questions').click();
-  await expect(page.getByRole('button', { name: 'Queue combined test' })).toBeDisabled();
-  await page.getByRole('checkbox', { name: /I approve sending selected excerpts/ }).check();
-  await page.getByRole('button', { name: 'Queue combined test' }).click();
+  const creationDialog = page.locator('.ant-modal-content').filter({ hasText: 'Create tests from documents' });
+  await creationDialog.getByRole('checkbox', { name: 'Select coordination' }).check();
+  const quizLength = creationDialog.getByRole('combobox', { name: 'Quiz length' });
+  await quizLength.focus();
+  await quizLength.press('ArrowDown');
+  await page.locator('.ant-select-dropdown:visible').getByText('Quick · 10 questions').click();
+  await expect(creationDialog.getByRole('textbox', { name: 'Learning goal' })).toHaveValue('Focus on safe concurrent updates.');
+  await expect(creationDialog.getByRole('button', { name: 'Create test' })).toBeDisabled();
+  await creationDialog.getByRole('checkbox', { name: 'Allow Quizzer to send these excerpts for this test.' }).check();
+  await creationDialog.getByRole('button', { name: 'Create test' }).click();
 
   await expect(page.getByText('Your quiz is being generated')).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText('Combined quiz is ready')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText('coordination quiz is ready')).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText('10 validated questions')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Continue' })).toBeEnabled();
   await page.getByRole('button', { name: 'Continue' }).click();
 
   await expect(page.getByRole('heading', { name: 'Try one question' })).toBeVisible();
-  await page.getByRole('button', { name: 'Open Combined quiz' }).click();
+  await page.getByRole('button', { name: 'Open coordination quiz' }).click();
   await page.locator('.ant-radio-button-wrapper').filter({ hasText: 'Practice mode' }).click();
   await page.getByRole('button', { name: 'Start Practice' }).click();
   await expect(page.getByRole('heading', { name: 'Question 1' })).toBeVisible();
