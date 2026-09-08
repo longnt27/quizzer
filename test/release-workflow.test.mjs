@@ -12,16 +12,16 @@ const ordered = (source, first, second) => {
   assert.ok(firstIndex < secondIndex, `${first} must run before ${second}`);
 };
 
-test('release verifies packaged signatures before collecting artifacts', async () => {
+test('release validates packages and gates optional native signing explicitly', async () => {
   const workflow = await readFile(workflowPath, 'utf8');
 
   ordered(workflow, 'Install Linux packaging tools', 'Cache verified AppImage runtime');
-  ordered(workflow, 'Cache verified AppImage runtime', 'Build signed desktop distributables');
-  ordered(workflow, 'Build signed desktop distributables', 'Verify Apple signatures and notarization');
-  ordered(workflow, 'Build signed desktop distributables', 'Notarize macOS distributables');
+  ordered(workflow, 'Cache verified AppImage runtime', 'Build desktop distributables');
+  ordered(workflow, 'Build desktop distributables', 'Verify Apple signatures and notarization');
+  ordered(workflow, 'Build desktop distributables', 'Notarize macOS distributables');
   ordered(workflow, 'Notarize macOS distributables', 'Verify Apple signatures and notarization');
-  ordered(workflow, 'Build signed desktop distributables', 'Verify Windows signatures');
-  ordered(workflow, 'Build signed desktop distributables', 'Verify Linux packages and AppImage');
+  ordered(workflow, 'Build desktop distributables', 'Verify Windows signatures');
+  ordered(workflow, 'Build desktop distributables', 'Verify Linux packages and AppImage');
   ordered(workflow, 'Verify Apple signatures and notarization', 'Normalize release artifacts');
   ordered(workflow, 'Verify Windows signatures', 'Normalize release artifacts');
   ordered(workflow, 'Verify Linux packages and AppImage', 'Normalize release artifacts');
@@ -43,6 +43,8 @@ test('release verifies packaged signatures before collecting artifacts', async (
   assert.match(workflow, /Expected exactly one \$\{extension\} artifact/);
   assert.match(workflow, /Get-AuthenticodeSignature -FilePath \$Target/);
   assert.match(workflow, /EXPECTED_WINDOWS_CERTIFICATE_SHA256\.ToUpperInvariant\(\)/);
+  assert.match(workflow, /matrix\.platform == 'macos' && vars\.QUIZZER_MACOS_SIGNING_ENABLED == 'true'/);
+  assert.match(workflow, /matrix\.platform == 'windows' && vars\.QUIZZER_WINDOWS_SIGNING_ENABLED == 'true'/);
 });
 
 test('release publishes separate application and landing SBOMs', async () => {
@@ -65,6 +67,8 @@ test('release publishes only direct shell installer entrypoints and their verifi
   assert.match(workflow, /release-bundle\/install\.ps1/);
   assert.match(workflow, /gh release create[^\n]+release-bundle\/install\.sh release-bundle\/install\.ps1/);
   assert.doesNotMatch(workflow, /release:package-manifests|quizzer\.rb|Somethings1\.Quizzer/);
+  assert.match(workflow, /npm run release:trust/);
+  assert.match(workflow, /QUIZZER_RELEASE_PUBLIC_KEY: \$\{\{ vars\.QUIZZER_RELEASE_PUBLIC_KEY \}\}/);
 });
 
 test('release rejects malformed tags and channel/version mismatches before building', async () => {

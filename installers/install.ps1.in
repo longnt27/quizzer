@@ -79,7 +79,11 @@ __QUIZZER_RELEASE_PUBLIC_KEY_PEM__
   if ($CliArtifact.Count -ne 1) { Fail "Release metadata must contain exactly one $CliName artifact" }
   $CliDownload = Join-Path $TemporaryDirectory $CliName
   Assert-Artifact $CliArtifact[0] $CliName $CliDownload
-  Assert-Authenticode $CliDownload
+  if ($ExpectedCertificateSha256) {
+    Assert-Authenticode $CliDownload
+  } else {
+    Write-Warning 'This beta has no Windows publisher signature. The bootstrap CLI is fetched over GitHub HTTPS, then verifies the Quizzer-signed release metadata before desktop installation.'
+  }
 
   & $CliDownload release verify --metadata $MetadataPath --signature $SignaturePath --public-key $PublicKeyPath --json | Out-Null
   if ($LASTEXITCODE -ne 0) { Fail 'Quizzer CLI rejected the release signature' }
@@ -89,7 +93,7 @@ __QUIZZER_RELEASE_PUBLIC_KEY_PEM__
   if ($DesktopArtifact.Count -ne 1) { Fail "Release metadata must contain exactly one $DesktopName artifact" }
   $DesktopDownload = Join-Path $TemporaryDirectory $DesktopName
   Assert-Artifact $DesktopArtifact[0] $DesktopName $DesktopDownload
-  Assert-Authenticode $DesktopDownload
+  if ($ExpectedCertificateSha256) { Assert-Authenticode $DesktopDownload }
 
   $BinDirectory = Join-Path $env:LOCALAPPDATA 'Quizzer\bin'
   New-Item -ItemType Directory -Force -Path $BinDirectory | Out-Null

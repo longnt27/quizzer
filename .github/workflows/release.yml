@@ -156,7 +156,7 @@ jobs:
         shell: bash
         run: node scripts/prepare-appimage-runtime.mjs --arch "${{ matrix.architecture }}"
       - name: Import Apple signing identity
-        if: matrix.platform == 'macos'
+        if: matrix.platform == 'macos' && vars.QUIZZER_MACOS_SIGNING_ENABLED == 'true'
         shell: bash
         env:
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
@@ -193,7 +193,7 @@ jobs:
           echo "APPLE_APP_SPECIFIC_PASSWORD=$APPLE_APP_SPECIFIC_PASSWORD" >> "$GITHUB_ENV"
           echo "APPLE_TEAM_ID=$APPLE_TEAM_ID" >> "$GITHUB_ENV"
       - name: Import Windows signing identity
-        if: matrix.platform == 'windows'
+        if: matrix.platform == 'windows' && vars.QUIZZER_WINDOWS_SIGNING_ENABLED == 'true'
         shell: pwsh
         env:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
@@ -221,19 +221,19 @@ jobs:
           }
           "WINDOWS_CERTIFICATE_FILE=$((Resolve-Path 'certificate.pfx').Path)" | Out-File -FilePath $env:GITHUB_ENV -Append
           "WINDOWS_CERTIFICATE_PASSWORD=$env:WINDOWS_CERTIFICATE_PASSWORD" | Out-File -FilePath $env:GITHUB_ENV -Append
-      - name: Build signed standalone CLI
+      - name: Build standalone CLI
         run: npm run build:cli
       - name: Notarize standalone CLI
-        if: matrix.platform == 'macos'
+        if: matrix.platform == 'macos' && vars.QUIZZER_MACOS_SIGNING_ENABLED == 'true'
         shell: bash
         run: |
           ditto -c -k --keepParent out/cli/quizzer out/cli/quizzer-notarization.zip
           xcrun notarytool submit out/cli/quizzer-notarization.zip --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
           rm out/cli/quizzer-notarization.zip
-      - name: Build signed desktop distributables
+      - name: Build desktop distributables
         run: npm run make:desktop
       - name: Notarize macOS distributables
-        if: matrix.platform == 'macos'
+        if: matrix.platform == 'macos' && vars.QUIZZER_MACOS_SIGNING_ENABLED == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -258,7 +258,7 @@ jobs:
       - name: Verify packaged Electron fuses
         run: npm run verify:desktop-fuses
       - name: Verify Apple signatures and notarization
-        if: matrix.platform == 'macos'
+        if: matrix.platform == 'macos' && vars.QUIZZER_MACOS_SIGNING_ENABLED == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -294,7 +294,7 @@ jobs:
           xcrun stapler validate "$PKG_PATH"
           spctl --assess --type install --verbose=4 "$PKG_PATH"
       - name: Verify Windows signatures
-        if: matrix.platform == 'windows'
+        if: matrix.platform == 'windows' && vars.QUIZZER_WINDOWS_SIGNING_ENABLED == 'true'
         shell: pwsh
         env:
           EXPECTED_WINDOWS_CERTIFICATE_SHA256: ${{ vars.QUIZZER_WINDOWS_CERTIFICATE_SHA256 }}
@@ -397,8 +397,11 @@ jobs:
       - name: Sign release manifest
         env:
           QUIZZER_RELEASE_PRIVATE_KEY: ${{ secrets.QUIZZER_RELEASE_PRIVATE_KEY }}
+          QUIZZER_RELEASE_PUBLIC_KEY: ${{ vars.QUIZZER_RELEASE_PUBLIC_KEY }}
           QUIZZER_RELEASE_PUBLIC_KEY_ID: ${{ vars.QUIZZER_RELEASE_PUBLIC_KEY_ID }}
-        run: npm run release:manifest -- --version "$RELEASE_TAG" --channel "$RELEASE_CHANNEL" --tag "$RELEASE_TAG" --artifacts release-bundle/artifacts.json --output release-bundle/release-manifest.json
+        run: |
+          npm run release:trust
+          npm run release:manifest -- --version "$RELEASE_TAG" --channel "$RELEASE_CHANNEL" --tag "$RELEASE_TAG" --artifacts release-bundle/artifacts.json --output release-bundle/release-manifest.json
       - name: Prepare verifying installers
         env:
           QUIZZER_RELEASE_PRIVATE_KEY: ${{ secrets.QUIZZER_RELEASE_PRIVATE_KEY }}

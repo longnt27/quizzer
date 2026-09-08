@@ -38,14 +38,15 @@ export const prepareReleaseInstallers = async ({
   appleTeamId,
   windowsCertificateSha256,
 }) => {
-  if (typeof appleTeamId !== 'string' || !/^[A-Z0-9]{10}$/.test(appleTeamId)) {
-    throw new Error('APPLE_TEAM_ID must contain the 10-character signing team identifier');
+  const normalizedAppleTeamId = typeof appleTeamId === 'string' ? appleTeamId.trim() : '';
+  if (normalizedAppleTeamId && !/^[A-Z0-9]{10}$/.test(normalizedAppleTeamId)) {
+    throw new Error('APPLE_TEAM_ID must be empty or contain the 10-character signing team identifier');
   }
   const normalizedWindowsCertificateSha256 = typeof windowsCertificateSha256 === 'string'
     ? windowsCertificateSha256.replaceAll(/\s/g, '').toUpperCase()
     : '';
-  if (!/^[A-F0-9]{64}$/.test(normalizedWindowsCertificateSha256)) {
-    throw new Error('QUIZZER_WINDOWS_CERTIFICATE_SHA256 must contain the signing certificate SHA-256 fingerprint');
+  if (normalizedWindowsCertificateSha256 && !/^[A-F0-9]{64}$/.test(normalizedWindowsCertificateSha256)) {
+    throw new Error('QUIZZER_WINDOWS_CERTIFICATE_SHA256 must be empty or contain the signing certificate SHA-256 fingerprint');
   }
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
   const validation = validateReleaseManifest(manifest);
@@ -73,7 +74,7 @@ export const prepareReleaseInstallers = async ({
     writeFile(paths.shell, renderTemplate(shellTemplate, [
       [publicKeyPlaceholder, { label: 'release public key', value: publicKeyPem.trim() }],
       [releaseBaseUrlPlaceholder, { label: 'release base URL', value: releaseBaseUrl }],
-      [appleTeamIdPlaceholder, { label: 'Apple Team ID', value: appleTeamId }],
+      [appleTeamIdPlaceholder, { label: 'Apple Team ID', value: normalizedAppleTeamId }],
     ]), { mode: 0o755 }),
     writeFile(paths.powershell, renderTemplate(powershellTemplate, [
       [publicKeyPlaceholder, { label: 'release public key', value: publicKeyPem.trim() }],

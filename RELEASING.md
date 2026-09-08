@@ -1,16 +1,32 @@
 # Releasing Quizzer
 
-Quizzer releases are built for six operating-system and architecture targets, signed by their platform identities, assembled into one Ed25519-signed manifest, and published only after an explicit maintainer approval. A pushed tag starts validation but never publishes a GitHub Release by itself.
+Quizzer beta releases are built for six operating-system and architecture targets, assembled into one Ed25519-signed manifest, and published only after an explicit maintainer approval. Native Apple notarization and Windows publisher signing are optional until the project can justify their cost. A pushed tag starts validation but never publishes a GitHub Release by itself.
 
 ## Required GitHub configuration
 
-Create a GitHub Actions environment named `release`, restrict deployments to protected tags matching `v*`, and require an appropriate maintainer approval. Store the production values below as repository or `release` environment secrets and variables. Jobs fail closed when a value is absent or malformed.
+Create a GitHub Actions environment named `release`, restrict deployments to protected tags matching `v*`, and require an appropriate maintainer approval. The manifest-signing values below are required and fail closed when absent or inconsistent.
 
 ### Secrets
 
 | Name | Purpose |
 | --- | --- |
-| `QUIZZER_RELEASE_PRIVATE_KEY` | Base64 DER or PEM Ed25519 private key used to sign the canonical release manifest |
+| `QUIZZER_RELEASE_PRIVATE_KEY` | Base64 PKCS#8 DER Ed25519 private key used to sign the canonical release manifest |
+
+### Variables
+
+| Name | Required value |
+| --- | --- |
+| `QUIZZER_RELEASE_PUBLIC_KEY_ID` | Stable identifier for the public half of the manifest-signing key |
+| `QUIZZER_RELEASE_PUBLIC_KEY` | Base64-encoded raw Ed25519 public key embedded in the landing page |
+
+The public release key and key ID embedded by the application and landing page must match the private signing key before the release candidate is tagged. `npm run release:trust` enforces that relationship. The public key is intentionally committed; never commit private keys, passwords, or temporary signing files.
+
+### Optional native signing
+
+Leave `QUIZZER_MACOS_SIGNING_ENABLED` and `QUIZZER_WINDOWS_SIGNING_ENABLED` unset for manifest-signed, native-unsigned beta builds. Users are warned during installation. To enable native platform trust later, set the applicable variable to `true` and configure its values:
+
+| Name | Purpose |
+| --- | --- |
 | `MACOS_CERTIFICATE` | Base64 PKCS#12 Apple Developer ID Application certificate |
 | `MACOS_CERTIFICATE_PASSWORD` | Password for the application certificate |
 | `MACOS_INSTALLER_CERTIFICATE` | Base64 PKCS#12 Apple Developer ID Installer certificate |
@@ -22,15 +38,9 @@ Create a GitHub Actions environment named `release`, restrict deployments to pro
 | `APPLE_TEAM_ID` | Expected Apple developer team ID |
 | `WINDOWS_CERTIFICATE` | Base64 PKCS#12 Authenticode certificate |
 | `WINDOWS_CERTIFICATE_PASSWORD` | Password for the Windows certificate |
-
-### Variables
-
-| Name | Required value |
-| --- | --- |
-| `QUIZZER_RELEASE_PUBLIC_KEY_ID` | Stable identifier for the public half of the manifest-signing key |
 | `QUIZZER_WINDOWS_CERTIFICATE_SHA256` | Upper- or lowercase 64-character SHA-256 fingerprint of the Windows signing certificate |
 
-The public release key and key ID embedded by the application and landing page must match the private signing key before the release candidate is tagged. Never commit certificates, private keys, passwords, or temporary signing files.
+New publicly trusted Windows keys are normally HSM-backed and non-exportable. When native Windows signing is adopted, replace the legacy PKCS#12 import with the selected CA or managed signing service's cloud/HSM integration.
 
 ## Prepare a beta
 
@@ -59,7 +69,7 @@ The public release key and key ID embedded by the application and landing page m
    git push origin v1.0.0-beta.1
    ```
 
-The tag-triggered workflow verifies source, tests the application and landing page, builds all six desktop and CLI targets, signs and notarizes native artifacts, verifies Electron fuses, generates SBOMs and provenance, signs the release manifest, and uploads the complete candidate as a private workflow artifact.
+The tag-triggered workflow verifies source, tests the application and landing page, builds all six desktop and CLI targets, verifies Electron fuses, generates SBOMs and provenance, signs the release manifest, and uploads the complete candidate as a private workflow artifact. Native signing and notarization run only when their explicit enable variables are set.
 
 ## Publish
 

@@ -11,6 +11,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { RELEASE_PUBLIC_KEY_ID, RELEASE_PUBLIC_KEY_RAW_BASE64 } from '@/lib/release-trust.mjs';
 
 type Platform = 'windows' | 'macos' | 'linux';
 type Architecture = 'x64' | 'arm64';
@@ -140,10 +141,8 @@ function decodeBase64(value: string) {
 }
 
 async function verifyReleaseManifest(value: Partial<ReleaseManifest>): Promise<ReleaseManifest> {
-  const publicKey = process.env.NEXT_PUBLIC_QUIZZER_RELEASE_PUBLIC_KEY;
-  const publicKeyId = process.env.NEXT_PUBLIC_QUIZZER_RELEASE_PUBLIC_KEY_ID;
-  if (!publicKey) throw new Error('Release signing key is not configured');
-  if (!publicKeyId) throw new Error('Release signing key ID is not configured');
+  const publicKey = process.env.NEXT_PUBLIC_QUIZZER_RELEASE_PUBLIC_KEY || RELEASE_PUBLIC_KEY_RAW_BASE64;
+  const publicKeyId = process.env.NEXT_PUBLIC_QUIZZER_RELEASE_PUBLIC_KEY_ID || RELEASE_PUBLIC_KEY_ID;
   if (value.schemaVersion !== 1 || typeof value.version !== 'string'
     || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(value.version)
     || (value.channel !== 'stable' && value.channel !== 'beta')
