@@ -78,11 +78,11 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
     return () => { active = false; };
   }, []);
 
-  const select = (next: LibrarySelection) => {
+  const select = useCallback((next: LibrarySelection) => {
     setSelection(next);
     setSession(null);
     setMobileMenuOpen(false);
-  };
+  }, []);
   const openSettings = useCallback(() => setShowSettingsModal(true), []);
 
   const updateKeyboardShortcut = (actionId: ShortcutActionId, shortcut: string) => {
@@ -137,7 +137,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
     };
     window.addEventListener('keydown', handleShortcut);
     return () => window.removeEventListener('keydown', handleShortcut);
-  }, [dark, interfaceMode, keyboardShortcuts, onThemeChange]);
+  }, [dark, interfaceMode, keyboardShortcuts, onThemeChange, select]);
 
   const commands: PaletteCommand[] = [
     { id: 'home', label: 'Go to Home', description: 'Open recent work, setup progress, and system status.', keywords: ['navigation'], shortcut: formatKeyboardShortcut(keyboardShortcuts.home), icon: <HomeOutlined />, run: () => select(null) },
