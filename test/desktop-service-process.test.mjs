@@ -18,6 +18,22 @@ test('adds common user CLI install locations without replacing the inherited pat
   }, { platform: 'win32', homeDirectory: 'C:\\Users\\learner' }).split(';');
   assert.ok(windows.some(entry => entry.endsWith('AppData\\Roaming/npm')));
   assert.ok(windows.some(entry => entry.endsWith('Microsoft/WinGet/Links')));
+
+  const linux = executableSearchPath({
+    PATH: '/usr/local/bin:/usr/bin',
+    HOME: '/home/learner',
+  }, { platform: 'linux' }).split(':');
+  assert.ok(linux.includes('/home/learner/.cargo/bin'));
+  assert.equal(linux.filter(entry => entry === '/usr/local/bin').length, 1);
+  assert.equal(linux.includes('/opt/homebrew/bin'), false);
+
+  const minimalWindows = executableSearchPath({
+    PATH: 'C:\\Tools;C:\\TOOLS',
+    USERPROFILE: 'C:\\Users\\learner',
+  }, { platform: 'win32' }).split(';');
+  assert.deepEqual(minimalWindows, ['C:\\Tools']);
+
+  assert.equal(executableSearchPath({}, { platform: 'linux', homeDirectory: '' }), '/usr/local/bin');
 });
 
 test('accepts only usable loopback service ports', () => {
