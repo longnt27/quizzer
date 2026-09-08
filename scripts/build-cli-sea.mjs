@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { build } from 'esbuild';
+import { seaLanceDbPlugin } from './sea-lancedb-plugin.mjs';
 
 const execFileAsync = promisify(execFile);
 const projectDirectory = resolve(import.meta.dirname, '..');
@@ -60,7 +61,7 @@ await build({
         path: join(projectDirectory, 'scripts', 'sea-better-sqlite3.mjs'),
       }));
     },
-  }],
+  }, seaLanceDbPlugin(projectDirectory)],
 });
 
 await writeFile(configPath, `${JSON.stringify({
