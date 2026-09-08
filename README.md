@@ -31,13 +31,13 @@ The current beta foundation includes a resumable first-run walkthrough, reversib
 Once a validated release is published, macOS and Linux users can install the desktop app and standalone CLI per-user with:
 
 ```sh
-curl -fsSL https://github.com/Somethings1/quizzer/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/Somethings1/quizzer/releases/download/v1.0.0-beta.3/install.sh | sh
 ```
 
 On Windows, run this in PowerShell:
 
 ```powershell
-irm https://github.com/Somethings1/quizzer/releases/latest/download/install.ps1 | iex
+irm https://github.com/Somethings1/quizzer/releases/download/v1.0.0-beta.3/install.ps1 | iex
 ```
 
 The scripts do not require Node.js, Python, or Git. They select the correct x64 or arm64 build, verify the Ed25519-signed release manifest and SHA-256 checksums, install `quizzer` on the user PATH, register the desktop application, and launch onboarding. Until native signing is enabled, macOS and Windows may show an unidentified-developer or unknown-publisher warning.
