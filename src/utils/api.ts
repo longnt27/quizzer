@@ -2,6 +2,7 @@ import type { GenerationDifficulty, GenerationOptions, GenerationProvider, Quest
 import { getApiKey, getProviderSettings } from './providerSettings';
 import { getGenerationBatchSize } from './generationSettings';
 import { renderGenerationPrompt } from './promptProfiles';
+import { generationQuestionSchemas } from './questionSchemas.ts';
 import { serviceFetch } from './serviceApi';
 
 export interface GenerationProgress {
@@ -33,99 +34,6 @@ export class ProviderRequestError extends Error {
     this.code = code;
   }
 }
-
-const multipleChoiceSchema = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['questions'],
-  properties: {
-    questions: {
-      type: 'array',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['type', 'statement', 'answer'],
-        properties: {
-          type: { type: 'string', enum: ['multiple-choice'] },
-          statement: { type: 'string' },
-          answer: {
-            type: 'array', minItems: 3, maxItems: 6,
-            items: {
-              type: 'object', additionalProperties: false,
-              required: ['correct', 'content', 'explanation'],
-              properties: {
-                correct: { type: 'boolean' },
-                content: { type: 'string' },
-                explanation: { type: 'string' },
-              },
-            },
-          },
-        },
-      },
-    },
-  },
-};
-
-const fillBlankSchema = {
-  type: 'object', additionalProperties: false, required: ['questions'],
-  properties: {
-    questions: {
-      type: 'array', items: {
-        type: 'object', additionalProperties: false,
-        required: ['type', 'statement', 'acceptedAnswers', 'explanation'],
-        properties: {
-          type: { type: 'string', enum: ['fill-blank'] },
-          statement: { type: 'string' },
-          acceptedAnswers: { type: 'array', minItems: 3, maxItems: 16, items: { type: 'string' } },
-          explanation: { type: 'string' },
-        },
-      },
-    },
-  },
-};
-
-const reasoningSchema = {
-  type: 'object', additionalProperties: false, required: ['questions'],
-  properties: {
-    questions: {
-      type: 'array', items: {
-        type: 'object', additionalProperties: false,
-        required: ['type', 'statement', 'referenceAnswer', 'explanation'],
-        properties: {
-          type: { type: 'string', enum: ['reasoning'] },
-          statement: { type: 'string' },
-          referenceAnswer: { type: 'string' },
-          explanation: { type: 'string' },
-        },
-      },
-    },
-  },
-};
-
-const codingSchema = {
-  type: 'object', additionalProperties: false, required: ['questions'],
-  properties: {
-    questions: {
-      type: 'array', items: {
-        type: 'object', additionalProperties: false,
-        required: ['type', 'statement', 'referenceAnswer', 'explanation'],
-        properties: {
-          type: { type: 'string', enum: ['coding'] },
-          statement: { type: 'string' },
-          referenceAnswer: { type: 'string' },
-          explanation: { type: 'string' },
-        },
-      },
-    },
-  },
-};
-
-const schemas: Record<QuestionType, object> = {
-  'multiple-choice': multipleChoiceSchema,
-  'fill-blank': fillBlankSchema,
-  reasoning: reasoningSchema,
-  coding: codingSchema,
-};
 
 export function extractJson<T>(text: string): T | null {
   try {
@@ -410,7 +318,7 @@ export async function generateQuiz(
       try {
         candidates = await requestCandidates(buildPrompt(source.content, type, requested, accepted, sourceFocus, activeOptions.multipleChoiceMode,
           activeOptions.promptProfileSnapshot?.templates?.generation ?? activeOptions.promptProfileSnapshot?.template,
-          activeOptions.generationProfile?.difficulty), schemas[type], activeOptions, signal, source.images ?? images);
+          activeOptions.generationProfile?.difficulty), generationQuestionSchemas[type], activeOptions, signal, source.images ?? images);
       } catch (error) {
         const code = error instanceof ProviderRequestError ? error.code : undefined;
         if (onProviderFailure && (code === 'provider_limit' || code === 'provider_auth' || code === 'provider_unavailable')) {
