@@ -1,3 +1,37 @@
+import { join } from 'node:path';
+
+export const executableSearchPath = (environment = process.env, {
+  platform = process.platform,
+  homeDirectory = environment.HOME || environment.USERPROFILE || '',
+} = {}) => {
+  const pathDelimiter = platform === 'win32' ? ';' : ':';
+  const existing = String(environment.PATH || environment.Path || '').split(pathDelimiter).filter(Boolean);
+  const candidates = platform === 'win32'
+    ? [
+        environment.APPDATA && join(environment.APPDATA, 'npm'),
+        environment.LOCALAPPDATA && join(environment.LOCALAPPDATA, 'Microsoft', 'WinGet', 'Links'),
+        environment.LOCALAPPDATA && join(environment.LOCALAPPDATA, 'Programs', 'Ollama'),
+      ]
+    : [
+        homeDirectory && join(homeDirectory, '.local', 'bin'),
+        homeDirectory && join(homeDirectory, '.npm-global', 'bin'),
+        homeDirectory && join(homeDirectory, '.npm', 'bin'),
+        homeDirectory && join(homeDirectory, '.volta', 'bin'),
+        homeDirectory && join(homeDirectory, '.bun', 'bin'),
+        homeDirectory && join(homeDirectory, '.cargo', 'bin'),
+        platform === 'darwin' && homeDirectory && join(homeDirectory, 'Library', 'pnpm'),
+        platform === 'darwin' && '/opt/homebrew/bin',
+        '/usr/local/bin',
+      ];
+  const seen = new Set();
+  return [...existing, ...candidates.filter(Boolean)].filter(entry => {
+    const key = platform === 'win32' ? entry.toLowerCase() : entry;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).join(pathDelimiter);
+};
+
 export const isValidServicePort = port => Number.isSafeInteger(port) && port >= 1 && port <= 65_535;
 
 export const serviceRestartDelay = attempt => {

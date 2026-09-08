@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Button, Input, List, Modal, Select, Space, Spin, Tag, Upload, Typography } from 'antd';
+import { Alert, Button, Input, List, Modal, Space, Spin, Tag, Upload, Typography } from 'antd';
 import { InboxOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { RcFile } from 'antd/es/upload';
 import { v4 as uuidv4 } from 'uuid';
@@ -38,35 +38,32 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
   const toolSettings = getProviderSettings().enabledTools;
   const [files, setFiles] = useState<PendingDocument[]>([]);
   const [saving, setSaving] = useState(false);
-  const [converter, setConverter] = useState<'automatic' | 'basic'>('automatic');
   const message = getMessageApi();
 
   const update = (id: string, changes: Partial<PendingDocument>) =>
     setFiles(current => current.map(item => item.id === id ? { ...item, ...changes } : item));
 
-  const extract = async (id: string, file: RcFile, mode: 'automatic' | 'basic') => {
+  const extract = async (id: string, file: RcFile) => {
     update(id, { status: 'extracting', stage: 'Reading document…', error: undefined, extracted: undefined });
     try {
       const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
       let extracted: Pick<StoredDocument, 'content' | 'pageCount' | 'images' | 'parserVersion'> = isPdf
         ? { ...await extractPdf(file), parserVersion: 'pdfjs-5.3.31' }
         : { content: await file.text(), pageCount: undefined, parserVersion: 'utf8-1' };
-      if (mode === 'automatic') {
-        update(id, { stage: isPdf ? 'Running the configured document extractor…' : 'Checking the configured document extractor…' });
-        try {
-          const dataUrl = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(String(reader.result));
-            reader.onerror = () => reject(reader.error);
-            reader.readAsDataURL(file);
-          });
-          const response = await serviceFetch('/api/extract', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: file.name, data: dataUrl.split(',')[1], ocrEnabled: toolSettings.ocr }),
-          });
-          if (response.ok) extracted = await response.json() as typeof extracted;
-        } catch { /* Marker is optional; retain the basic extraction. */ }
-      }
+      update(id, { stage: isPdf ? 'Running the configured document extractor…' : 'Checking the configured document extractor…' });
+      try {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(file);
+        });
+        const response = await serviceFetch('/api/extract', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: file.name, data: dataUrl.split(',')[1], ocrEnabled: toolSettings.ocr }),
+        });
+        if (response.ok) extracted = await response.json() as typeof extracted;
+      } catch { /* The configured extractor is optional; retain the basic extraction. */ }
       if (!extracted.content.trim()) throw new Error('No readable text was found in this document.');
       update(id, {
         status: 'ready', stage: undefined,
@@ -94,7 +91,7 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
       stage: 'Queued…',
     };
     setFiles(current => [...current, pending]);
-    void extract(id, file, converter);
+    void extract(id, file);
     return false;
   };
 
@@ -143,12 +140,8 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
           : null}
     </>}>
       <Typography.Paragraph type="secondary">
-        Documents are extracted now and saved to your local library. Creating a quiz is a separate step.
+        Quizzer automatically uses your configured extractor, then falls back to built-in text extraction when needed. You can change the extractor later and re-extract a saved document.
       </Typography.Paragraph>
-      <Select aria-label="Document extraction method" value={converter} onChange={setConverter} style={{ width: 280, marginBottom: 12 }} options={[
-        { value: 'automatic' as const, label: 'Automatic (configured extractor)' },
-        { value: 'basic', label: 'Basic PDF text extraction' },
-      ]} />
       <Upload.Dragger data-onboarding-target="document" multiple showUploadList={false} beforeUpload={addFile} accept=".pdf,.txt,.md">
         <p className="ant-upload-drag-icon"><InboxOutlined /></p>
         <p className="ant-upload-text">Drop PDF, text, or Markdown documents here</p>
@@ -159,7 +152,7 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
       <List style={{ marginTop: 16, maxHeight: 330, overflow: 'auto' }} dataSource={files}
         renderItem={item => (
           <List.Item actions={item.status === 'error' ? [
-            <Button key="retry" size="small" icon={<ReloadOutlined />} onClick={() => void extract(item.id, item.file, converter)}>Retry</Button>,
+            <Button key="retry" size="small" icon={<ReloadOutlined />} onClick={() => void extract(item.id, item.file)}>Retry</Button>,
             <Button key="remove" danger size="small" onClick={() => setFiles(all => all.filter(file => file.id !== item.id))}>Remove</Button>,
           ] : [<Button key="remove" danger size="small" onClick={() => setFiles(all => all.filter(file => file.id !== item.id))}>Remove</Button>]}>
             <Space direction="vertical" style={{ width: '100%' }}>

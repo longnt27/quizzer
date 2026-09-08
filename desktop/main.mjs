@@ -5,7 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { ensureServiceToken } from '../server/auth.mjs';
 import { CredentialVault } from './credential-vault.mjs';
 import { isAllowedExternalUrl, isTrustedRendererUrl } from './security.mjs';
-import { serviceRestartDelay, waitForServiceReady } from './service-process.mjs';
+import { executableSearchPath, serviceRestartDelay, waitForServiceReady } from './service-process.mjs';
 import { protectedBackgroundFallback, summarizeBackgroundState } from './background-policy.mjs';
 import { DesktopUpdater } from './updater.mjs';
 import { validateUpdaterCheckOptions, validateUpdaterApplyOptions } from './updater-ipc.mjs';
@@ -149,6 +149,7 @@ const startService = async () => {
     cwd: userData,
     env: {
       ...process.env,
+      PATH: executableSearchPath(process.env, { homeDirectory: app.getPath('home') }),
       QUIZZER_APP_DATA_DIR: userData,
       QUIZZER_DATABASE_PATH: join(userData, 'data', 'quizzer.sqlite'),
       QUIZZER_RESOURCE_DIR: app.isPackaged ? process.resourcesPath : projectDirectory,

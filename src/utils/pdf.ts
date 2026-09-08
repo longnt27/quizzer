@@ -1,7 +1,9 @@
 import * as pdfjsLib from 'pdfjs-dist';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
-// This is where the real magic happens:
-pdfjsLib.GlobalWorkerOptions.workerSrc = `/node_modules/pdfjs-dist/build/pdf.worker.min.mjs`;
+// Let Vite emit the worker next to the renderer bundle so custom protocols such
+// as quizzer:// can load a real worker without falling back to a dynamic import.
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 export interface ExtractedPdf {
   content: string;

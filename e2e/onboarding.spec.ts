@@ -85,11 +85,16 @@ test('resumes real onboarding and finishes through durable quiz practice', async
 
   await expect(page.getByRole('heading', { name: 'Learn from your own material' })).toBeVisible();
   const onboarding = page.locator('.onboarding-drawer');
+  await expect(onboarding.getByRole('progressbar', { name: 'Onboarding progress' })).toHaveCount(0);
+  await expect(onboarding.locator('.ant-steps-item')).toHaveCount(2);
   await onboarding.getByText('Simple', { exact: true }).click();
   await expect(onboarding.getByRole('radio', { name: /^Simple/ })).toBeChecked();
   await expect(page.getByRole('button', { name: 'Switch to Advanced mode' })).toBeVisible();
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('heading', { name: 'Choose a hardware profile' })).toBeVisible();
+  await expect(onboarding.locator('.ant-steps-item')).toHaveCount(3);
+  await expect(page.getByRole('button', { name: 'Use recommendation' })).toHaveCount(0);
+  await expect(onboarding.getByRole('radio', { checked: true })).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'Continue' })).toBeEnabled({ timeout: 15_000 });
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('heading', { name: 'Configure your AI' })).toBeVisible();
@@ -99,9 +104,18 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await expect(page.getByRole('region', { name: 'Onboarding hint' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Dismiss walkthrough hint' })).toBeVisible();
   expect(await page.locator('.onboarding-coachmark').evaluate(element => ({ animation: getComputedStyle(element).animationName, duration: getComputedStyle(element).transitionDuration }))).toEqual({ animation: 'none', duration: '0s' });
+  await onboarding.getByRole('button', { name: 'Review AI settings' }).click();
+  const pluginsDialog = page.getByRole('dialog', { name: 'Plugins & models' });
+  await expect(pluginsDialog).toBeVisible();
+  await expect(pluginsDialog.getByRole('tab', { name: 'Models' })).toBeVisible();
+  await expect(pluginsDialog.getByRole('tab', { name: 'Plugins' })).toBeVisible();
+  await expect(page.locator('.onboarding-coachmark')).toBeHidden();
+  await pluginsDialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.locator('.onboarding-coachmark')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('.onboarding-coachmark')).toBeHidden();
-  await page.getByRole('button', { name: 'Resume setup' }).last().click();
+  await onboarding.getByRole('button', { name: 'Close' }).click();
+  await page.getByRole('button', { name: 'Resume setup', exact: true }).click();
   await expect(page.locator('.onboarding-coachmark')).toBeVisible();
   await page.getByRole('button', { name: 'Continue' }).click();
 
@@ -109,6 +123,10 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await expect(page.locator('[data-onboarding-target="document"]').filter({ visible: true }).first()).toBeVisible();
   await expect(page.locator('.onboarding-coachmark')).toBeVisible();
   await page.locator('.onboarding-drawer').getByRole('button').filter({ hasText: 'Add document' }).click();
+  const documentDialog = page.getByRole('dialog', { name: 'Add documents' });
+  await expect(documentDialog).toBeVisible();
+  await expect(documentDialog.getByRole('combobox', { name: 'Document extraction method' })).toHaveCount(0);
+  await expect(page.locator('.onboarding-coachmark')).toBeHidden();
   await page.locator('input[type="file"]').setInputFiles({
     name: 'coordination.md',
     mimeType: 'text/markdown',

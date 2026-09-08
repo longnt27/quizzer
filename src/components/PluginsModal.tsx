@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, AutoComplete, Button, Divider, Input, Modal, Select, Space, Spin, Switch, Tag, Typography } from 'antd';
+import { Alert, AutoComplete, Button, Divider, Input, Modal, Select, Space, Spin, Switch, Tabs, Tag, Typography } from 'antd';
 import { ApiOutlined, CheckCircleOutlined, CloudDownloadOutlined, DeleteOutlined, FolderOpenOutlined, LoginOutlined, ReloadOutlined, RollbackOutlined } from '@ant-design/icons';
 import type { GenerationProvider, InterfaceMode } from '../types';
 import {
@@ -298,7 +298,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   };
 
   const installEmbeddingModel = () => {
-    const model = status?.embeddings.model;
+    const model = status?.embeddings?.model;
     if (!model) return message.warning('Embedding settings are still loading');
     getModalApi().confirm({
       title: `Download ${model} for dense retrieval?`,
@@ -495,7 +495,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
         'retrieval.vectorIndexPlugin': vectorIndexPlugin,
       } });
       if (models['llama-cpp']?.trim()) {
-        await serviceJson('/api/integrations/llama-cpp/configure', 'POST', {
+        await serviceJson('/api/v1/integrations/llama-cpp/configure', 'POST', {
           endpoint: llamaCppEndpoint.trim() || 'http://127.0.0.1:8080/v1',
           model: models['llama-cpp'].trim(),
           confirmed: true,
@@ -512,7 +512,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
     }
   };
 
-  const markerWorking = status?.marker.job.state === 'working';
+  const markerWorking = status?.marker?.job.state === 'working';
   const ocrWorking = status?.ocr?.job.state === 'working';
   const embeddingsWorking = status?.embeddings?.job.state === 'working';
   const ollamaWorking = status?.ollama?.job.state === 'working';
@@ -562,7 +562,10 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
         message={credentialStorage.available ? 'OS-protected credential storage is available' : 'Credentials will remain session-only'}
         description={credentialStorage.message} style={{ marginBottom: 16 }} />
       {statusError && <Alert type="error" showIcon message={statusError} action={<Button size="small" icon={<ReloadOutlined />} onClick={() => void refresh()}>Retry</Button>} />}
-      {!status && !statusError ? <div className="plugin-loading"><Spin /></div> : <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      {!status && !statusError ? <div className="plugin-loading"><Spin /></div> : <Tabs defaultActiveKey="models" items={[{
+        key: 'models',
+        label: 'Models',
+        children: <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <section className="plugin-card">
           <div className="plugin-card-heading">
             <div><Typography.Title level={5}>Document extraction</Typography.Title><Typography.Text type="secondary">Use Quizzer’s local PDF/text pipeline or an installed extractor plugin.</Typography.Text></div>
@@ -614,7 +617,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
           </div>
           <Select aria-label="Dense embedding component" value={embedderPlugin} onChange={setEmbedderPlugin} style={{ width: '100%' }}
             options={[
-              { value: 'builtin', label: `Built-in · Ollama ${status?.embeddings.model ?? 'profile model'}` },
+              { value: 'builtin', label: `Built-in · Ollama ${status?.embeddings?.model ?? 'profile model'}` },
               ...embedderPlugins.map(plugin => ({ value: plugin.id, label: `${plugin.name ?? plugin.id} · ${plugin.id}` })),
             ]} />
           {interfaceMode === 'advanced' && <>
@@ -629,7 +632,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
           </>}
           {embedderPlugin === 'builtin' && !status?.embeddings?.installed && !embeddingsWorking && <Button icon={<CloudDownloadOutlined />}
             onClick={installEmbeddingModel}>
-            {status?.embeddings?.runtimeInstalled ? `Download ${status.embeddings.model}` : `Install Ollama + ${status?.embeddings.model ?? 'embedding model'}`}
+            {status?.embeddings?.runtimeInstalled ? `Download ${status.embeddings.model}` : `Install Ollama + ${status?.embeddings?.model ?? 'embedding model'}`}
           </Button>}
           {embeddingReady && <Space><Switch aria-label="Enable dense embeddings" checked={enabledTools.embeddings} onChange={value => setEnabledTools(current => ({ ...current, embeddings: value }))} /><Typography.Text>Enabled</Typography.Text></Space>}
           {embedderPlugin === 'builtin' && embeddingsWorking && <Space><Spin size="small" /> Installing semantic filter…</Space>}
@@ -704,8 +707,8 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
         <Divider orientation="left" plain>Signed-in agents</Divider>
         {AGENT_PROVIDERS.map(provider => {
           const agent = status?.[provider.id];
-          const working = agent?.job.state === 'working';
-          const loginUrl = agent?.job.message.match(/https:\/\/[^\s]+/)?.[0];
+          const working = agent?.job?.state === 'working';
+          const loginUrl = agent?.job?.message.match(/https:\/\/[^\s]+/)?.[0];
           return <section className="plugin-card" key={provider.id}>
             <div className="plugin-card-heading">
               <div><Typography.Title level={5}>{provider.label.replace(' – ', ' ')}</Typography.Title><Typography.Text type="secondary">{provider.description} No API key is required.</Typography.Text></div>
@@ -719,8 +722,11 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
                 {working && <Space><Spin size="small" /> Working…</Space>}
                 {agent?.connected && <Space><Switch aria-label={`Enable ${provider.label.replace(' – ', ' ')}`} checked={enabledProviders[provider.id]} onChange={value => setEnabledProviders(current => ({ ...current, [provider.id]: value }))} /><Typography.Text>Enabled</Typography.Text></Space>}
               </Space>
+              {provider.id === 'codex' && !agent?.installed && !working && <Alert type="warning" showIcon message="Codex CLI was not found"
+                description="Quizzer checks common user install locations as well as your inherited PATH. Install Codex or restart Quizzer after changing its location."
+                action={<Button size="small" icon={<ReloadOutlined />} onClick={() => void refresh()}>Detect again</Button>} />}
               {loginUrl && working && <Typography.Link href={loginUrl} target="_blank" rel="noreferrer">Open the sign-in page</Typography.Link>}
-              {agent?.job.message && agent.job.state !== 'idle' && <pre className="plugin-output">{agent.job.message}</pre>}
+              {agent?.job?.message && agent.job.state !== 'idle' && <pre className="plugin-output">{agent.job.message}</pre>}
             </Space>
           </section>;
         })}
@@ -769,7 +775,18 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
           );
         })}
 
-        <Divider orientation="left" plain>External plugins</Divider>
+        {!!configuredProviderOptions.length && <div>
+          <Typography.Text strong>Default generation provider</Typography.Text>
+          <Select aria-label="Default generation provider" value={visibleDefaultProvider} onChange={(value: GenerationProvider) => setDefaultProvider(value)} style={{ display: 'block', width: '100%', marginTop: 8 }}
+            options={configuredProviderOptions.map(provider => ({ label: provider.label, value: provider.id }))} />
+        </div>}
+        {!configuredProviderOptions.length && <Typography.Text type="secondary">Connect a provider above to make it available for generation.</Typography.Text>}
+      </Space>,
+      }, {
+        key: 'plugins',
+        label: 'Plugins',
+        children: <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        <Typography.Title level={5}>External plugins</Typography.Title>
         <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
           External plugins run out of process with declared permissions and verified file hashes. Signed registry plugins are trusted normally; unsigned local plugins require Advanced Developer Mode.
         </Typography.Paragraph>
@@ -929,14 +946,8 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
           );
         })}
 
-        <Divider style={{ margin: '4px 0' }} />
-        {!!configuredProviderOptions.length && <div>
-          <Typography.Text strong>Default generation provider</Typography.Text>
-          <Select aria-label="Default generation provider" value={visibleDefaultProvider} onChange={(value: GenerationProvider) => setDefaultProvider(value)} style={{ display: 'block', width: '100%', marginTop: 8 }}
-            options={configuredProviderOptions.map(provider => ({ label: provider.label, value: provider.id }))} />
-        </div>}
-        {!configuredProviderOptions.length && <Typography.Text type="secondary">Connect a provider above to make it available for generation.</Typography.Text>}
-      </Space>}
+      </Space>,
+      }]} />}
     </Modal>
   );
 }

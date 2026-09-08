@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Alert, Button, Card, Descriptions, Divider, Drawer, Input, Progress, Radio, Space, Spin, Steps, Tag, Typography } from 'antd';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Button, Card, Descriptions, Divider, Drawer, Input, Radio, Space, Spin, Steps, Tag, Typography } from 'antd';
 import { ApiOutlined, CheckCircleOutlined, FileAddOutlined, FormOutlined, LaptopOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type StoredAppProfile } from '../db/db';
@@ -18,6 +18,7 @@ interface Props {
   onAddDocument: () => void;
   onAddTest: () => void;
   onOpenTest: (id: string) => void;
+  overlayOpen: boolean;
 }
 
 const labels: Record<OnboardingStep, string> = {
@@ -44,7 +45,7 @@ const isVisibleTarget = (element: Element) => {
   return rect.width > 0 && rect.height > 0 && getComputedStyle(node).visibility !== 'hidden' && getComputedStyle(node).display !== 'none';
 };
 
-function OnboardingCoachMark({ step, open }: { step: OnboardingStep; open: boolean }) {
+function OnboardingCoachMark({ step, open, suspended }: { step: OnboardingStep; open: boolean; suspended: boolean }) {
   const copy = coachmarkCopy[step];
   const [target, setTarget] = useState<HTMLElement>();
   const [rect, setRect] = useState<DOMRect>();
@@ -52,7 +53,7 @@ function OnboardingCoachMark({ step, open }: { step: OnboardingStep; open: boole
 
   useEffect(() => { setDismissed(false); }, [open, step]);
   useEffect(() => {
-    if (!copy || (!open && step !== 'practice') || dismissed) { setTarget(undefined); setRect(undefined); return undefined; }
+    if (!copy || suspended || (!open && step !== 'practice') || dismissed) { setTarget(undefined); setRect(undefined); return undefined; }
     let frame = 0;
     let targetObserver: ResizeObserver | undefined;
     let observedTarget: HTMLElement | undefined;
@@ -93,9 +94,9 @@ function OnboardingCoachMark({ step, open }: { step: OnboardingStep; open: boole
       window.removeEventListener('keydown', keyboard);
       observer.disconnect();
     };
-  }, [copy, dismissed, open, step]);
+  }, [copy, dismissed, open, step, suspended]);
 
-  if (!copy || dismissed || !target || !rect || (!open && step !== 'practice')) return null;
+  if (!copy || dismissed || suspended || !target || !rect || (!open && step !== 'practice')) return null;
   const top = Math.max(12, Math.min(window.innerHeight - 150, rect.bottom + 12));
   const left = Math.max(12, Math.min(window.innerWidth - 332, rect.left));
   return <>
@@ -107,7 +108,7 @@ function OnboardingCoachMark({ step, open }: { step: OnboardingStep; open: boole
   </>;
 }
 
-export default function OnboardingGuide({ open, profile, onPause, onFinish, onOpenPlugins, onAddDocument, onAddTest, onOpenTest }: Props) {
+export default function OnboardingGuide({ open, profile, onPause, onFinish, onOpenPlugins, onAddDocument, onAddTest, onOpenTest, overlayOpen }: Props) {
   const configured = useConfiguredProviders();
   const library = useLiveQuery(async () => {
     const [documents, tests, jobs, drafts] = await Promise.all([db.documents.toArray(), db.tests.toArray(), db.generationJobs.toArray(), db.testDrafts.toArray()]);
@@ -115,6 +116,7 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
   }, []);
   const [hardware, setHardware] = useState<HardwareCapabilities>();
   const [hardwareError, setHardwareError] = useState('');
+  const recommendationApplied = useRef(false);
   const [instruction, setInstruction] = useState(profile.defaultLearningInstruction ?? '');
   const step = profile.onboarding.currentStep;
   const index = ONBOARDING_STEPS.indexOf(step);
@@ -124,9 +126,14 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
     if (!open || hardware || hardwareError) return;
     void serviceFetch('/api/system/capabilities').then(async response => {
       if (!response.ok) throw new Error('Hardware scan is unavailable');
-      setHardware(await response.json() as HardwareCapabilities);
+      const capabilities = await response.json() as HardwareCapabilities;
+      setHardware(capabilities);
+      if (!recommendationApplied.current && !profile.onboarding.completedSteps.includes('hardware')) {
+        recommendationApplied.current = true;
+        await setHardwareProfile(capabilities.recommendedProfile);
+      }
     }).catch(error => setHardwareError((error as Error).message));
-  }, [hardware, hardwareError, open]);
+  }, [hardware, hardwareError, open, profile.onboarding.completedSteps]);
 
   const onboardingDocument = library?.documents.find(document => document.id === profile.onboarding.documentId && document.content.trim());
   const generationJob = library?.jobs.find(job => job.id === profile.onboarding.generationJobId
@@ -158,11 +165,6 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
     await advanceOnboarding(step, ONBOARDING_STEPS[index + 1]);
   };
 
-  const chooseRecommended = async (capabilities: HardwareCapabilities) => {
-    setHardware(capabilities);
-    await setHardwareProfile(capabilities.recommendedProfile);
-  };
-
   const confirmSkip = () => getModalApi().confirm({
     title: 'Skip setup?',
     content: 'You can restart the walkthrough at any time from the sidebar. Your current documents and settings will stay intact.',
@@ -171,7 +173,7 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
   });
 
   return <>
-  <OnboardingCoachMark step={step} open={open} />
+  <OnboardingCoachMark step={step} open={open} suspended={overlayOpen} />
   <Drawer className="onboarding-drawer" title="Set up Quizzer" width={440} open={open} mask={index === 0} closable onClose={onPause}
     extra={<Button type="text" onClick={confirmSkip}>Skip</Button>}
     footer={<div className="onboarding-footer">
@@ -179,9 +181,11 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
       <Typography.Text type="secondary">Step {index + 1} of {ONBOARDING_STEPS.length}</Typography.Text>
       <Button type="primary" disabled={!requirementMet[step]} onClick={() => void next()}>{step === 'complete' ? 'Finish' : 'Continue'}</Button>
     </div>}>
-    <Progress aria-label="Onboarding progress" percent={Math.round(index / (ONBOARDING_STEPS.length - 1) * 100)} showInfo={false} />
-    <Steps size="small" current={index} direction="vertical" className="onboarding-steps"
-      items={ONBOARDING_STEPS.map(item => ({ title: labels[item], status: profile.onboarding.completedSteps.includes(item) ? 'finish' : item === step ? 'process' : 'wait' }))} />
+    <Steps size="small" current={index === 0 ? 0 : 1} direction="vertical" className="onboarding-steps"
+      items={ONBOARDING_STEPS.slice(Math.max(0, index - 1), Math.min(ONBOARDING_STEPS.length, index + 2)).map(item => {
+        const itemIndex = ONBOARDING_STEPS.indexOf(item);
+        return { title: labels[item], status: itemIndex < index ? 'finish' : itemIndex === index ? 'process' : 'wait' };
+      })} />
     <Divider />
 
     {step === 'welcome' && <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -204,8 +208,7 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
           { key: 'disk', label: 'Free disk', children: `${hardware.freeDiskGB} GB` },
           { key: 'arch', label: 'System', children: `${hardware.platform} ${hardware.architecture}` },
         ]} />
-        <Alert type="success" showIcon message={`${hardware.recommendedProfile.toUpperCase()} is recommended`} description={hardware.reasons.join(' ')}
-          action={<Button size="small" onClick={() => void chooseRecommended(hardware)}>Use recommendation</Button>} />
+        <Alert type="success" showIcon message={`${hardware.recommendedProfile.toUpperCase()} is recommended and selected`} description={hardware.reasons.join(' ')} />
       </>}
       <Radio.Group value={profile.hardwareProfile} onChange={event => void setHardwareProfile(event.target.value)}>
         <Space direction="vertical">{(['lite', 'balanced', 'max'] as HardwareProfileId[]).map(item => <Radio key={item} value={item}><strong>{item.toUpperCase()}</strong> — {profileDetails[item]}</Radio>)}</Space>

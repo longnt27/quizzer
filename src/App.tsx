@@ -162,7 +162,8 @@ function AppShell({ dark, onToggleTheme }: ShellProps) {
       {profile && <OnboardingGuide open={showOnboarding && !profile.onboarding.completedAt && !profile.onboarding.skipped} profile={profile}
         onPause={() => setShowOnboarding(false)} onFinish={() => { setShowOnboarding(false); select(null); }}
         onOpenPlugins={() => setShowPluginsModal(true)} onAddDocument={() => setShowDocumentModal(true)} onAddTest={() => setShowAddModal(true)}
-        onOpenTest={id => { setSelection({ kind: 'test', id }); setShowOnboarding(false); }} />}
+        onOpenTest={id => { setSelection({ kind: 'test', id }); setShowOnboarding(false); }}
+        overlayOpen={showPluginsModal || showDocumentModal || showAddModal || showPromptStudio || showGenerationCenter || showSettingsModal || showCommandPalette} />}
       {session?.mode !== 'taking' && <GenerationActivity onOpen={() => setShowGenerationCenter(true)} />}
     </Layout>
   </>;
