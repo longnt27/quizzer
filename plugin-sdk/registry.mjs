@@ -2,13 +2,13 @@ import { createHash, createPrivateKey, createPublicKey, KeyObject, sign, verify 
 import { PLUGIN_CAPABILITIES, validatePluginPath } from "./manifest.mjs";
 
 export const CATALOG_SCHEMA_VERSION = 1;
-export const CANONICAL_REPOSITORY = "Somethings1/quizzer";
+export const CANONICAL_REPOSITORY = "longnt27/quizzer";
 export const MAX_CATALOG_SIZE = 1 * 1024 * 1024; // 1 MiB
 export const MAX_MANIFEST_SIZE = 512 * 1024; // 512 KiB
 export const MAX_INDIVIDUAL_FILE_SIZE = 64 * 1024 * 1024; // 64 MiB
 export const MAX_TOTAL_PLUGIN_SIZE = 256 * 1024 * 1024; // 256 MiB
 export const LARGE_DOWNLOAD_THRESHOLD = 25 * 1024 * 1024; // 25 MiB
-export const DEFAULT_PLUGIN_REGISTRY_URL = "https://github.com/Somethings1/quizzer/releases/download/plugins-v1/catalog.json";
+export const DEFAULT_PLUGIN_REGISTRY_URL = "https://github.com/longnt27/quizzer/releases/download/plugins-v1/catalog.json";
 
 const supportedOperatingSystems = new Set(["darwin", "linux", "win32"]);
 const supportedArchitectures = new Set(["x64", "arm64"]);

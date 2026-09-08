@@ -21,7 +21,7 @@ const keyId = "quizzer-registry-2026";
 const trustedKeys = {
   [keyId]: publicKey.export({ type: "spki", format: "pem" }).toString(),
 };
-const releaseRoot = "https://github.com/Somethings1/quizzer/releases/download/plugins-v1";
+const releaseRoot = "https://github.com/longnt27/quizzer/releases/download/plugins-v1";
 const assetUrl = name => `${releaseRoot}/${name}`;
 const pluginSource = "process.stdin.pipe(process.stdout);\n";
 const pluginHash = createHash("sha256").update(pluginSource).digest("hex");
@@ -71,14 +71,14 @@ test("accepts only exact immutable Quizzer release assets and the GitHub asset r
   ), true);
 
   for (const url of [
-    "https://github.com/Somethings1/quizzer/releases/latest/download/catalog.json",
-    "https://github.com/Somethings1/quizzer/releases/download/plugins/catalog.json",
+    "https://github.com/longnt27/quizzer/releases/latest/download/catalog.json",
+    "https://github.com/longnt27/quizzer/releases/download/plugins/catalog.json",
     `${releaseRoot}/nested/catalog.json`,
     `${releaseRoot}/catalog.json?download=1`,
     `${releaseRoot}/catalog.json#fragment`,
-    "https://user:pass@github.com/Somethings1/quizzer/releases/download/plugins-v1/catalog.json",
-    "https://github.com:444/Somethings1/quizzer/releases/download/plugins-v1/catalog.json",
-    "https://evil.example/Somethings1/quizzer/releases/download/plugins-v1/catalog.json",
+    "https://user:pass@github.com/longnt27/quizzer/releases/download/plugins-v1/catalog.json",
+    "https://github.com:444/longnt27/quizzer/releases/download/plugins-v1/catalog.json",
+    "https://evil.example/longnt27/quizzer/releases/download/plugins-v1/catalog.json",
     "https://github.com/attacker/quizzer/releases/download/plugins-v1/catalog.json",
     `${releaseRoot}/nested%2Fcatalog.json`,
     `${releaseRoot}/%2e%2e`,

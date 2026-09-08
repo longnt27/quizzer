@@ -34,7 +34,7 @@ const setupTestEnvironment = async (platform = 'macos', format = 'pkg', architec
       platform,
       architecture,
       format,
-      url: `https://github.com/Somethings1/quizzer/releases/download/v1.2.0/${artifactName}`,
+      url: `https://github.com/longnt27/quizzer/releases/download/v1.2.0/${artifactName}`,
       size: artifactContent.length,
       sha256,
       minimumOs: 'macOS 13',

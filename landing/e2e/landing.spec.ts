@@ -3,12 +3,12 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { releasePrivateKey } from './release-key';
 
-const manifestUrl = 'https://github.com/Somethings1/quizzer/releases/latest/download/release-manifest.json';
-const releasesUrl = 'https://github.com/Somethings1/quizzer/releases/latest';
+const manifestUrl = 'https://github.com/longnt27/quizzer/releases/latest/download/release-manifest.json';
+const releasesUrl = 'https://github.com/longnt27/quizzer/releases/latest';
 const installers = {
-  macos: 'curl -fsSL https://github.com/Somethings1/quizzer/releases/latest/download/install.sh | sh',
-  linux: 'curl -fsSL https://github.com/Somethings1/quizzer/releases/latest/download/install.sh | sh',
-  windows: 'irm https://github.com/Somethings1/quizzer/releases/latest/download/install.ps1 | iex',
+  macos: 'curl -fsSL https://github.com/longnt27/quizzer/releases/latest/download/install.sh | sh',
+  linux: 'curl -fsSL https://github.com/longnt27/quizzer/releases/latest/download/install.sh | sh',
+  windows: 'irm https://github.com/longnt27/quizzer/releases/latest/download/install.ps1 | iex',
 };
 const canonicalize = (value: unknown): string => {
   if (Array.isArray(value)) return `[${value.map(canonicalize).join(',')}]`;
@@ -30,13 +30,13 @@ const signedManifest = () => {
     signatureAlgorithm: 'ed25519',
     publicKeyId: 'playwright-test-key',
     artifacts: [
-      { name: 'quizzer-windows-x64.msi', platform: 'windows', architecture: 'x64', format: 'msi', url: 'https://github.com/Somethings1/quizzer/releases/download/v1.0.0-beta.1/quizzer-windows-x64.msi', size: 80 * 1024 * 1024, sha256: '1'.repeat(64), minimumOs: 'Windows 10' },
-      { name: 'quizzer-windows-x64.exe', platform: 'windows', architecture: 'x64', format: 'exe', url: 'https://github.com/Somethings1/quizzer/releases/download/v1.0.0-beta.1/quizzer-windows-x64.exe', size: 75 * 1024 * 1024, sha256: '2'.repeat(64), minimumOs: 'Windows 10 x64' },
-      { name: 'quizzer-windows-arm64.exe', platform: 'windows', architecture: 'arm64', format: 'exe', url: 'https://github.com/Somethings1/quizzer/releases/download/v1.0.0-beta.1/quizzer-windows-arm64.exe', size: 103, sha256: '3'.repeat(64), minimumOs: 'Windows 11' },
-      { name: 'quizzer-macos-x64.dmg', platform: 'macos', architecture: 'x64', format: 'dmg', url: 'https://github.com/Somethings1/quizzer/releases/download/v1.0.0-beta.1/quizzer-macos-x64.dmg', size: 104, sha256: '4'.repeat(64), minimumOs: 'macOS 13' },
-      { name: 'quizzer-macos-arm64.dmg', platform: 'macos', architecture: 'arm64', format: 'dmg', url: 'https://github.com/Somethings1/quizzer/releases/download/v1.0.0-beta.1/quizzer-macos-arm64.dmg', size: 105, sha256: '5'.repeat(64), minimumOs: 'macOS 13' },
-      { name: 'quizzer-linux-x64.AppImage', platform: 'linux', architecture: 'x64', format: 'appimage', url: 'https://github.com/Somethings1/quizzer/releases/download/v1.0.0-beta.1/quizzer-linux-x64.AppImage', size: 106, sha256: '6'.repeat(64), minimumOs: 'Current 64-bit Ubuntu or Fedora' },
-      { name: 'quizzer-cli-linux-x64', platform: 'linux', architecture: 'x64', format: 'sea', url: 'https://github.com/Somethings1/quizzer/releases/download/v1.0.0-beta.1/quizzer-cli-linux-x64', size: 107, sha256: '7'.repeat(64), minimumOs: 'Current 64-bit Ubuntu or Fedora', cli: true as const },
+      { name: 'quizzer-windows-x64.msi', platform: 'windows', architecture: 'x64', format: 'msi', url: 'https://github.com/longnt27/quizzer/releases/download/v1.0.0-beta.1/quizzer-windows-x64.msi', size: 80 * 1024 * 1024, sha256: '1'.repeat(64), minimumOs: 'Windows 10' },
+      { name: 'quizzer-windows-x64.exe', platform: 'windows', architecture: 'x64', format: 'exe', url: 'https://github.com/longnt27/quizzer/releases/download/v1.0.0-beta.1/quizzer-windows-x64.exe', size: 75 * 1024 * 1024, sha256: '2'.repeat(64), minimumOs: 'Windows 10 x64' },
+      { name: 'quizzer-windows-arm64.exe', platform: 'windows', architecture: 'arm64', format: 'exe', url: 'https://github.com/longnt27/quizzer/releases/download/v1.0.0-beta.1/quizzer-windows-arm64.exe', size: 103, sha256: '3'.repeat(64), minimumOs: 'Windows 11' },
+      { name: 'quizzer-macos-x64.dmg', platform: 'macos', architecture: 'x64', format: 'dmg', url: 'https://github.com/longnt27/quizzer/releases/download/v1.0.0-beta.1/quizzer-macos-x64.dmg', size: 104, sha256: '4'.repeat(64), minimumOs: 'macOS 13' },
+      { name: 'quizzer-macos-arm64.dmg', platform: 'macos', architecture: 'arm64', format: 'dmg', url: 'https://github.com/longnt27/quizzer/releases/download/v1.0.0-beta.1/quizzer-macos-arm64.dmg', size: 105, sha256: '5'.repeat(64), minimumOs: 'macOS 13' },
+      { name: 'quizzer-linux-x64.AppImage', platform: 'linux', architecture: 'x64', format: 'appimage', url: 'https://github.com/longnt27/quizzer/releases/download/v1.0.0-beta.1/quizzer-linux-x64.AppImage', size: 106, sha256: '6'.repeat(64), minimumOs: 'Current 64-bit Ubuntu or Fedora' },
+      { name: 'quizzer-cli-linux-x64', platform: 'linux', architecture: 'x64', format: 'sea', url: 'https://github.com/longnt27/quizzer/releases/download/v1.0.0-beta.1/quizzer-cli-linux-x64', size: 107, sha256: '7'.repeat(64), minimumOs: 'Current 64-bit Ubuntu or Fedora', cli: true as const },
     ],
   };
   return { ...manifest, signature: Buffer.from(sign(null, Buffer.from(canonicalize(manifest)), releasePrivateKey)).toString('base64') };

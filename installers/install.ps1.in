@@ -29,7 +29,7 @@ function Assert-Artifact([object] $Artifact, [string] $ExpectedName, [string] $D
   if ($null -eq $Artifact -or $Artifact.Name -ne $ExpectedName) { Fail "Release metadata has no $ExpectedName artifact" }
   $Uri = [Uri] $Artifact.Url
   if ($Uri.Scheme -ne 'https' -or $Uri.Host -ne 'github.com' -or
-      -not $Uri.AbsolutePath.StartsWith('/Somethings1/quizzer/releases/download/') -or
+      -not $Uri.AbsolutePath.StartsWith('/longnt27/quizzer/releases/download/') -or
       -not $Uri.AbsolutePath.EndsWith("/$ExpectedName")) {
     Fail "Release metadata contains an untrusted URL for $ExpectedName"
   }
