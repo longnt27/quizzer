@@ -107,8 +107,10 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await onboarding.getByRole('button', { name: 'Review AI settings' }).click();
   const pluginsDialog = page.getByRole('dialog', { name: 'Plugins & models' });
   await expect(pluginsDialog).toBeVisible();
+  await expect(pluginsDialog.getByRole('tab', { name: 'Document extraction' })).toBeVisible();
+  await expect(pluginsDialog.getByRole('tab', { name: 'Image OCR' })).toBeVisible();
+  await expect(pluginsDialog.getByRole('tab', { name: 'Embeddings' })).toBeVisible();
   await expect(pluginsDialog.getByRole('tab', { name: 'Models' })).toBeVisible();
-  await expect(pluginsDialog.getByRole('tab', { name: 'Plugins' })).toBeVisible();
   await expect(page.locator('.onboarding-coachmark')).toBeHidden();
   await pluginsDialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(page.locator('.onboarding-coachmark')).toBeVisible();
