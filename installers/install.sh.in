@@ -16,7 +16,10 @@ require_command() {
 }
 
 download() {
-  curl --fail --location --silent --show-error --retry 3 --proto '=https' --tlsv1.2 "$1" --output "$2"
+  download_url=$1
+  download_destination=$2
+  printf '\nDownloading %s\n' "$(basename "$download_destination")"
+  curl --fail --location --progress-bar --show-error --retry 3 --proto '=https' --tlsv1.2 "$download_url" --output "$download_destination"
 }
 
 sha256_file() {
@@ -83,7 +86,7 @@ cat > "$public_key_path" <<'QUIZZER_RELEASE_PUBLIC_KEY'
 __QUIZZER_RELEASE_PUBLIC_KEY_PEM__
 QUIZZER_RELEASE_PUBLIC_KEY
 
-printf 'Downloading signed Quizzer release metadata…\n'
+printf 'Fetching signed Quizzer release metadata…\n'
 download "$release_base_url/$metadata_name" "$metadata_path"
 download "$release_base_url/$signature_name" "$signature_path"
 
