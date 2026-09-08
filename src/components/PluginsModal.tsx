@@ -1,18 +1,24 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, AutoComplete, Button, Divider, Input, Modal, Select, Space, Spin, Switch, Tabs, Tag, Typography } from 'antd';
-import { ApiOutlined, CheckCircleOutlined, CloudDownloadOutlined, DeleteOutlined, FolderOpenOutlined, LoginOutlined, ReloadOutlined, RollbackOutlined } from '@ant-design/icons';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Alert, Button, Divider, Empty, Input, Modal, Space, Spin, Switch, Tabs, Tag, Typography } from 'antd';
+import {
+  ApiOutlined, CloudDownloadOutlined, DeleteOutlined, FileSearchOutlined, FolderOpenOutlined,
+  LoginOutlined, ReloadOutlined, RobotOutlined, RollbackOutlined, ScanOutlined, SettingOutlined,
+  ShareAltOutlined,
+} from '@ant-design/icons';
 import type { GenerationProvider, InterfaceMode } from '../types';
 import {
-  AGENT_PROVIDERS, API_PROVIDERS, PROVIDERS, getApiKey, getProviderSettings,
-  forgetRememberedApiKey, isOpenAILoopbackEndpoint, loadRememberedApiKeys, migrateLegacyGeminiKey, rememberApiKey,
-  isNumericLoopbackEndpoint, ollamaModelMatches, setApiKey, setProviderSettings, type AgentProvider,
+  AGENT_PROVIDERS, API_PROVIDERS, PROVIDERS, forgetRememberedApiKey, getApiKey, getProviderSettings,
+  isNumericLoopbackEndpoint, isOpenAILoopbackEndpoint, loadRememberedApiKeys, migrateLegacyGeminiKey,
+  ollamaModelMatches, rememberApiKey, setApiKey, setProviderSettings, type AgentProvider,
 } from '../utils/providerSettings';
 import { getMessageApi } from '../utils/messageProvider';
 import { getModalApi } from '../utils/modalProvider';
 import { executeTwoPhaseAction, serviceFetch, serviceJson, serviceRequest } from '../utils/serviceApi';
 
 type JobState = 'idle' | 'working' | 'complete' | 'error';
-type AgentStatus = { installed: boolean; connected: boolean; job: { state: JobState; message: string } };
+type AgentStatus = { installed: boolean; connected: boolean; job?: { state: JobState; message: string } };
+type ComponentSetter = (value: string) => void;
+
 interface OllamaModel {
   name: string;
   model: string;
@@ -20,6 +26,7 @@ interface OllamaModel {
   modifiedAt?: string;
   details?: { family?: string; parameterSize?: string; quantization?: string };
 }
+
 interface IntegrationStatus {
   marker: { installed: boolean; managed: boolean; job: { state: JobState; message: string } };
   ocr: { installed: boolean; managed: boolean; job: { state: JobState; message: string } };
@@ -27,10 +34,26 @@ interface IntegrationStatus {
   'claude-agent': AgentStatus;
   'antigravity-agent': AgentStatus;
   ollama: { installed: boolean; serverReady: boolean; models: OllamaModel[]; job: { state: JobState; message: string } };
-  'llama-cpp': { configured: boolean; serverReady: boolean; models: Array<{ id: string }>; capabilities: string[]; error?: string; runtime?: {
-    mode: 'manual' | 'managed'; state: 'idle' | 'starting' | 'running' | 'stopping' | 'error'; configured: boolean; serverReady: boolean; host: string; port: number;
-    executableName?: string; modelName?: string; pid?: number; lastError?: string; output?: string;
-  } };
+  'llama-cpp': {
+    configured: boolean;
+    serverReady: boolean;
+    models: Array<{ id: string }>;
+    capabilities: string[];
+    error?: string;
+    runtime?: {
+      mode: 'manual' | 'managed';
+      state: 'idle' | 'starting' | 'running' | 'stopping' | 'error';
+      configured: boolean;
+      serverReady: boolean;
+      host: string;
+      port: number;
+      executableName?: string;
+      modelName?: string;
+      pid?: number;
+      lastError?: string;
+      output?: string;
+    };
+  };
   embeddings: { installed: boolean; runtimeInstalled: boolean; model: string; job: { state: JobState; message: string } };
 }
 
@@ -86,15 +109,49 @@ interface HealthResult {
 
 interface Props { interfaceMode: InterfaceMode; onClose: () => void; }
 
-const statusTag = (ready: boolean, working: boolean, readyText: string) => (
-  <Tag color={working ? '#0050b3' : ready ? '#237804' : undefined}>
-    {working ? 'Working…' : ready ? readyText : 'Not configured'}
-  </Tag>
-);
+interface IntegrationOptionProps {
+  icon: ReactNode;
+  title: string;
+  description: string;
+  state: string;
+  checked?: boolean;
+  switchLabel?: string;
+  switchDisabled?: boolean;
+  onToggle?: (checked: boolean) => void;
+  actions?: ReactNode;
+  details?: ReactNode;
+  warning?: boolean;
+}
+
+function IntegrationOption({
+  icon, title, description, state, checked, switchLabel, switchDisabled, onToggle, actions, details, warning,
+}: IntegrationOptionProps) {
+  return (
+    <section className={`plugin-option${warning ? ' plugin-option-warning' : ''}`}>
+      <div className="plugin-option-main">
+        <span className="plugin-option-icon" aria-hidden="true">{icon}</span>
+        <div className="plugin-option-copy">
+          <Typography.Text strong>{title}</Typography.Text>
+          <Typography.Text type="secondary">{description}</Typography.Text>
+          <Typography.Text className="plugin-option-state" type="secondary">{state}</Typography.Text>
+        </div>
+        <Space className="plugin-option-actions" size="small" wrap>
+          {actions}
+          {onToggle ? <Switch checked={checked} disabled={switchDisabled} onChange={onToggle} aria-label={switchLabel ?? `Enable ${title}`} /> : null}
+        </Space>
+      </div>
+      {details ? <div className="plugin-option-details">{details}</div> : null}
+    </section>
+  );
+}
+
+const providerName = (label: string) => label.replace(' – ', ' ');
 
 export default function PluginsModal({ interfaceMode, onClose }: Props) {
-  migrateLegacyGeminiKey();
-  const initial = getProviderSettings();
+  const [initial] = useState(() => {
+    migrateLegacyGeminiKey();
+    return getProviderSettings();
+  });
   const [defaultProvider, setDefaultProvider] = useState(initial.defaultProvider);
   const [models, setModels] = useState(initial.models);
   const [enabledProviders, setEnabledProviders] = useState(initial.enabledProviders);
@@ -115,6 +172,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const [ocrPlugin, setOcrPlugin] = useState('builtin');
   const [embedderPlugin, setEmbedderPlugin] = useState('builtin');
   const [vectorIndexPlugin, setVectorIndexPlugin] = useState('builtin');
+  const [rerankerPlugin, setRerankerPlugin] = useState('builtin');
   const [openaiCompatibleEndpoint, setOpenaiCompatibleEndpoint] = useState('https://api.openai.com/v1');
   const [llamaCppEndpoint, setLlamaCppEndpoint] = useState('http://127.0.0.1:8080/v1');
   const [llamaCppExecutablePath, setLlamaCppExecutablePath] = useState('');
@@ -125,17 +183,26 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const [pluginAction, setPluginAction] = useState('');
   const [saving, setSaving] = useState(false);
   const [healthResults, setHealthResults] = useState<Record<string, HealthResult>>({});
+  const [modelSettingsTarget, setModelSettingsTarget] = useState<GenerationProvider | null>(null);
+  const [managedPluginId, setManagedPluginId] = useState<string | null>(null);
   const message = getMessageApi();
-  const generatorPlugins = useMemo(() => externalPlugins.filter(plugin => plugin.status === 'installed' && plugin.enabled
+
+  const readyGeneratorPlugins = useMemo(() => externalPlugins.filter(plugin => plugin.status === 'installed' && plugin.enabled
     && plugin.compatible && plugin.capabilities?.includes('generator')), [externalPlugins]);
-  const embedderPlugins = useMemo(() => externalPlugins.filter(plugin => plugin.status === 'installed' && plugin.enabled
-    && plugin.compatible && plugin.capabilities?.includes('embedder')), [externalPlugins]);
-  const vectorIndexPlugins = useMemo(() => externalPlugins.filter(plugin => plugin.status === 'installed' && plugin.enabled
-    && plugin.compatible && plugin.capabilities?.includes('vector-index')), [externalPlugins]);
-  const extractorPlugins = useMemo(() => externalPlugins.filter(plugin => plugin.status === 'installed' && plugin.enabled
-    && plugin.compatible && plugin.capabilities?.includes('extractor')), [externalPlugins]);
-  const ocrPlugins = useMemo(() => externalPlugins.filter(plugin => plugin.status === 'installed' && plugin.enabled
-    && plugin.compatible && plugin.capabilities?.includes('ocr')), [externalPlugins]);
+  const installedByCapability = useMemo(() => {
+    const result = new Map<string, ExternalPlugin[]>();
+    for (const plugin of externalPlugins) for (const capability of plugin.capabilities ?? []) {
+      result.set(capability, [...(result.get(capability) ?? []), plugin]);
+    }
+    return result;
+  }, [externalPlugins]);
+  const registryByCapability = useMemo(() => {
+    const result = new Map<string, RegistryPlugin[]>();
+    for (const plugin of registryPlugins) for (const capability of plugin.capabilities ?? []) {
+      result.set(capability, [...(result.get(capability) ?? []), plugin]);
+    }
+    return result;
+  }, [registryPlugins]);
 
   const refresh = useCallback(async () => {
     try {
@@ -145,35 +212,28 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       setStatus(payload);
       setStatusError('');
     } catch (error) {
-      setStatusError((error as Error).message);
+      setStatusError(error instanceof Error ? error.message : 'Could not load plugin status');
     }
   }, []);
 
   const refreshExternal = useCallback(async () => {
     setExternalLoading(true);
     try {
-      const [collection, registryRes, settings] = await Promise.all([
+      const [collection, registry, settings] = await Promise.all([
         serviceRequest<PluginCollection>('/api/v1/plugins'),
         serviceRequest<{ plugins: RegistryPlugin[] }>('/api/v1/plugins/registry').catch(() => ({ plugins: [] })),
         serviceRequest<{ values: Record<string, unknown> }>('/api/v1/settings'),
       ]);
       setExternalPlugins(collection.plugins);
-      setRegistryPlugins(registryRes.plugins || []);
+      setRegistryPlugins(registry.plugins ?? []);
       setDeveloperMode(settings.values['plugins.developerMode'] === true);
-      setExtractorPlugin(typeof settings.values['extraction.extractorPlugin'] === 'string'
-        ? settings.values['extraction.extractorPlugin'] : 'builtin');
-      setOcrPlugin(typeof settings.values['extraction.ocrPlugin'] === 'string'
-        ? settings.values['extraction.ocrPlugin'] : 'builtin');
-      setEmbedderPlugin(typeof settings.values['embeddings.embedderPlugin'] === 'string'
-        ? settings.values['embeddings.embedderPlugin'] : 'builtin');
-      setVectorIndexPlugin(typeof settings.values['retrieval.vectorIndexPlugin'] === 'string'
-        ? settings.values['retrieval.vectorIndexPlugin'] : 'builtin');
-      if (typeof settings.values['providers.openai-compatible.endpoint'] === 'string') {
-        setOpenaiCompatibleEndpoint(settings.values['providers.openai-compatible.endpoint']);
-      }
-      if (typeof settings.values['providers.llama-cpp.endpoint'] === 'string') {
-        setLlamaCppEndpoint(settings.values['providers.llama-cpp.endpoint']);
-      }
+      setExtractorPlugin(typeof settings.values['extraction.extractorPlugin'] === 'string' ? settings.values['extraction.extractorPlugin'] : 'builtin');
+      setOcrPlugin(typeof settings.values['extraction.ocrPlugin'] === 'string' ? settings.values['extraction.ocrPlugin'] : 'builtin');
+      setEmbedderPlugin(typeof settings.values['embeddings.embedderPlugin'] === 'string' ? settings.values['embeddings.embedderPlugin'] : 'builtin');
+      setVectorIndexPlugin(typeof settings.values['retrieval.vectorIndexPlugin'] === 'string' ? settings.values['retrieval.vectorIndexPlugin'] : 'builtin');
+      setRerankerPlugin(typeof settings.values['retrieval.rerankerPlugin'] === 'string' ? settings.values['retrieval.rerankerPlugin'] : 'builtin');
+      if (typeof settings.values['providers.openai-compatible.endpoint'] === 'string') setOpenaiCompatibleEndpoint(settings.values['providers.openai-compatible.endpoint']);
+      if (typeof settings.values['providers.llama-cpp.endpoint'] === 'string') setLlamaCppEndpoint(settings.values['providers.llama-cpp.endpoint']);
       if (typeof settings.values['providers.llama-cpp.model'] === 'string') {
         setModels(current => ({ ...current, 'llama-cpp': settings.values['providers.llama-cpp.model'] as string }));
       }
@@ -189,12 +249,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
 
   useEffect(() => { void refresh(); void refreshExternal(); }, [refresh, refreshExternal]);
   useEffect(() => {
-    if (!generatorPlugins.length) return;
-    setModels(current => generatorPlugins.some(plugin => plugin.id === current.plugin)
-      ? current : { ...current, plugin: generatorPlugins[0].id });
-  }, [generatorPlugins]);
-  useEffect(() => {
-    const first = status?.ollama?.models[0]?.name;
+    const first = status?.ollama?.models?.[0]?.name;
     if (!first) return;
     setModels(current => current.ollama ? current : { ...current, ollama: first });
   }, [status?.ollama?.models]);
@@ -213,24 +268,25 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   }, []);
   useEffect(() => {
     if (!status) return;
-    const jobs = [status.marker.job, status.ocr?.job, status.embeddings?.job, status.ollama?.job, ...AGENT_PROVIDERS.map(provider => status[provider.id]?.job)].filter(Boolean);
-    if (!jobs.some(job => job.state === 'working') && !['starting', 'stopping'].includes(status['llama-cpp']?.runtime?.state ?? 'idle')) return;
+    const jobs = [status.marker?.job, status.ocr?.job, status.embeddings?.job, status.ollama?.job,
+      ...AGENT_PROVIDERS.map(provider => status[provider.id]?.job)].filter(Boolean);
+    const runtimeBusy = ['starting', 'stopping'].includes(status['llama-cpp']?.runtime?.state ?? 'idle');
+    if (!jobs.some(job => job?.state === 'working') && !runtimeBusy) return;
     const timer = window.setInterval(() => void refresh(), 1500);
     return () => window.clearInterval(timer);
   }, [refresh, status]);
 
-  const start = async (path: string) => {
-    const response = await serviceFetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-    if (!response.ok) {
-      const payload = await response.json().catch(() => ({})) as { error?: string };
-      throw new Error(payload.error || 'Could not start plugin action');
-    }
-    await refresh();
-  };
-
   const runAction = async (path: string) => {
-    try { await start(path); }
-    catch (error) { message.error((error as Error).message); }
+    try {
+      const response = await serviceFetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({})) as { error?: string };
+        throw new Error(payload.error || 'Could not start plugin action');
+      }
+      await refresh();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Could not start plugin action');
+    }
   };
 
   const configureManagedRuntime = () => getModalApi().confirm({
@@ -238,13 +294,11 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
     content: 'Quizzer will remember these absolute paths and use them only after you explicitly confirm a start. It will not download or search for binaries or models.',
     okText: 'Save paths',
     onOk: async () => {
-      try {
-        await serviceJson('/api/v1/integrations/llama-cpp/runtime/configure', 'POST', {
-          executablePath: llamaCppExecutablePath.trim(), modelPath: llamaCppModelPath.trim(), confirmed: true,
-        });
-        await refresh();
-        message.success('Managed llama.cpp paths saved');
-      } catch (error) { message.error(error instanceof Error ? error.message : 'Could not save llama.cpp paths'); throw error; }
+      await serviceJson('/api/v1/integrations/llama-cpp/runtime/configure', 'POST', {
+        executablePath: llamaCppExecutablePath.trim(), modelPath: llamaCppModelPath.trim(), confirmed: true,
+      });
+      await refresh();
+      message.success('Managed llama.cpp paths saved');
     },
   });
 
@@ -253,14 +307,18 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
     content: 'Quizzer will run the already-installed executable with the selected model on 127.0.0.1 using bounded resource settings. No files will be downloaded.',
     okText: 'Start local server',
     onOk: async () => {
-      try { await serviceJson('/api/v1/integrations/llama-cpp/runtime/start', 'POST', { confirmed: true }); await refresh(); }
-      catch (error) { message.error(error instanceof Error ? error.message : 'Could not start llama.cpp'); throw error; }
+      await serviceJson('/api/v1/integrations/llama-cpp/runtime/start', 'POST', { confirmed: true });
+      await refresh();
     },
   });
 
   const stopManagedRuntime = async () => {
-    try { await serviceJson('/api/v1/integrations/llama-cpp/runtime/stop', 'POST', {}); await refresh(); }
-    catch (error) { message.error(error instanceof Error ? error.message : 'Could not stop llama.cpp'); }
+    try {
+      await serviceJson('/api/v1/integrations/llama-cpp/runtime/stop', 'POST', {});
+      await refresh();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Could not stop llama.cpp');
+    }
   };
 
   const installOllama = () => getModalApi().confirm({
@@ -268,13 +326,8 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
     content: 'Quizzer will download and install Ollama from its official distribution. No generation model is downloaded until you choose one separately.',
     okText: 'Install Ollama',
     onOk: async () => {
-      try {
-        await serviceJson('/api/integrations/ollama/install', 'POST', { confirmed: true });
-        await refresh();
-      } catch (error) {
-        message.error(error instanceof Error ? error.message : 'Could not install Ollama');
-        throw error;
-      }
+      await serviceJson('/api/integrations/ollama/install', 'POST', { confirmed: true });
+      await refresh();
     },
   });
 
@@ -286,13 +339,8 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       content: 'Model downloads can require several gigabytes of disk space. The model stays on this device and Quizzer will not send document content to a remote provider.',
       okText: 'Download model',
       onOk: async () => {
-        try {
-          await serviceJson('/api/integrations/ollama/pull', 'POST', { model, confirmed: true });
-          await refresh();
-        } catch (error) {
-          message.error(error instanceof Error ? error.message : 'Could not download the Ollama model');
-          throw error;
-        }
+        await serviceJson('/api/integrations/ollama/pull', 'POST', { model, confirmed: true });
+        await refresh();
       },
     });
   };
@@ -303,17 +351,12 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
     getModalApi().confirm({
       title: `Download ${model} for dense retrieval?`,
       content: model === 'bge-m3'
-        ? 'The Max profile uses the multilingual bge-m3 model. This download is approximately 1.2 GB, stays on this device, and rebuilds only the derived dense index.'
-        : 'Quizzer will install Ollama if needed and download this embedding model to this device. Source documents are not sent to a remote provider.',
+        ? 'The Max profile uses the multilingual bge-m3 model. This download is approximately 1.2 GB and stays on this device.'
+        : 'Quizzer will install Ollama if needed and download this embedding model to this device.',
       okText: `Download ${model}`,
       onOk: async () => {
-        try {
-          await serviceJson('/api/integrations/embeddings/install', 'POST', { model, confirmed: true });
-          await refresh();
-        } catch (error) {
-          message.error(error instanceof Error ? error.message : 'Could not download the embedding model');
-          throw error;
-        }
+        await serviceJson('/api/integrations/embeddings/install', 'POST', { model, confirmed: true });
+        await refresh();
       },
     });
   };
@@ -337,10 +380,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const runExternalAction = async (plugin: ExternalPlugin, action: 'enable' | 'disable' | 'health' | 'rollback') => {
     setPluginAction(`${plugin.id}:${action}`);
     try {
-      const result = await serviceJson<{ plugin?: ExternalPlugin; health?: HealthResult }>(
-        `/api/v1/plugins/${encodeURIComponent(plugin.id)}/${action}`,
-        'POST',
-      );
+      const result = await serviceJson<{ health?: HealthResult }>(`/api/v1/plugins/${encodeURIComponent(plugin.id)}/${action}`, 'POST');
       if (result.health) {
         setHealthResults(current => ({ ...current, [plugin.id]: result.health! }));
         if (result.health.ok) message.success(`${plugin.name ?? plugin.id} is healthy`);
@@ -349,8 +389,10 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
         message.success(action === 'rollback' ? `${plugin.name ?? plugin.id} rolled back and disabled` : `${plugin.name ?? plugin.id} ${action}d`);
       }
       await refreshExternal();
+      return true;
     } catch (error) {
       message.error(error instanceof Error ? error.message : `Could not ${action} plugin`);
+      return false;
     } finally {
       setPluginAction('');
     }
@@ -367,12 +409,8 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       title,
       content: (
         <Space direction="vertical">
-          <Typography.Text>Quizzer verified the signed plugin manifest. Confirm these permissions and resource effects:</Typography.Text>
-          <ul>
-            {(reasons.length ? reasons : ['Security confirmation required']).map(reason => (
-              <li key={reason}><Typography.Text strong>{reason}</Typography.Text></li>
-            ))}
-          </ul>
+          <Typography.Text>Quizzer verified the signed manifest. Confirm these permissions and resource effects:</Typography.Text>
+          <ul>{(reasons.length ? reasons : ['Security confirmation required']).map(reason => <li key={reason}>{reason}</li>)}</ul>
         </Space>
       ),
       okText,
@@ -391,9 +429,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
         }),
         {
           onConfirmationRequired: reasons => confirmRegistrySecurity(
-            `Install ${registryPlugin.name || registryPlugin.id}?`,
-            'Confirm and install',
-            reasons,
+            `Install ${registryPlugin.name || registryPlugin.id}?`, 'Confirm and install', reasons,
           ),
         },
       );
@@ -412,20 +448,17 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
     try {
       const result = await executeTwoPhaseAction(
         confirmationToken => serviceJson<{ plugin: ExternalPlugin }>(
-          `/api/v1/plugins/${encodeURIComponent(plugin.id)}/update`,
-          'POST',
+          `/api/v1/plugins/${encodeURIComponent(plugin.id)}/update`, 'POST',
           confirmationToken ? { confirmed: true, confirmationToken } : {},
         ),
         {
           onConfirmationRequired: reasons => confirmRegistrySecurity(
-            `Update ${plugin.name ?? plugin.id} to v${plugin.availableVersion || 'latest'}?`,
-            'Confirm and update',
-            reasons,
+            `Update ${plugin.name ?? plugin.id} to v${plugin.availableVersion || 'latest'}?`, 'Confirm and update', reasons,
           ),
         },
       );
       if (!result) return;
-      message.success(`Updated ${result.plugin?.name ?? plugin.name ?? plugin.id} to v${result.plugin?.version ?? plugin.availableVersion}`);
+      message.success(`Updated ${result.plugin.name ?? plugin.name ?? plugin.id}`);
       await refreshExternal();
     } catch (error) {
       message.error(error instanceof Error ? error.message : 'Could not update plugin');
@@ -443,35 +476,49 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       setPluginAction(`${plugin.id}:remove`);
       try {
         await serviceRequest(`/api/v1/plugins/${encodeURIComponent(plugin.id)}?confirm=true`, { method: 'DELETE' });
-        message.success(`${plugin.name ?? plugin.id} removed`);
-        setHealthResults(current => {
-          const next = { ...current };
-          delete next[plugin.id];
-          return next;
-        });
+        setManagedPluginId(null);
         await refreshExternal();
-      } catch (error) {
-        message.error(error instanceof Error ? error.message : 'Could not remove plugin');
-        throw error;
       } finally {
         setPluginAction('');
       }
     },
   });
 
+  const changeRemembered = (provider: (typeof API_PROVIDERS)[number], remember: boolean) => {
+    if (!remember) {
+      setRememberedProviders(current => {
+        const next = new Set(current);
+        next.delete(provider.id);
+        return next;
+      });
+      return;
+    }
+    if (!credentialStorage.available) return message.warning(credentialStorage.message);
+    getModalApi().confirm({
+      title: `Remember ${providerName(provider.label)} credentials?`,
+      content: 'Quizzer will encrypt this API key with the operating system. It is never included in exports, backups, or diagnostics.',
+      okText: 'Encrypt and remember',
+      onOk: () => setRememberedProviders(current => new Set(current).add(provider.id)),
+    });
+  };
+
+  const providerReady = (provider: (typeof PROVIDERS)[number]) => {
+    if (provider.id === 'plugin') return readyGeneratorPlugins.some(plugin => plugin.id === models.plugin);
+    if (provider.id === 'ollama') {
+      return Boolean(status?.ollama?.serverReady && status.ollama.models.some(model => ollamaModelMatches(model.name, models.ollama)));
+    }
+    if (provider.id === 'llama-cpp') {
+      return Boolean(status?.['llama-cpp']?.serverReady && isNumericLoopbackEndpoint(llamaCppEndpoint) && models['llama-cpp']?.trim());
+    }
+    if (provider.kind === 'agent') return Boolean(status?.[provider.id as AgentProvider]?.connected);
+    if (provider.id === 'openai-compatible') {
+      return Boolean(models[provider.id]?.trim()) && (Boolean(apiKeys[provider.id]?.trim()) || isOpenAILoopbackEndpoint(openaiCompatibleEndpoint));
+    }
+    return Boolean(apiKeys[provider.id]?.trim());
+  };
+
   const save = async () => {
-    const available = PROVIDERS.filter(provider => enabledProviders[provider.id] && (
-      provider.id === 'openai-compatible'
-        ? Boolean(models['openai-compatible']?.trim()) && (Boolean(apiKeys['openai-compatible']?.trim()) || isOpenAILoopbackEndpoint(openaiCompatibleEndpoint))
-        : provider.id === 'llama-cpp'
-          ? Boolean(status?.['llama-cpp']?.serverReady && isNumericLoopbackEndpoint(llamaCppEndpoint) && models['llama-cpp']?.trim())
-        : provider.kind === 'api'
-          ? Boolean(apiKeys[provider.id]?.trim())
-          : provider.kind === 'local'
-            ? Boolean(status?.ollama?.serverReady && status.ollama.models.some(model => ollamaModelMatches(model.name, models.ollama)))
-          : provider.kind === 'plugin'
-            ? generatorPlugins.some(plugin => plugin.id === models.plugin)
-            : Boolean(status?.[provider.id as AgentProvider]?.connected)));
+    const available = PROVIDERS.filter(provider => enabledProviders[provider.id] && providerReady(provider));
     const selectedProvider = available.some(provider => provider.id === defaultProvider) ? defaultProvider : available[0]?.id ?? defaultProvider;
     setSaving(true);
     try {
@@ -493,6 +540,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
         'embeddings.enabled': enabledTools.embeddings,
         'embeddings.embedderPlugin': embedderPlugin,
         'retrieval.vectorIndexPlugin': vectorIndexPlugin,
+        'retrieval.rerankerPlugin': rerankerPlugin,
       } });
       if (models['llama-cpp']?.trim()) {
         await serviceJson('/api/v1/integrations/llama-cpp/configure', 'POST', {
@@ -512,442 +560,345 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
     }
   };
 
-  const markerWorking = status?.marker?.job.state === 'working';
-  const ocrWorking = status?.ocr?.job.state === 'working';
-  const embeddingsWorking = status?.embeddings?.job.state === 'working';
-  const ollamaWorking = status?.ollama?.job.state === 'working';
-  const selectedOllamaModel = status?.ollama?.models.find(model => ollamaModelMatches(model.name, models.ollama));
-  const selectedExtractor = extractorPlugins.find(plugin => plugin.id === extractorPlugin);
-  const selectedOcr = ocrPlugins.find(plugin => plugin.id === ocrPlugin);
-  const selectedEmbedder = embedderPlugins.find(plugin => plugin.id === embedderPlugin);
-  const selectedVectorIndex = vectorIndexPlugins.find(plugin => plugin.id === vectorIndexPlugin);
-  const embeddingReady = embedderPlugin === 'builtin' ? Boolean(status?.embeddings?.installed) : Boolean(selectedEmbedder);
-  const configuredProviderOptions = PROVIDERS.filter(provider => enabledProviders[provider.id] && (
-      provider.id === 'openai-compatible'
-        ? Boolean(models['openai-compatible']?.trim()) && (Boolean(apiKeys['openai-compatible']?.trim()) || isOpenAILoopbackEndpoint(openaiCompatibleEndpoint))
-        : provider.id === 'llama-cpp'
-          ? Boolean(status?.['llama-cpp']?.serverReady && isNumericLoopbackEndpoint(llamaCppEndpoint) && models['llama-cpp']?.trim())
-        : provider.kind === 'api'
-        ? Boolean(apiKeys[provider.id]?.trim())
-        : provider.kind === 'local'
-          ? Boolean(status?.ollama?.serverReady && status.ollama.models.some(model => ollamaModelMatches(model.name, models.ollama)))
-        : provider.kind === 'plugin'
-          ? generatorPlugins.some(plugin => plugin.id === models.plugin)
-          : Boolean(status?.[provider.id as AgentProvider]?.connected)));
-  const visibleDefaultProvider = configuredProviderOptions.some(provider => provider.id === defaultProvider)
-    ? defaultProvider
-    : configuredProviderOptions[0]?.id;
-
-  const changeRemembered = (provider: (typeof API_PROVIDERS)[number], remember: boolean) => {
-    if (!remember) {
-      setRememberedProviders(current => { const next = new Set(current); next.delete(provider.id); return next; });
+  const togglePluginComponent = async (
+    plugin: ExternalPlugin, checked: boolean, current: string, setComponent: ComponentSetter,
+    setFeatureEnabled?: (enabled: boolean) => void,
+  ) => {
+    if (!checked) {
+      if (current === plugin.id) setComponent('builtin');
+      setFeatureEnabled?.(false);
       return;
     }
-    if (!credentialStorage.available) return message.warning(credentialStorage.message);
-    getModalApi().confirm({
-      title: `Remember ${provider.label.replace(' – ', ' ')} credentials?`,
-      content: 'Quizzer will encrypt this API key with the operating system and store only the encrypted value in your local application data. It is never included in exports, backups, or diagnostics.',
-      okText: 'Encrypt and remember',
-      onOk: () => setRememberedProviders(current => new Set(current).add(provider.id)),
-    });
+    if (!plugin.enabled && !(await runExternalAction(plugin, 'enable'))) return;
+    setComponent(plugin.id);
+    setFeatureEnabled?.(true);
   };
 
+  const pluginRows = (
+    capability: string, current: string, setComponent: ComponentSetter, icon: ReactNode,
+    setFeatureEnabled?: (enabled: boolean) => void,
+    extraActions?: (plugin: ExternalPlugin) => ReactNode,
+  ) => (installedByCapability.get(capability) ?? []).map(plugin => {
+    const busy = pluginAction.startsWith(`${plugin.id}:`);
+    const ready = plugin.status === 'installed' && plugin.compatible;
+    const active = current === plugin.id && plugin.enabled;
+    return (
+      <IntegrationOption
+        key={`${capability}-${plugin.id}`}
+        icon={icon}
+        title={plugin.name ?? plugin.id}
+        description={`External ${capability} plugin · ${plugin.id}`}
+        state={!plugin.compatible ? 'Installed · incompatible' : plugin.status === 'broken' ? 'Installed · broken' : active ? 'Installed · active' : plugin.enabled ? 'Installed · ready' : 'Installed · disabled'}
+        checked={active}
+        switchLabel={`Use ${plugin.name ?? plugin.id} for ${capability}`}
+        switchDisabled={!ready || busy}
+        warning={!ready}
+        onToggle={checked => void togglePluginComponent(plugin, checked, current, setComponent, setFeatureEnabled)}
+        actions={<>{extraActions?.(plugin)}<Button size="small" aria-label={`Manage ${plugin.name ?? plugin.id}`} onClick={() => setManagedPluginId(plugin.id)}>Manage</Button></>}
+      />
+    );
+  });
+
+  const registryRows = (capability: string, icon: ReactNode) => {
+    const available = (registryByCapability.get(capability) ?? []).filter(plugin => !externalPlugins.some(installed => (installed.registryId ?? installed.id) === plugin.id));
+    if (!available.length) return null;
+    return (
+      <>
+        <Divider orientation="left" plain>Available to install</Divider>
+        {available.map(plugin => {
+          const busy = pluginAction === `registry:${plugin.id}:install`;
+          return (
+            <IntegrationOption
+              key={`registry-${capability}-${plugin.id}`}
+              icon={icon}
+              title={plugin.name}
+              description={plugin.description || `Signed ${capability} plugin from the Quizzer registry.`}
+              state={plugin.compatible ? `Available · v${plugin.version}` : 'Unavailable on this platform'}
+              checked={false}
+              switchLabel={`Enable ${plugin.name} after installation`}
+              switchDisabled
+              warning={!plugin.compatible}
+              onToggle={() => undefined}
+              actions={(
+                <Button size="small" type="primary" icon={<CloudDownloadOutlined />} loading={busy}
+                  disabled={!plugin.compatible || interfaceMode !== 'advanced' || Boolean(pluginAction)}
+                  onClick={() => void installRegistryPlugin(plugin)}>Install</Button>
+              )}
+            />
+          );
+        })}
+      </>
+    );
+  };
+
+  const selectedOllamaModel = status?.ollama?.models.find(model => ollamaModelMatches(model.name, models.ollama));
+  const managedPlugin = externalPlugins.find(plugin => plugin.id === managedPluginId);
+  const modelSettingsProvider = PROVIDERS.find(provider => provider.id === modelSettingsTarget);
+
+  const providerSettings = modelSettingsProvider ? (
+    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      {modelSettingsProvider.id === 'openai-compatible' ? (
+        <Input aria-label="OpenAI-compatible base endpoint" value={openaiCompatibleEndpoint} onChange={event => setOpenaiCompatibleEndpoint(event.target.value)} addonBefore="Base endpoint" />
+      ) : null}
+      {modelSettingsProvider.kind === 'api' ? (
+        <>
+          <Input.Password aria-label={modelSettingsProvider.keyLabel} value={apiKeys[modelSettingsProvider.id]}
+            onChange={event => setApiKeys(current => ({ ...current, [modelSettingsProvider.id]: event.target.value }))}
+            placeholder={modelSettingsProvider.keyLabel} autoComplete="off" />
+          <Input aria-label={`${providerName(modelSettingsProvider.label)} default model`} value={models[modelSettingsProvider.id]}
+            onChange={event => setModels(current => ({ ...current, [modelSettingsProvider.id]: event.target.value }))}
+            addonBefore="Default model" placeholder={modelSettingsProvider.defaultModel || 'Model name'} />
+          <Space>
+            <Switch aria-label={`Remember ${providerName(modelSettingsProvider.label)} with OS protection`}
+              checked={rememberedProviders.has(modelSettingsProvider.id)} disabled={!credentialStorage.available}
+              onChange={value => changeRemembered(modelSettingsProvider as (typeof API_PROVIDERS)[number], value)} />
+            <Typography.Text>Remember with OS protection</Typography.Text>
+          </Space>
+          <Typography.Text type="secondary">{credentialStorage.message}</Typography.Text>
+        </>
+      ) : null}
+      {modelSettingsProvider.kind === 'agent' ? (
+        <Input aria-label={`${providerName(modelSettingsProvider.label)} default model`} value={models[modelSettingsProvider.id]}
+          onChange={event => setModels(current => ({ ...current, [modelSettingsProvider.id]: event.target.value }))}
+          addonBefore="Default model" placeholder="Use the agent default" />
+      ) : null}
+      {modelSettingsProvider.id === 'ollama' ? (
+        <>
+          <Input aria-label="Default Ollama model" value={models.ollama}
+            onChange={event => setModels(current => ({ ...current, ollama: event.target.value }))}
+            addonBefore="Default model" placeholder="For example: qwen3:4b" />
+          {status?.ollama?.models?.length ? (
+            <Space wrap>{status.ollama.models.map(model => (
+              <Button key={model.name} size="small" type={ollamaModelMatches(model.name, models.ollama) ? 'primary' : 'default'}
+                onClick={() => setModels(current => ({ ...current, ollama: model.name }))}>{model.name}</Button>
+            ))}</Space>
+          ) : <Typography.Text type="secondary">No downloaded models detected.</Typography.Text>}
+          {!status?.ollama?.installed ? <Button icon={<CloudDownloadOutlined />} onClick={installOllama}>Install Ollama runtime</Button> : null}
+          {models.ollama?.trim() && !selectedOllamaModel ? <Button icon={<CloudDownloadOutlined />} onClick={pullOllamaModel}>Download model</Button> : null}
+          {status?.ollama?.job?.message ? <pre className="plugin-output">{status.ollama.job.message}</pre> : null}
+        </>
+      ) : null}
+      {modelSettingsProvider.id === 'llama-cpp' ? (
+        <>
+          <Input aria-label="llama.cpp local endpoint" value={llamaCppEndpoint} onChange={event => setLlamaCppEndpoint(event.target.value)} addonBefore="Local endpoint" />
+          <Input aria-label="llama.cpp model name" value={models['llama-cpp']}
+            onChange={event => setModels(current => ({ ...current, 'llama-cpp': event.target.value }))} addonBefore="Model" />
+          {status?.['llama-cpp']?.error ? <Alert type="warning" showIcon message="llama.cpp server is not ready" description={status['llama-cpp'].error} /> : null}
+          {interfaceMode === 'advanced' ? (
+            <>
+              <Divider orientation="left" plain>Managed runtime</Divider>
+              <Input aria-label="llama.cpp executable path" value={llamaCppExecutablePath} onChange={event => setLlamaCppExecutablePath(event.target.value)} addonBefore="Executable" />
+              <Input aria-label="llama.cpp model file path" value={llamaCppModelPath} onChange={event => setLlamaCppModelPath(event.target.value)} addonBefore="GGUF model" />
+              <Space wrap>
+                <Button onClick={configureManagedRuntime} disabled={!llamaCppExecutablePath.trim() || !llamaCppModelPath.trim()}>Save managed paths</Button>
+                {['running', 'starting'].includes(status?.['llama-cpp']?.runtime?.state ?? '')
+                  ? <Button danger onClick={() => void stopManagedRuntime()}>Stop local server</Button>
+                  : <Button type="primary" onClick={startManagedRuntime} disabled={!status?.['llama-cpp']?.runtime?.configured}>Start local server</Button>}
+              </Space>
+              {status?.['llama-cpp']?.runtime?.lastError ? <Alert type="error" showIcon message={status['llama-cpp'].runtime.lastError} /> : null}
+              {status?.['llama-cpp']?.runtime?.output ? <pre className="plugin-output">{status['llama-cpp'].runtime.output}</pre> : null}
+            </>
+          ) : null}
+        </>
+      ) : null}
+    </Space>
+  ) : null;
+
+  const documentTab = (
+    <div className="plugin-option-list">
+      <IntegrationOption icon={<FileSearchOutlined />} title="Quizzer document extraction"
+        description="Built-in PDF.js and text extraction. This safe fallback remains installed with Quizzer."
+        state={extractorPlugin === 'builtin' ? 'Built in · active' : 'Built in · ready'} checked={extractorPlugin === 'builtin'}
+        switchLabel="Use Quizzer document extraction" onToggle={checked => { if (checked) setExtractorPlugin('builtin'); }} />
+      <IntegrationOption icon={<FileSearchOutlined />} title="Marker visual extraction"
+        description="Optional richer local extraction for PDFs with complex layouts and images."
+        state={status?.marker?.job?.state === 'working' ? 'Installing…' : status?.marker?.installed ? 'Detected · installed' : 'Not installed'}
+        checked={Boolean(status?.marker?.installed && enabledTools.marker)} switchLabel="Use Marker for automatic PDF extraction"
+        switchDisabled={!status?.marker?.installed || status?.marker?.job?.state === 'working'}
+        onToggle={checked => setEnabledTools(current => ({ ...current, marker: checked }))}
+        actions={!status?.marker?.installed && status?.marker?.job?.state !== 'working'
+          ? <Button size="small" type="primary" icon={<CloudDownloadOutlined />} onClick={() => void runAction('/api/integrations/marker/install')}>Install</Button> : undefined}
+        details={status?.marker?.job?.message ? <pre className="plugin-output">{status.marker.job.message}</pre> : undefined} />
+      {pluginRows('extractor', extractorPlugin, setExtractorPlugin, <FileSearchOutlined />)}
+      {registryRows('extractor', <FileSearchOutlined />)}
+    </div>
+  );
+
+  const ocrTab = (
+    <div className="plugin-option-list">
+      <IntegrationOption icon={<ScanOutlined />} title="RapidOCR"
+        description="Managed local OCR for labels, diagrams, and screenshots extracted from documents."
+        state={status?.ocr?.job?.state === 'working' ? 'Installing…' : status?.ocr?.installed ? 'Detected · installed' : 'Not installed'}
+        checked={Boolean(status?.ocr?.installed && ocrPlugin === 'builtin' && enabledTools.ocr)} switchLabel="Enable RapidOCR"
+        switchDisabled={!status?.ocr?.installed || status?.ocr?.job?.state === 'working'}
+        onToggle={checked => { if (checked) setOcrPlugin('builtin'); setEnabledTools(current => ({ ...current, ocr: checked })); }}
+        actions={!status?.ocr?.installed && status?.ocr?.job?.state !== 'working'
+          ? <Button size="small" type="primary" icon={<CloudDownloadOutlined />} onClick={() => void runAction('/api/integrations/ocr/install')}>Install</Button> : undefined}
+        details={status?.ocr?.job?.message ? <pre className="plugin-output">{status.ocr.job.message}</pre> : undefined} />
+      {pluginRows('ocr', ocrPlugin, setOcrPlugin, <ScanOutlined />, enabled => setEnabledTools(current => ({ ...current, ocr: enabled })))}
+      {registryRows('ocr', <ScanOutlined />)}
+    </div>
+  );
+
+  const embeddingsTab = (
+    <div className="plugin-option-list">
+      <IntegrationOption icon={<ShareAltOutlined />} title={`Ollama embeddings${status?.embeddings?.model ? ` · ${status.embeddings.model}` : ''}`}
+        description="Local semantic embeddings for hybrid retrieval and duplicate filtering."
+        state={status?.embeddings?.job?.state === 'working' ? 'Installing…' : status?.embeddings?.installed ? 'Detected · installed' : 'Model not installed'}
+        checked={Boolean(status?.embeddings?.installed && embedderPlugin === 'builtin' && enabledTools.embeddings)} switchLabel="Enable Ollama embeddings"
+        switchDisabled={!status?.embeddings?.installed || status?.embeddings?.job?.state === 'working'}
+        onToggle={checked => { if (checked) setEmbedderPlugin('builtin'); setEnabledTools(current => ({ ...current, embeddings: checked })); }}
+        actions={!status?.embeddings?.installed && status?.embeddings?.job?.state !== 'working'
+          ? <Button size="small" type="primary" icon={<CloudDownloadOutlined />} onClick={installEmbeddingModel}>Install</Button> : undefined}
+        details={status?.embeddings?.job?.message ? <pre className="plugin-output">{status.embeddings.job.message}</pre> : undefined} />
+      {pluginRows('embedder', embedderPlugin, setEmbedderPlugin, <ShareAltOutlined />, enabled => setEnabledTools(current => ({ ...current, embeddings: enabled })))}
+      {registryRows('embedder', <ShareAltOutlined />)}
+      <Divider orientation="left" plain>Vector index</Divider>
+      <IntegrationOption icon={<ShareAltOutlined />} title="LanceDB vector index" description="Quizzer's built-in local index for semantic search."
+        state={vectorIndexPlugin === 'builtin' ? 'Built in · active' : 'Built in · ready'} checked={vectorIndexPlugin === 'builtin'}
+        switchLabel="Use LanceDB vector index" onToggle={checked => { if (checked) setVectorIndexPlugin('builtin'); }} />
+      {pluginRows('vector-index', vectorIndexPlugin, setVectorIndexPlugin, <ShareAltOutlined />)}
+      {registryRows('vector-index', <ShareAltOutlined />)}
+      <Divider orientation="left" plain>Result reranking</Divider>
+      <IntegrationOption icon={<ShareAltOutlined />} title="Quizzer reranker" description="Built-in local ranking for relevant and diverse evidence."
+        state={rerankerPlugin === 'builtin' ? 'Built in · active' : 'Built in · ready'} checked={rerankerPlugin === 'builtin'}
+        switchLabel="Use Quizzer result reranker" onToggle={checked => { if (checked) setRerankerPlugin('builtin'); }} />
+      {pluginRows('reranker', rerankerPlugin, setRerankerPlugin, <ShareAltOutlined />)}
+      {registryRows('reranker', <ShareAltOutlined />)}
+    </div>
+  );
+
+  const modelsTab = (
+    <div className="plugin-option-list">
+      {PROVIDERS.filter(provider => provider.id !== 'plugin').map(provider => {
+        const ready = providerReady(provider);
+        const agent = provider.kind === 'agent' ? status?.[provider.id as AgentProvider] : undefined;
+        const working = agent?.job?.state === 'working' || (provider.id === 'ollama' && status?.ollama?.job?.state === 'working');
+        const actions = (
+          <>
+            {provider.id === 'ollama' && !status?.ollama?.installed && !working
+              ? <Button size="small" type="primary" icon={<CloudDownloadOutlined />} onClick={installOllama}>Install</Button> : null}
+            {provider.kind === 'agent' && provider.id !== 'codex' && !agent?.installed && !working
+              ? <Button size="small" type="primary" icon={<CloudDownloadOutlined />} onClick={() => void runAction(`/api/integrations/${provider.id}/install`)}>Install</Button> : null}
+            {provider.kind === 'agent' && agent?.installed && !agent.connected && !working
+              ? <Button size="small" type="primary" icon={<LoginOutlined />} onClick={() => void runAction(`/api/integrations/${provider.id}/connect`)}>Connect</Button> : null}
+            {provider.id === 'codex' && !agent?.installed
+              ? <Button size="small" icon={<ReloadOutlined />} onClick={() => void refresh()}>Detect again</Button> : null}
+            <Button size="small" icon={<SettingOutlined />} aria-label={`Settings for ${providerName(provider.label)}`}
+              onClick={() => setModelSettingsTarget(provider.id)}>Settings</Button>
+            {ready && enabledProviders[provider.id] ? (
+              <Button size="small" type={defaultProvider === provider.id ? 'primary' : 'default'} disabled={defaultProvider === provider.id}
+                onClick={() => setDefaultProvider(provider.id)}>{defaultProvider === provider.id ? 'Default' : 'Make default'}</Button>
+            ) : null}
+          </>
+        );
+        return (
+          <IntegrationOption key={provider.id} icon={<RobotOutlined />} title={providerName(provider.label)} description={provider.description}
+            state={working ? 'Working…' : ready ? (enabledProviders[provider.id] ? 'Detected · enabled' : 'Detected · disabled')
+              : provider.kind === 'api' ? 'Settings required' : provider.kind === 'agent' && agent?.installed ? 'Sign-in required' : 'Not ready'}
+            checked={ready && enabledProviders[provider.id]} switchLabel={`Enable ${providerName(provider.label)}`}
+            switchDisabled={!ready || working} onToggle={checked => setEnabledProviders(current => ({ ...current, [provider.id]: checked }))}
+            actions={actions} details={agent?.job?.message ? <pre className="plugin-output">{agent.job.message}</pre> : undefined} />
+        );
+      })}
+      {pluginRows(
+        'generator', models.plugin, value => setModels(current => ({ ...current, plugin: value })), <RobotOutlined />,
+        enabled => setEnabledProviders(current => ({ ...current, plugin: enabled })),
+        plugin => models.plugin === plugin.id && enabledProviders.plugin ? (
+          <Button size="small" type={defaultProvider === 'plugin' ? 'primary' : 'default'} disabled={defaultProvider === 'plugin'}
+            onClick={() => setDefaultProvider('plugin')}>{defaultProvider === 'plugin' ? 'Default' : 'Make default'}</Button>
+        ) : null,
+      )}
+      {registryRows('generator', <RobotOutlined />)}
+      {externalPlugins.filter(plugin => !(plugin.capabilities ?? []).some(capability => ['extractor', 'ocr', 'embedder', 'vector-index', 'reranker', 'generator'].includes(capability))).map(plugin => (
+        <IntegrationOption key={`other-${plugin.id}`} icon={<ApiOutlined />} title={plugin.name ?? plugin.id}
+          description="Installed plugin with no selectable Quizzer capability." state={plugin.enabled ? 'Installed · enabled' : 'Installed · disabled'}
+          checked={plugin.enabled} switchLabel={`Enable ${plugin.name ?? plugin.id}`}
+          switchDisabled={plugin.status !== 'installed' || !plugin.compatible || pluginAction.startsWith(`${plugin.id}:`)}
+          onToggle={checked => void runExternalAction(plugin, checked ? 'enable' : 'disable')}
+          actions={<Button size="small" aria-label={`Manage ${plugin.name ?? plugin.id}`} onClick={() => setManagedPluginId(plugin.id)}>Manage</Button>} />
+      ))}
+    </div>
+  );
+
   return (
-    <Modal open title={<Space><ApiOutlined /> Plugins & models</Space>} width={900} onCancel={onClose} onOk={() => void save()}
-      confirmLoading={saving} okButtonProps={{ disabled: !credentialReady }} okText="Save settings">
-      <Typography.Paragraph type="secondary">
-        Connect signed-in CLI agents or enter API keys without editing terminal configuration. API keys are session-only unless you explicitly enable OS-protected storage below.
-      </Typography.Paragraph>
-      <Alert type={credentialStorage.available ? 'success' : 'info'} showIcon
-        message={credentialStorage.available ? 'OS-protected credential storage is available' : 'Credentials will remain session-only'}
-        description={credentialStorage.message} style={{ marginBottom: 16 }} />
-      {statusError && <Alert type="error" showIcon message={statusError} action={<Button size="small" icon={<ReloadOutlined />} onClick={() => void refresh()}>Retry</Button>} />}
-      {!status && !statusError ? <div className="plugin-loading"><Spin /></div> : <Tabs defaultActiveKey="models" items={[{
-        key: 'models',
-        label: 'Models',
-        children: <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        <section className="plugin-card">
-          <div className="plugin-card-heading">
-            <div><Typography.Title level={5}>Document extraction</Typography.Title><Typography.Text type="secondary">Use Quizzer’s local PDF/text pipeline or an installed extractor plugin.</Typography.Text></div>
-            {statusTag(extractorPlugin === 'builtin' || Boolean(selectedExtractor), Boolean(markerWorking), extractorPlugin === 'builtin' ? 'Built-in ready' : 'Plugin ready')}
-          </div>
-          <Select aria-label="Document extractor component" value={extractorPlugin} onChange={setExtractorPlugin} style={{ width: '100%' }}
-            options={[
-              { value: 'builtin', label: 'Built-in · PDF.js/text with optional Marker' },
-              ...extractorPlugins.map(plugin => ({ value: plugin.id, label: `${plugin.name ?? plugin.id} · ${plugin.id}` })),
-            ]} />
-          {extractorPlugin === 'builtin' && !status?.marker.installed && !markerWorking && <Button icon={<CloudDownloadOutlined />} onClick={() => void runAction('/api/integrations/marker/install')}>Install Marker visual extraction</Button>}
-          {extractorPlugin === 'builtin' && status?.marker.installed && <Space><Switch aria-label="Use Marker for automatic PDF extraction" checked={enabledTools.marker} onChange={value => setEnabledTools(current => ({ ...current, marker: value }))} /><Typography.Text>Use Marker for automatic PDF extraction</Typography.Text></Space>}
-          {extractorPlugin === 'builtin' && markerWorking && <Space><Spin size="small" /> Installing Marker…</Space>}
-          {extractorPlugin === 'builtin' && status?.marker.job.message && status.marker.job.state !== 'idle' && (
-            <Alert showIcon type={status.marker.job.state === 'error' ? 'error' : status.marker.job.state === 'complete' ? 'success' : 'info'}
-              message={status.marker.job.state === 'working' ? 'Installing Marker' : status.marker.job.state === 'complete' ? 'Marker ready' : 'Installation failed'}
-              description={<pre className="plugin-output">{status.marker.job.message}</pre>} />
-          )}
-          {extractorPlugin !== 'builtin' && !selectedExtractor && <Alert type="warning" showIcon message="Selected extractor is unavailable"
-            description="Choose an enabled, compatible extractor plugin or switch back to built-in extraction." />}
-        </section>
-
-        <section className="plugin-card">
-          <div className="plugin-card-heading">
-            <div><Typography.Title level={5}>Image OCR</Typography.Title><Typography.Text type="secondary">Optionally uses RapidOCR locally to read labels, diagrams, and screenshots extracted by Marker. Quizzer does not install or run OCR unless you choose it.</Typography.Text></div>
-            {statusTag(ocrPlugin === 'builtin' ? Boolean(status?.ocr?.installed) : Boolean(selectedOcr), ocrPlugin === 'builtin' && Boolean(ocrWorking), ocrPlugin === 'builtin' ? 'Installed by Quizzer' : 'Plugin ready')}
-          </div>
-          <Select aria-label="OCR component" value={ocrPlugin} onChange={setOcrPlugin} style={{ width: '100%' }}
-            options={[
-              { value: 'builtin', label: 'Built-in · managed RapidOCR' },
-              ...ocrPlugins.map(plugin => ({ value: plugin.id, label: `${plugin.name ?? plugin.id} · ${plugin.id}` })),
-            ]} />
-          {ocrPlugin === 'builtin' && !status?.ocr?.installed && !ocrWorking && <Button icon={<CloudDownloadOutlined />} onClick={() => void runAction('/api/integrations/ocr/install')}>Install Image OCR</Button>}
-          {(ocrPlugin === 'builtin' ? status?.ocr?.installed : selectedOcr) && <Space><Switch aria-label="Enable image OCR" checked={enabledTools.ocr} onChange={value => setEnabledTools(current => ({ ...current, ocr: value }))} /><Typography.Text>Enabled</Typography.Text></Space>}
-          {ocrPlugin === 'builtin' && ocrWorking && <Space><Spin size="small" /> Installing Image OCR…</Space>}
-          {ocrPlugin === 'builtin' && status?.ocr?.job.message && status.ocr.job.state !== 'idle' && (
-            <Alert showIcon type={status.ocr.job.state === 'error' ? 'error' : status.ocr.job.state === 'complete' ? 'success' : 'info'}
-              message={status.ocr.job.state === 'working' ? 'Installing Image OCR' : status.ocr.job.state === 'complete' ? 'Image OCR ready' : 'Installation failed'}
-              description={<pre className="plugin-output">{status.ocr.job.message}</pre>} />
-          )}
-          {ocrPlugin !== 'builtin' && !selectedOcr && <Alert type="warning" showIcon message="Selected OCR plugin is unavailable"
-            description="Choose an enabled, compatible OCR plugin or switch back to managed RapidOCR." />}
-        </section>
-
-        <section className="plugin-card">
-          <div className="plugin-card-heading">
-            <div><Typography.Title level={5}>Dense embeddings</Typography.Title><Typography.Text type="secondary">Uses built-in Ollama or an installed embedder plugin for hybrid retrieval and semantic duplicate filtering.</Typography.Text></div>
-            {statusTag(embeddingReady, embedderPlugin === 'builtin' && Boolean(embeddingsWorking), embedderPlugin === 'builtin' ? 'Installed' : 'Plugin ready')}
-          </div>
-          <Select aria-label="Dense embedding component" value={embedderPlugin} onChange={setEmbedderPlugin} style={{ width: '100%' }}
-            options={[
-              { value: 'builtin', label: `Built-in · Ollama ${status?.embeddings?.model ?? 'profile model'}` },
-              ...embedderPlugins.map(plugin => ({ value: plugin.id, label: `${plugin.name ?? plugin.id} · ${plugin.id}` })),
-            ]} />
-          {interfaceMode === 'advanced' && <>
-            <Typography.Text strong>Vector index</Typography.Text>
-            <Select aria-label="Vector index component" value={vectorIndexPlugin} onChange={setVectorIndexPlugin} style={{ width: '100%' }}
-              options={[
-                { value: 'builtin', label: 'Built-in · LanceDB' },
-                ...vectorIndexPlugins.map(plugin => ({ value: plugin.id, label: `${plugin.name ?? plugin.id} · ${plugin.id}` })),
-              ]} />
-            {vectorIndexPlugin !== 'builtin' && !selectedVectorIndex && <Alert type="warning" showIcon message="Selected vector index is unavailable"
-              description="Choose an enabled, compatible vector-index plugin or switch back to built-in LanceDB before indexing." />}
-          </>}
-          {embedderPlugin === 'builtin' && !status?.embeddings?.installed && !embeddingsWorking && <Button icon={<CloudDownloadOutlined />}
-            onClick={installEmbeddingModel}>
-            {status?.embeddings?.runtimeInstalled ? `Download ${status.embeddings.model}` : `Install Ollama + ${status?.embeddings?.model ?? 'embedding model'}`}
-          </Button>}
-          {embeddingReady && <Space><Switch aria-label="Enable dense embeddings" checked={enabledTools.embeddings} onChange={value => setEnabledTools(current => ({ ...current, embeddings: value }))} /><Typography.Text>Enabled</Typography.Text></Space>}
-          {embedderPlugin === 'builtin' && embeddingsWorking && <Space><Spin size="small" /> Installing semantic filter…</Space>}
-          {embedderPlugin === 'builtin' && status?.embeddings?.job.message && status.embeddings.job.state !== 'idle' && <pre className="plugin-output">{status.embeddings.job.message}</pre>}
-          {embedderPlugin !== 'builtin' && !selectedEmbedder && <Alert type="warning" showIcon message="Selected embedder is unavailable"
-            description="Choose an enabled, compatible embedder plugin or switch back to built-in Ollama before indexing." />}
-        </section>
-
-        <Divider orientation="left" plain>Local generation</Divider>
-        <section className="plugin-card">
-          <div className="plugin-card-heading">
-            <div><Typography.Title level={5}>Ollama local model</Typography.Title><Typography.Text type="secondary">Generate quizzes on this device without sending source content to a remote provider.</Typography.Text></div>
-            {statusTag(Boolean(status?.ollama?.serverReady && selectedOllamaModel), Boolean(ollamaWorking), 'Ready')}
-          </div>
-          <Space direction="vertical" style={{ width: '100%' }}>
-            <AutoComplete value={models.ollama} onChange={value => setModels(current => ({ ...current, ollama: value }))}
-              options={(status?.ollama?.models ?? []).map(model => ({
-                value: model.name,
-                label: `${model.name}${model.details?.parameterSize ? ` · ${model.details.parameterSize}` : ''}${model.size ? ` · ${(model.size / (1024 ** 3)).toFixed(1)} GB` : ''}`,
-              }))} style={{ width: '100%' }} filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())}>
-              <Input aria-label="Default Ollama model" addonBefore="Default model" placeholder="For example: qwen3:4b" />
-            </AutoComplete>
-            {!status?.ollama?.installed && !ollamaWorking && <Button icon={<CloudDownloadOutlined />} onClick={installOllama}>Install Ollama runtime</Button>}
-            {status?.ollama?.installed && !status.ollama.serverReady && !ollamaWorking && <Alert type="warning" showIcon message="Ollama service is not running"
-              description="Start Ollama, or choose Download model below and Quizzer will start the local service before the confirmed download." />}
-            {!!models.ollama?.trim() && !selectedOllamaModel && !ollamaWorking && <Button icon={<CloudDownloadOutlined />} onClick={pullOllamaModel}>Download model</Button>}
-            {selectedOllamaModel && status?.ollama?.serverReady && <Space><Switch aria-label="Enable Ollama for generation" checked={enabledProviders.ollama}
-              onChange={value => setEnabledProviders(current => ({ ...current, ollama: value }))} /><Typography.Text>Enabled for generation</Typography.Text></Space>}
-            {ollamaWorking && <Space><Spin size="small" /> Preparing local generation…</Space>}
-            {status?.ollama?.job.message && status.ollama.job.state !== 'idle' && (
-              <Alert showIcon type={status.ollama.job.state === 'error' ? 'error' : status.ollama.job.state === 'complete' ? 'success' : 'info'}
-                message={status.ollama.job.state === 'working' ? 'Local setup in progress' : status.ollama.job.state === 'complete' ? 'Local generation ready' : 'Local setup failed'}
-                description={<pre className="plugin-output">{status.ollama.job.message}</pre>} />
-            )}
+    <>
+      <Modal open title={<Space><ApiOutlined /> Plugins & models</Space>} width={940} onCancel={onClose} onOk={() => void save()}
+        confirmLoading={saving} okButtonProps={{ disabled: !credentialReady }} okText="Save settings">
+        <div className="plugin-modal-intro">
+          <Typography.Text type="secondary">Choose a capability, then enable a detected option or install one. Configuration stays behind each option’s Settings button.</Typography.Text>
+          <Space wrap>
+            <Button size="small" icon={<FolderOpenOutlined />} loading={pluginAction === 'install'}
+              disabled={interfaceMode !== 'advanced' || !window.quizzerDesktop || Boolean(pluginAction)}
+              onClick={() => void installExternalPlugin()}>Install local plugin</Button>
+            <Button size="small" icon={<ReloadOutlined />} loading={externalLoading}
+              onClick={() => { void refresh(); void refreshExternal(); }}>Detect again</Button>
           </Space>
-        </section>
+        </div>
+        {interfaceMode !== 'advanced' ? <Typography.Text type="secondary">Advanced mode is required to install third-party plugins.</Typography.Text> : null}
+        {statusError ? <Alert type="error" showIcon message={statusError} action={<Button size="small" onClick={() => void refresh()}>Retry</Button>} /> : null}
+        {externalError ? <Alert type="error" showIcon message={externalError} action={<Button size="small" onClick={() => void refreshExternal()}>Retry</Button>} /> : null}
+        {!status && !statusError ? <div className="plugin-loading"><Spin /></div> : (
+          <Tabs defaultActiveKey="document-extraction" items={[
+            { key: 'document-extraction', label: 'Document extraction', children: documentTab },
+            { key: 'image-ocr', label: 'Image OCR', children: ocrTab },
+            { key: 'embeddings', label: 'Embeddings', children: embeddingsTab },
+            { key: 'models', label: 'Models', children: modelsTab },
+          ]} />
+        )}
+      </Modal>
 
-        <section className="plugin-card">
-          <div className="plugin-card-heading">
-            <div><Typography.Title level={5}>llama.cpp local model</Typography.Title><Typography.Text type="secondary">Connect Quizzer to a local llama.cpp server using its OpenAI-compatible API. The endpoint must stay on loopback; Quizzer does not download models or send source content remotely.</Typography.Text></div>
-            {statusTag(Boolean(status?.['llama-cpp']?.serverReady && isNumericLoopbackEndpoint(llamaCppEndpoint) && models['llama-cpp']?.trim()), false, 'Ready')}
-          </div>
-          <Space direction="vertical" style={{ width: '100%' }}>
-            <Input value={llamaCppEndpoint} onChange={event => setLlamaCppEndpoint(event.target.value)} addonBefore="Local endpoint" placeholder="http://127.0.0.1:8080/v1" />
-            <Input value={models['llama-cpp']} onChange={event => setModels(current => ({ ...current, 'llama-cpp': event.target.value }))} addonBefore="Model" placeholder="For example: local-model" />
-            <Typography.Text type="secondary">Saving this configuration is an explicit setup confirmation. Only unauthenticated HTTP loopback endpoints are accepted.</Typography.Text>
-            {status?.['llama-cpp']?.error && <Alert type="warning" showIcon message="llama.cpp server is not ready" description={status['llama-cpp'].error} />}
-            {status?.['llama-cpp']?.serverReady && isNumericLoopbackEndpoint(llamaCppEndpoint) && Boolean(models['llama-cpp']?.trim()) && <Space><Switch aria-label="Enable llama.cpp for generation" checked={enabledProviders['llama-cpp']} onChange={value => setEnabledProviders(current => ({ ...current, 'llama-cpp': value }))} /><Typography.Text>Enabled for generation</Typography.Text></Space>}
-          </Space>
-        </section>
+      <Modal open={Boolean(modelSettingsProvider)}
+        title={modelSettingsProvider ? `${providerName(modelSettingsProvider.label)} settings` : 'Model settings'}
+        onCancel={() => setModelSettingsTarget(null)} footer={<Button type="primary" onClick={() => setModelSettingsTarget(null)}>Done</Button>}>
+        {providerSettings}
+      </Modal>
 
-        {interfaceMode === 'advanced' && <section className="plugin-card">
-          <div className="plugin-card-heading">
-            <div><Typography.Title level={5}>Managed llama.cpp runtime</Typography.Title><Typography.Text type="secondary">Use an already-installed llama.cpp server and GGUF model. Paths are validated as absolute regular files, stored only after confirmation, and never downloaded by Quizzer.</Typography.Text></div>
-            {statusTag(status?.['llama-cpp']?.runtime?.state === 'running', ['starting', 'stopping'].includes(status?.['llama-cpp']?.runtime?.state ?? ''), status?.['llama-cpp']?.runtime?.state === 'error' ? 'Needs attention' : 'Running')}
-          </div>
-          <Space direction="vertical" style={{ width: '100%' }}>
-            <Input aria-label="llama.cpp executable path" value={llamaCppExecutablePath} onChange={event => setLlamaCppExecutablePath(event.target.value)} addonBefore="Executable" placeholder="/absolute/path/to/llama-server" />
-            <Input aria-label="llama.cpp model file path" value={llamaCppModelPath} onChange={event => setLlamaCppModelPath(event.target.value)} addonBefore="GGUF model" placeholder="/absolute/path/to/model.gguf" />
-            <Typography.Text type="secondary">Managed server: 127.0.0.1:{status?.['llama-cpp']?.runtime?.port ?? 8080}. Context, batch, and CPU-thread limits come from Advanced settings and detected hardware.</Typography.Text>
-            {status?.['llama-cpp']?.runtime?.lastError && <Alert type="error" showIcon message="Managed llama.cpp runtime error" description={status['llama-cpp'].runtime.lastError} />}
-            {status?.['llama-cpp']?.runtime?.output && <pre className="plugin-output">{status['llama-cpp'].runtime.output}</pre>}
+      <Modal open={Boolean(managedPlugin)} title={managedPlugin ? `Manage ${managedPlugin.name ?? managedPlugin.id}` : 'Manage plugin'}
+        width={680} onCancel={() => setManagedPluginId(null)} footer={<Button onClick={() => setManagedPluginId(null)}>Close</Button>}>
+        {managedPlugin ? (
+          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
             <Space wrap>
-              <Button onClick={configureManagedRuntime} disabled={!llamaCppExecutablePath.trim() || !llamaCppModelPath.trim()}>Save managed paths</Button>
-              {status?.['llama-cpp']?.runtime?.state === 'running' || status?.['llama-cpp']?.runtime?.state === 'starting'
-                ? <Button danger onClick={() => void stopManagedRuntime()}>Stop local server</Button>
-                : <Button type="primary" onClick={startManagedRuntime} disabled={!status?.['llama-cpp']?.runtime?.configured}>Start local server</Button>}
+              {managedPlugin.version ? <Tag>v{managedPlugin.version}</Tag> : null}
+              <Tag color={managedPlugin.trust === 'signed' ? 'success' : 'warning'}>{managedPlugin.trust === 'signed' ? 'Signed' : 'Unsigned local'}</Tag>
+              <Tag color={managedPlugin.compatible ? 'blue' : 'error'}>{managedPlugin.compatible ? 'Compatible' : 'Incompatible'}</Tag>
+              {(managedPlugin.capabilities ?? []).map(capability => <Tag key={capability}>{capability}</Tag>)}
             </Space>
-          </Space>
-        </section>}
-
-        <Divider orientation="left" plain>Signed-in agents</Divider>
-        {AGENT_PROVIDERS.map(provider => {
-          const agent = status?.[provider.id];
-          const working = agent?.job?.state === 'working';
-          const loginUrl = agent?.job?.message.match(/https:\/\/[^\s]+/)?.[0];
-          return <section className="plugin-card" key={provider.id}>
-            <div className="plugin-card-heading">
-              <div><Typography.Title level={5}>{provider.label.replace(' – ', ' ')}</Typography.Title><Typography.Text type="secondary">{provider.description} No API key is required.</Typography.Text></div>
-              {statusTag(Boolean(agent?.connected), Boolean(working), 'Connected')}
-            </div>
-            <Space direction="vertical" style={{ width: '100%' }}>
-              <Input value={models[provider.id]} onChange={event => setModels(current => ({ ...current, [provider.id]: event.target.value }))} addonBefore="Default model" placeholder="Use the agent default" />
-              <Space wrap>
-                {provider.id !== 'codex' && !agent?.installed && !working && <Button icon={<CloudDownloadOutlined />} onClick={() => void runAction(`/api/integrations/${provider.id}/install`)}>Install {provider.label.split(' ')[0]}</Button>}
-                {agent?.installed && !agent.connected && !working && <Button icon={<LoginOutlined />} onClick={() => void runAction(`/api/integrations/${provider.id}/connect`)}>Connect {provider.label.split(' ')[0]}</Button>}
-                {working && <Space><Spin size="small" /> Working…</Space>}
-                {agent?.connected && <Space><Switch aria-label={`Enable ${provider.label.replace(' – ', ' ')}`} checked={enabledProviders[provider.id]} onChange={value => setEnabledProviders(current => ({ ...current, [provider.id]: value }))} /><Typography.Text>Enabled</Typography.Text></Space>}
-              </Space>
-              {provider.id === 'codex' && !agent?.installed && !working && <Alert type="warning" showIcon message="Codex CLI was not found"
-                description="Quizzer checks common user install locations as well as your inherited PATH. Install Codex or restart Quizzer after changing its location."
-                action={<Button size="small" icon={<ReloadOutlined />} onClick={() => void refresh()}>Detect again</Button>} />}
-              {loginUrl && working && <Typography.Link href={loginUrl} target="_blank" rel="noreferrer">Open the sign-in page</Typography.Link>}
-              {agent?.job?.message && agent.job.state !== 'idle' && <pre className="plugin-output">{agent.job.message}</pre>}
-            </Space>
-          </section>;
-        })}
-
-        <Divider orientation="left" plain>API providers</Divider>
-        {API_PROVIDERS.map(provider => {
-          if (provider.id === 'openai-compatible') {
-            const hasKey = Boolean(apiKeys[provider.id]?.trim());
-            const loopback = isOpenAILoopbackEndpoint(openaiCompatibleEndpoint);
-            const isConnected = Boolean(models[provider.id]?.trim()) && (hasKey || loopback);
-            return (
-              <section className="plugin-card" key={provider.id}>
-                <div className="plugin-card-heading">
-                  <div><Typography.Title level={5}>{provider.label.replace(' – ', ' ')}</Typography.Title><Typography.Text type="secondary">{provider.description}</Typography.Text></div>
-                  {statusTag(isConnected, false, 'Connected')}
-                </div>
-                <Space direction="vertical" style={{ width: '100%' }}>
-                  <Input value={openaiCompatibleEndpoint} onChange={event => setOpenaiCompatibleEndpoint(event.target.value)} addonBefore="Base endpoint" placeholder="https://api.openai.com/v1" />
-                  <Input value={models[provider.id]} onChange={event => setModels(current => ({ ...current, [provider.id]: event.target.value }))} addonBefore="Default model" placeholder="e.g. gpt-4o, llama3, custom-model" />
-                  <Input.Password value={apiKeys[provider.id]} onChange={event => setApiKeys(current => ({ ...current, [provider.id]: event.target.value }))} placeholder={provider.keyLabel} autoComplete="off" />
-                  {(hasKey || loopback) && Boolean(models[provider.id]?.trim()) && <Space wrap>
-                    <Switch aria-label={`Enable ${provider.label.replace(' – ', ' ')}`} checked={enabledProviders[provider.id]} onChange={value => setEnabledProviders(current => ({ ...current, [provider.id]: value }))} /><Typography.Text>Enabled</Typography.Text>
-                    {hasKey && <><Switch aria-label={`Remember ${provider.label.replace(' – ', ' ')} with OS protection`} checked={rememberedProviders.has(provider.id)} disabled={!credentialStorage.available}
-                      onChange={value => changeRemembered(provider, value)} /><Typography.Text>Remember with OS protection</Typography.Text></>}
-                  </Space>}
-                </Space>
-              </section>
-            );
-          }
-          return (
-            <section className="plugin-card" key={provider.id}>
-              <div className="plugin-card-heading">
-                <div><Typography.Title level={5}>{provider.label.replace(' – ', ' ')}</Typography.Title><Typography.Text type="secondary">{provider.description}</Typography.Text></div>
-                {statusTag(Boolean(apiKeys[provider.id]?.trim()), false, 'Connected')}
-              </div>
-              <Space direction="vertical" style={{ width: '100%' }}>
-                <Input.Password value={apiKeys[provider.id]} onChange={event => setApiKeys(current => ({ ...current, [provider.id]: event.target.value }))} placeholder={provider.keyLabel} autoComplete="off" />
-                <Input value={models[provider.id]} onChange={event => setModels(current => ({ ...current, [provider.id]: event.target.value }))} addonBefore="Default model" placeholder={provider.defaultModel} />
-                {!!apiKeys[provider.id]?.trim() && <Space wrap>
-                  <Switch aria-label={`Enable ${provider.label.replace(' – ', ' ')}`} checked={enabledProviders[provider.id]} onChange={value => setEnabledProviders(current => ({ ...current, [provider.id]: value }))} /><Typography.Text>Enabled</Typography.Text>
-                  <Switch aria-label={`Remember ${provider.label.replace(' – ', ' ')} with OS protection`} checked={rememberedProviders.has(provider.id)} disabled={!credentialStorage.available}
-                    onChange={value => changeRemembered(provider, value)} /><Typography.Text>Remember with OS protection</Typography.Text>
-                </Space>}
-              </Space>
-            </section>
-          );
-        })}
-
-        {!!configuredProviderOptions.length && <div>
-          <Typography.Text strong>Default generation provider</Typography.Text>
-          <Select aria-label="Default generation provider" value={visibleDefaultProvider} onChange={(value: GenerationProvider) => setDefaultProvider(value)} style={{ display: 'block', width: '100%', marginTop: 8 }}
-            options={configuredProviderOptions.map(provider => ({ label: provider.label, value: provider.id }))} />
-        </div>}
-        {!configuredProviderOptions.length && <Typography.Text type="secondary">Connect a provider above to make it available for generation.</Typography.Text>}
-      </Space>,
-      }, {
-        key: 'plugins',
-        label: 'Plugins',
-        children: <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        <Typography.Title level={5}>External plugins</Typography.Title>
-        <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-          External plugins run out of process with declared permissions and verified file hashes. Signed registry plugins are trusted normally; unsigned local plugins require Advanced Developer Mode.
-        </Typography.Paragraph>
-        {!!generatorPlugins.length && <section className="plugin-card">
-          <div className="plugin-card-heading">
-            <div><Typography.Title level={5}>Local generation route</Typography.Title><Typography.Text type="secondary">Select the installed generator used by the local Plugin provider.</Typography.Text></div>
-            {statusTag(Boolean(models.plugin), false, 'Ready')}
-          </div>
-          <Space direction="vertical" style={{ width: '100%' }}>
-            <Select value={models.plugin || undefined} onChange={value => setModels(current => ({ ...current, plugin: value }))}
-              aria-label="Default local generator plugin" style={{ width: '100%' }}
-              options={generatorPlugins.map(plugin => ({ value: plugin.id, label: `${plugin.name ?? plugin.id} · ${plugin.id}` }))} />
-            <Space><Switch aria-label="Expose local plugin as a generation provider" checked={enabledProviders.plugin} onChange={value => setEnabledProviders(current => ({ ...current, plugin: value }))} /><Typography.Text>Expose as a generation provider</Typography.Text></Space>
-          </Space>
-        </section>}
-        {developerMode && <Alert type="warning" showIcon message="Advanced Developer Mode is active"
-          description="Unsigned local plugins can execute code. Review every capability, permission, and file hash before installation." />}
-        {externalError && <Alert type="error" showIcon message={externalError}
-          action={<Button size="small" icon={<ReloadOutlined />} onClick={() => void refreshExternal()}>Retry</Button>} />}
-        <Space wrap>
-          <Button icon={<FolderOpenOutlined />} loading={pluginAction === 'install'}
-            disabled={interfaceMode !== 'advanced' || !window.quizzerDesktop || Boolean(pluginAction)}
-            onClick={() => void installExternalPlugin()}>Install local plugin</Button>
-          <Button icon={<ReloadOutlined />} loading={externalLoading} onClick={() => void refreshExternal()}>Refresh</Button>
-        </Space>
-        {interfaceMode !== 'advanced' && <Typography.Text type="secondary">Switch to Advanced mode to install local plugins.</Typography.Text>}
-        {!window.quizzerDesktop && <Typography.Text type="secondary">Desktop directory selection is unavailable here. Install with <Typography.Text code>quizzer plugins install &lt;directory&gt;</Typography.Text>.</Typography.Text>}
-        {externalLoading && !externalPlugins.length ? <div className="plugin-loading"><Spin /></div> : !externalPlugins.length && !externalError ? (
-          <Alert type="info" showIcon message="No external plugins installed" description="Quizzer's built-in extraction, retrieval, and provider components remain available above." />
-        ) : externalPlugins.map(plugin => {
-          const busy = pluginAction.startsWith(`${plugin.id}:`);
-          const health = healthResults[plugin.id];
-          const permissions = plugin.permissions;
-          return <section className={`plugin-card${plugin.status !== 'installed' || !plugin.compatible ? ' plugin-card-warning' : ''}`} key={plugin.id}>
-            <div className="plugin-card-heading">
-              <div>
-                <Typography.Title level={5}>{plugin.name ?? plugin.id}</Typography.Title>
-                <Space size={[4, 4]} wrap>
-                  {plugin.version && <Tag>v{plugin.version}</Tag>}
-                  <Tag color={plugin.source === 'registry' ? 'cyan' : 'default'}>{plugin.source === 'registry' ? 'Registry' : 'Local'}</Tag>
-                  <Tag color={plugin.trust === 'signed' ? 'success' : 'warning'}>{plugin.trust === 'signed' ? 'Signed' : 'Unsigned local'}</Tag>
-                  <Tag color={plugin.compatible ? 'blue' : 'error'}>{plugin.compatible ? 'Compatible' : 'Incompatible'}</Tag>
-                  {plugin.updateAvailable && <Tag color="orange">Update to v{plugin.availableVersion} available</Tag>}
-                  {plugin.capabilities?.map(capability => <Tag key={capability}>{capability}</Tag>)}
-                </Space>
-              </div>
-              <Tag color={plugin.status === 'installed' && plugin.enabled ? 'success' : plugin.status === 'broken' ? 'error' : 'warning'}>
-                {plugin.status === 'broken' ? 'Broken' : plugin.enabled ? 'Enabled' : plugin.status === 'blocked' ? 'Blocked' : 'Disabled'}
-              </Tag>
-            </div>
-            <Space direction="vertical" size="small" style={{ width: '100%' }}>
-              {(plugin.warning || plugin.error) && <Alert type={plugin.status === 'broken' ? 'error' : 'warning'} showIcon message={plugin.warning || plugin.error} />}
-              {plugin.resources && <Typography.Text type="secondary">
-                Estimated resources: {plugin.resources.memoryMB.toLocaleString()} MB memory · {plugin.resources.diskMB.toLocaleString()} MB disk
-                {!!plugin.resources.accelerators?.length && ` · ${plugin.resources.accelerators.join(', ')}`}
-              </Typography.Text>}
-              {permissions && <div className="plugin-permissions">
+            {developerMode && managedPlugin.trust !== 'signed' ? <Alert type="warning" showIcon message="Advanced Developer Mode is active for this unsigned plugin." /> : null}
+            {managedPlugin.warning || managedPlugin.error ? <Alert type={managedPlugin.status === 'broken' ? 'error' : 'warning'} showIcon message={managedPlugin.warning || managedPlugin.error} /> : null}
+            {managedPlugin.resources ? <Typography.Text type="secondary">Estimated resources: {managedPlugin.resources.memoryMB.toLocaleString()} MB memory · {managedPlugin.resources.diskMB.toLocaleString()} MB disk</Typography.Text> : null}
+            {managedPlugin.permissions ? (
+              <div className="plugin-permissions">
                 <Typography.Text strong>Declared permissions</Typography.Text>
-                <Space size={[4, 4]} wrap>
-                  {permissions.filesystem.map(value => <Tag key={`fs-${value}`}>Files: {value}</Tag>)}
-                  {permissions.network.map(value => <Tag color="gold" key={`net-${value}`}>Network: {value}</Tag>)}
-                  {permissions.secrets.map(value => <Tag color="purple" key={`secret-${value}`}>Secret: {value}</Tag>)}
-                  {permissions.subprocess && <Tag color="volcano">Subprocess</Tag>}
-                  {!permissions.filesystem.length && !permissions.network.length && !permissions.secrets.length && !permissions.subprocess && <Tag color="green">No elevated permissions</Tag>}
-                </Space>
-              </div>}
-              {health && <Alert showIcon icon={health.ok ? <CheckCircleOutlined /> : undefined} type={health.ok ? 'success' : 'error'}
-                message={health.ok ? `Healthy · ${health.durationMs} ms` : 'Health check failed'}
-                description={<Space direction="vertical" size={0}>
-                  {health.error && <Typography.Text>{health.error}</Typography.Text>}
-                  <Typography.Text type="secondary">
-                    {health.peakRssBytes !== undefined
-                      ? `Observed peak: ${(health.peakRssBytes / 1024 / 1024).toFixed(1)} MB RSS across ${health.resourceSamples ?? 0} sample${health.resourceSamples === 1 ? '' : 's'}`
-                      : 'Working-memory sampling is unavailable on this platform'}
-                    {health.declaredMemoryMB !== undefined && ` · Declared requirement: ${health.declaredMemoryMB.toLocaleString()} MB`}
-                  </Typography.Text>
-                </Space>} />}
-              <Space wrap>
-                {plugin.updateAvailable && (
-                  <Button type="primary" icon={<CloudDownloadOutlined />} disabled={Boolean(pluginAction) || interfaceMode !== 'advanced'}
-                    loading={busy && pluginAction.endsWith(':update')} onClick={() => updateRegistryPlugin(plugin)}>
-                    Update to v{plugin.availableVersion}
-                  </Button>
-                )}
-                <Button disabled={Boolean(pluginAction)} loading={busy && pluginAction.endsWith(':health')} onClick={() => void runExternalAction(plugin, 'health')}>Health check</Button>
-                <Button disabled={Boolean(pluginAction) || !plugin.compatible || plugin.status === 'broken'} loading={busy && (pluginAction.endsWith(':enable') || pluginAction.endsWith(':disable'))}
-                  onClick={() => void runExternalAction(plugin, plugin.enabled ? 'disable' : 'enable')}>{plugin.enabled ? 'Disable' : 'Enable'}</Button>
-                <Button icon={<RollbackOutlined />} disabled={Boolean(pluginAction) || !plugin.rollbackAvailable} loading={busy && pluginAction.endsWith(':rollback')} onClick={() => void runExternalAction(plugin, 'rollback')}>Rollback</Button>
-                <Button danger icon={<DeleteOutlined />} disabled={Boolean(pluginAction)} loading={busy && pluginAction.endsWith(':remove')} onClick={() => removeExternalPlugin(plugin)}>Remove</Button>
-              </Space>
-            </Space>
-          </section>;
-        })}
-
-        <Divider orientation="left" plain>Registry catalog</Divider>
-        <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
-          Signed plugins distributed via official GitHub Releases. Platform compatibility and Ed25519 signatures are verified before installation.
-        </Typography.Paragraph>
-        {externalLoading && !registryPlugins.length ? <div className="plugin-loading"><Spin /></div> : !registryPlugins.length ? (
-          <Alert type="info" showIcon message="No registry plugins available" description="Configure trusted registry keys and registry catalog URL to browse available remote plugins." />
-        ) : registryPlugins.map(plugin => {
-          const installedMatch = externalPlugins.find(p => (p.registryId || p.id) === plugin.id);
-          const isInstalled = Boolean(installedMatch);
-          const busy = pluginAction === `registry:${plugin.id}:install` || pluginAction === `${plugin.id}:update`;
-          return (
-            <section className={`plugin-card${!plugin.compatible ? ' plugin-card-warning' : ''}`} key={`registry-${plugin.id}`}>
-              <div className="plugin-card-heading">
-                <div>
-                  <Typography.Title level={5}>{plugin.name ?? plugin.id}</Typography.Title>
-                  <Space size={[4, 4]} wrap>
-                    <Tag>v{plugin.version}</Tag>
-                    <Tag color="cyan">Registry</Tag>
-                    <Tag color={plugin.compatible ? 'blue' : 'error'}>{plugin.compatible ? 'Compatible' : 'Incompatible'}</Tag>
-                    {isInstalled && <Tag color={installedMatch?.updateAvailable ? 'orange' : 'green'}>{installedMatch?.updateAvailable ? 'Update available' : 'Installed'}</Tag>}
-                    {plugin.capabilities?.map(capability => <Tag key={capability}>{capability}</Tag>)}
-                  </Space>
-                </div>
-                <Tag color={isInstalled ? (installedMatch?.updateAvailable ? 'warning' : 'success') : 'default'}>
-                  {isInstalled ? (installedMatch?.updateAvailable ? 'Out of date' : 'Installed') : 'Available'}
-                </Tag>
-              </div>
-              <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                {plugin.description && <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>{plugin.description}</Typography.Paragraph>}
-                <Typography.Text type="secondary">
-                  Platforms: {plugin.platforms.map(p => `${p.os} (${p.architectures.join(', ')})`).join('; ')}
-                  {plugin.downloadSize ? ` · Download size: ${(plugin.downloadSize / (1024 * 1024)).toFixed(1)} MB` : ''}
-                </Typography.Text>
-                {plugin.permissions && (
-                  <div className="plugin-permissions">
-                    <Typography.Text strong>Permissions</Typography.Text>
-                    <Space size={[4, 4]} wrap>
-                      {plugin.permissions.filesystem.map(value => <Tag key={`fs-${value}`}>Files: {value}</Tag>)}
-                      {plugin.permissions.network.map(value => <Tag color="gold" key={`net-${value}`}>Network: {value}</Tag>)}
-                      {plugin.permissions.secrets.map(value => <Tag color="purple" key={`secret-${value}`}>Secret: {value}</Tag>)}
-                      {plugin.permissions.subprocess && <Tag color="volcano">Subprocess</Tag>}
-                      {!plugin.permissions.filesystem.length && !plugin.permissions.network.length && !plugin.permissions.secrets.length && !plugin.permissions.subprocess && <Tag color="green">No elevated permissions</Tag>}
-                    </Space>
-                  </div>
-                )}
                 <Space wrap>
-                  {isInstalled && installedMatch?.updateAvailable ? (
-                    <Button type="primary" icon={<CloudDownloadOutlined />} disabled={Boolean(pluginAction) || !plugin.compatible || interfaceMode !== 'advanced'}
-                      loading={busy} onClick={() => updateRegistryPlugin(installedMatch)}>
-                      Update to v{plugin.version}
-                    </Button>
-                  ) : isInstalled ? (
-                    <Button disabled>Installed (v{installedMatch?.version})</Button>
-                  ) : (
-                    <Button type="primary" icon={<CloudDownloadOutlined />} disabled={Boolean(pluginAction) || !plugin.compatible || interfaceMode !== 'advanced'}
-                      loading={busy} onClick={() => installRegistryPlugin(plugin)}>
-                      Install
-                    </Button>
-                  )}
+                  {managedPlugin.permissions.filesystem.map(value => <Tag key={`fs-${value}`}>Files: {value}</Tag>)}
+                  {managedPlugin.permissions.network.map(value => <Tag color="gold" key={`net-${value}`}>Network: {value}</Tag>)}
+                  {managedPlugin.permissions.secrets.map(value => <Tag color="purple" key={`secret-${value}`}>Secret: {value}</Tag>)}
+                  {managedPlugin.permissions.subprocess ? <Tag color="volcano">Subprocess</Tag> : null}
                 </Space>
+              </div>
+            ) : null}
+            {healthResults[managedPlugin.id] ? (
+              <Alert type={healthResults[managedPlugin.id].ok ? 'success' : 'error'} showIcon
+                message={healthResults[managedPlugin.id].ok ? `Healthy · ${healthResults[managedPlugin.id].durationMs} ms` : 'Health check failed'}
+                description={healthResults[managedPlugin.id].error} />
+            ) : null}
+            <Space wrap>
+              <Space>
+                <Switch checked={managedPlugin.enabled}
+                  disabled={!managedPlugin.compatible || managedPlugin.status === 'broken' || Boolean(pluginAction)}
+                  aria-label={`Enable ${managedPlugin.name ?? managedPlugin.id}`}
+                  onChange={checked => void runExternalAction(managedPlugin, checked ? 'enable' : 'disable')} />
+                <Typography.Text>Enabled</Typography.Text>
               </Space>
-            </section>
-          );
-        })}
-
-      </Space>,
-      }]} />}
-    </Modal>
+              {managedPlugin.updateAvailable ? <Button type="primary" icon={<CloudDownloadOutlined />} onClick={() => void updateRegistryPlugin(managedPlugin)}>Update to v{managedPlugin.availableVersion}</Button> : null}
+              <Button onClick={() => void runExternalAction(managedPlugin, 'health')}>Health check</Button>
+              <Button icon={<RollbackOutlined />} disabled={!managedPlugin.rollbackAvailable} onClick={() => void runExternalAction(managedPlugin, 'rollback')}>Rollback</Button>
+              <Button danger icon={<DeleteOutlined />} onClick={() => removeExternalPlugin(managedPlugin)}>Remove</Button>
+            </Space>
+          </Space>
+        ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Plugin is no longer installed" />}
+      </Modal>
+    </>
   );
 }
