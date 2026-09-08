@@ -8,7 +8,7 @@
 Quizzer is a local-first desktop application and CLI that turns your PDF, Markdown, and text library into evidence-backed quizzes. Import a document once, then create focused tests with citations, custom learning goals, durable progress, and your choice of local models, signed-in coding agents, or API providers.
 
 > [!IMPORTANT]
-> Quizzer is preparing its first public beta (`1.0.0-beta.1`). No signed installer has been published yet. Until one appears on [GitHub Releases](https://github.com/Somethings1/quizzer/releases), build from source and do not rely on the installer commands below. Pushing a version tag validates and builds artifacts; a maintainer must separately approve the release workflow's publish action.
+> Quizzer is preparing its first public beta (`1.0.0-beta.1`). No installer has been published yet. Until one appears on [GitHub Releases](https://github.com/Somethings1/quizzer/releases), build from source and do not rely on the commands below. Beta downloads use a Quizzer-signed manifest and verified checksums, but currently have no paid Apple notarization or Windows publisher certificate; the installer reports that limitation explicitly.
 
 The current beta foundation includes a resumable first-run walkthrough, reversible Simple and Advanced modes, hardware-aware Lite/Balanced/Max profiles, per-test learning instructions, source-span provenance, and crash-safe indexing and generation. Existing libraries are preserved during upgrade and are not forced through first-run setup.
 
@@ -17,6 +17,7 @@ The current beta foundation includes a resumable first-run walkthrough, reversib
 - [Install](#install)
 - [Supported systems](#supported-systems)
 - [What Quizzer does](#what-quizzer-does)
+- [Retrieval and question quality](#retrieval-and-question-quality)
 - [Build from source](#build-from-source)
 - [Provider setup](#provider-setup)
 - [Creating a quiz](#creating-a-quiz)
@@ -39,7 +40,7 @@ On Windows, run this in PowerShell:
 irm https://github.com/Somethings1/quizzer/releases/latest/download/install.ps1 | iex
 ```
 
-The scripts do not require Node.js, Python, or Git. They select the correct x64 or arm64 build, verify the Ed25519-signed release manifest and SHA-256 checksum, require the pinned Apple Team ID or Windows certificate fingerprint before running a downloaded verifier, install `quizzer` on the user PATH, register the desktop application, and launch onboarding.
+The scripts do not require Node.js, Python, or Git. They select the correct x64 or arm64 build, verify the Ed25519-signed release manifest and SHA-256 checksums, install `quizzer` on the user PATH, register the desktop application, and launch onboarding. Until native signing is enabled, macOS and Windows may show an unidentified-developer or unknown-publisher warning.
 
 These scripts are the only supported distribution entrypoints. Quizzer is not published through npm, Homebrew, WinGet, or another package-manager repository. Native packages in a release bundle exist for installation and signed updates; users do not need a package manager.
 
@@ -52,19 +53,6 @@ These scripts are the only supported distribution entrypoints. Quizzer is not pu
 | Linux | x64, arm64 | Current 64-bit Ubuntu/Debian and Fedora-class distributions |
 
 Quizzer does not support 32-bit or obsolete operating systems. Lite is the CPU-only baseline. Local generation in Balanced or Max depends on the selected model's RAM, storage, and acceleration requirements; remote and signed-in agent providers remain available on lower-spec hardware.
-
-### Signed desktop updates and verified staging
-
-Quizzer includes an in-app signed update workflow designed for safety and defense-in-depth:
-
-- **Stable and Beta channels:** Configure update channel preferences directly in Settings; channel preferences persist atomically in `userData`. Stable tracks general releases (`releases/latest`); Beta discovers actual prereleases through the canonical GitHub Releases API with strict tag syntax validation.
-- **Canonical GitHub Releases metadata:** Update checks fetch metadata strictly over HTTPS from canonical Quizzer release locations (`https://github.com/Somethings1/quizzer/releases/...` and `https://api.github.com/repos/Somethings1/quizzer/releases`). Renderer IPC never accepts repository or manifest URLs.
-- **Ed25519 signature verification:** Release manifests must be signed with an Ed25519 key matching an explicitly configured or embedded release key ID. The signature is checked against canonicalized JSON and the schema is validated before any artifact URL is trusted.
-- **Hardened artifacts and bounded sizes:** Artifact filenames are strictly validated against directory traversal, path separators, control characters, and length limits. Package downloads are bounded to a 1 GiB defensible desktop maximum, and metadata responses are bounded to 1 MiB.
-- **Scoped staging and integrity verification:** Updates stream into private staging (`userData/updates/staging`, mode `0700`). The updater continuously verifies that received bytes match the declared size and SHA-256 digest before promoting the artifact. Absolute staging paths are never exposed to renderer IPC.
-- **Untrusted local staging and re-verification:** `staged-update.json` stores the complete signed manifest. During apply, the Ed25519 signature and schema are reverified from scratch, the exact host artifact is reselected, and its safe path is derived inside staging and rehashed without trusting any stored path or hash.
-- **Verified platform installer handoff:** After re-verification, packaged builds may open only an allowlisted host installer: macOS `.pkg`/`.dmg`, Windows `.exe`/`.msi`, or Linux `.deb`/`.rpm`/`.AppImage`. Commands and arguments are fixed, `shell` execution is disabled, and unsupported archive formats remain staged for manual installation. A failed handoff preserves the verified package for retry or discard; Quizzer quits only when a real handoff succeeds and the caller explicitly requests it.
-- **Durable rollback candidates:** Before launching a supported installer, Quizzer retains a separate copy of that verified signed package and manifest for a later rollback handoff. Rollback rechecks the manifest signature, target artifact, scoped path, size, and SHA-256 digest after restart. A failed installer launch may therefore leave a harmless cached target candidate. Discarding a newer staged update never removes the retained candidate; rollback is reported unavailable until a prior signed installer has been retained, and the first update therefore cannot roll back without a cached prior package.
 
 ## Screenshots
 
@@ -113,6 +101,53 @@ PDF / Markdown / text
 
 The React application never starts shell commands directly. It calls a loopback-only Node service, which invokes provider adapters, owns the SQLite library, and keeps API credentials outside browser bundles. The desktop process waits for that service before opening and restarts it with capped backoff after an unexpected exit. Each browser retains an IndexedDB cache so work remains usable during a short outage and synchronizes when the server returns.
 
+## Retrieval and question quality
+
+Quizzer does not ask a model to improvise a quiz from an entire file. It builds a retrieval plan for every coverage slot, supplies bounded evidence, validates the response, and saves only questions that pass.
+
+```text
+scope documents and tags
+        ↓
+FTS5/BM25 sparse search ──┐
+                         ├─ reciprocal-rank fusion → rerank → MMR diversity
+LanceDB dense search ─────┘                         ↓
+                                      parent + neighboring context
+                                                    ↓
+                                  evidence-bounded question generation
+                                                    ↓
+                              schema · grounding · instruction · duplicate gates
+```
+
+- **Hybrid retrieval:** Lite always uses SQLite FTS5/BM25. Balanced and Max can add model-versioned LanceDB embeddings, metadata filtering, reciprocal-rank fusion, cross-encoder or plugin reranking, and maximal-marginal-relevance selection.
+- **Structural context:** Documents are chunked around pages, headings, code blocks, tables, lists, and image anchors. Selected child spans can expand to their parent section and immediate neighbors without losing the stable source-span ID used for citations.
+- **Coverage before generation:** The requested question mix becomes durable, unique coverage slots. Retrieval is performed for those slots, and a rejected candidate refills only its unfinished slot instead of regenerating accepted work.
+- **Grounded questions:** Quizzer checks the question, correct answer, and explanation against retrieved evidence. It rejects ungrounded output, out-of-scope output, malformed schemas, and questions that do not follow a focused learning instruction.
+- **Evidence-preserving citations:** Every accepted question records its documents, source spans, provider/model, and coverage slot. Practice feedback and Ask AI use the same scoped evidence rather than searching the whole library.
+- **Honest refusal:** One corrective retrieval pass is allowed when evidence confidence is low. If evidence remains insufficient, Quizzer refuses instead of manufacturing an answer.
+
+### How duplicate questions are eliminated
+
+Duplicate prevention runs across every already accepted question, including questions produced in earlier provider calls or before a paused job resumed:
+
+1. Statements are Unicode-normalized, lowercased, stripped of punctuation, and whitespace-collapsed; exact normalized matches are rejected.
+2. Token-set similarity rejects lexical paraphrases at a Jaccard score of `0.82` or higher.
+3. When embeddings are enabled, cosine similarity of `0.90` or higher rejects semantic paraphrases even when they use different wording.
+4. Each accepted question must occupy a unique coverage slot. Rejected duplicates are checkpointed with their reason, and generation requests only a replacement for the missing slot.
+
+The semantic layer is optional: Lite still gets exact and lexical protection, while Balanced and Max add embedding-based filtering. This keeps the baseline local and lightweight without silently disabling duplicate checks.
+
+### Measured regression gates
+
+The repository includes deterministic English and Vietnamese RAG corpora. These are engineering regression gates—not claims about every real-world document—and CI refuses changes that fall below:
+
+| Metric | Required | Current fixture result |
+| --- | ---: | ---: |
+| Recall@10 | ≥ 90% | 100% |
+| Citation precision | ≥ 95% | 100% |
+| Refusal accuracy | ≥ 90% | 100% |
+
+Run `npm run eval:rag` to reproduce the evaluation locally. The generation suite separately checks schema validity, grounding, instruction adherence, coverage uniqueness, provider failover, and duplicate rejection without making paid API calls.
+
 ### Bounded query planning
 
 Retrieval planning is disabled in Lite, uses deterministic English/Vietnamese multi-query decomposition in Balanced, and enables local HyDE in Max. Lite keeps dense embeddings off, Balanced uses the lightweight `all-minilm` baseline, and Max selects the stronger multilingual [`bge-m3`](https://ollama.com/library/bge-m3) baseline. Every query and hypothetical passage is normalized and length-bounded, and the number of variants is capped before sparse or dense work begins. The service and CLI run HyDE only through the configured `retrieval.hydeModel` on the loopback Ollama endpoint; Quizzer never downloads the model automatically or selects a remote or paid generation provider for retrieval planning. If an installed local model is absent, empty, slow, or fails, retrieval records the fallback and safely continues with sparse or deterministic multi-query search. Configure the components through Advanced settings, environment variables, JSONC, or `quizzer config set`.
@@ -121,7 +156,7 @@ All variant rankings are fused by stable source-span ID before reranking and max
 
 ## Build from source
 
-Building from source is the supported path until the first signed beta is available.
+Building from source is the supported path until the first beta is available.
 
 ### Requirements
 
@@ -161,7 +196,7 @@ npm run cli -- backup create
 
 Run `npm run cli -- help` for the complete command list. Document indexing creates the same durable, per-document checkpoints used by the desktop service; `quizzer jobs list` shows both indexing and generation work, and `quizzer resume JOB_ID` finishes only an interrupted job's remaining documents. Add `--provider` and optional `--model` to select a replacement generation route without changing its saved question plan, learning instruction, prompts, or RAG settings. Usage-based API routes require `--approve-paid` for both creation and resumption, making the possible charge and provider data handling an explicit CLI action. Reusing an indexing idempotency key safely returns the original job, while `--force` explicitly rebuilds unchanged documents. Configuration is resolved in this order: per-job override, CLI/environment override, user JSONC, hardware profile, then built-in defaults. `quizzer config path` prints the per-user configuration location. API keys and the private service token are never included in settings output or backups.
 
-Release builders use Node.js 26 or newer for `npm run build:cli`. The resulting signed single executable embeds the CLI, local service resources, and the platform-native SQLite addon; end users do not install Node.js.
+Release builders use Node.js 26 or newer for `npm run build:cli`. The resulting single executable embeds the CLI, local service resources, and the platform-native SQLite addon; end users do not install Node.js.
 
 External plugins use the versioned [`quizzer.plugin.json`](plugin-sdk/quizzer.plugin.schema.json) contract. Quizzer verifies every declared file hash and any Ed25519 signature before an atomic install, then runs plugin JSON-RPC out of process with a scoped temporary directory, bounded output, timeout/cancellation, a minimal environment, and only explicitly granted secrets. Runtime health checks report duration and sampled peak working memory in the UI, CLI JSON, and local API; cancellation escalates to forced termination if a plugin ignores the graceful signal. Signed plugins require a trusted registry key. Unsigned local plugins stay blocked unless you deliberately enable Advanced Developer Mode:
 
@@ -362,7 +397,7 @@ Do not upload confidential material unless the selected provider and your accoun
 | `npm run package:desktop` | Build an unpacked desktop application for the current platform |
 | `npm run make:desktop` | Build the current platform's configured installer/archive |
 | `npm run verify:desktop-fuses` | Verify every configured fuse in the current packaged desktop executable |
-| `npm run build:cli` | Build the signed standalone CLI with Node.js 26+ |
+| `npm run build:cli` | Build the standalone CLI with Node.js 26+ |
 | `npm run lint` | Run ESLint |
 | `npm test` | Run unit and service integration tests |
 | `npm run test:e2e` | Run the isolated Chromium onboarding and mocked-generation workflow |
@@ -370,23 +405,11 @@ Do not upload confidential material unless the selected provider and your accoun
 | `npm run test:coverage` | Enforce 90% line and 80% branch coverage across core service modules |
 | `npm run eval:rag` | Run the offline English/Vietnamese retrieval quality gate |
 | `npm run license:check` | Verify application and landing dependency licenses against the release policy |
-| `npm run release:manifest` | Sign the canonical Ed25519 release manifest from merged artifacts |
-| `npm run release:installers` | Prepare verified release metadata and pinned installer scripts |
 | `npm run preview` | Preview the browser bundle; start the service separately for generation |
 
 The application E2E harness creates and removes a fresh temporary service database for every run; it never opens the development library. Run `cd landing && npm run test:e2e` for the separate Chromium landing-page gate. It verifies platform-specific installers, clipboard actions, signed-manifest trust and fallback, the client-only demo, mobile overflow, keyboard controls, and social metadata. CI installs both isolated browser runtimes automatically.
 
 Source development uses loopback port 8787 so Vite can proxy API requests. The packaged desktop app asks the operating system for an unused ephemeral loopback port, waits for an authenticated utility-process ready message, and only then opens the renderer; set `QUIZZER_DESKTOP_SERVICE_PORT` only for a managed desktop deployment that requires a fixed port.
-
-Release packages keep application code in an ASAR archive and lock Electron's production fuses. Run-as-Node, `NODE_OPTIONS`, command-line inspection, alternate V8 snapshots, and elevated `file:` protocol behavior are disabled; embedded ASAR integrity validation, ASAR-only loading, cookie encryption, and WebAssembly trap handlers are enabled. Packaging requires an explicit value for every fuse known to the build library, applies the policy before code signing, and verifies the emitted executable in the release matrix. After packaging, CI independently verifies the CLI, desktop executable, and installer signatures against the pinned Apple Team ID or Windows certificate hash before artifacts can enter the signed manifest. Releases include separate CycloneDX SBOMs for the application and landing site.
-
-### Linux Distributables and Verification Limits
-
-Quizzer packages Linux desktop distributables for Debian/Ubuntu (`.deb`), Red Hat/Fedora (`.rpm`), standalone portable archives (`.zip`), and standalone type 2 AppImage bundles (`.AppImage` via `@reforged/maker-appimage`) across both `x64` and `arm64` architectures.
-
-- **Immutable AppImage runtime & supply-chain security:** Rather than relying on MakerAppImage's default unverified, mutable `continuous` download, Quizzer pins immutable upstream AppImage `type2-runtime` release `20251108` assets (`runtime-x86_64` and `runtime-aarch64`). The reusable runtime preparer (`release/appimage-runtime.mjs`) disables automatic redirects, manually permits at most a single HTTPS redirect only from the exact pinned GitHub release URL to a credential-free `release-assets.githubusercontent.com` host (rejecting redirect chains, insecure schemes, and arbitrary destinations), enforces exact byte sizes (944,632 on x64, 936,456 on arm64), and validates official SHA-256 digests before atomically caching with collision-resistant temporary files and full-write sync semantics. Cached files are always re-verified before reuse, and `forge.config.mjs` explicitly passes the validated runtime path so MakerAppImage can never fall back to `continuous`.
-- **Local verification limits:** Building Linux AppImage packages requires a Linux environment with `squashfs-tools` (specifically `mksquashfs`) installed. On non-Linux hosts (such as macOS or Windows development machines), `npm run make:desktop` builds only host-native distributables (`.dmg`/`.pkg` on macOS, Squirrel `.exe` on Windows). Linux maker configuration, platform gating, artifact normalization, updater selection/handoff logic, and runtime preparer bounds (including one-hop redirects, host rejection, redirect chains, tampering, oversize, and truncation) are verified on all platforms through automated tests (`test/forge-makers.test.mjs`, `test/appimage-runtime.test.mjs`, `test/release-artifacts.test.mjs`, `test/release-workflow.test.mjs`, and `test/desktop-updater-*.test.mjs`).
-- **CI verification limits:** In CI, native Linux runners (`ubuntu-24.04` for x64 and `ubuntu-24.04-arm` for arm64) install `squashfs-tools`, invoke `node scripts/prepare-appimage-runtime.mjs --arch <arch>` using the shared verifier, build the AppImage packages, and validate that exactly one AppImage artifact is produced per architecture. The workflow checks executable mode, confirms the ELF header (`\x7fELF`), and verifies type 2 AppImage magic bytes (`AI\x02` at offset 8) before artifact normalization, provenance attestation, and manifest signing. End-to-end graphical execution of the AppImage is not performed in CI due to headless runner and unprivileged FUSE environment constraints.
 
 ## Troubleshooting
 
@@ -430,6 +453,7 @@ The generation pipeline reached its bounded retry limit after rejecting malforme
 - [Plugin SDK](plugin-sdk/README.md) — manifest format, capabilities, permissions, lifecycle, and JSON-RPC runtime.
 - [Signed plugin registry](docs/plugin-registry.md) — registry trust model, installation, updates, and rollback.
 - [Release manifest schema](release/release-manifest.schema.json) — canonical signed artifact metadata consumed by installers, updates, and the landing page.
+- [Maintainer release guide](RELEASING.md) — build matrix, signing configuration, validation, and publication procedure.
 
 ## Development notes
 
@@ -438,15 +462,6 @@ The generation pipeline reached its bounded retry limit after rejecting malforme
 - New quiz fields require both TypeScript types and runtime validation.
 - Database schema changes require a new Dexie version and a migration strategy.
 - Duplicate thresholds should be evaluated against representative quiz sets before changing defaults.
-
-## Remaining 1.0 release gates
-
-- Exercise signed install, update, and rollback artifacts on clean Windows, macOS, Ubuntu, and Fedora machines.
-- Complete large-library, full-disk, network-loss, missing-model, and plugin-crash stress runs against release builds.
-- Finish independent security and WCAG reviews, then address their findings.
-- Supply production signing/notarization identities and trusted release keys, publish the beta, and complete two successful update/rollback cycles before stable promotion.
-
-Maintainers can follow the fail-closed publication procedure in [RELEASING.md](RELEASING.md). A tag alone never publishes a GitHub Release.
 
 ## Contributing and support
 
