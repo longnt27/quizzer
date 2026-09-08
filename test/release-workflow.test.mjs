@@ -18,7 +18,8 @@ test('release validates packages and gates optional native signing explicitly', 
   ordered(workflow, 'Install Linux packaging tools', 'Cache verified AppImage runtime');
   ordered(workflow, 'Cache verified AppImage runtime', 'Build desktop distributables');
   ordered(workflow, 'Build standalone CLI', 'Use supported Node.js for Electron packaging');
-  ordered(workflow, 'Use supported Node.js for Electron packaging', 'Build desktop distributables');
+  ordered(workflow, 'Use supported Node.js for Electron packaging', 'Rebuild macOS packaging helpers for Node.js 22');
+  ordered(workflow, 'Rebuild macOS packaging helpers for Node.js 22', 'Build desktop distributables');
   ordered(workflow, 'Build desktop distributables', 'Verify Apple signatures and notarization');
   ordered(workflow, 'Build desktop distributables', 'Notarize macOS distributables');
   ordered(workflow, 'Notarize macOS distributables', 'Verify Apple signatures and notarization');
@@ -30,6 +31,7 @@ test('release validates packages and gates optional native signing explicitly', 
   assert.match(workflow, /sudo apt-get install --yes fakeroot rpm squashfs-tools/);
   assert.match(workflow, /node scripts\/prepare-appimage-runtime\.mjs --arch "\$\{\{\s*matrix\.architecture\s*\}\}"/);
   assert.match(workflow, /name: Use supported Node\.js for Electron packaging\n\s+uses: actions\/setup-node@v4\n\s+with:\n\s+node-version: 22/);
+  assert.match(workflow, /name: Rebuild macOS packaging helpers for Node\.js 22\n\s+if: matrix\.platform == 'macos'\n\s+run: npm rebuild macos-alias fs-xattr/);
   assert.match(workflow, /APPIMAGE_PATH="\$\(require_single_artifact '\*\.appimage'\)"/);
   assert.match(workflow, /AI_MAGIC="\$\(dd if="\$APPIMAGE_PATH" bs=1 skip=8 count=3 2>\/dev\/null\)"/);
   assert.match(workflow, /codesign --verify --strict --verbose=2 out\/cli\/quizzer/);

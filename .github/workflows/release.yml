@@ -234,6 +234,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Rebuild macOS packaging helpers for Node.js 22
+        if: matrix.platform == 'macos'
+        run: npm rebuild macos-alias fs-xattr
       - name: Build desktop distributables
         run: npm run make:desktop
       - name: Notarize macOS distributables
