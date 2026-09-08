@@ -62,8 +62,12 @@ test('renders installers with the signing key and exact verifiable release metad
     assert.match(powershell, /releases\/download\/v1\.0\.0-beta\.1/);
     assert.match(shell, /expected_apple_team_id='ABCDE12345'/);
     assert.match(shell, /TeamIdentifier/);
+    assert.match(shell, /curl .*--progress-bar/);
+    assert.match(shell, /Downloading %s/);
     assert.match(powershell, /ExpectedCertificateSha256 = 'ABAB/);
     assert.match(powershell, /SignerCertificate\.RawData/);
+    assert.match(powershell, /\$ProgressPreference = 'Continue'/);
+    assert.match(powershell, /Write-Progress -Activity 'Downloading Quizzer'/);
     assert.ok(shell.indexOf('cli_team_id=') < shell.indexOf('"$cli_download" release verify'));
     assert.ok(powershell.indexOf('Assert-Authenticode $CliDownload') < powershell.indexOf('& $CliDownload release verify'));
     assert.equal((await stat(result.shell)).mode & 0o777, 0o755);
