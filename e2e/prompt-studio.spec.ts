@@ -10,6 +10,16 @@ test('Prompt Studio clone/edit/validate plus import/export', async ({ page }) =>
 
   const studio = page.locator('.ant-modal-content').filter({ hasText: 'Prompt Studio' });
   await expect(studio.getByText('Prompt Studio', { exact: true })).toBeVisible();
+  await expect(studio.getByText('The built-in profile is read-only')).toBeHidden();
+  await expect(studio.getByText('Security boundaries stay outside editable templates')).toBeHidden();
+
+  const questionTypePlaceholder = studio.getByLabel(/questionType placeholder/);
+  await questionTypePlaceholder.click();
+  await expect(page.getByText('The requested output type: multiple-choice, fill-blank, reasoning, or coding.')).toBeVisible();
+  await expect(studio.getByRole('button', { name: 'Import JSON' }).locator('.anticon-download')).toBeVisible();
+  await expect(studio.getByRole('button', { name: 'Export' }).locator('.anticon-upload')).toBeVisible();
+  await expect(studio.locator('.prompt-preview')).toContainText('OUTPUT SCHEMA FOR MULTIPLE-CHOICE QUESTIONS');
+  await expect(studio.locator('.prompt-preview')).toContainText('"correct"');
 
   await expect(page.getByRole('button', { name: 'Save new version' })).toBeHidden();
   await page.getByRole('button', { name: 'Clone selected' }).click();
