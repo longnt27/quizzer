@@ -313,7 +313,7 @@ app.whenReady().then(async () => {
   credentialVault = new CredentialVault(join(app.getPath('userData'), 'credentials.json'), safeStorage);
   desktopUpdater = new DesktopUpdater({
     userDataDir: app.getPath('userData'),
-    currentVersion: app.getVersion() || '1.0.0-beta.3',
+    currentVersion: app.getVersion() || '1.0.0-beta.4',
     isPackaged: app.isPackaged,
     fetch: net.fetch,
     trustedKeys: RELEASE_TRUSTED_KEYS,
