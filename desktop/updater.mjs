@@ -469,7 +469,7 @@ export const defaultLauncher = async (filePath, format, platform) => {
 export class DesktopUpdater {
   constructor(options = {}) {
     this.userDataDir = options.userDataDir || '';
-    this.currentVersion = options.currentVersion || '1.0.0-beta.4';
+    this.currentVersion = options.currentVersion || '1.0.0-beta.5';
     this.platform = detectPlatform(options.platform || process.platform);
     this.architecture = detectArch(options.architecture || process.arch);
     this.repository = CANONICAL_REPOSITORY;
