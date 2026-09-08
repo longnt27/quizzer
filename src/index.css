@@ -72,6 +72,7 @@ button, input, textarea, select { font: inherit; }
 .settings-control-single { grid-template-columns: 1fr; justify-items: end; }
 .settings-control > .ant-switch { justify-self: end; }
 .settings-control > .ant-input-number, .settings-control > .ant-select { width: 100%; }
+.settings-shortcut-actions { justify-content: flex-end; }
 .command-palette-list { max-height: min(58vh, 520px); margin-top: 10px; overflow-y: auto; }
 .command-palette-list .ant-list-item { padding: 0; border-block-end: 0; }
 .command-palette-command { width: 100%; min-height: 62px; padding: 10px 12px; display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 10px; align-items: center; border: 0; border-radius: 8px; color: var(--text); background: transparent; text-align: left; cursor: pointer; }
@@ -283,6 +284,7 @@ mark { color: #111827; }
   .home-page { padding: 20px 14px 36px; }
   .home-heading, .home-card-heading { align-items: stretch; flex-direction: column; gap: 10px; }
   .settings-row { grid-template-columns: 1fr; gap: 12px; }
+  .settings-shortcut-actions { justify-content: flex-start; }
   .prompt-studio-layout { min-height: auto; grid-template-columns: 1fr; }
   .prompt-profile-sidebar { max-height: 260px; border-right: 0; border-bottom: 1px solid var(--border); padding: 0 0 14px; }
   .prompt-studio-heading { align-items: stretch; flex-direction: column; }

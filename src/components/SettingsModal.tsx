@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Alert, Button, Divider, Input, InputNumber, Modal, Radio, Select, Space, Spin, Switch, Tabs, Tag, Typography } from 'antd';
 import { ReloadOutlined, SearchOutlined, SettingOutlined, UndoOutlined } from '@ant-design/icons';
 import type { StoredAppProfile } from '../db/db';
@@ -9,6 +9,15 @@ import { getProviderSettings, PROVIDERS, setProviderSettings } from '../utils/pr
 import { getMessageApi } from '../utils/messageProvider';
 import { getModalApi } from '../utils/modalProvider';
 import { serviceJson, serviceRequest } from '../utils/serviceApi';
+import {
+  DEFAULT_KEYBOARD_SHORTCUTS,
+  SHORTCUT_ACTIONS,
+  changeKeyboardShortcut,
+  formatKeyboardShortcut,
+  shortcutFromKeyboardEvent,
+  type KeyboardShortcuts,
+  type ShortcutActionId,
+} from '../utils/keyboardShortcuts';
 import UpdaterStatusView from './UpdaterStatus';
 
 type SettingValue = string | number | boolean;
@@ -45,13 +54,17 @@ interface Props {
   profile: StoredAppProfile;
   dark: boolean;
   onThemeChange: (dark: boolean) => void;
+  keyboardShortcuts: KeyboardShortcuts;
+  onKeyboardShortcutChange: (actionId: ShortcutActionId, shortcut: string) => void;
+  onOpenCommandPalette: () => void;
   onClose: () => void;
 }
 
-type SettingsTab = 'overall' | 'generation' | 'retrieval' | 'documents' | 'advanced';
+type SettingsTab = 'overall' | 'shortcuts' | 'generation' | 'retrieval' | 'documents' | 'advanced';
 
 const settingsTabs: { key: SettingsTab; label: string; description: string }[] = [
   { key: 'overall', label: 'Overall', description: 'Appearance, interface mode, updates, and hardware profile.' },
+  { key: 'shortcuts', label: 'Shortcuts', description: 'Open the command palette or assign safe keyboard shortcuts to its actions.' },
   { key: 'generation', label: 'Generation', description: 'Question generation defaults and provider resource limits.' },
   { key: 'retrieval', label: 'Retrieval', description: 'Search planning, context, reranking, and embeddings.' },
   { key: 'documents', label: 'Documents', description: 'Document extraction and OCR behavior.' },
@@ -59,6 +72,10 @@ const settingsTabs: { key: SettingsTab; label: string; description: string }[] =
 ];
 
 const overallExtraSearchTerms = ['theme', 'appearance', 'light', 'dark', 'software update', 'update', 'version', 'stable', 'beta'];
+const shortcutExtraSearchTerms = [
+  'keyboard', 'shortcut', 'command palette',
+  ...SHORTCUT_ACTIONS.flatMap(action => [action.label.toLowerCase(), action.description.toLowerCase()]),
+];
 
 const tabForDefinition = (definition: SettingDefinition): SettingsTab => {
   const section = definition.key.split('.')[0];
@@ -92,7 +109,15 @@ const resourceColor: Record<SettingDefinition['resourceEffect'], string | undefi
   high: '#a61d24',
 };
 
-export default function SettingsModal({ profile, dark, onThemeChange, onClose }: Props) {
+export default function SettingsModal({
+  profile,
+  dark,
+  onThemeChange,
+  keyboardShortcuts,
+  onKeyboardShortcutChange,
+  onOpenCommandPalette,
+  onClose,
+}: Props) {
   const [contract, setContract] = useState<SettingsContract>();
   const [resolved, setResolved] = useState<ResolvedSettings>();
   const [draft, setDraft] = useState<SettingsValues>({});
@@ -100,6 +125,7 @@ export default function SettingsModal({ profile, dark, onThemeChange, onClose }:
   const [unsetKeys, setUnsetKeys] = useState<Set<string>>(() => new Set());
   const [query, setQuery] = useState('');
   const [activeTab, setActiveTab] = useState<SettingsTab>('overall');
+  const [recordingShortcut, setRecordingShortcut] = useState<ShortcutActionId>();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -249,7 +275,8 @@ export default function SettingsModal({ profile, dark, onThemeChange, onClose }:
     const normalized = query.trim().toLowerCase();
     if (!normalized) return;
     const matchingTab = settingsTabs.find(tab => definitions.some(definition => tabForDefinition(definition) === tab.key)
-      || (tab.key === 'overall' && overallExtraSearchTerms.some(term => term.includes(normalized) || normalized.includes(term))));
+      || (tab.key === 'overall' && overallExtraSearchTerms.some(term => term.includes(normalized) || normalized.includes(term)))
+      || (tab.key === 'shortcuts' && shortcutExtraSearchTerms.some(term => term.includes(normalized) || normalized.includes(term))));
     if (matchingTab) setActiveTab(matchingTab.key);
   }, [definitions, query]);
 
@@ -356,12 +383,79 @@ export default function SettingsModal({ profile, dark, onThemeChange, onClose }:
     {!showTheme && !showUpdates && !hasOverallDefinitions && <Typography.Text type="secondary">No overall settings match this search.</Typography.Text>}
   </Space>;
 
+  const applyShortcut = (actionId: ShortcutActionId, shortcut: string) => {
+    const changed = changeKeyboardShortcut(keyboardShortcuts, actionId, shortcut);
+    if (!changed.ok) {
+      message.error(changed.error);
+      return;
+    }
+    onKeyboardShortcutChange(actionId, changed.shortcuts[actionId]);
+    setRecordingShortcut(undefined);
+  };
+
+  const captureShortcut = (event: ReactKeyboardEvent<HTMLElement>, actionId: ShortcutActionId) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.key === 'Escape') {
+      setRecordingShortcut(undefined);
+      return;
+    }
+    if (event.key === 'Backspace' || event.key === 'Delete') {
+      applyShortcut(actionId, '');
+      return;
+    }
+    const shortcut = shortcutFromKeyboardEvent(event.nativeEvent);
+    if (!shortcut) {
+      message.warning('Press Ctrl or Command with one supported key. Add Shift or Alt if needed.');
+      return;
+    }
+    applyShortcut(actionId, shortcut);
+  };
+
+  const shortcutActions = SHORTCUT_ACTIONS.filter(action => !overallSearch
+    || [action.label, action.description].some(value => value.toLowerCase().includes(overallSearch))
+    || ['keyboard', 'shortcut'].some(value => value.includes(overallSearch) || overallSearch.includes(value)));
+
+  const shortcutSettings = <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+    <Alert type="info" showIcon message="Keyboard shortcuts use Ctrl on Windows/Linux and Command on macOS."
+      description="Changes are saved immediately. Choose Record, then press a primary modifier and one key. Press Backspace to clear or Escape to cancel. Duplicate and operating-system-reserved shortcuts are rejected." />
+    <Button onClick={onOpenCommandPalette}>Open command palette</Button>
+    {shortcutActions.length ? <section className="settings-section" aria-labelledby="settings-keyboard-shortcuts">
+      <Divider orientation="left" plain><span id="settings-keyboard-shortcuts">Command palette actions</span></Divider>
+      <div className="settings-list">
+        {shortcutActions.map(action => {
+          const shortcut = keyboardShortcuts[action.id];
+          const recording = recordingShortcut === action.id;
+          return <div className="settings-row" key={action.id}>
+            <div className="settings-copy">
+              <Typography.Text strong>{action.label}</Typography.Text>
+              <Typography.Text type="secondary">{action.description}</Typography.Text>
+              <Space size={[4, 4]} wrap>
+                <Tag color={shortcut ? 'blue' : undefined}>{shortcut ? formatKeyboardShortcut(shortcut) : 'Not assigned'}</Tag>
+              </Space>
+            </div>
+            <Space className="settings-shortcut-actions" wrap>
+              <Button type={recording ? 'primary' : 'default'} aria-label={`Record shortcut for ${action.label}`}
+                onClick={() => setRecordingShortcut(action.id)} onBlur={() => setRecordingShortcut(current => current === action.id ? undefined : current)}
+                onKeyDown={recording ? event => captureShortcut(event, action.id) : undefined}>
+                {recording ? 'Press shortcut…' : 'Record'}
+              </Button>
+              <Button aria-label={`Clear shortcut for ${action.label}`} disabled={!shortcut} onClick={() => applyShortcut(action.id, '')}>Clear</Button>
+              <Button aria-label={`Reset shortcut for ${action.label}`} disabled={shortcut === DEFAULT_KEYBOARD_SHORTCUTS[action.id]}
+                onClick={() => applyShortcut(action.id, DEFAULT_KEYBOARD_SHORTCUTS[action.id])}>Reset</Button>
+            </Space>
+          </div>;
+        })}
+      </div>
+    </section> : <Typography.Text type="secondary">No shortcut actions match this search.</Typography.Text>}
+  </Space>;
+
   const tabItems = settingsTabs.map(tab => ({
     key: tab.key,
     label: tab.label,
     children: <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>{tab.description}</Typography.Paragraph>
-      {tab.key === 'overall' ? overall : definitionRows(tab.key)}
+      {tab.key === 'overall' ? overall : tab.key === 'shortcuts' ? shortcutSettings : definitionRows(tab.key)}
     </Space>,
   }));
 
