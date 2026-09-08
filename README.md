@@ -8,7 +8,7 @@
 Quizzer is a local-first desktop application and CLI that turns your PDF, Markdown, and text library into evidence-backed quizzes. Import a document once, then create focused tests with citations, custom learning goals, durable progress, and your choice of local models, signed-in coding agents, or API providers.
 
 > [!IMPORTANT]
-> Quizzer is preparing its first public beta (`1.0.0-beta.1`). No installer has been published yet. Until one appears on [GitHub Releases](https://github.com/Somethings1/quizzer/releases), build from source and do not rely on the commands below. Beta downloads use a Quizzer-signed manifest and verified checksums, but currently have no paid Apple notarization or Windows publisher certificate; the installer reports that limitation explicitly.
+> Quizzer is preparing its first public beta. No installer has been published yet. Until one appears on [GitHub Releases](https://github.com/Somethings1/quizzer/releases), build from source and do not rely on the commands below. Beta downloads use a Quizzer-signed manifest and verified checksums, but currently have no paid Apple notarization or Windows publisher certificate; the installer reports that limitation explicitly.
 
 The current beta foundation includes a resumable first-run walkthrough, reversible Simple and Advanced modes, hardware-aware Lite/Balanced/Max profiles, per-test learning instructions, source-span provenance, and crash-safe indexing and generation. Existing libraries are preserved during upgrade and are not forced through first-run setup.
 

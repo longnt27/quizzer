@@ -49,9 +49,12 @@ test('release validates packages and gates optional native signing explicitly', 
 
 test('release publishes separate application and landing SBOMs', async () => {
   const workflow = await readFile(workflowPath, 'utf8');
+  const verifyJob = workflow.slice(workflow.indexOf('\n  verify:'), workflow.indexOf('\n  landing:'));
+  const landingJob = workflow.slice(workflow.indexOf('\n  landing:'), workflow.indexOf('\n  desktop:'));
 
   assert.match(workflow, /name: Generate CycloneDX SBOM/);
-  assert.match(workflow, /name: Generate landing CycloneDX SBOM\n\s+working-directory: landing\n\s+run: npm sbom --sbom-format cyclonedx > landing-sbom\.cdx\.json/);
+  assert.doesNotMatch(verifyJob, /Generate landing CycloneDX SBOM/);
+  assert.match(landingJob, /name: Generate landing CycloneDX SBOM\n\s+run: npm sbom --sbom-format cyclonedx > landing-sbom\.cdx\.json/);
   assert.match(workflow, /name: landing-metadata\n\s+path: landing\/landing-sbom\.cdx\.json/);
   assert.match(workflow, /landing-metadata\/landing-sbom\.cdx\.json/);
   assert.match(workflow, /release-bundle\/landing-sbom\.cdx\.json/);
