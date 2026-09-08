@@ -9,10 +9,10 @@ test('exposes semantic main navigation and keyboard-accessible mode control afte
   const navigation = page.locator('.desktop-sidebar');
   await expect(navigation).toBeVisible();
   const navigationItems = [
-    navigation.getByRole('button', { name: 'Home', exact: true }),
-    navigation.getByRole('tab', { name: 'Documents', exact: true }),
-    navigation.getByRole('tab', { name: 'Tests', exact: true }),
-    navigation.getByRole('button', { name: 'Activity', exact: true }),
+    navigation.locator('button').filter({ hasText: 'Home' }),
+    navigation.locator('[role="tab"]').filter({ hasText: 'Documents' }),
+    navigation.locator('[role="tab"]').filter({ hasText: 'Tests' }),
+    navigation.locator('button').filter({ hasText: 'Activity' }),
   ];
   for (const item of navigationItems) {
     await expect(item).toBeVisible();

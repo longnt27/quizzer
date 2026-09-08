@@ -210,16 +210,18 @@ test('resumes real onboarding and finishes through durable quiz practice', async
 
   simulateQuota = true;
   await page.getByRole('button', { name: 'Create test' }).last().click();
-  await page.locator('.ant-modal input.ant-input').first().fill('Quota recovery quiz');
-  await page.getByText('coordination', { exact: true }).click();
-  await page.getByText('Balanced learning · 20 questions').click();
-  await page.getByText('Quick review · 10 questions').click();
-  await expect(page.getByRole('button', { name: 'Queue combined test' })).toBeDisabled();
-  await page.getByRole('checkbox', { name: /I approve sending selected excerpts/ }).check();
-  await page.getByRole('button', { name: 'Queue combined test' }).click();
+  const recoveryDialog = page.locator('.ant-modal-content').filter({ hasText: 'Create tests from documents' });
+  await recoveryDialog.getByRole('checkbox', { name: 'Select coordination' }).check();
+  const recoveryQuizLength = recoveryDialog.getByRole('combobox', { name: 'Quiz length' });
+  await recoveryQuizLength.focus();
+  await recoveryQuizLength.press('ArrowDown');
+  await page.locator('.ant-select-dropdown:visible').getByText('Quick · 10 questions').click();
+  await expect(recoveryDialog.getByRole('button', { name: 'Create test' })).toBeDisabled();
+  await recoveryDialog.getByRole('checkbox', { name: 'Allow Quizzer to send these excerpts for this test.' }).check();
+  await recoveryDialog.getByRole('button', { name: 'Create test' }).click();
 
   await page.getByRole('button', { name: /need attention/ }).click();
-  const recoveryJob = page.locator('.generation-job').filter({ hasText: 'Quota recovery quiz' });
+  const recoveryJob = page.locator('.generation-job').filter({ hasText: 'coordination quiz (2)' });
   await expect(recoveryJob.getByText('paused', { exact: true })).toBeVisible({ timeout: 60_000 });
   await expect(recoveryJob.getByText('8/10', { exact: true })).toBeVisible();
   await expect(recoveryJob.getByText('Quota exhausted for this route')).toBeVisible();
