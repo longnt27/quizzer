@@ -50,7 +50,7 @@ download_artifact() {
   artifact_url=$(artifact_field "$artifact_name" url)
   printf '%s' "$artifact_hash" | grep -Eq '^[a-f0-9]{64}$' || fail "release metadata has no valid checksum for $artifact_name"
   case "$artifact_url" in
-    https://github.com/Somethings1/quizzer/releases/download/*/"$artifact_name") ;;
+    https://github.com/longnt27/quizzer/releases/download/*/"$artifact_name") ;;
     *) fail "release metadata contains an untrusted URL for $artifact_name" ;;
   esac
   download "$artifact_url" "$destination"

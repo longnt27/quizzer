@@ -85,7 +85,7 @@ test('verifies canonical release metadata and rejects tampering', async () => {
     artifacts: [{
       name: 'quizzer-cli-1.0.0-beta.1-linux-x64',
       platform: 'linux', architecture: 'x64', format: 'sea', cli: true,
-      url: 'https://github.com/Somethings1/quizzer/releases/download/v1.0.0-beta.1/quizzer-cli-1.0.0-beta.1-linux-x64',
+      url: 'https://github.com/longnt27/quizzer/releases/download/v1.0.0-beta.1/quizzer-cli-1.0.0-beta.1-linux-x64',
       size: 10, sha256: 'a'.repeat(64), minimumOs: 'Current 64-bit Ubuntu or Fedora',
     }],
   };

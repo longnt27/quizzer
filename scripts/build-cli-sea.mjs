@@ -99,7 +99,7 @@ if (process.platform === 'darwin') {
     certificatePassword: process.env.WINDOWS_CERTIFICATE_PASSWORD,
     hashes: ['sha256'],
     description: 'Quizzer',
-    website: 'https://github.com/Somethings1/quizzer',
+    website: 'https://github.com/longnt27/quizzer',
   });
 }
 process.stdout.write(`Built Quizzer CLI ${outputPath}\n`);

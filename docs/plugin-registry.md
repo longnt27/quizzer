@@ -12,7 +12,7 @@ The plugin registry system is built on a strict defense-in-depth model:
    - The signature is verified against explicitly configured trusted keys before any catalog entry, version, or URL is parsed or trusted.
 
 2. **Canonical Download URL Restriction**:
-   - Downloads are strictly restricted to exact, versioned, credential-free HTTPS Quizzer GitHub Release asset URLs (`https://github.com/Somethings1/quizzer/releases/download/<tag>/<asset>`).
+   - Downloads are strictly restricted to exact, versioned, credential-free HTTPS Quizzer GitHub Release asset URLs (`https://github.com/longnt27/quizzer/releases/download/<tag>/<asset>`).
    - Mutable `/latest/` paths, queries, fragments, custom ports, nested asset paths, encoded separators, credentials, and path traversal are rejected immediately.
 
 3. **Bounded GitHub Asset Redirect**:
@@ -69,7 +69,7 @@ Trusted keys and registry URLs are configured via environment variables or setti
   ```
 - `QUIZZER_PLUGIN_TRUSTED_KEYS`: Fallback trusted keys object if `QUIZZER_PLUGIN_REGISTRY_TRUSTED_KEYS` is not set.
 - `QUIZZER_PLUGIN_REGISTRY_URL`: Custom URL for the registry catalog. Defaults to:
-  `https://github.com/Somethings1/quizzer/releases/download/plugins-v1/catalog.json`
+  `https://github.com/longnt27/quizzer/releases/download/plugins-v1/catalog.json`
 
 ---
 

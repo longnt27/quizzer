@@ -87,7 +87,7 @@ test('runs the signed shell-installer release pipeline for all six supported tar
     const bytes = await readFile(join(bundle, artifact.name));
     assert.equal(artifact.size, bytes.byteLength);
     assert.equal(artifact.sha256, createHash('sha256').update(bytes).digest('hex'));
-    assert.equal(artifact.url, `https://github.com/Somethings1/quizzer/releases/download/v${version}/${artifact.name}`);
+    assert.equal(artifact.url, `https://github.com/longnt27/quizzer/releases/download/v${version}/${artifact.name}`);
   }
 
   const prepared = join(directory, 'prepared');

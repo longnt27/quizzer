@@ -25,7 +25,7 @@ const createSignedManifest = async ({
       platform: 'macos',
       architecture: 'arm64',
       format: 'zip',
-      url: `https://github.com/Somethings1/quizzer/releases/download/v${version}/quizzer-${version}-macos-arm64.zip`,
+      url: `https://github.com/longnt27/quizzer/releases/download/v${version}/quizzer-${version}-macos-arm64.zip`,
       size: 1024,
       sha256: 'a'.repeat(64),
       minimumOs: 'macOS 13',
@@ -36,16 +36,16 @@ const createSignedManifest = async ({
 };
 
 test('canonical release URLs accept only official GitHub release paths', () => {
-  assert.equal(validateCanonicalReleaseUrl('https://github.com/Somethings1/quizzer/releases/download/v1.0.0/manifest.json'), true);
-  assert.equal(validateCanonicalReleaseUrl('https://github.com/Somethings1/quizzer/releases/latest/download/manifest.json'), true);
-  assert.equal(validateCanonicalReleaseUrl('https://api.github.com/repos/Somethings1/quizzer/releases'), true);
-  assert.equal(validateCanonicalReleaseUrl('https://api.github.com/repos/Somethings1/quizzer/releases/tags/v1.0.0'), true);
+  assert.equal(validateCanonicalReleaseUrl('https://github.com/longnt27/quizzer/releases/download/v1.0.0/manifest.json'), true);
+  assert.equal(validateCanonicalReleaseUrl('https://github.com/longnt27/quizzer/releases/latest/download/manifest.json'), true);
+  assert.equal(validateCanonicalReleaseUrl('https://api.github.com/repos/longnt27/quizzer/releases'), true);
+  assert.equal(validateCanonicalReleaseUrl('https://api.github.com/repos/longnt27/quizzer/releases/tags/v1.0.0'), true);
 
   // Rejections
-  assert.equal(validateCanonicalReleaseUrl('http://github.com/Somethings1/quizzer/releases/latest/download/manifest.json'), false);
-  assert.equal(validateCanonicalReleaseUrl('https://user:pass@github.com/Somethings1/quizzer/releases/latest/manifest.json'), false);
+  assert.equal(validateCanonicalReleaseUrl('http://github.com/longnt27/quizzer/releases/latest/download/manifest.json'), false);
+  assert.equal(validateCanonicalReleaseUrl('https://user:pass@github.com/longnt27/quizzer/releases/latest/manifest.json'), false);
   assert.equal(validateCanonicalReleaseUrl('https://github.com/other-org/quizzer/releases/download/v1.0.0/manifest.json'), false);
-  assert.equal(validateCanonicalReleaseUrl('https://evil.com/Somethings1/quizzer/releases/latest/download/manifest.json'), false);
+  assert.equal(validateCanonicalReleaseUrl('https://evil.com/longnt27/quizzer/releases/latest/download/manifest.json'), false);
   assert.equal(validateCanonicalReleaseUrl('not-a-url'), false);
 });
 
@@ -125,7 +125,7 @@ test('manifest verification enforces schema validation before trusting URLs', as
       platform: 'macos',
       architecture: 'arm64',
       format: 'zip',
-      url: 'https://evil.com/Somethings1/quizzer/releases/download/v1.1.0/quizzer.zip',
+      url: 'https://evil.com/longnt27/quizzer/releases/download/v1.1.0/quizzer.zip',
       size: 1024,
       sha256: 'a'.repeat(64),
       minimumOs: 'macOS 13',
@@ -172,7 +172,7 @@ test('channel filtering respects stable and beta releases', async () => {
     architecture: 'arm64',
     trustedKeys: { 'quizzer-release-test': keyPair.publicKey },
     fetch: async url => {
-      if (url.includes('/repos/Somethings1/quizzer/releases')) {
+      if (url.includes('/repos/longnt27/quizzer/releases')) {
         return {
           ok: true,
           text: async () => JSON.stringify([
@@ -217,7 +217,7 @@ test('beta channel discovers prereleases through GitHub Releases API and validat
     architecture: 'arm64',
     trustedKeys: { 'quizzer-release-test': keyPair.publicKey },
     fetch: async url => {
-      if (url.includes('/repos/Somethings1/quizzer/releases')) {
+      if (url.includes('/repos/longnt27/quizzer/releases')) {
         apiUrlCalled = true;
         return {
           ok: true,

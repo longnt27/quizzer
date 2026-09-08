@@ -25,7 +25,7 @@ test('renders installers with the signing key and exact verifiable release metad
       channel: 'beta',
       publishedAt: '2026-09-05T00:00:00.000Z',
       publicKeyId: 'quizzer-release-test',
-      releaseUrl: 'https://github.com/Somethings1/quizzer/releases/download/v1.0.0-beta.1',
+      releaseUrl: 'https://github.com/longnt27/quizzer/releases/download/v1.0.0-beta.1',
       artifacts: [{
         path: artifactPath, name: 'quizzer-cli-1.0.0-beta.1-linux-x64',
         platform: 'linux', architecture: 'x64', format: 'sea', cli: true,

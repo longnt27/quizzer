@@ -38,12 +38,12 @@ type ReleaseManifest = {
   artifacts: ReleaseArtifact[];
 };
 
-const manifestUrl = 'https://github.com/Somethings1/quizzer/releases/latest/download/release-manifest.json';
-const releasesUrl = 'https://github.com/Somethings1/quizzer/releases/latest';
+const manifestUrl = 'https://github.com/longnt27/quizzer/releases/latest/download/release-manifest.json';
+const releasesUrl = 'https://github.com/longnt27/quizzer/releases/latest';
 const installers: Record<Platform, string> = {
-  macos: 'curl -fsSL https://github.com/Somethings1/quizzer/releases/latest/download/install.sh | sh',
-  linux: 'curl -fsSL https://github.com/Somethings1/quizzer/releases/latest/download/install.sh | sh',
-  windows: 'irm https://github.com/Somethings1/quizzer/releases/latest/download/install.ps1 | iex',
+  macos: 'curl -fsSL https://github.com/longnt27/quizzer/releases/latest/download/install.sh | sh',
+  linux: 'curl -fsSL https://github.com/longnt27/quizzer/releases/latest/download/install.sh | sh',
+  windows: 'irm https://github.com/longnt27/quizzer/releases/latest/download/install.ps1 | iex',
 };
 const platformLabel: Record<Platform, string> = { windows: 'Windows', macos: 'macOS', linux: 'Linux' };
 const preferredFormats: Record<Platform, ArtifactFormat[]> = {
@@ -89,7 +89,7 @@ function isTrustedArtifactUrl(artifact: ReleaseArtifact) {
     const path = url.pathname.split('/');
     return url.protocol === 'https:' && url.hostname === 'github.com' && url.port === ''
       && url.username === '' && url.password === '' && url.search === '' && url.hash === ''
-      && path.length === 7 && path[1] === 'Somethings1' && path[2] === 'quizzer'
+      && path.length === 7 && path[1] === 'longnt27' && path[2] === 'quizzer'
       && path[3] === 'releases' && path[4] === 'download' && path[5].length > 0
       && decodeURIComponent(path[6]) === artifact.name;
   } catch { return false; }
@@ -219,7 +219,7 @@ export default function Home() {
   return <main>
     <header className="site-header">
       <a href="#top" className="brand" aria-label="Quizzer home"><span className="brand-mark">Q</span><span>Quizzer</span></a>
-      <nav aria-label="Primary navigation"><a href="#workflow">How it works</a><a href="#privacy">Privacy</a><a href="#profiles">Profiles</a><a href="#download">Download</a><a href="https://github.com/Somethings1/quizzer">GitHub</a></nav>
+      <nav aria-label="Primary navigation"><a href="#workflow">How it works</a><a href="#privacy">Privacy</a><a href="#profiles">Profiles</a><a href="#download">Download</a><a href="https://github.com/longnt27/quizzer">GitHub</a></nav>
     </header>
 
     <section id="top" className="hero">
@@ -231,7 +231,7 @@ export default function Home() {
           <a className={cn(buttonVariants({ size: 'lg' }), 'download-button')} href={downloadUrl}>
             <Laptop /> Download for {platformLabel[platform]} <ChevronRight />
           </a>
-          <a className={cn(buttonVariants({ variant: 'outline', size: 'lg' }), 'github-button')} href="https://github.com/Somethings1/quizzer"><CodeXml /> View source</a>
+          <a className={cn(buttonVariants({ variant: 'outline', size: 'lg' }), 'github-button')} href="https://github.com/longnt27/quizzer"><CodeXml /> View source</a>
         </div>
         <div className="installer" aria-label={`${platformLabel[platform]} installation command`}>
           <code>{installers[platform]}</code>
@@ -296,7 +296,7 @@ export default function Home() {
     </section>
 
     <section className="section capabilities-section">
-      <div className="capability-intro"><p className="section-kicker">Built for real learning</p><h2>Control the questions.<br />Trust the evidence.</h2><p>Simple and Advanced modes share the same engine. Change how much you see—not what Quizzer can do.</p><a href="https://github.com/Somethings1/quizzer">Explore the architecture <ArrowRight /></a></div>
+      <div className="capability-intro"><p className="section-kicker">Built for real learning</p><h2>Control the questions.<br />Trust the evidence.</h2><p>Simple and Advanced modes share the same engine. Change how much you see—not what Quizzer can do.</p><a href="https://github.com/longnt27/quizzer">Explore the architecture <ArrowRight /></a></div>
       <div className="capability-list">
         <article><BookOpen /><div><h3>Custom instructions & Prompt Studio</h3><p>Save a learning goal with each test. Clone and version generation, grading, and retrieval templates without weakening source isolation.</p></div></article>
         <article><Network /><div><h3>Hybrid multimodal RAG</h3><p>Combine sparse and dense retrieval, reranking, parent context, page citations, figures, and OCR—with clear refusal when evidence is weak.</p></div></article>
@@ -321,6 +321,6 @@ export default function Home() {
       </div>
     </section>
 
-    <footer><a href="#top" className="brand"><span className="brand-mark">Q</span><span>Quizzer</span></a><p>Local-first, open-source learning.</p><nav><a href="https://github.com/Somethings1/quizzer">Source</a><a href="https://github.com/Somethings1/quizzer/releases">Releases</a><a href="https://github.com/Somethings1/quizzer/blob/main/LICENSE">Apache-2.0</a></nav></footer>
+    <footer><a href="#top" className="brand"><span className="brand-mark">Q</span><span>Quizzer</span></a><p>Local-first, open-source learning.</p><nav><a href="https://github.com/longnt27/quizzer">Source</a><a href="https://github.com/longnt27/quizzer/releases">Releases</a><a href="https://github.com/longnt27/quizzer/blob/main/LICENSE">Apache-2.0</a></nav></footer>
   </main>;
 }
