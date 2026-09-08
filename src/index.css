@@ -109,13 +109,20 @@ button, input, textarea, select { font: inherit; }
 .home-recent-list { display: grid; }
 .home-recent-list .ant-btn { height: auto; min-height: 42px; display: flex; align-items: center; justify-content: space-between; text-align: left; }
 .onboarding-drawer .ant-drawer-body { padding-top: 12px; }
-.onboarding-steps { max-height: 165px; margin-top: 14px; overflow: hidden; }
+.onboarding-steps { margin-top: 2px; }
 .onboarding-steps .ant-steps-item { padding-bottom: 4px !important; }
 .onboarding-steps .ant-steps-item-description { display: none; }
 .onboarding-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .onboarding-choice-grid { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .onboarding-choice-grid .ant-radio-button-wrapper { height: auto; min-height: 116px; padding: 18px; border: 1px solid var(--border) !important; border-radius: 10px !important; white-space: normal; }
 .onboarding-choice-grid .ant-radio-button-wrapper::before { display: none; }
+.onboarding-choice-grid .ant-radio-button-wrapper-checked {
+  border-color: #1677ff !important;
+  background: var(--selected);
+  box-shadow: inset 0 0 0 2px #1677ff !important;
+}
+.onboarding-choice-grid .ant-radio-button-wrapper-checked strong { color: #0958d9; }
+:root[data-theme="dark"] .onboarding-choice-grid .ant-radio-button-wrapper-checked strong { color: #91caff; }
 .onboarding-choice-grid strong, .onboarding-choice-grid span { display: block; }
 .onboarding-choice-grid span { margin-top: 8px; color: var(--text-muted); line-height: 1.45; }
 .onboarding-hero-icon { font-size: 38px; color: #1677ff; }
