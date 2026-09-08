@@ -28,12 +28,13 @@ test('Settings search/reset and keyboard accessibility', async ({ page }) => {
   await expect(dialog.getByRole('tab', { name: 'Generation' })).toHaveAttribute('aria-selected', 'true');
   const concurrency = dialog.getByRole('spinbutton', { name: 'Generation concurrency' });
   await expect(concurrency).toBeVisible();
+  const selectedProfileConcurrency = await concurrency.inputValue();
   await expect(dialog.getByText('Hardware profile', { exact: true })).toBeHidden();
 
   await concurrency.fill('7');
   await expect(dialog.getByRole('button', { name: 'Save changes' })).toBeEnabled();
   await dialog.getByRole('button', { name: 'Reset to selected profile' }).click();
-  await expect(concurrency).toHaveValue('1');
+  await expect(concurrency).toHaveValue(selectedProfileConcurrency);
 
   await dialog.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByText('Settings saved')).toBeVisible();
@@ -41,5 +42,5 @@ test('Settings search/reset and keyboard accessibility', async ({ page }) => {
 
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+,' : 'Control+,');
   await dialog.getByLabel('Search settings').fill('Generation concurrency');
-  await expect(dialog.getByRole('spinbutton', { name: 'Generation concurrency' })).toHaveValue('1');
+  await expect(dialog.getByRole('spinbutton', { name: 'Generation concurrency' })).toHaveValue(selectedProfileConcurrency);
 });
