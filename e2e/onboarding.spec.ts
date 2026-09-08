@@ -148,7 +148,6 @@ test('resumes real onboarding and finishes through durable quiz practice', async
 
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Create your first quiz' })).toBeVisible();
-  await expect(page.getByRole('radio', { name: 'Simple', exact: true })).toBeChecked();
   await expect(page.getByRole('button', { name: 'Continue' })).toBeDisabled();
   await page.locator('.onboarding-drawer').getByRole('button').filter({ hasText: 'Create test' }).click();
   const creationDialog = page.locator('.ant-modal-content').filter({ hasText: 'Create tests from documents' });

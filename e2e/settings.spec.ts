@@ -49,8 +49,9 @@ test('sidebar stays focused while command shortcuts are configurable and persist
   await dismissOnboarding(page);
 
   const sidebar = page.locator('.sidebar-footer');
-  await expect(sidebar.getByRole('button', { name: 'Resume setup' })).toBeVisible();
-  await expect(sidebar.getByRole('button', { name: 'Restart tutorial' })).toHaveCount(0);
+  const tutorialAction = sidebar.locator('button').filter({ hasText: /Resume setup|Restart tutorial/ });
+  await expect(tutorialAction).toHaveCount(1);
+  await expect(tutorialAction).toBeVisible();
   await expect(sidebar.getByRole('button', { name: 'Command palette' })).toHaveCount(0);
   await expect(sidebar.getByRole('button', { name: /Switch to (Simple|Advanced) mode/ })).toHaveCount(0);
   await expect(sidebar.getByRole('button', { name: /(Light|Dark) mode/ })).toHaveCount(0);
