@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Badge, Button, Card, Col, Empty, List, Progress, Radio, Row, Space, Statistic, Tag, Typography } from 'antd';
+import { Alert, Badge, Button, Card, Col, Empty, List, Progress, Row, Space, Statistic, Tag, Typography } from 'antd';
 import { ApiOutlined, DatabaseOutlined, FileAddOutlined, FormOutlined, PlayCircleOutlined, ReloadOutlined, RocketOutlined, SafetyCertificateOutlined, SyncOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type StoredAppProfile } from '../db/db';
-import type { InterfaceMode } from '../types';
-import { CURRENT_WHATS_NEW_VERSION, ONBOARDING_STEPS, setInterfaceMode, updateAppProfile } from '../utils/appProfile';
+import { CURRENT_WHATS_NEW_VERSION, ONBOARDING_STEPS, updateAppProfile } from '../utils/appProfile';
 import { serviceRequest } from '../utils/serviceApi';
 import { useConfiguredProviders } from '../utils/useConfiguredProviders';
 
@@ -83,8 +82,6 @@ export default function HomePage({ profile, onAddDocument, onAddTest, onOpenGene
         <Typography.Title level={2}>Welcome to Quizzer</Typography.Title>
         <Typography.Paragraph type="secondary">Turn your own documents into focused, source-grounded practice.</Typography.Paragraph>
       </div>
-      <Radio.Group data-onboarding-target="mode" aria-label="Interface mode" optionType="button" buttonStyle="solid" value={profile.interfaceMode} onChange={event => void setInterfaceMode(event.target.value as InterfaceMode)}
-        options={[{ label: 'Simple', value: 'simple' }, { label: 'Advanced', value: 'advanced' }]} />
     </div>
 
     {showWhatsNew && <Alert closable type="info" showIcon icon={<RocketOutlined />} message="Quizzer 1.0 setup is here"

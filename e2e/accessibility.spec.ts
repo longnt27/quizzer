@@ -28,17 +28,18 @@ test('primary application surfaces pass automated WCAG 2.2 AA checks', async ({ 
   const themeTransitionOverride = await page.addStyleTag({
     content: '*, *::before, *::after { transition-duration: 0s !important; }',
   });
-  await page.getByRole('button', { name: 'Dark mode' }).click();
-  const lightMode = page.getByRole('button', { name: 'Light mode' });
-  await expect(lightMode).toBeVisible();
+  await page.locator('.sidebar-footer:visible').getByRole('button', { name: 'Settings' }).click();
+  const themeSettings = page.getByRole('dialog', { name: 'Settings' });
+  await themeSettings.getByText('Dark', { exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await expectNoWcagViolations(page);
-  await page.getByRole('button', { name: 'Light mode' }).click();
+  await themeSettings.getByText('Light', { exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await closeDialog(page, 'Settings', 'Cancel');
   await themeTransitionOverride.evaluate(element => element.remove());
 
   await setInterfaceMode(page, 'advanced');
-  await page.getByRole('button', { name: 'Settings' }).click();
+  await page.locator('.sidebar-footer:visible').getByRole('button', { name: 'Settings' }).click();
   await expect(page.locator('.ant-modal-content').filter({ hasText: 'Settings' })).toBeVisible();
   await expectNoWcagViolations(page);
   await closeDialog(page, 'Settings');

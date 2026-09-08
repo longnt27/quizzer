@@ -89,7 +89,7 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await expect(onboarding.locator('.ant-steps-item')).toHaveCount(2);
   await onboarding.getByText('Simple', { exact: true }).click();
   await expect(onboarding.getByRole('radio', { name: /^Simple/ })).toBeChecked();
-  await expect(page.getByRole('button', { name: 'Switch to Advanced mode' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Switch to Advanced mode' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('heading', { name: 'Choose a hardware profile' })).toBeVisible();
   await expect(onboarding.locator('.ant-steps-item')).toHaveCount(3);
@@ -148,7 +148,6 @@ test('resumes real onboarding and finishes through durable quiz practice', async
 
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Create your first quiz' })).toBeVisible();
-  await expect(page.getByRole('radio', { name: 'Simple', exact: true })).toBeChecked();
   await expect(page.getByRole('button', { name: 'Continue' })).toBeDisabled();
   await page.locator('.onboarding-drawer').getByRole('button').filter({ hasText: 'Create test' }).click();
   const creationDialog = page.locator('.ant-modal-content').filter({ hasText: 'Create tests from documents' });

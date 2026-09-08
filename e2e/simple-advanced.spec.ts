@@ -5,13 +5,9 @@ test('immediate reversible Simple/Advanced disclosure with stored data retained'
   await dismissOnboarding(page);
   await setInterfaceMode(page, 'simple');
 
-  const advancedToggle = page.getByRole('button', { name: 'Switch to Advanced mode' });
-  await expect(advancedToggle).toBeVisible();
-  await advancedToggle.click();
-
-  const simpleToggle = page.getByRole('button', { name: 'Switch to Simple mode' });
   const studioButton = page.getByRole('button', { name: 'Prompt Studio' });
-  await expect(simpleToggle).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Switch to Advanced mode' })).toHaveCount(0);
+  await setInterfaceMode(page, 'advanced');
   await expect(studioButton).toBeVisible();
   await expect(page.getByText('System health', { exact: true })).toBeVisible();
 
@@ -23,17 +19,15 @@ test('immediate reversible Simple/Advanced disclosure with stored data retained'
   await page.locator('.ant-modal-content').filter({ hasText: 'Prompt Studio' })
     .getByRole('button', { name: 'Close', exact: true }).last().click();
 
-  await simpleToggle.click();
-  await expect(advancedToggle).toBeVisible();
+  await setInterfaceMode(page, 'simple');
   await expect(studioButton).toBeHidden();
   await expect(page.getByText('System health', { exact: true })).toHaveCount(0);
 
   await page.reload();
   await dismissOnboarding(page, false);
-  await expect(advancedToggle).toBeVisible();
   await expect(studioButton).toBeHidden();
 
-  await advancedToggle.click();
+  await setInterfaceMode(page, 'advanced');
   await studioButton.click();
   await expect(page.getByRole('button', { name: 'Mode-safe profile' }).first()).toBeVisible();
 });
