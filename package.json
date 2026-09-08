@@ -24,6 +24,7 @@
     "test:e2e": "playwright test",
     "test:e2e:cost": "playwright test --config=playwright.cost.config.ts --project=chromium",
     "test:e2e:electron": "node scripts/test-electron-shell.mjs",
+    "screenshots:readme": "playwright test --config=playwright.readme.config.ts",
     "test:coverage": "node scripts/test-coverage.mjs",
     "eval:rag": "node scripts/evaluate-rag.mjs",
     "license:check": "node scripts/check-licenses.mjs",
