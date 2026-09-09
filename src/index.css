@@ -228,10 +228,11 @@ button, input, textarea, select { font: inherit; }
 .test-source-sidebar { height: 100%; min-height: 0; padding: 20px 0 32px 20px; border-left: 1px solid var(--border); background: var(--surface-soft); display: flex; flex-direction: column; overflow: hidden; text-align: left; }
 .test-source-title { margin: 0 4px 16px !important; flex: 0 0 auto; }
 .test-source-list { min-height: 0; display: grid; align-content: start; gap: 4px; overflow-y: auto; }
-.test-source-item { display: grid; min-width: 0; gap: 7px; padding: 10px 4px; }
+.test-source-item { display: block; width: 100%; min-width: 0; padding: 10px 8px; border: 0; border-radius: 8px; color: inherit; background: transparent; text-align: left; }
+.test-source-item:not(.is-unavailable) { cursor: pointer; }
+.test-source-item:not(.is-unavailable):hover, .test-source-item:not(.is-unavailable):focus-visible { background: var(--selected); outline: 2px solid #1677ff; outline-offset: -2px; }
 .test-source-item + .test-source-item { border-top: 1px solid var(--border); }
-.test-source-item > div:first-child { min-width: 0; }
-.test-source-item .ant-btn { width: fit-content; height: auto; padding: 0; }
+.test-source-copy { display: grid; min-width: 0; gap: 7px; }
 .test-source-meta { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; }
 .test-timer-control { display: flex; align-items: center; margin-bottom: 20px; }
 .test-start-button { width: 150px; height: 48px; padding-inline: 36px; border-radius: 24px; font-size: 16px; }
