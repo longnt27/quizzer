@@ -2,6 +2,10 @@ const TRANSIENT_COVERAGE_REPORT_FAILURE = /Could not report code coverage\.[^\n]
 const SUCCESSFUL_TEST_SUMMARY = /# fail 0(?:\r?\n|$)/;
 export const MAX_COVERAGE_ATTEMPTS = 3;
 
+export const coverageArgumentsForAttempt = (args, attempt) => attempt === 1
+  ? args
+  : ['--test-concurrency=1', ...args];
+
 export const isRetryableCoverageFailure = ({ attempt, signal, output, maxAttempts = MAX_COVERAGE_ATTEMPTS }) => (
   attempt < maxAttempts
   && !signal

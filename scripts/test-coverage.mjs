@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { readdir } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import { isRetryableCoverageFailure, MAX_COVERAGE_ATTEMPTS } from './coverage-retry.mjs';
+import { coverageArgumentsForAttempt, isRetryableCoverageFailure, MAX_COVERAGE_ATTEMPTS } from './coverage-retry.mjs';
 
 const testFiles = (await readdir('test'))
   .filter(name => name.endsWith('.test.mjs'))
@@ -53,7 +53,10 @@ const runTestsOnce = (args, label) => new Promise((resolve, reject) => {
 
 const runTests = async (args, label) => {
   for (let attempt = 1; attempt <= MAX_COVERAGE_ATTEMPTS; attempt += 1) {
-    const result = await runTestsOnce(args, label);
+    // Node's experimental collector can occasionally read a partial report
+    // while many isolated test processes finish together. Keep the normal
+    // fast path parallel, then serialize a retry to avoid repeating the race.
+    const result = await runTestsOnce(coverageArgumentsForAttempt(args, attempt), label);
     if (!result.signal && result.code === 0) return result.output;
 
     const retryable = isRetryableCoverageFailure({ attempt, signal: result.signal, output: result.output });
