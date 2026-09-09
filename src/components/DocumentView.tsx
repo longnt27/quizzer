@@ -210,7 +210,7 @@ export default function DocumentView({ documentId }: Props) {
         message={indexStatus.dense.status === 'ready'
           ? `Dense retrieval ready · ${indexStatus.dense.embeddingModel}`
           : indexStatus.dense.status === 'unavailable' ? 'Dense retrieval is unavailable; sparse search remains ready' : 'Dense retrieval will be built during indexing'}
-        description={indexStatus.dense.issue?.message} />}
+        description={indexStatus.dense.status === 'unavailable' ? 'Quizzer will continue using keyword search for this document.' : undefined} />}
       <Card size="small" title="Tags" style={{ marginBottom: 20 }}>
         <Space.Compact style={{ width: '100%' }}>
           <Input value={tagText} onChange={event => setTagText(event.target.value)} placeholder="lecture, networking, exam-1" />

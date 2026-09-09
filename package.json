@@ -42,6 +42,7 @@
     "@google/generative-ai": "^0.24.1",
     "@lancedb/lancedb": "^0.22.3",
     "@uiw/react-codemirror": "^4.23.13",
+    "apache-arrow": "^18.1.0",
     "antd": "^5.26.2",
     "better-sqlite3": "^12.11.1",
     "dexie": "^4.0.11",
