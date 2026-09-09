@@ -236,8 +236,8 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
             await db.testDrafts.put(savedDraft);
             await queueServerChange('testDrafts', test.id, false);
             await syncNow();
-            if (serverSyncStatus.getSnapshot().status === 'synced') message.success('Practice paused and saved on the server');
-            else message.warning('Practice paused locally. Keep this machine online until it syncs before continuing elsewhere.');
+            if (serverSyncStatus.getSnapshot().status === 'synced') message.success('Practice paused and saved locally');
+            else message.warning('Practice paused locally. Quizzer will finish syncing when its local service is available.');
             onPause(savedDraft);
         } catch (error) {
             finishedRef.current = false;
