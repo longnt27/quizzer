@@ -128,35 +128,39 @@ const hasBalancedChoiceLengths = (answers: Record<string, unknown>[]) => {
   return larger <= Math.max(32, smaller * 1.9) || larger - smaller <= 24;
 };
 
-export function validateQuestion(value: unknown, expectedType?: QuestionType, multipleChoiceMode: GenerationOptions['multipleChoiceMode'] = 'mixed'): value is QuizQuestion {
-  if (!value || typeof value !== 'object') return false;
+export function validateQuestion(value: unknown, expectedType?: QuestionType, multipleChoiceMode: GenerationOptions['multipleChoiceMode'] = 'mixed'): { valid: boolean; question?: QuizQuestion; reason?: string } {
+  if (!value || typeof value !== 'object') return { valid: false, reason: 'Candidate is not a valid object' };
   const question = value as Record<string, unknown>;
-  if (typeof question.statement !== 'string' || question.statement.trim().length < 8) return false;
-  if (isLessonBoundedQuestion(question.statement)) return false;
+  if (typeof question.statement !== 'string' || question.statement.trim().length < 8) return { valid: false, reason: 'Statement is missing or too short' };
+  if (isLessonBoundedQuestion(question.statement)) return { valid: false, reason: 'Statement refers to a specific lesson instead of general knowledge' };
   const type = question.type === undefined ? 'multiple-choice' : question.type;
-  if (type !== 'multiple-choice' && type !== 'fill-blank' && type !== 'reasoning' && type !== 'coding') return false;
-  if (expectedType && type !== expectedType) return false;
+  if (type !== 'multiple-choice' && type !== 'fill-blank' && type !== 'reasoning' && type !== 'coding') return { valid: false, reason: `Unknown question type: ${type}` };
+  if (expectedType && type !== expectedType) return { valid: false, reason: `Expected ${expectedType} but got ${type}` };
   if (type === 'fill-blank') {
-    if (!question.statement.includes('_____') || !Array.isArray(question.acceptedAnswers) || question.acceptedAnswers.length < 3 || question.acceptedAnswers.length > 16) return false;
-    if (!question.acceptedAnswers.every(answer => typeof answer === 'string' && answer.trim())) return false;
-    if (new Set(question.acceptedAnswers.map(answer => normalize(String(answer)))).size !== question.acceptedAnswers.length) return false;
-    return typeof question.explanation === 'string' && Boolean(question.explanation.trim());
+    if (typeof question.statement === 'string' && !question.statement.includes('_____')) return { valid: false, reason: 'Rejected fill in the blank: missing exactly one five-underscore blank (_____)' };
+    if (!Array.isArray(question.acceptedAnswers) || question.acceptedAnswers.length < 3 || question.acceptedAnswers.length > 16) return { valid: false, reason: 'Rejected fill in the blank: needs between 3 and 16 accepted answers' };
+    if (!question.acceptedAnswers.every(answer => typeof answer === 'string' && answer.trim())) return { valid: false, reason: 'Rejected fill in the blank: accepted answers must be non-empty strings' };
+    if (new Set(question.acceptedAnswers.map(answer => normalize(String(answer)))).size !== question.acceptedAnswers.length) return { valid: false, reason: 'Rejected fill in the blank: duplicate accepted answers' };
+    if (typeof question.explanation !== 'string' || !question.explanation.trim()) return { valid: false, reason: 'Rejected fill in the blank: missing explanation' };
+    return { valid: true, question: question as unknown as QuizQuestion };
   }
   if (type === 'reasoning' || type === 'coding') {
-    return typeof question.referenceAnswer === 'string' && question.referenceAnswer.trim().length >= 20
-      && typeof question.explanation === 'string' && Boolean(question.explanation.trim());
+    if (typeof question.referenceAnswer !== 'string' || question.referenceAnswer.trim().length < 20) return { valid: false, reason: `Rejected ${type}: reference answer too short` };
+    if (typeof question.explanation !== 'string' || !question.explanation.trim()) return { valid: false, reason: `Rejected ${type}: missing explanation` };
+    return { valid: true, question: question as unknown as QuizQuestion };
   }
-  if (!Array.isArray(question.answer) || question.answer.length < 3 || question.answer.length > 6) return false;
+  if (!Array.isArray(question.answer) || question.answer.length < 3 || question.answer.length > 6) return { valid: false, reason: 'Rejected multiple choice: must have 3-6 choices' };
   const answers = question.answer as Record<string, unknown>[];
   if (!answers.every(answer => answer && typeof answer.content === 'string' && answer.content.trim()
     && typeof answer.explanation === 'string' && answer.explanation.trim().length >= 12
-    && typeof answer.correct === 'boolean')) return false;
+    && typeof answer.correct === 'boolean')) return { valid: false, reason: 'Rejected multiple choice: invalid choice format or missing explanation' };
   const correctCount = answers.filter(answer => answer.correct).length;
-  if (correctCount < 1 || correctCount >= answers.length) return false;
-  if (multipleChoiceMode === 'single' && correctCount !== 1) return false;
-  if (multipleChoiceMode === 'multiple' && correctCount < 2) return false;
-  if (!hasBalancedChoiceLengths(answers)) return false;
-  return new Set(answers.map(answer => normalize(String(answer.content)))).size === answers.length;
+  if (correctCount < 1 || correctCount >= answers.length) return { valid: false, reason: 'Rejected multiple choice: must have at least one correct and incorrect choice' };
+  if (multipleChoiceMode === 'single' && correctCount !== 1) return { valid: false, reason: 'Rejected multiple choice: single mode requires exactly one correct choice' };
+  if (multipleChoiceMode === 'multiple' && correctCount < 2) return { valid: false, reason: 'Rejected multiple choice: multiple mode requires at least two correct choices' };
+  if (!hasBalancedChoiceLengths(answers)) return { valid: false, reason: 'Rejected multiple choice: choice lengths are not balanced' };
+  if (new Set(answers.map(answer => normalize(String(answer.content)))).size !== answers.length) return { valid: false, reason: 'Rejected multiple choice: choices must be distinct' };
+  return { valid: true, question: question as unknown as QuizQuestion };
 }
 
 const requestCandidates = async (prompt: string, schema: object, options: GenerationOptions, signal?: AbortSignal, images: string[] = []) => {
@@ -296,6 +300,8 @@ export async function generateQuiz(
   const rounds: Partial<Record<QuestionType, number>> = { ...(initialCheckpoint?.rounds ?? {}) };
   const maxRounds = activeOptions.generationProfile?.validation?.maxRounds ?? 5;
 
+  let lastReason: string | undefined;
+
   const targets: [QuestionType, number][] = [
     ['multiple-choice', counts.multipleChoice],
     ['fill-blank', counts.fillBlank],
@@ -339,8 +345,11 @@ export async function generateQuiz(
       }
       await onProgress?.({ accepted: accepted.length, target, round, maxRounds, rejected, currentType: type, typeAccepted, typeTarget, phase: 'validating', provider: activeOptions.provider, parallelRequests });
       if (!candidates.length) rejected += requested;
-      const validCandidates = candidates.flatMap((candidate, sourceIndex) =>
-        validateQuestion(candidate, type, activeOptions.multipleChoiceMode) ? [{ candidate, sourceIndex }] : []);
+      const validCandidates = candidates.flatMap((candidate, sourceIndex) => {
+        const result = validateQuestion(candidate, type, activeOptions.multipleChoiceMode);
+        if (!result.valid) lastReason = result.reason;
+        return result.valid ? [{ candidate: result.question!, sourceIndex }] : [];
+      });
       rejected += candidates.length - validCandidates.length;
       const vectors = await tryEmbeddings([...accepted.map(candidate => candidate.statement), ...validCandidates.map(item => item.candidate.statement)], signal);
       const priorAcceptedCount = accepted.length;
@@ -351,7 +360,7 @@ export async function generateQuiz(
           normalize(existing.statement) === normalize(candidate.statement) ||
           tokenSimilarity(existing.statement, candidate.statement) >= 0.82
         ) || (candidateVector ? acceptedVectors.some(vector => cosineSimilarity(vector, candidateVector) >= 0.90) : false);
-        if (duplicate) { rejected++; continue; }
+        if (duplicate) { rejected++; lastReason = 'Duplicate question'; continue; }
         const provenance = source.provenanceBySlot?.[sourceIndex] ?? source.provenance;
         accepted.push(provenance ? {
           ...candidate,
@@ -368,7 +377,10 @@ export async function generateQuiz(
     }
   }
 
-  if (!accepted.length) throw new Error('No valid questions could be generated.');
+  if (!accepted.length) {
+    const errorMsg = lastReason ? `No valid questions could be generated. ${lastReason}` : 'No valid questions could be generated.';
+    throw new Error(errorMsg);
+  }
   for (let index = accepted.length - 1; index > 0; index--) {
     const other = Math.floor(Math.random() * (index + 1));
     [accepted[index], accepted[other]] = [accepted[other], accepted[index]];

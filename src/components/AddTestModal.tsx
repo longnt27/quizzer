@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Button, Checkbox, Empty, Input, InputNumber, List, Modal, Radio, Select, Space, Spin, Tag, Typography } from 'antd';
+import { Alert, Button, Checkbox, Collapse, Empty, Input, InputNumber, List, Modal, Radio, Select, Space, Spin, Tag, Typography } from 'antd';
 import { formatErrorMessage } from '../utils/errorFormatting';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
@@ -225,56 +225,11 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
     </>}>
       {!documents.length ? <Empty description="Add documents to your library before creating a test" /> : (
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          {!simple && <Alert type="info" showIcon message="Generation runs in the background"
-            description="Completed tests appear immediately. Each configured instance works on a different test, while batches within a test run sequentially to reduce duplicates." />}
-          {!simple && <Radio.Group value={mode} onChange={event => setMode(event.target.value)} optionType="button" buttonStyle="solid"
-            options={[{ label: 'One combined test', value: 'combined' }, { label: 'Separate test per document', value: 'separate' }]} />}
-          {!simple && mode === 'combined' && <Input value={name} onChange={event => setName(event.target.value)} addonBefore="Test name" />}
           {configured.loading && !configured.providers.length && <Space><Spin size="small" /><Typography.Text type="secondary">Checking connected providers…</Typography.Text></Space>}
           {!configured.loading && !configured.providers.length && <Alert type="warning" showIcon message="No AI provider is configured"
             description="Connect a CLI agent or add an API key before creating a test."
             action={<Button size="small" onClick={onManagePlugins}>Open plugins</Button>} />}
-          {!!configured.providers.length && profile.interfaceMode === 'advanced' && <Space wrap>
-            <Typography.Text>Provider</Typography.Text>
-            <Select value={provider} onChange={next => { setProvider(next); setModel(settings.models[next]); }} style={{ width: 190 }}
-              options={configured.providers.map(item => ({ label: item.label, value: item.id }))} />
-            <Input value={model} onChange={event => setModel(event.target.value)} addonBefore="Model" placeholder={selectedProvider.defaultModel || 'Provider default'} style={{ width: 280 }} />
-          </Space>}
-          {!!configured.providers.length && profile.interfaceMode === 'advanced' && <div>
-            <Typography.Text strong>Automatic failover routes</Typography.Text>
-            <Select mode="multiple" value={failoverProviders.filter(item => item !== provider)}
-              onChange={values => setFailoverProviders(values as GenerationProvider[])} style={{ width: '100%', marginTop: 8 }}
-              placeholder="Pause for approval when the primary route fails"
-              options={configured.providers.filter(item => item.id !== provider).map(item => ({
-                value: item.id,
-                label: `${item.label} · ${item.kind === 'api' ? 'remote API / may incur cost' : item.kind === 'plugin' ? 'local plugin' : 'signed-in agent'}`,
-              }))} />
-            <Typography.Paragraph type="secondary" style={{ margin: '6px 0 0' }}>
-              Selecting a route pre-approves sending only unfinished source batches to it. Routes run in the order shown; unselected routes always require approval.
-            </Typography.Paragraph>
-          </div>}
-          {profile.interfaceMode === 'advanced' && <div>
-            <Typography.Text strong>Prompt profile</Typography.Text>
-            <Select value={promptProfile.id} onChange={setPromptProfileId} style={{ width: '100%', marginTop: 8 }}
-              options={promptProfiles.map(item => ({ value: item.id, label: `${item.name} · v${item.version}${item.builtIn ? ' · built in' : ''}` }))} />
-            <Typography.Paragraph type="secondary" style={{ margin: '6px 0 0' }}>{promptProfile.description || 'Custom generation, grading, and retrieval instructions.'}</Typography.Paragraph>
-            <Button type="link" size="small" onClick={onOpenPromptStudio}>Open Prompt Studio</Button>
-          </div>}
-          {profile.interfaceMode === 'advanced' && costCeilingDollars !== null && proposedRoutes.some(route => !route.pricing) && <Alert type="error" showIcon
-            message="Finite ceiling needs pricing for every approved route"
-            description={finiteCeilingPricingMessage} />}
-          {profile.interfaceMode === 'advanced' && provider && !primaryKnownPricing && getProviderDefinition(provider).kind === 'api' && <div>
-            <Typography.Text strong>Custom model pricing <Typography.Text type="secondary">(USD per 1M tokens)</Typography.Text></Typography.Text>
-            <Space wrap style={{ width: '100%', marginTop: 8 }}>
-              <InputNumber aria-label="Input price per million tokens" min={0} max={100000} precision={6} step={0.01} value={customInputPrice}
-                onChange={setCustomInputPrice} addonBefore="Input $" />
-              <InputNumber aria-label="Output price per million tokens" min={0} max={100000} precision={6} step={0.01} value={customOutputPrice}
-                onChange={setCustomOutputPrice} addonBefore="Output $" />
-            </Space>
-            <Typography.Paragraph type="secondary" style={{ margin: '6px 0 0' }}>
-              Quizzer does not guess prices for unknown models. Enter the provider’s current input and output rates before using a finite ceiling; the values are snapshotted into this test.
-            </Typography.Paragraph>
-          </div>}
+          
           {simple && <div className="simple-test-flow">
             <section>
               <Typography.Title level={5}>1. Choose your documents</Typography.Title>
@@ -291,78 +246,169 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
                 placeholder="For example: Focus on the ideas I am most likely to forget" />
             </section>
           </div>}
-          {!simple && profile.interfaceMode === 'advanced' && <div className="question-count-grid">
-            <label><Typography.Text strong>Multiple choice</Typography.Text><InputNumber min={0} max={200} value={multipleChoiceCount} onChange={value => setMultipleChoiceCount(value ?? 0)} /></label>
-            <label><Typography.Text strong>Fill in the blank</Typography.Text><InputNumber min={0} max={200} value={fillBlankCount} onChange={value => setFillBlankCount(value ?? 0)} /></label>
-            <label><Typography.Text strong>Reasoning</Typography.Text><InputNumber min={0} max={200} value={reasoningCount} onChange={value => setReasoningCount(value ?? 0)} /></label>
-            <label><Typography.Text strong>Coding</Typography.Text><InputNumber min={0} max={200} value={codingCount} onChange={value => setCodingCount(value ?? 0)} /></label>
-            <div className="question-count-total"><Typography.Text type="secondary">Total</Typography.Text><Typography.Text strong>{questionCount}</Typography.Text></div>
-          </div>}
-          {profile.interfaceMode === 'advanced' && <div>
-            <Typography.Text strong>Advanced generation controls</Typography.Text>
-            <Space direction="vertical" size="small" style={{ width: '100%', marginTop: 8 }}>
-              <Space wrap>
-                <label>Target difficulty <Select aria-label="Target difficulty" value={difficulty} onChange={setDifficulty} style={{ width: 170 }} options={[
-                  { value: 'introductory', label: 'Introductory' },
-                  { value: 'intermediate', label: 'Intermediate' },
-                  { value: 'advanced', label: 'Advanced' },
-                ]} /></label>
-                <label>Context budget <InputNumber aria-label="Per-test context budget" min={1024} max={65536} step={512} value={contextBudget} onChange={value => setContextBudget(value ?? 4096)} /></label>
-                <label>Questions per request <InputNumber aria-label="Per-test batch size" min={5} max={25} value={jobBatchSize} onChange={value => setJobBatchSize(value ?? 10)} /></label>
-              </Space>
-              <Space wrap>
-                <Checkbox checked={rerank} onChange={event => setRerank(event.target.checked)}>Rerank retrieved evidence</Checkbox>
-                <label>Validation rounds <InputNumber aria-label="Validation round limit" min={1} max={5} value={validationMaxRounds} onChange={value => setValidationMaxRounds(value ?? 5)} /></label>
-                <label>Minimum grounding score <InputNumber aria-label="Minimum grounding score" min={0} max={1} step={0.05} value={minGroundingScore} onChange={value => setMinGroundingScore(value ?? 0)} /></label>
-                <label>Minimum instruction matches <InputNumber aria-label="Minimum instruction matches" min={0} max={10} value={minInstructionMatches} onChange={value => setMinInstructionMatches(value ?? 0)} /></label>
-              </Space>
-              <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
-                Larger context budgets and reranking use more local memory. Higher validation thresholds may reject more candidates and refill fewer slots before the round limit. Requests within one test remain sequential and idempotent; shared Settings concurrency only controls separate tests.
-              </Typography.Paragraph>
-              <Typography.Text type="secondary">Estimated retrieval budget: up to {contextBudget.toLocaleString()} tokens per request · selected route receives only retrieved excerpts and relevant images.</Typography.Text>
-              <Button type="link" size="small" onClick={resetAdvancedControls} style={{ padding: 0, alignSelf: 'flex-start' }}>Reset controls to {profile.hardwareProfile} profile defaults</Button>
-            </Space>
-          </div>}
-          {profile.interfaceMode === 'advanced' && multipleChoiceCount > 0 && <div>
-            <Typography.Text strong>Multiple-choice answer style</Typography.Text><br />
-            <Radio.Group value={multipleChoiceMode} onChange={event => setMultipleChoiceMode(event.target.value)}
-              className="answer-mode-selector" optionType="button" buttonStyle="solid" style={{ marginTop: 8 }} options={[
-                { label: 'Exactly one correct answer', value: 'single' },
-                { label: 'Multiple correct answers', value: 'multiple' },
-              ]} />
-          </div>}
-          {profile.interfaceMode === 'advanced' && <div>
-            <Typography.Text strong>Generation cost ceiling <Typography.Text type="secondary">(optional)</Typography.Text></Typography.Text>
-            <InputNumber aria-label="Generation cost ceiling in US dollars" min={0} max={9_000_000_000} precision={2} step={1} value={costCeilingDollars}
-              onChange={value => setCostCeilingDollars(value)} addonBefore="$" addonAfter="USD" style={{ width: '100%', marginTop: 8 }} />
-            <Typography.Paragraph type="secondary" style={{ margin: '6px 0 0' }}>
-              Leave blank for unlimited. This is an approximate maximum for provider-priced generation; Quizzer stores it internally as micro-USD (1 USD = 1,000,000 micro-USD) and pauses before an approved ceiling would be exceeded.
-            </Typography.Paragraph>
-          </div>}
-          {profile.interfaceMode === 'advanced' && mode === 'combined' && selected.length > 1 && <div>
-            <Typography.Text strong>Document coverage</Typography.Text><br />
-            <Select value={coverageStrategy} onChange={setCoverageStrategy} style={{ width: '100%', marginTop: 8 }} options={[
-              { value: 'balanced', label: 'Balanced — spread questions evenly across documents' },
-              { value: 'proportional', label: 'Proportional — give larger documents more questions' },
-              { value: 'ai-selected', label: 'AI-selected — prioritize semantically central material' },
-              { value: 'cross-document', label: 'Cross-document — compare material from 2–3 documents' },
+
+          {!simple && <>
+            <Radio.Group value={mode} onChange={event => setMode(event.target.value)} optionType="button" buttonStyle="solid"
+              options={[{ label: 'One combined test', value: 'combined' }, { label: 'Separate test per document', value: 'separate' }]} />
+            
+            {mode === 'combined' && <Input value={name} onChange={event => setName(event.target.value)} addonBefore="Test name" />}
+            
+            {documentPicker}
+
+            <Collapse items={[
+              {
+                key: 'test-content',
+                label: 'Custom test content',
+                children: <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                  {profile.interfaceMode === 'advanced' && <div className="question-count-grid">
+                    <label><Typography.Text strong>Multiple choice</Typography.Text><InputNumber min={0} max={200} value={multipleChoiceCount} onChange={value => setMultipleChoiceCount(value ?? 0)} /></label>
+                    <label><Typography.Text strong>Fill in the blank</Typography.Text><InputNumber min={0} max={200} value={fillBlankCount} onChange={value => setFillBlankCount(value ?? 0)} /></label>
+                    <label><Typography.Text strong>Reasoning</Typography.Text><InputNumber min={0} max={200} value={reasoningCount} onChange={value => setReasoningCount(value ?? 0)} /></label>
+                    <label><Typography.Text strong>Coding</Typography.Text><InputNumber min={0} max={200} value={codingCount} onChange={value => setCodingCount(value ?? 0)} /></label>
+                    <div className="question-count-total"><Typography.Text type="secondary">Total</Typography.Text><Typography.Text strong>{questionCount}</Typography.Text></div>
+                  </div>}
+
+                  {profile.interfaceMode === 'advanced' && <div>
+                    <Typography.Text strong>Prompt profile</Typography.Text>
+                    <Select value={promptProfile.id} onChange={setPromptProfileId} style={{ width: '100%', marginTop: 8 }}
+                      options={promptProfiles.map(item => ({ value: item.id, label: `${item.name} · v${item.version}${item.builtIn ? ' · built in' : ''}` }))} />
+                    <Typography.Paragraph type="secondary" style={{ margin: '6px 0 0' }}>{promptProfile.description || 'Custom generation, grading, and retrieval instructions.'}</Typography.Paragraph>
+                    <Button type="link" size="small" onClick={onOpenPromptStudio}>Open Prompt Studio</Button>
+                  </div>}
+
+                  {profile.interfaceMode === 'advanced' && <div>
+                    <Typography.Text strong>Target difficulty</Typography.Text>
+                    <div style={{ marginTop: 8 }}>
+                      <Select aria-label="Target difficulty" value={difficulty} onChange={setDifficulty} style={{ width: 170 }} options={[
+                        { value: 'introductory', label: 'Introductory' },
+                        { value: 'intermediate', label: 'Intermediate' },
+                        { value: 'advanced', label: 'Advanced' },
+                      ]} />
+                    </div>
+                  </div>}
+
+                  {profile.interfaceMode === 'advanced' && multipleChoiceCount > 0 && <div>
+                    <Typography.Text strong>Multiple-choice answer style</Typography.Text><br />
+                    <Radio.Group value={multipleChoiceMode} onChange={event => setMultipleChoiceMode(event.target.value)}
+                      className="answer-mode-selector" optionType="button" buttonStyle="solid" style={{ marginTop: 8 }} options={[
+                        { label: 'Exactly one correct answer', value: 'single' },
+                        { label: 'Multiple correct answers', value: 'multiple' },
+                      ]} />
+                  </div>}
+
+                  <div>
+                    <Typography.Text strong>Custom learning instruction <Typography.Text type="secondary">(optional)</Typography.Text></Typography.Text>
+                    <Input.TextArea data-onboarding-target="learning-instruction" rows={3} maxLength={2000} showCount value={customInstruction} onChange={event => setCustomInstruction(event.target.value)}
+                      placeholder="For example: coding questions about Terraform only" style={{ marginTop: 8 }} />
+                  </div>
+
+                  {profile.interfaceMode === 'advanced' && mode === 'combined' && selected.length > 1 && <div>
+                    <Typography.Text strong>Document coverage strategy</Typography.Text><br />
+                    <Select value={coverageStrategy} onChange={setCoverageStrategy} style={{ width: '100%', marginTop: 8 }} options={[
+                      { value: 'balanced', label: 'Balanced — spread questions evenly across documents' },
+                      { value: 'proportional', label: 'Proportional — give larger documents more questions' },
+                      { value: 'ai-selected', label: 'AI-selected — prioritize semantically central material' },
+                      { value: 'cross-document', label: 'Cross-document — compare material from 2–3 documents' },
+                    ]} />
+                    <Typography.Paragraph type="secondary" style={{ margin: '8px 0 0' }}>
+                      Quizzer sends only the assigned page-aware chunks for each batch, keeping large combined tests within a fixed prompt budget.
+                    </Typography.Paragraph>
+                  </div>}
+
+                  {mode === 'combined' && selected.length > questionCount && questionCount > 0 && <Alert type="warning" showIcon
+                    message={`${questionCount} questions cannot represent all ${selected.length} documents`}
+                    description={coverageStrategy === 'ai-selected'
+                      ? 'AI-selected coverage will prioritize the most central material. Increase the question count if every document must appear.'
+                      : 'Quizzer will sample across the selection. Increase the question count to guarantee at least one question per document.'} />}
+                  
+                  {questionCount < 1 && <Alert type="error" showIcon message="Choose at least one question." />}
+                  {questionCount > 200 && <Alert type="error" showIcon message="A test can contain at most 200 questions." />}
+                </Space>
+              },
+              {
+                key: 'provider-settings',
+                label: 'Custom provider settings',
+                children: <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                  {!!configured.providers.length && profile.interfaceMode === 'advanced' && <Space wrap>
+                    <Typography.Text>Provider</Typography.Text>
+                    <Select value={provider} onChange={next => { setProvider(next); setModel(settings.models[next]); }} style={{ width: 190 }}
+                      options={configured.providers.map(item => ({ label: item.label, value: item.id }))} />
+                    <Input value={model} onChange={event => setModel(event.target.value)} addonBefore="Model" placeholder={selectedProvider.defaultModel || 'Provider default'} style={{ width: 280 }} />
+                  </Space>}
+
+                  {!!configured.providers.length && profile.interfaceMode === 'advanced' && <div>
+                    <Typography.Text strong>Automatic failover routes</Typography.Text>
+                    <Select mode="multiple" value={failoverProviders.filter(item => item !== provider)}
+                      onChange={values => setFailoverProviders(values as GenerationProvider[])} style={{ width: '100%', marginTop: 8 }}
+                      placeholder="Pause for approval when the primary route fails"
+                      options={configured.providers.filter(item => item.id !== provider).map(item => ({
+                        value: item.id,
+                        label: `${item.label} · ${item.kind === 'api' ? 'remote API / may incur cost' : item.kind === 'plugin' ? 'local plugin' : 'signed-in agent'}`,
+                      }))} />
+                    <Typography.Paragraph type="secondary" style={{ margin: '6px 0 0' }}>
+                      Selecting a route pre-approves sending only unfinished source batches to it. Routes run in the order shown; unselected routes always require approval.
+                    </Typography.Paragraph>
+                  </div>}
+
+                  {profile.interfaceMode === 'advanced' && provider && !primaryKnownPricing && getProviderDefinition(provider).kind === 'api' && <div>
+                    <Typography.Text strong>Custom model pricing <Typography.Text type="secondary">(USD per 1M tokens)</Typography.Text></Typography.Text>
+                    <Space wrap style={{ width: '100%', marginTop: 8 }}>
+                      <InputNumber aria-label="Input price per million tokens" min={0} max={100000} precision={6} step={0.01} value={customInputPrice}
+                        onChange={setCustomInputPrice} addonBefore="Input $" />
+                      <InputNumber aria-label="Output price per million tokens" min={0} max={100000} precision={6} step={0.01} value={customOutputPrice}
+                        onChange={setCustomOutputPrice} addonBefore="Output $" />
+                    </Space>
+                    <Typography.Paragraph type="secondary" style={{ margin: '6px 0 0' }}>
+                      Quizzer does not guess prices for unknown models. Enter the provider’s current input and output rates before using a finite ceiling; the values are snapshotted into this test.
+                    </Typography.Paragraph>
+                  </div>}
+
+                  {profile.interfaceMode === 'advanced' && <div>
+                    <Typography.Text strong>Advanced generation controls</Typography.Text>
+                    <Space direction="vertical" size="small" style={{ width: '100%', marginTop: 8 }}>
+                      <Space wrap>
+                        <label>Context budget <InputNumber aria-label="Per-test context budget" min={1024} max={65536} step={512} value={contextBudget} onChange={value => setContextBudget(value ?? 4096)} /></label>
+                        <label>Questions per request <InputNumber aria-label="Per-test batch size" min={5} max={25} value={jobBatchSize} onChange={value => setJobBatchSize(value ?? 10)} /></label>
+                      </Space>
+                      <Space wrap>
+                        <Checkbox checked={rerank} onChange={event => setRerank(event.target.checked)}>Rerank retrieved evidence</Checkbox>
+                        <label>Validation rounds <InputNumber aria-label="Validation round limit" min={1} max={5} value={validationMaxRounds} onChange={value => setValidationMaxRounds(value ?? 5)} /></label>
+                        <label>Minimum grounding score <InputNumber aria-label="Minimum grounding score" min={0} max={1} step={0.05} value={minGroundingScore} onChange={value => setMinGroundingScore(value ?? 0)} /></label>
+                        <label>Minimum instruction matches <InputNumber aria-label="Minimum instruction matches" min={0} max={10} value={minInstructionMatches} onChange={value => setMinInstructionMatches(value ?? 0)} /></label>
+                      </Space>
+                      <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
+                        Larger context budgets and reranking use more local memory. Higher validation thresholds may reject more candidates and refill fewer slots before the round limit. Requests within one test remain sequential and idempotent; shared Settings concurrency only controls separate tests.
+                      </Typography.Paragraph>
+                      <Typography.Text type="secondary">Estimated retrieval budget: up to {contextBudget.toLocaleString()} tokens per request · selected route receives only retrieved excerpts and relevant images.</Typography.Text>
+                      <Button type="link" size="small" onClick={resetAdvancedControls} style={{ padding: 0, alignSelf: 'flex-start' }}>Reset controls to {profile.hardwareProfile} profile defaults</Button>
+                    </Space>
+                  </div>}
+
+                  {profile.interfaceMode === 'advanced' && <div>
+                    <Typography.Text strong>Generation cost ceiling <Typography.Text type="secondary">(optional)</Typography.Text></Typography.Text>
+                    <InputNumber aria-label="Generation cost ceiling in US dollars" min={0} max={9_000_000_000} precision={2} step={1} value={costCeilingDollars}
+                      onChange={value => setCostCeilingDollars(value)} addonBefore="$" addonAfter="USD" style={{ width: '100%', marginTop: 8 }} />
+                    <Typography.Paragraph type="secondary" style={{ margin: '6px 0 0' }}>
+                      Leave blank for unlimited. This is an approximate maximum for provider-priced generation; Quizzer stores it internally as micro-USD (1 USD = 1,000,000 micro-USD) and pauses before an approved ceiling would be exceeded.
+                    </Typography.Paragraph>
+                  </div>}
+
+                  {profile.interfaceMode === 'advanced' && costCeilingDollars !== null && proposedRoutes.some(route => !route.pricing) && <Alert type="error" showIcon
+                    message="Finite ceiling needs pricing for every approved route"
+                    description={finiteCeilingPricingMessage} />}
+                </Space>
+              }
             ]} />
-            <Typography.Paragraph type="secondary" style={{ margin: '8px 0 0' }}>
-              Quizzer sends only the assigned page-aware chunks for each batch, keeping large combined tests within a fixed prompt budget.
-            </Typography.Paragraph>
-          </div>}
-          {!simple && mode === 'combined' && selected.length > questionCount && questionCount > 0 && <Alert type="warning" showIcon
-            message={`${questionCount} questions cannot represent all ${selected.length} documents`}
-            description={coverageStrategy === 'ai-selected'
-              ? 'AI-selected coverage will prioritize the most central material. Increase the question count if every document must appear.'
-              : 'Quizzer will sample across the selection. Increase the question count to guarantee at least one question per document.'} />}
-          {questionCount < 1 && <Alert type="error" showIcon message="Choose at least one question." />}
-          {questionCount > 200 && <Alert type="error" showIcon message="A test can contain at most 200 questions." />}
-          {!simple && <div>
-            <Typography.Text strong>Custom learning instruction <Typography.Text type="secondary">(optional)</Typography.Text></Typography.Text>
-            <Input.TextArea rows={3} maxLength={2000} showCount value={customInstruction} onChange={event => setCustomInstruction(event.target.value)}
-              placeholder="For example: coding questions about Terraform only" style={{ marginTop: 8 }} />
-          </div>}
+            {!!configured.providers.length && !simple && <Alert type={proposedRoutes.some(route => route.paid) ? 'warning' : 'info'} showIcon
+              message="Data sharing & cost approval"
+              description={<Space direction="vertical" size="small">
+                <Checkbox checked={routesApproved} onChange={event => setApprovedRouteSignature(event.target.checked ? routeSignature : '')}>
+                  I approve sending selected excerpts and relevant images to the AI routes{proposedRoutes.some(route => route.paid) ? ' and understand usage charges may apply' : ''}.
+                </Checkbox>
+              </Space>} />}
+            
+            {!saving && !simple && <Typography.Text type="secondary">Provider defaults are saved in <Button type="link" size="small" onClick={onManagePlugins}>Plugins & models</Button>. You can override the model for this job.</Typography.Text>}
+          </>}
           {!!configured.providers.length && simple && requiresRouteApproval && <Alert type={proposedRoutes.some(route => route.paid) ? 'warning' : 'info'} showIcon
             message={`Use ${selectedProvider.label} for this test?`}
             description={<Space direction="vertical" size="small">
@@ -374,19 +420,7 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
               </Checkbox>
               <Button type="link" size="small" onClick={onManagePlugins} style={{ padding: 0, alignSelf: 'flex-start' }}>Change AI</Button>
             </Space>} />}
-          {!!configured.providers.length && !simple && <Alert type={proposedRoutes.some(route => route.paid) ? 'warning' : 'info'} showIcon
-            message="Data-sharing & cost approval"
-            description={<Space direction="vertical" size="small">
-              <Typography.Text>Only selected source excerpts and relevant images are sent. Review every route before approving:</Typography.Text>
-              <Space wrap>{proposedRoutes.map(route => <Tag color={route.paid ? 'warning' : 'blue'} key={`${route.provider}:${route.model ?? ''}`}>
-                {getProviderDefinition(route.provider).label} · {route.privacy === 'remote-api' ? 'remote API / usage charges may apply' : 'signed-in agent'}
-              </Tag>)}</Space>
-              <Checkbox checked={routesApproved} onChange={event => setApprovedRouteSignature(event.target.checked ? routeSignature : '')}>
-                I approve sending selected excerpts and relevant images to these routes{proposedRoutes.some(route => route.paid) ? ' and understand usage charges may apply' : ''}.
-              </Checkbox>
-            </Space>} />}
-          {!simple && !saving && <Typography.Text type="secondary">Provider defaults are saved in <Button type="link" size="small" onClick={onManagePlugins}>Plugins & models</Button>. You can override the model for this job.</Typography.Text>}
-          {!simple && documentPicker}
+
         </Space>
       )}
     </Modal>
