@@ -170,6 +170,10 @@ button, input, textarea, select { font: inherit; }
 }
 
 .document-view { padding: 32px; max-width: 1100px; margin: 0 auto; }
+.document-heading { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
+.document-heading h2 { margin: 0; }
+.document-tag-editor { display: grid; gap: 8px; margin-bottom: 20px; }
+.document-tag-editor .ant-input { width: 150px; }
 .document-original-frame { width: 100%; height: min(72vh, 900px); min-height: 520px; border: 0; border-radius: 6px; background: #fff; }
 .document-original-image { display: block; max-width: 100%; max-height: 72vh; margin: 0 auto; object-fit: contain; }
 .document-image-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
