@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Card, Descriptions, Divider, Drawer, Input, Radio, Space, Spin, Steps, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Descriptions, Divider, Drawer, Input, Radio, Space, Spin, Progress, Tag, Typography } from 'antd';
 import { ApiOutlined, CheckCircleOutlined, FileAddOutlined, FormOutlined, LaptopOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type StoredAppProfile } from '../db/db';
@@ -181,9 +181,8 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
       <Typography.Text type="secondary">Step {index + 1} of {ONBOARDING_STEPS.length}</Typography.Text>
       <Button type="primary" disabled={!requirementMet[step]} onClick={() => void next()}>{step === 'complete' ? 'Finish' : 'Continue'}</Button>
     </div>}>
-    <div aria-label="Setup progress" role="navigation">
-      <Steps size="small" current={index} responsive={true} className="onboarding-steps"
-        items={ONBOARDING_STEPS.map(item => ({ title: labels[item] }))} />
+    <div aria-label="Setup progress" role="progressbar" aria-valuenow={index + 1} aria-valuemin={1} aria-valuemax={ONBOARDING_STEPS.length}>
+      <Progress percent={Math.round((index / (ONBOARDING_STEPS.length - 1)) * 100)} showInfo={false} size="small" />
     </div>
     <Divider />
 

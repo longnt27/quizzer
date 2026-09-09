@@ -85,14 +85,13 @@ test('resumes real onboarding and finishes through durable quiz practice', async
 
   await expect(page.getByRole('heading', { name: 'Learn from your own material' })).toBeVisible();
   const onboarding = page.locator('.onboarding-drawer');
-  await expect(onboarding.getByRole('progressbar', { name: 'Onboarding progress' })).toHaveCount(0);
-  await expect(onboarding.locator('.ant-steps-item')).toHaveCount(2);
+  await expect(onboarding.getByRole('progressbar', { name: 'Setup progress' })).toHaveAttribute('aria-valuenow', '1');
   await onboarding.getByText('Simple', { exact: true }).click();
   await expect(onboarding.getByRole('radio', { name: /^Simple/ })).toBeChecked();
   await expect(page.getByRole('button', { name: 'Switch to Advanced mode' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('heading', { name: 'Choose a hardware profile' })).toBeVisible();
-  await expect(onboarding.locator('.ant-steps-item')).toHaveCount(3);
+  await expect(onboarding.getByRole('progressbar', { name: 'Setup progress' })).toHaveAttribute('aria-valuenow', '2');
   await expect(page.getByRole('button', { name: 'Use recommendation' })).toHaveCount(0);
   await expect(onboarding.getByRole('radio', { checked: true })).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'Continue' })).toBeEnabled({ timeout: 15_000 });
