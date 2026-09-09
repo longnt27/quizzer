@@ -35,6 +35,8 @@ import {
 interface ShellProps { dark: boolean; onThemeChange: (dark: boolean) => void; }
 
 function AppShell({ dark, onThemeChange }: ShellProps) {
+  // Opening Quizzer must not resume or mutate a saved session. Home provides
+  // the entry point; TestStart resumes only after the user chooses to do so.
   const [selection, setSelection] = useState<LibrarySelection>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDocumentModal, setShowDocumentModal] = useState(false);
@@ -54,27 +56,6 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
   useRuntimeSettings(profile);
   setMessageApi(messageApi);
   setModalApi(modalApi);
-
-  useEffect(() => {
-    let active = true;
-    void db.testDrafts.orderBy('updatedAt').last().then(async draft => {
-      if (!draft || !active || !await db.tests.get(draft.testId)) return;
-      const pauseDuration = draft.pausedAt ? Math.max(0, Date.now() - draft.pausedAt) : 0;
-      const resumedStartedAt = draft.startedAt + pauseDuration;
-      if (draft.pausedAt) {
-        await db.testDrafts.put({ ...draft, pausedAt: undefined, startedAt: resumedStartedAt, updatedAt: Date.now() });
-      }
-      setSelection({ kind: 'test', id: draft.testId });
-      setSession({
-        testId: draft.testId,
-        mode: 'taking',
-        timeLimit: draft.timeLimit,
-        startedAt: resumedStartedAt,
-        options: { instantFeedback: draft.practice },
-      });
-    });
-    return () => { active = false; };
-  }, []);
 
   const select = useCallback((next: LibrarySelection) => {
     setSelection(next);
