@@ -5,7 +5,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db, type StoredAppProfile, type StoredGenerationJob } from '../db/db';
 import { applyServiceRecord, syncNow } from '../db/serverSync';
-import type { CoverageStrategy, GenerationDifficulty, GenerationOptions, GenerationProvider } from '../types';
+import type { CoverageStrategy, GenerationDifficulty, GenerationOptions, GenerationProvider, QuestionType } from '../types';
 import { getMessageApi } from '../utils/messageProvider';
 import { pumpGenerationQueue } from '../utils/generationQueue';
 import { getProviderDefinition, getProviderRoute, getProviderSettings } from '../utils/providerSettings';
@@ -37,6 +37,13 @@ const hardwareDefaults: Record<StoredAppProfile['hardwareProfile'], { contextBud
   max: { contextBudget: 16384, rerank: true, batchSize: 20 },
 };
 
+const questionTypeLabels: Record<QuestionType, string> = {
+  'multiple-choice': 'Multiple choice',
+  'fill-blank': 'Fill in the blank',
+  reasoning: 'Reasoning',
+  coding: 'Coding',
+};
+
 const uniqueTestName = (requestedName: string, usedNames: Set<string>) => {
   const base = requestedName.trim() || 'Untitled test';
   let candidate = base;
@@ -49,7 +56,8 @@ const uniqueTestName = (requestedName: string, usedNames: Set<string>) => {
 export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStudio, onCreated, profile }: Props) {
   const settings = useMemo(getProviderSettings, []);
   const configured = useConfiguredProviders();
-  const documents = useLiveQuery(() => db.documents.orderBy('createdAt').reverse().toArray(), []) ?? [];
+  const queriedDocuments = useLiveQuery(() => db.documents.orderBy('createdAt').reverse().toArray(), []);
+  const documents = useMemo(() => queriedDocuments ?? [], [queriedDocuments]);
   const customPromptProfiles = useLiveQuery(() => db.promptProfiles.orderBy('updatedAt').reverse().toArray(), []) ?? [];
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [mode, setMode] = useState<CreationMode>('combined');
@@ -63,7 +71,8 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
   const [codingCount, setCodingCount] = useState(0);
   const [multipleChoiceMode, setMultipleChoiceMode] = useState<'single' | 'multiple'>('single');
   const [coverageStrategy, setCoverageStrategy] = useState<CoverageStrategy>('balanced');
-  const [customInstruction, setCustomInstruction] = useState('');
+  const [customInstruction, setCustomInstruction] = useState(profile.defaultLearningInstruction ?? '');
+  const [questionInstructions, setQuestionInstructions] = useState<Partial<Record<QuestionType, string>>>({});
   const [difficulty, setDifficulty] = useState<GenerationDifficulty>('intermediate');
   const [contextBudget, setContextBudget] = useState(hardwareDefaults[profile.hardwareProfile].contextBudget);
   const [rerank, setRerank] = useState(hardwareDefaults[profile.hardwareProfile].rerank);
@@ -78,6 +87,8 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
   const [customInputPrice, setCustomInputPrice] = useState<number | null>(null);
   const [customOutputPrice, setCustomOutputPrice] = useState<number | null>(null);
   const [query, setQuery] = useState('');
+  const [documentTag, setDocumentTag] = useState('all');
+  const [documentSort, setDocumentSort] = useState<'newest' | 'oldest' | 'name'>('newest');
   const [saving, setSaving] = useState(false);
   const message = getMessageApi();
   const simple = profile.interfaceMode === 'simple';
@@ -104,10 +115,16 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
   const finiteCeilingPricingMessage = 'A finite cost ceiling requires explicit input and output pricing for every approved failover route; add prices in Advanced mode or leave the ceiling unlimited';
   const requiresRouteApproval = proposedRoutes.some(route => route.privacy !== 'local');
   const routesApproved = !requiresRouteApproval || approvedRouteSignature === routeSignature;
+  const documentTags = useMemo(() => [...new Set(documents.flatMap(document => document.tags))]
+    .sort((left, right) => left.localeCompare(right)), [documents]);
   const visible = (() => {
     const needle = query.trim().toLowerCase();
-    return documents.filter(document => !needle || document.name.toLowerCase().includes(needle)
-      || document.tags.some(tag => tag.toLowerCase().includes(needle)));
+    return documents.filter(document => (!needle || document.name.toLowerCase().includes(needle)
+      || document.tags.some(tag => tag.toLowerCase().includes(needle)))
+      && (documentTag === 'all' || document.tags.includes(documentTag)))
+      .sort((left, right) => documentSort === 'name'
+        ? left.name.localeCompare(right.name)
+        : documentSort === 'oldest' ? left.createdAt - right.createdAt : right.createdAt - left.createdAt);
   })();
 
   useEffect(() => {
@@ -120,8 +137,16 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
   const toggle = (id: string) => setSelectedIds(ids => ids.includes(id) ? ids.filter(item => item !== id) : [...ids, id]);
 
   const documentPicker = <>
-    {documents.length > 6 && <Input.Search aria-label="Find documents" value={query} onChange={event => setQuery(event.target.value)} placeholder="Find documents" />}
+    <Space.Compact block>
+      <Input.Search aria-label="Find documents" value={query} onChange={event => setQuery(event.target.value)} placeholder="Find by name or tag" />
+      <Select aria-label="Filter documents by tag" value={documentTag} onChange={setDocumentTag} style={{ width: 170 }}
+        options={[{ value: 'all', label: 'All tags' }, ...documentTags.map(tag => ({ value: tag, label: tag }))]} />
+      <Select aria-label="Sort documents" value={documentSort} onChange={setDocumentSort} style={{ width: 150 }} options={[
+        { value: 'newest', label: 'Newest' }, { value: 'oldest', label: 'Oldest' }, { value: 'name', label: 'Name' },
+      ]} />
+    </Space.Compact>
     <List bordered size="small" style={{ maxHeight: 290, overflowY: 'auto' }} dataSource={visible}
+      pagination={visible.length > 50 ? { pageSize: 50, size: 'small', showSizeChanger: false } : false}
       renderItem={document => <List.Item onClick={() => toggle(document.id)} style={{ cursor: 'pointer' }}>
         <Checkbox aria-label={`Select ${document.name}`} checked={selectedIds.includes(document.id)} style={{ marginRight: 12 }} />
         <List.Item.Meta title={document.name} description={document.tags.map(tag => <Tag key={tag}>{tag}</Tag>)} />
@@ -161,12 +186,16 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
       }
       const ragOverride = profile.interfaceMode === 'advanced'
         && (contextBudget !== resolvedContextBudget || rerank !== resolvedRerank);
+      const normalizedQuestionInstructions = Object.fromEntries(Object.entries(questionInstructions)
+        .map(([type, instruction]) => [type, instruction?.trim()])
+        .filter((entry): entry is [string, string] => Boolean(entry[1]))) as Partial<Record<QuestionType, string>>;
       const options: GenerationOptions = {
         provider, model: model.trim() || undefined, questionCount,
         questionCounts: effectiveCounts,
         multipleChoiceMode,
         coverageStrategy: mode === 'combined' ? coverageStrategy : 'balanced',
         customInstruction: customInstruction.trim() || undefined,
+        ...(Object.keys(normalizedQuestionInstructions).length ? { questionInstructions: normalizedQuestionInstructions } : {}),
         promptProfileSnapshot: snapshotPromptProfile(promptProfile),
         ragProfile: { id: hardwareProfile, retrieval: retrievalMode, contextBudget, rerank, ...(ragOverride ? { override: true } : {}) },
         ...(profile.interfaceMode === 'advanced' ? {
@@ -297,10 +326,29 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
                   </div>}
 
                   <div>
-                    <Typography.Text strong>Custom learning instruction <Typography.Text type="secondary">(optional)</Typography.Text></Typography.Text>
+                    <Typography.Text strong>Instructions for every question <Typography.Text type="secondary">(optional)</Typography.Text></Typography.Text>
                     <Input.TextArea data-onboarding-target="learning-instruction" rows={3} maxLength={2000} showCount value={customInstruction} onChange={event => setCustomInstruction(event.target.value)}
-                      placeholder="For example: coding questions about Terraform only" style={{ marginTop: 8 }} />
+                      placeholder="For example: emphasize operational tradeoffs" style={{ marginTop: 8 }} />
                   </div>
+
+                  <Collapse ghost items={[{
+                    key: 'question-instructions',
+                    label: 'Instructions by question type',
+                    children: <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                      {(Object.keys(questionTypeLabels) as QuestionType[]).filter(type => ({
+                        'multiple-choice': effectiveCounts.multipleChoice,
+                        'fill-blank': effectiveCounts.fillBlank,
+                        reasoning: effectiveCounts.reasoning,
+                        coding: effectiveCounts.coding,
+                      })[type] > 0).map(type => <label key={type}>
+                        <Typography.Text>{questionTypeLabels[type]}</Typography.Text>
+                        <Input.TextArea aria-label={`${questionTypeLabels[type]} instruction`} rows={2} maxLength={2000} showCount
+                          value={questionInstructions[type] ?? ''}
+                          onChange={event => setQuestionInstructions(current => ({ ...current, [type]: event.target.value }))}
+                          placeholder={`Optional guidance only for ${questionTypeLabels[type].toLowerCase()} questions`} />
+                      </label>)}
+                    </Space>,
+                  }]} />
 
                   {profile.interfaceMode === 'advanced' && mode === 'combined' && selected.length > 1 && <div>
                     <Typography.Text strong>Document coverage strategy</Typography.Text><br />
@@ -399,13 +447,14 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
                 </Space>
               }
             ]} />
-            {!!configured.providers.length && !simple && <Alert type={proposedRoutes.some(route => route.paid) ? 'warning' : 'info'} showIcon
-              message="Data sharing & cost approval"
-              description={<Space direction="vertical" size="small">
-                <Checkbox checked={routesApproved} onChange={event => setApprovedRouteSignature(event.target.checked ? routeSignature : '')}>
-                  I approve sending selected excerpts and relevant images to the AI routes{proposedRoutes.some(route => route.paid) ? ' and understand usage charges may apply' : ''}.
-                </Checkbox>
-              </Space>} />}
+            {!!configured.providers.length && !simple && !requiresRouteApproval && <Alert type="success" showIcon
+              message="Local generation"
+              description="Selected excerpts stay on this device, and no remote-provider charge is expected." />}
+            {!!configured.providers.length && !simple && requiresRouteApproval && <Alert type={proposedRoutes.some(route => route.paid) ? 'warning' : 'info'} showIcon
+              message={proposedRoutes.some(route => route.paid) ? 'Remote generation may incur provider charges' : 'Remote generation shares selected excerpts'}
+              description={<Checkbox checked={routesApproved} onChange={event => setApprovedRouteSignature(event.target.checked ? routeSignature : '')}>
+                Approve sending selected excerpts and relevant images to the listed AI routes{proposedRoutes.some(route => route.paid) ? ' and any resulting provider charges' : ''}.
+              </Checkbox>} />}
             
             {!saving && !simple && <Typography.Text type="secondary">Provider defaults are saved in <Button type="link" size="small" onClick={onManagePlugins}>Plugins & models</Button>. You can override the model for this job.</Typography.Text>}
           </>}
