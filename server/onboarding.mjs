@@ -5,7 +5,6 @@ export const ONBOARDING_STEPS = Object.freeze([
   'hardware',
   'provider',
   'document',
-  'instruction',
   'generate',
   'practice',
   'complete',

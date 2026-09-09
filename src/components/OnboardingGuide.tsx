@@ -22,7 +22,7 @@ interface Props {
 }
 
 const labels: Record<OnboardingStep, string> = {
-  welcome: 'Welcome', hardware: 'Hardware', provider: 'AI', document: 'Document', instruction: 'Goal', generate: 'Generate', practice: 'Practice', complete: 'Finish',
+  welcome: 'Welcome', hardware: 'Hardware', provider: 'AI', document: 'Document', generate: 'Generate', practice: 'Practice', complete: 'Finish',
 };
 
 const profileDetails: Record<HardwareProfileId, string> = {
@@ -34,7 +34,6 @@ const profileDetails: Record<HardwareProfileId, string> = {
 const coachmarkCopy: Partial<Record<OnboardingStep, { selector: string; title: string; body: string }>> = {
   provider: { selector: '[data-onboarding-target="provider"]', title: 'Set up an AI route', body: 'Use this real control to connect or review the provider used for generation.' },
   document: { selector: '[data-onboarding-target="document"]', title: 'Import your source', body: 'Add a readable PDF, text, or Markdown document here. The step completes only after it is saved.' },
-  instruction: { selector: '[data-onboarding-target="learning-instruction"], [data-onboarding-target="create-test"]', title: 'Shape the first quiz', body: 'Your learning goal is carried into the real test-creation form when you create the quiz.' },
   generate: { selector: '[data-onboarding-target="create-test"]', title: 'Create the quiz', body: 'Open the real creation form, choose the source, review the route, and queue the test.' },
   practice: { selector: '[data-onboarding-target="practice-feedback"], [data-onboarding-target="citations"], [data-onboarding-target="ask-ai"], [data-onboarding-target="practice"]', title: 'Practice and inspect evidence', body: 'Answer, check the feedback, then review citations or ask AI about this answer.' },
 };
@@ -117,11 +116,9 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
   const [hardware, setHardware] = useState<HardwareCapabilities>();
   const [hardwareError, setHardwareError] = useState('');
   const recommendationApplied = useRef(false);
-  const [instruction, setInstruction] = useState(profile.defaultLearningInstruction ?? '');
   const step = profile.onboarding.currentStep;
   const index = ONBOARDING_STEPS.indexOf(step);
 
-  useEffect(() => setInstruction(profile.defaultLearningInstruction ?? ''), [profile.defaultLearningInstruction]);
   useEffect(() => {
     if (!open || hardware || hardwareError) return;
     void serviceFetch('/api/system/capabilities').then(async response => {
@@ -147,7 +144,6 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
     hardware: Boolean(hardware) || Boolean(hardwareError),
     provider: configured.providers.length > 0,
     document: Boolean(onboardingDocument),
-    instruction: true,
     generate: Boolean(generationJob && generatedTest),
     practice: practiceComplete,
     complete: true,
@@ -156,7 +152,6 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
   const next = async () => {
     if (step === 'welcome') await setInterfaceMode(profile.interfaceMode);
     if (step === 'hardware') await setHardwareProfile(profile.hardwareProfile);
-    if (step === 'instruction') await updateAppProfile({ defaultLearningInstruction: instruction.trim() || undefined });
     if (step === 'complete') {
       await advanceOnboarding('complete', 'complete');
       onFinish();
@@ -236,13 +231,7 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
       <Button type="primary" icon={<FileAddOutlined />} onClick={onAddDocument}>Add document</Button>
     </Space>}
 
-    {step === 'instruction' && <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      <Typography.Title level={3}>What do you want to learn?</Typography.Title>
-      <Typography.Paragraph>Give Quizzer an optional emphasis. It is saved as your starting value and snapshotted with each generated test.</Typography.Paragraph>
-      <Input.TextArea rows={5} maxLength={2000} showCount value={instruction} onChange={event => setInstruction(event.target.value)}
-        placeholder="For example: coding questions about Terraform only" />
-      <Typography.Text type="secondary">Leave this blank for broad coverage. Source documents are always treated as untrusted content, never as instructions.</Typography.Text>
-    </Space>}
+
 
     {step === 'generate' && <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <FormOutlined className="onboarding-hero-icon" />

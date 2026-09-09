@@ -62,7 +62,7 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
   const [codingCount, setCodingCount] = useState(0);
   const [multipleChoiceMode, setMultipleChoiceMode] = useState<'single' | 'multiple'>('single');
   const [coverageStrategy, setCoverageStrategy] = useState<CoverageStrategy>('balanced');
-  const [customInstruction, setCustomInstruction] = useState(profile.defaultLearningInstruction ?? '');
+  const [customInstruction, setCustomInstruction] = useState('');
   const [difficulty, setDifficulty] = useState<GenerationDifficulty>('intermediate');
   const [contextBudget, setContextBudget] = useState(hardwareDefaults[profile.hardwareProfile].contextBudget);
   const [rerank, setRerank] = useState(hardwareDefaults[profile.hardwareProfile].rerank);
@@ -286,7 +286,7 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
             </section>
             <section>
               <Typography.Title level={5}>3. Add a learning goal <Typography.Text type="secondary">(optional)</Typography.Text></Typography.Title>
-              <Input.TextArea aria-label="Learning goal" data-onboarding-target="learning-instruction" rows={3} maxLength={2000} value={customInstruction} onChange={event => setCustomInstruction(event.target.value)}
+              <Input.TextArea aria-label="Learning goal" rows={3} maxLength={2000} value={customInstruction} onChange={event => setCustomInstruction(event.target.value)}
                 placeholder="For example: Focus on the ideas I am most likely to forget" />
             </section>
           </div>}
@@ -359,7 +359,7 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
           {questionCount > 200 && <Alert type="error" showIcon message="A test can contain at most 200 questions." />}
           {!simple && <div>
             <Typography.Text strong>Custom learning instruction <Typography.Text type="secondary">(optional)</Typography.Text></Typography.Text>
-            <Input.TextArea data-onboarding-target="learning-instruction" rows={3} maxLength={2000} showCount value={customInstruction} onChange={event => setCustomInstruction(event.target.value)}
+            <Input.TextArea rows={3} maxLength={2000} showCount value={customInstruction} onChange={event => setCustomInstruction(event.target.value)}
               placeholder="For example: coding questions about Terraform only" style={{ marginTop: 8 }} />
           </div>}
           {!!configured.providers.length && simple && requiresRouteApproval && <Alert type={proposedRoutes.some(route => route.paid) ? 'warning' : 'info'} showIcon

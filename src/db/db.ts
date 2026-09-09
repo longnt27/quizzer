@@ -227,7 +227,7 @@ export interface StoredAppProfile {
   interfaceMode: InterfaceMode;
   hardwareProfile: HardwareProfileId;
   onboarding: OnboardingState;
-  defaultLearningInstruction?: string;
+
   upgradedExistingLibrary: boolean;
   whatsNewDismissedVersion?: number;
 }

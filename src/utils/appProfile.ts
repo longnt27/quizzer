@@ -9,7 +9,6 @@ export const ONBOARDING_STEPS: OnboardingStep[] = [
   'hardware',
   'provider',
   'document',
-  'instruction',
   'generate',
   'practice',
   'complete',
