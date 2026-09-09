@@ -83,3 +83,29 @@ test('sidebar stays focused while command shortcuts are configurable and persist
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+Y' : 'Control+Shift+Y');
   await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
 });
+
+test('Settings sidebar keyboard navigation and narrow layout', async ({ page }) => {
+  await dismissOnboarding(page);
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+,' : 'Control+,');
+  const dialog = page.locator('.ant-modal-content').filter({ hasText: 'Settings' });
+  await expect(dialog.getByText('Settings', { exact: true })).toBeVisible();
+
+  // Keyboard navigation
+  await dialog.getByRole('tab', { name: 'Overall' }).focus();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Space'); // assuming next is Shortcuts
+  await expect(dialog.getByRole('tab', { name: 'Shortcuts' })).toHaveAttribute('aria-selected', 'true');
+  
+  // Enter key
+  await dialog.getByRole('tab', { name: 'Retrieval' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(dialog.getByRole('tab', { name: 'Retrieval' })).toHaveAttribute('aria-selected', 'true');
+
+  // Narrow layout
+  await page.setViewportSize({ width: 500, height: 800 });
+  // check if sidebar is row
+  const sidebar = dialog.locator('.settings-sidebar');
+  const box = await sidebar.boundingBox();
+  expect(box?.width).toBeGreaterThan(400); // full width
+  expect(box?.height).toBeLessThan(100); // height is small
+});

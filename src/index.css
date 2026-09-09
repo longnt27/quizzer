@@ -347,3 +347,18 @@ mark { color: #111827; }
   .summary-metrics { grid-template-columns: 1fr !important; }
   .quiz-header h4 { max-width: 58%; }
 }
+
+.settings-layout { display: flex; height: 550px; min-height: 550px; margin: 0 -24px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.settings-sidebar { width: 200px; flex: 0 0 200px; border-right: 1px solid var(--border); overflow-y: auto; padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; background: var(--surface-soft); }
+.settings-sidebar-item { padding: 6px 12px; border-radius: 6px; cursor: pointer; color: var(--text); font-weight: 500; user-select: none; }
+.settings-sidebar-item:hover { background: var(--surface-muted); }
+.settings-sidebar-item[aria-selected="true"] { background: var(--selected); color: var(--text); }
+.settings-sidebar-item:focus-visible { outline: 2px solid #1677ff; outline-offset: -2px; }
+.settings-content-pane { flex: 1; min-width: 0; padding: 24px; overflow-y: auto; background: var(--surface); }
+
+@media (max-width: 767px) {
+  .settings-layout { flex-direction: column; height: auto; min-height: 0; margin: 0 -16px; border-top: none; }
+  .settings-sidebar { width: 100%; flex: none; border-right: none; border-bottom: 1px solid var(--border); padding: 8px 16px; flex-direction: row; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .settings-sidebar-item { white-space: nowrap; }
+  .settings-content-pane { padding: 16px; }
+}

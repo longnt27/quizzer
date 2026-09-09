@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { Alert, Button, Divider, Input, InputNumber, Modal, Radio, Select, Space, Spin, Switch, Tabs, Tag, Typography } from 'antd';
+import { Alert, Button, Divider, Input, InputNumber, Modal, Radio, Select, Space, Spin, Switch, Tag, Typography } from 'antd';
 import { ReloadOutlined, SearchOutlined, SettingOutlined, UndoOutlined } from '@ant-design/icons';
 import type { StoredAppProfile } from '../db/db';
 import type { GenerationProvider, HardwareProfileId, InterfaceMode } from '../types';
@@ -477,7 +477,23 @@ export default function SettingsModal({
           needsReindex && 'Affected documents must be reindexed.',
           needsRestart && 'Quizzer must be restarted.',
         ].filter(Boolean).join(' ')} />}
-        {loading ? <div className="settings-loading"><Spin /></div> : !error && <Tabs tabPosition="left" activeKey={activeTab} onChange={key => setActiveTab(key as SettingsTab)} items={tabItems} />}
+        {loading ? <div className="settings-loading"><Spin /></div> : !error && (
+          <div className="settings-layout">
+            <div className="settings-sidebar" role="tablist" aria-orientation="vertical">
+              {tabItems.map(tab => (
+                <div key={tab.key} role="tab" aria-selected={activeTab === tab.key} tabIndex={0}
+                  onClick={() => setActiveTab(tab.key as SettingsTab)}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActiveTab(tab.key as SettingsTab); } }}
+                  className="settings-sidebar-item">
+                  {tab.label}
+                </div>
+              ))}
+            </div>
+            <div className="settings-content-pane" role="tabpanel" tabIndex={0}>
+              {tabItems.find(t => t.key === activeTab)?.children}
+            </div>
+          </div>
+        )}
       </Space>
     </Modal>
   );
