@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Alert, Button, Card, Empty, Input, List, Space, Spin, Tabs, Tag, Typography } from 'antd';
 import { DatabaseOutlined, DownloadOutlined, ReloadOutlined, RobotOutlined, SearchOutlined } from '@ant-design/icons';
+import { ErrorDisplay } from './ErrorDisplay';
 import { db, type StoredDocument, type StoredDocumentImage } from '../db/db';
 import { getMessageApi } from '../utils/messageProvider';
 import DocumentAskModal from './DocumentAskModal';
@@ -244,7 +245,7 @@ export default function DocumentView({ documentId }: Props) {
               message={`${retrieval.confidence[0].toUpperCase() + retrieval.confidence.slice(1)} retrieval confidence`}
               description={`${retrieval.results.length} passage${retrieval.results.length === 1 ? '' : 's'} · ${retrieval.method === 'hybrid-rrf' ? 'hybrid sparse + dense ranking' : 'sparse BM25 ranking'}${retrieval.planningTrace && retrieval.planningTrace.mode !== 'none' ? ` · ${retrieval.planningTrace.mode} plan with ${retrieval.planningTrace.variants.length} bounded variants` : ''}${retrieval.reranking?.status !== 'disabled' ? ` · reranked by ${retrieval.reranking?.component}` : ''} · approximately ${retrieval.estimatedContextTokens.toLocaleString()} context tokens${retrieval.correctivePass ? ' · one corrective retrieval pass used' : ''}`} />
             {retrieval.planningTrace?.fallback && <Alert type="info" showIcon message="Query planning used a safe fallback" description={retrieval.planningTrace.reason} />}
-            {retrieval.dense?.status === 'unavailable' && <Alert type="warning" showIcon message="Dense retrieval unavailable; showing sparse results" description={retrieval.dense.error || retrieval.indexingError} />}
+            {retrieval.dense?.status === 'unavailable' && <ErrorDisplay error={retrieval.dense.error || retrieval.indexingError} context="Dense Retrieval" type="warning" />}
             {retrieval.reranking?.status === 'fallback' && <Alert type="warning" showIcon message="Configured reranker unavailable; using built-in local reranking" description={retrieval.reranking.issue} />}
             {retrieval.refusal && <Alert type="warning" showIcon message={retrieval.refusal} />}
             <List dataSource={retrieval.results} locale={{ emptyText: <Empty description="No indexed evidence found" /> }} renderItem={(result, position) => <List.Item>
