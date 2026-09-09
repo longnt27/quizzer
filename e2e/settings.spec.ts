@@ -1,6 +1,21 @@
 import { test, expect } from '@playwright/test';
 import { dismissOnboarding, setInterfaceMode } from './helpers';
 
+test('opening Settings keeps scrolling inside the modal and app panes', async ({ page }) => {
+  await dismissOnboarding(page);
+
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+,' : 'Control+,');
+  await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
+
+  const viewportDoesNotScroll = await page.evaluate(() => {
+    const scrollingElement = document.scrollingElement;
+    if (!scrollingElement) return false;
+    return scrollingElement.scrollHeight === scrollingElement.clientHeight
+      && getComputedStyle(document.body).overflow === 'hidden';
+  });
+  expect(viewportDoesNotScroll).toBe(true);
+});
+
 test('Settings search/reset and keyboard accessibility', async ({ page }) => {
   await dismissOnboarding(page);
 
@@ -10,8 +25,10 @@ test('Settings search/reset and keyboard accessibility', async ({ page }) => {
   await expect(dialog.getByText('Settings', { exact: true })).toBeVisible();
   await expect(dialog.getByRole('tab', { name: 'Overall' })).toHaveAttribute('aria-selected', 'true');
   await expect(dialog.getByRole('radiogroup', { name: 'Theme' })).toBeVisible();
-  await expect(dialog.locator('.settings-row').filter({ hasText: 'Interface mode' }).getByText('Advanced', { exact: true })).toBeVisible();
+  await expect(dialog.getByRole('radiogroup', { name: 'Interface mode' })).toBeVisible();
+  await expect(dialog.getByRole('radio', { name: 'Advanced' })).toBeChecked();
   await expect(dialog.getByRole('combobox', { name: 'Hardware profile' })).toBeVisible();
+  await expect(dialog.getByText('Appearance, interface mode, and hardware profile.', { exact: true })).toHaveCount(0);
   await expect(dialog.getByRole('tab', { name: 'Software Updates' })).toBeVisible();
   await expect(dialog.locator('.updater-status-card')).toHaveCount(0);
   await dialog.getByRole('tab', { name: 'Software Updates' }).click();
@@ -30,8 +47,17 @@ test('Settings search/reset and keyboard accessibility', async ({ page }) => {
   await expect(dialog.getByRole('combobox', { name: 'Document extractor component' })).toBeVisible();
 
   const search = dialog.getByLabel('Search settings');
+  await expect(search).toBeVisible();
+  await expect(search).toBeInViewport();
+  await expect(dialog.locator('.settings-sidebar').getByLabel('Search settings')).toBeVisible();
   await search.fill('Generation concurrency');
-  await expect(dialog.getByRole('tab', { name: 'Generation' })).toHaveAttribute('aria-selected', 'true');
+  const result = dialog.locator('.settings-search-result').filter({ hasText: 'Generation concurrency' });
+  await expect(result).toBeVisible();
+  await expect(result.locator('mark')).toHaveText('Generation concurrency');
+  await result.click();
+  await expect(dialog.getByRole('tabpanel', { name: 'Generation' })).toBeVisible();
+  const concurrencyRow = dialog.locator('.settings-row').filter({ hasText: 'Generation concurrency' });
+  await expect(concurrencyRow).toBeFocused();
   const concurrency = dialog.getByRole('spinbutton', { name: 'Generation concurrency' });
   await expect(concurrency).toBeVisible();
   const selectedProfileConcurrency = await concurrency.inputValue();
@@ -48,6 +74,7 @@ test('Settings search/reset and keyboard accessibility', async ({ page }) => {
 
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+,' : 'Control+,');
   await dialog.getByLabel('Search settings').fill('Generation concurrency');
+  await dialog.locator('.settings-search-result').filter({ hasText: 'Generation concurrency' }).click();
   await expect(dialog.getByRole('spinbutton', { name: 'Generation concurrency' })).toHaveValue(selectedProfileConcurrency);
 });
 
@@ -83,6 +110,8 @@ test('sidebar stays focused while command shortcuts are configurable and persist
   await page.locator('.sidebar-footer:visible').getByRole('button', { name: 'Settings' }).click();
   const settings = page.getByRole('dialog', { name: 'Settings' });
   await settings.getByRole('tab', { name: 'Shortcuts' }).click();
+  await expect(settings.getByRole('button', { name: 'Open command palette', exact: true })).toHaveCount(0);
+  await expect(settings.getByText('Command palette actions', { exact: true })).toHaveCount(0);
 
   const paletteRow = settings.locator('.settings-row').filter({ hasText: 'Open command palette' });
   await paletteRow.getByRole('button', { name: 'Record shortcut for Open command palette' }).click();
@@ -131,6 +160,7 @@ test('Settings sidebar supports tablist keyboard navigation and narrow layout', 
 
   await page.setViewportSize({ width: 500, height: 800 });
   const sidebar = dialog.locator('.settings-sidebar');
-  await expect(sidebar).toHaveCSS('flex-direction', 'row');
+  await expect(sidebar).toHaveCSS('flex-direction', 'column');
+  await expect(dialog.locator('.settings-tab-list')).toHaveCSS('flex-direction', 'row');
   await expect(dialog.locator('.settings-content-pane')).toHaveCSS('overflow-y', 'auto');
 });

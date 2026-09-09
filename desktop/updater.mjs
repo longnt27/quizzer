@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { verifyReleaseManifestSignature } from '../release/manifest.mjs';
 import { isValidArtifactName, MAX_DESKTOP_PACKAGE_SIZE, validateReleaseManifest } from '../server/release-manifest.mjs';
+import { prepareMacosDmgUpdate } from './macos-update.mjs';
 
 export const SUPPORTED_CHANNELS = Object.freeze(['stable', 'beta']);
 export const CANONICAL_REPOSITORY = 'longnt27/quizzer';
@@ -167,7 +168,7 @@ export const fetchBoundedText = async (fetchFn, url, options = {}, maxBytes = MA
 };
 
 const FORMAT_PREFERENCES = {
-  macos: ['pkg', 'dmg', 'zip'],
+  macos: ['dmg', 'pkg', 'zip'],
   windows: ['msi', 'exe', 'zip'],
   linux: ['deb', 'rpm', 'appimage', 'tar.gz', 'zip'],
 };
@@ -438,8 +439,17 @@ export const resolveHandoffLaunch = (filePath, format, platform) => {
   return { command: '/usr/bin/xdg-open', args: [filePath] };
 };
 
-export const defaultLauncher = async (filePath, format, platform) => {
-  const { command, args } = resolveHandoffLaunch(filePath, format, platform);
+export const defaultLauncher = async (filePath, format, platform, context = {}) => {
+  const launch = platform === 'macos' && format === 'dmg'
+    ? await prepareMacosDmgUpdate({
+        dmgPath: filePath,
+        userDataDir: context.userDataDir,
+        applicationPath: context.applicationPath,
+        currentPid: context.currentPid,
+        targetVersion: context.targetVersion,
+      })
+    : resolveHandoffLaunch(filePath, format, platform);
+  const { command, args } = launch;
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       stdio: 'ignore',
@@ -452,6 +462,9 @@ export const defaultLauncher = async (filePath, format, platform) => {
     child.on('error', (err) => {
       if (!settled) {
         settled = true;
+        if (launch.preparationDirectory) {
+          void rm(launch.preparationDirectory, { recursive: true, force: true }).catch(() => {});
+        }
         reject(new Error(`Failed to launch installer: ${err.message}`));
       }
     });
@@ -476,8 +489,11 @@ export class DesktopUpdater {
     this.isPackaged = options.isPackaged ?? false;
     this.fetch = options.fetch || globalThis.fetch;
     this.launcher = options.launcher || defaultLauncher;
+    this.applicationPath = options.applicationPath || '';
+    this.currentPid = options.currentPid || process.pid;
 
     this.channel = this.loadPersistedChannelSync(options.channel);
+    this.autoDownload = this.loadPersistedAutoDownloadSync(options.autoDownload);
 
     this.trustedKeys = new Map();
     if (options.trustedKeys) {
@@ -543,6 +559,37 @@ export class DesktopUpdater {
     const payload = JSON.stringify({ channel, updatedAt: new Date().toISOString() }, null, 2);
     await writeFile(tempFile, `${payload}\n`, { mode: 0o600 });
     await rename(tempFile, channelFile);
+  }
+
+  loadPersistedAutoDownloadSync(fallbackAutoDownload) {
+    if (this.userDataDir) {
+      try {
+        const preferencesFile = join(this.userDataDir, 'updates', 'preferences.json');
+        const parsed = JSON.parse(readFileSync(preferencesFile, 'utf8'));
+        if (typeof parsed?.autoDownload === 'boolean') return parsed.autoDownload;
+      } catch {
+        // Fall back to the configured preference or the safe product default.
+      }
+    }
+    return typeof fallbackAutoDownload === 'boolean' ? fallbackAutoDownload : true;
+  }
+
+  async persistAutoDownload(autoDownload) {
+    if (!this.userDataDir) return;
+    const updatesDir = join(this.userDataDir, 'updates');
+    await mkdir(updatesDir, { recursive: true, mode: 0o700 });
+    const preferencesFile = join(updatesDir, 'preferences.json');
+    const tempFile = `${preferencesFile}.${process.pid}.${Date.now()}.tmp`;
+    const payload = JSON.stringify({ autoDownload, updatedAt: new Date().toISOString() }, null, 2);
+    await writeFile(tempFile, `${payload}\n`, { mode: 0o600 });
+    await rename(tempFile, preferencesFile);
+  }
+
+  async setAutoDownload(autoDownload) {
+    if (typeof autoDownload !== 'boolean') throw new Error('autoDownload must be a boolean');
+    this.autoDownload = autoDownload;
+    await this.persistAutoDownload(autoDownload);
+    return this.getStatus();
   }
 
   resolvePublicKey(publicKeyId) {
@@ -885,6 +932,7 @@ export class DesktopUpdater {
       state: this.state,
       currentVersion: this.currentVersion,
       channel: this.channel,
+      autoDownload: this.autoDownload,
       target: {
         platform: this.platform,
         architecture: this.architecture,
@@ -1256,7 +1304,12 @@ export class DesktopUpdater {
       }
 
       try {
-        await this.launcher(artifactPath, format, this.platform);
+        await this.launcher(artifactPath, format, this.platform, {
+          userDataDir: this.userDataDir,
+          applicationPath: this.applicationPath,
+          currentPid: this.currentPid,
+          targetVersion: stagedPackage.manifest.version,
+        });
       } catch (err) {
         this.state = 'error';
         this.lastError = `Installer handoff failed: ${err instanceof Error ? err.message : String(err)}`;
@@ -1271,7 +1324,9 @@ export class DesktopUpdater {
         handoffPending: true,
         restartRequested: options.restart ?? false,
         mechanism: 'staged-ready',
-        message: 'Update package cryptographically verified and successfully handed off to system installer.',
+        message: this.platform === 'macos' && format === 'dmg'
+          ? 'Update verified and prepared. Quizzer will install it and restart now.'
+          : 'Update package cryptographically verified and successfully handed off to system installer.',
         status: await this.getStatus(),
       };
     } catch (error) {
@@ -1397,7 +1452,12 @@ export class DesktopUpdater {
     }
 
     try {
-      await this.launcher(candidate.artifactPath, candidate.artifact.format, this.platform);
+      await this.launcher(candidate.artifactPath, candidate.artifact.format, this.platform, {
+        userDataDir: this.userDataDir,
+        applicationPath: this.applicationPath,
+        currentPid: this.currentPid,
+        targetVersion: candidate.manifest.version,
+      });
     } catch (error) {
       this.state = 'error';
       this.lastError = `Rollback installer handoff failed: ${error instanceof Error ? error.message : String(error)}`;

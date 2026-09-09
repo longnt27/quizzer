@@ -8,8 +8,8 @@ test('exposes semantic main navigation and keyboard-accessible settings after on
 
   const navigation = page.locator('.desktop-sidebar');
   await expect(navigation).toBeVisible();
+  await expect(navigation.locator('button').filter({ hasText: 'Home' })).toHaveCount(0);
   const navigationItems = [
-    navigation.locator('button').filter({ hasText: 'Home' }),
     navigation.locator('[role="tab"]').filter({ hasText: 'Documents' }),
     navigation.locator('[role="tab"]').filter({ hasText: 'Tests' }),
     navigation.locator('button').filter({ hasText: 'Activity' }),
@@ -23,8 +23,8 @@ test('exposes semantic main navigation and keyboard-accessible settings after on
 
   await navigation.locator('button').filter({ hasText: 'Settings' }).click();
   const settings = page.getByRole('dialog', { name: 'Settings' });
-  const mode = settings.getByRole('combobox', { name: 'Interface mode' });
-  await expect(mode).toBeVisible();
-  await mode.focus();
-  await expect(mode).toBeFocused();
+  const search = settings.getByRole('textbox', { name: 'Search settings' });
+  await expect(settings.getByRole('radiogroup', { name: 'Interface mode' })).toBeVisible();
+  await search.focus();
+  await expect(search).toBeFocused();
 });

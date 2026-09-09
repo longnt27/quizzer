@@ -169,6 +169,8 @@ test('resumes real onboarding and finishes through durable quiz practice', async
 
   await expect(page.getByRole('heading', { name: 'Try one question' })).toBeVisible();
   await page.getByRole('button', { name: 'Open coordination quiz' }).click();
+  await expect(page.locator('.test-source-item')).toHaveRole('button');
+  await expect(page.getByRole('button', { name: 'Open document' })).toHaveCount(0);
   await page.locator('.ant-radio-button-wrapper').filter({ hasText: 'Practice mode' }).click();
   await page.getByRole('button', { name: 'Start Practice' }).click();
   await expect(page.getByRole('heading', { name: 'Question 1' })).toBeVisible();
@@ -185,8 +187,18 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await page.getByRole('button', { name: /Check answer/ }).click();
   await expect(page.getByRole('button', { name: /Ask AI about this answer/ })).toBeVisible();
   await expect(page.locator('[data-onboarding-target="practice-feedback"]').filter({ visible: true }).first()).toBeVisible();
-  await expect(page.locator('[data-onboarding-target="citations"]').filter({ visible: true }).first()).toBeVisible();
+  const groundingSources = page.getByRole('region', { name: 'Grounding sources' });
+  await expect(groundingSources).toBeVisible();
+  await expect(groundingSources.getByText('coordination', { exact: true })).toHaveCount(1);
+  await expect(groundingSources.locator('code')).toHaveCount(0);
   await expect(page.locator('[data-onboarding-target="ask-ai"]').filter({ visible: true }).first()).toBeVisible();
+  await page.getByRole('button', { name: /Ask AI about this answer/ }).click();
+  const askDialog = page.getByRole('dialog', { name: /Ask AI about question/ });
+  await expect(askDialog).toBeVisible();
+  const askBounds = await askDialog.boundingBox();
+  const viewportHeight = page.viewportSize()?.height ?? 0;
+  expect(askBounds && askBounds.y >= 0 && askBounds.y + askBounds.height <= viewportHeight).toBeTruthy();
+  await askDialog.getByRole('button', { name: 'Close' }).click();
   await page.getByRole('button', { name: 'Pause' }).click();
 
   await page.getByRole('button', { name: 'Resume setup' }).click();
@@ -203,7 +215,7 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await expect(page.getByRole('heading', { name: 'Question 1' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Learn from your own material' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Pause' }).click();
-  await page.getByRole('button', { name: 'Home' }).click();
+  await page.getByRole('button', { name: 'Back to home' }).click();
   await expect(page.getByRole('heading', { name: 'Welcome to Quizzer' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Resume setup' })).toHaveCount(0);
 

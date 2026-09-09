@@ -10,6 +10,7 @@ import { chunkDocumentContent, STRUCTURAL_CHUNKER_VERSION } from '../utils/docum
 import { getProviderSettings } from '../utils/providerSettings';
 import { serviceFetch } from '../utils/serviceApi';
 import { ErrorDisplay } from './ErrorDisplay';
+import TagEditor from './TagEditor';
 
 interface PendingDocument {
   id: string;
@@ -28,7 +29,6 @@ interface Props {
   onCreated: (id: string) => void | Promise<void>;
 }
 
-const parseTags = (value: string) => value.split(',').map(tag => tag.trim()).filter(Boolean);
 const hashBytes = async (value: BufferSource) => {
   const digest = await crypto.subtle.digest('SHA-256', value);
   return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
@@ -162,8 +162,7 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
                   {item.status === 'extracting' ? <Space size={5}><Spin size="small" /> Extracting</Space> : item.status}
                 </Tag>
               </Space>
-              <Input placeholder="Tags, separated by commas" value={item.tags.join(', ')}
-                onChange={event => update(item.id, { tags: parseTags(event.target.value) })} />
+              <TagEditor tags={item.tags} subject={item.name || item.file.name} onChange={tags => update(item.id, { tags })} />
               {item.error && <ErrorDisplay error={item.error} context="document" />}
               {item.stage && <Typography.Text type="secondary">{item.stage}</Typography.Text>}
             </Space>

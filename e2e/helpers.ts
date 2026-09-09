@@ -16,7 +16,7 @@ export async function dismissOnboarding(page: Page, navigate = true) {
       await expect(onboarding).toBeHidden();
     }
     await pause.click();
-    await page.getByRole('button', { name: 'Home' }).click();
+    await page.getByRole('button', { name: 'Back to home' }).click();
   }
   await expect(welcome).toBeVisible();
 
@@ -31,12 +31,19 @@ export async function setInterfaceMode(page: Page, mode: 'simple' | 'advanced') 
   const dialog = page.getByRole('dialog', { name: 'Settings' });
   const row = dialog.locator('.settings-row').filter({ hasText: 'Interface mode' });
   const target = mode === 'advanced' ? 'Advanced' : 'Simple';
-  if (!await row.getByText(target, { exact: true }).isVisible()) {
-    await row.locator('.ant-select-selector').click();
-    await page.locator('.ant-select-dropdown:visible').getByText(target, { exact: true }).click();
+  const targetOption = row.getByRole('radio', { name: target });
+  if (!await targetOption.isChecked()) {
+    await row.getByText(target, { exact: true }).click();
     await dialog.getByRole('button', { name: 'Save changes' }).click();
   } else {
     await dialog.getByRole('button', { name: 'Cancel' }).click();
   }
   await expect(dialog).toBeHidden();
+}
+
+export async function openPromptStudio(page: Page) {
+  await page.locator('.sidebar-footer:visible').getByRole('button', { name: 'Settings' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Settings' });
+  await dialog.getByRole('tab', { name: 'Prompt Studio' }).click();
+  return dialog;
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Checkbox, Collapse, Empty, Input, InputNumber, List, Modal, Progress, Select, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Checkbox, Collapse, Empty, Input, InputNumber, List, Modal, Popconfirm, Progress, Select, Space, Tabs, Tag, Typography } from 'antd';
 import { ErrorDisplay } from './ErrorDisplay';
 import { formatErrorMessage } from '../utils/errorFormatting';
 import { CloseOutlined, DatabaseOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons';
@@ -297,6 +297,8 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
         {(job.status === 'queued' || job.status === 'running' || job.status === 'waiting' || job.status === 'paused') &&
           <Button danger size="small" icon={<CloseOutlined />} onClick={() => void cancelGenerationJob(job.id)}>Cancel</Button>}
         {job.status === 'error' && <Button size="small" icon={<ReloadOutlined />} onClick={() => void retryGenerationJob(job.id)}>Retry from checkpoint</Button>}
+        {job.status === 'error' && <Popconfirm title="Discard this failed generation?" description="Saved progress for this job will be removed." okText="Discard" okButtonProps={{ danger: true }}
+          onConfirm={() => void removeGenerationJob(job.id)}><Button danger size="small" type="text">Discard</Button></Popconfirm>}
         {job.status === 'completed' && <Button size="small" type="primary" onClick={() => onOpenTest(job.testId)}>Open test</Button>}
         {terminalStatuses.has(job.status) && <Button size="small" type="text" onClick={() => void removeGenerationJob(job.id)}>Dismiss</Button>}
       </Space>
@@ -350,6 +352,8 @@ function IndexJobItem({ job }: { job: StoredIndexJob }) {
           onClick={() => void control('cancel')}>Cancel</Button>}
         {(job.status === 'failed' || job.status === 'cancelled') && <Button size="small" loading={working} icon={<ReloadOutlined />}
           onClick={() => void control('resume')}>Resume remaining</Button>}
+        {job.status === 'failed' && <Popconfirm title="Discard this failed indexing job?" description="Saved progress for this job will be removed." okText="Discard" okButtonProps={{ danger: true }}
+          onConfirm={() => void db.indexJobs.delete(job.id)}><Button danger size="small" type="text">Discard</Button></Popconfirm>}
         {(job.status === 'completed' || job.status === 'cancelled') && <Button size="small" type="text"
           onClick={() => void db.indexJobs.delete(job.id)}>Dismiss</Button>}
       </Space>
@@ -362,20 +366,28 @@ interface CenterProps { open: boolean; onClose: () => void; onOpenTest: (id: str
 export function GenerationCenter({ open, onClose, onOpenTest, onManagePlugins }: CenterProps) {
   const jobs = useLiveQuery(() => db.generationJobs.orderBy('createdAt').reverse().toArray(), []) ?? [];
   const indexJobs = useLiveQuery(() => db.indexJobs.orderBy('createdAt').reverse().toArray(), []) ?? [];
-  const clearFinished = async () => Promise.all([
-    db.generationJobs.bulkDelete(jobs.filter(job => terminalStatuses.has(job.status)).map(job => job.id)),
-    db.indexJobs.bulkDelete(indexJobs.filter(job => terminalStatuses.has(job.status)).map(job => job.id)),
-  ]);
-  const hasFinished = jobs.some(job => terminalStatuses.has(job.status)) || indexJobs.some(job => terminalStatuses.has(job.status));
+  const finishedGenerationIds = jobs.filter(job => terminalStatuses.has(job.status)).map(job => job.id);
+  const finishedIndexIds = indexJobs.filter(job => terminalStatuses.has(job.status)).map(job => job.id);
   return <Modal open={open} width={780} title="Activity" footer={null} onCancel={onClose}>
-    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      <Typography.Title level={5} style={{ margin: 0 }}>Quiz generation</Typography.Title>
-      {hasFinished && <Button size="small" onClick={() => void clearFinished()}>Clear finished</Button>}
-      <List locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No generation jobs" /> }} dataSource={jobs}
-        renderItem={job => <JobItem job={job} onOpenTest={id => { onOpenTest(id); onClose(); }} onManagePlugins={onManagePlugins} />} />
-      <Typography.Title level={5} style={{ margin: 0 }}>Document indexing</Typography.Title>
-      <List locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No indexing jobs" /> }} dataSource={indexJobs}
-        renderItem={job => <IndexJobItem job={job} />} />
-    </Space>
+    <Tabs items={[
+      {
+        key: 'generation',
+        label: 'Quiz generation',
+        children: <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          {!!finishedGenerationIds.length && <Button size="small" onClick={() => void db.generationJobs.bulkDelete(finishedGenerationIds)}>Clear finished</Button>}
+          <List locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No generation jobs" /> }} dataSource={jobs}
+            renderItem={job => <JobItem job={job} onOpenTest={id => { onOpenTest(id); onClose(); }} onManagePlugins={onManagePlugins} />} />
+        </Space>,
+      },
+      {
+        key: 'indexing',
+        label: 'Document indexing',
+        children: <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          {!!finishedIndexIds.length && <Button size="small" onClick={() => void db.indexJobs.bulkDelete(finishedIndexIds)}>Clear finished</Button>}
+          <List locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No indexing jobs" /> }} dataSource={indexJobs}
+            renderItem={job => <IndexJobItem job={job} />} />
+        </Space>,
+      },
+    ]} />
   </Modal>;
 }

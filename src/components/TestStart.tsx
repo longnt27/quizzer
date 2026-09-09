@@ -1,5 +1,5 @@
 import { Alert, Button, Typography, Checkbox, InputNumber, Popconfirm, Radio, Space, Tag } from 'antd';
-import { FileTextOutlined, LinkOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, FileTextOutlined } from '@ant-design/icons';
 import type { StoredTest, StoredTestDraft } from '../db/db';
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -14,9 +14,10 @@ interface Props {
     onStart: (options: { timeLimit?: number; practice: boolean }) => void;
     onResume: () => void;
     onOpenDocument: (id: string) => void;
+    onBack: () => void;
 }
 
-const TestStart: React.FC<Props> = ({ test, draft, onStart, onResume, onOpenDocument }) => {
+const TestStart: React.FC<Props> = ({ test, draft, onStart, onResume, onOpenDocument, onBack }) => {
     const [timed, setTimed] = useState(false);
     const [durationMinutes, setDurationMinutes] = useState(15); // default to 15 mins
     const [mode, setMode] = useState<'test' | 'practice'>('test');
@@ -25,6 +26,7 @@ const TestStart: React.FC<Props> = ({ test, draft, onStart, onResume, onOpenDocu
     const sourceDocuments = useLiveQuery(() => db.documents.bulkGet(documentIds), [test.id, documentIds.join('|')]);
 
     return <div className="test-start">
+      <Button className="test-back-button" type="text" icon={<ArrowLeftOutlined />} onClick={onBack}>Back to home</Button>
       <div className="test-start-main">
         <Title level={2} style={{ marginBottom: 8 }}>{test.name}</Title>
         <Paragraph type="secondary" style={{ fontSize: 16, marginBottom: 32 }}>
@@ -68,17 +70,19 @@ const TestStart: React.FC<Props> = ({ test, draft, onStart, onResume, onOpenDocu
         {documentIds.length ? <div className="test-source-list">
           {documentIds.map((documentId, index) => {
             const document = sourceDocuments?.[index];
-            return <div className="test-source-item" key={documentId}>
-              <div>
+            const content = <>
+              <span className="test-source-copy">
                 <Typography.Text strong>{document?.name ?? (sourceDocuments ? 'Deleted document' : 'Loading source…')}</Typography.Text>
-                <div className="test-source-meta">
+                <span className="test-source-meta">
                   {document?.pageCount && <Tag>{document.pageCount} pages</Tag>}
                   {document?.tags.map(tag => <Tag key={tag}>{tag}</Tag>)}
                   {!document && sourceDocuments && <Tag color="error">No longer in library</Tag>}
-                </div>
-              </div>
-              {document && <Button type="link" icon={<LinkOutlined />} onClick={() => onOpenDocument(document.id)}>Open document</Button>}
-            </div>;
+                </span>
+              </span>
+            </>;
+            return document
+              ? <button type="button" className="test-source-item" key={documentId} onClick={() => onOpenDocument(document.id)}>{content}</button>
+              : <div className="test-source-item is-unavailable" key={documentId}>{content}</div>;
           })}
         </div> : <Alert type="info" showIcon message="Source information is unavailable"
           description="This test was created before Quizzer recorded document origins, or it was imported without source metadata." />}

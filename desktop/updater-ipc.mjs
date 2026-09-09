@@ -57,3 +57,10 @@ export const validateUpdaterApplyOptions = options => {
   }
   return validated;
 };
+
+export const validateAutoDownloadPreference = enabled => {
+  if (typeof enabled !== 'boolean') {
+    throw new Error('autoDownload must be a boolean');
+  }
+  return enabled;
+};

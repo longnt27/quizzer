@@ -81,6 +81,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
     setSession(null);
     setMobileMenuOpen(false);
   }, []);
+  const openUpdateSettings = useCallback(() => setShowSettingsModal('updates'), []);
   const updateKeyboardShortcut = (actionId: ShortcutActionId, shortcut: string) => {
     const changed = changeKeyboardShortcut(keyboardShortcuts, actionId, shortcut);
     if (!changed.ok) {
@@ -102,9 +103,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
     onAddDocument: () => { setShowDocumentModal(true); setMobileMenuOpen(false); },
     onOpenPlugins: () => { setShowPluginsModal(true); setMobileMenuOpen(false); },
     onOpenSettings: () => { setShowSettingsModal(true); setMobileMenuOpen(false); },
-    onOpenPromptStudio: () => { setShowSettingsModal('prompts'); setMobileMenuOpen(false); },
     onOpenGeneration: () => { setShowGenerationCenter(true); setMobileMenuOpen(false); },
-    onOpenHome: () => select(null),
     onOpenTutorial: () => { setShowOnboarding(true); setMobileMenuOpen(false); },
     profile,
     dark,
@@ -150,7 +149,10 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
 
   return <>
     <GenerationWorker />
-    <UpdateAvailableNotifier onOpenSettings={() => setShowSettingsModal('updates')} />
+    <UpdateAvailableNotifier
+      isTestActive={session?.mode === 'taking'}
+      onOpenSettings={openUpdateSettings}
+    />
     <Layout className="app-shell">
       {!mobile && session?.mode !== 'taking' && <Sidebar {...sidebarProps} />}
       {mobile && session?.mode !== 'taking' && (
@@ -161,7 +163,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
         </header>
       )}
       <main className={`app-main ${mobile && session?.mode !== 'taking' ? 'with-mobile-header' : ''}`}>
-        {selection?.kind === 'document' ? <DocumentView documentId={selection.id} /> : selection?.kind === 'test' ? (
+        {selection?.kind === 'document' ? <DocumentView documentId={selection.id} onBack={() => select(null)} /> : selection?.kind === 'test' ? (
           <MainContent
             selectedTestId={selection.id}
             setSelectedTestId={id => setSelection({ kind: 'test', id })}
@@ -169,6 +171,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
             setSession={setSession}
             onAddTest={() => setShowAddModal(true)}
             onOpenDocument={id => select({ kind: 'document', id })}
+            onBack={() => select(null)}
           />
         ) : profile ? <HomePage profile={profile} onAddDocument={() => setShowDocumentModal(true)} onAddTest={() => setShowAddModal(true)}
           onOpenGeneration={() => setShowGenerationCenter(true)} onOpenPlugins={() => setShowPluginsModal(true)}
@@ -187,7 +190,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
       {showSettingsModal && profile && <SettingsModal profile={profile} dark={dark} onThemeChange={onThemeChange}
         keyboardShortcuts={keyboardShortcuts} onKeyboardShortcutChange={updateKeyboardShortcut}
         initialTab={typeof showSettingsModal === 'string' ? showSettingsModal : undefined}
-        onOpenCommandPalette={() => { setShowSettingsModal(false); setShowCommandPalette(true); }} onClose={() => setShowSettingsModal(false)} />}
+        onClose={() => setShowSettingsModal(false)} />}
       <CommandPalette open={showCommandPalette} commands={commands} onClose={() => setShowCommandPalette(false)} />
       {showGenerationCenter && <GenerationCenter open onClose={() => setShowGenerationCenter(false)} onManagePlugins={() => setShowPluginsModal(true)} onOpenTest={id => {
         setSelection({ kind: 'test', id }); setSession(null);

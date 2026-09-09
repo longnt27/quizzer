@@ -109,7 +109,7 @@ test('selectTargetArtifact filters for matching OS and architecture, excluding C
     },
   ];
 
-  // macOS arm64 prefers pkg, then dmg, then zip (handoff-capable formats first)
+  // macOS arm64 prefers DMG because Quizzer can replace and restart itself from it.
   const macArm = selectTargetArtifact(artifacts, { platform: 'macos', architecture: 'arm64' });
   assert.equal(macArm.format, 'dmg');
   assert.equal(macArm.name, 'quizzer-1.0.0-macos-arm64.dmg');

@@ -119,6 +119,7 @@ interface IntegrationOptionProps {
   checked?: boolean;
   switchLabel?: string;
   switchDisabled?: boolean;
+  showSwitch?: boolean;
   onToggle?: (checked: boolean) => void;
   actions?: ReactNode;
   details?: ReactNode;
@@ -126,7 +127,7 @@ interface IntegrationOptionProps {
 }
 
 function IntegrationOption({
-  icon, title, description, state, checked, switchLabel, switchDisabled, onToggle, actions, details, warning,
+  icon, title, description, state, checked, switchLabel, switchDisabled, showSwitch = true, onToggle, actions, details, warning,
 }: IntegrationOptionProps) {
   return (
     <section className={`plugin-option${warning ? ' plugin-option-warning' : ''}`}>
@@ -139,7 +140,7 @@ function IntegrationOption({
         </div>
         <Space className="plugin-option-actions" size="small" wrap>
           {actions}
-          {onToggle ? <Switch checked={checked} disabled={switchDisabled} onChange={onToggle} aria-label={switchLabel ?? `Enable ${title}`} /> : null}
+          {onToggle && showSwitch ? <Switch checked={checked} disabled={switchDisabled} onChange={onToggle} aria-label={switchLabel ?? `Enable ${title}`} /> : null}
         </Space>
       </div>
       {details ? <div className="plugin-option-details">{details}</div> : null}
@@ -735,6 +736,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
         description="Optional richer local extraction for PDFs with complex layouts and images."
         state={status?.marker?.job?.state === 'working' ? 'Installing…' : status?.marker?.installed ? 'Detected · installed' : 'Not installed'}
         checked={Boolean(status?.marker?.installed && enabledTools.marker)} switchLabel="Use Marker for automatic PDF extraction"
+        showSwitch={Boolean(status?.marker?.installed)}
         switchDisabled={!status?.marker?.installed || status?.marker?.job?.state === 'working'}
         onToggle={checked => setEnabledTools(current => ({ ...current, marker: checked }))}
         actions={!status?.marker?.installed && status?.marker?.job?.state !== 'working'
@@ -751,6 +753,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
         description="Managed local OCR for labels, diagrams, and screenshots extracted from documents."
         state={status?.ocr?.job?.state === 'working' ? 'Installing…' : status?.ocr?.installed ? 'Detected · installed' : 'Not installed'}
         checked={Boolean(status?.ocr?.installed && ocrPlugin === 'builtin' && enabledTools.ocr)} switchLabel="Enable RapidOCR"
+        showSwitch={Boolean(status?.ocr?.installed)}
         switchDisabled={!status?.ocr?.installed || status?.ocr?.job?.state === 'working'}
         onToggle={checked => { if (checked) setOcrPlugin('builtin'); setEnabledTools(current => ({ ...current, ocr: checked })); }}
         actions={!status?.ocr?.installed && status?.ocr?.job?.state !== 'working'
@@ -767,6 +770,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
         description="Local semantic embeddings for hybrid retrieval and duplicate filtering."
         state={status?.embeddings?.job?.state === 'working' ? 'Installing…' : status?.embeddings?.installed ? 'Detected · installed' : 'Model not installed'}
         checked={Boolean(status?.embeddings?.installed && embedderPlugin === 'builtin' && enabledTools.embeddings)} switchLabel="Enable Ollama embeddings"
+        showSwitch={Boolean(status?.embeddings?.installed)}
         switchDisabled={!status?.embeddings?.installed || status?.embeddings?.job?.state === 'working'}
         onToggle={checked => { if (checked) setEmbedderPlugin('builtin'); setEnabledTools(current => ({ ...current, embeddings: checked })); }}
         actions={!status?.embeddings?.installed && status?.embeddings?.job?.state !== 'working'
@@ -818,6 +822,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
             state={working ? 'Working…' : ready ? (enabledProviders[provider.id] ? 'Detected · enabled' : 'Detected · disabled')
               : provider.kind === 'api' ? 'Settings required' : provider.kind === 'agent' && agent?.installed ? 'Sign-in required' : 'Not ready'}
             checked={ready && enabledProviders[provider.id]} switchLabel={`Enable ${providerName(provider.label)}`}
+            showSwitch={ready}
             switchDisabled={!ready || working} onToggle={checked => setEnabledProviders(current => ({ ...current, [provider.id]: checked }))}
             actions={actions} details={agent?.job?.message ? <pre className="plugin-output">{agent.job.message}</pre> : undefined} />
         );

@@ -30,7 +30,7 @@
 Quizzer builds quizzes from PDF, Markdown, and text without turning your library into an opaque chat history. It keeps documents, tests, progress, and generation checkpoints on your machine; sends only the retrieved excerpts you approve; and attaches stable source spans to every accepted question.
 
 > [!NOTE]
-> **Public beta available:** `v1.0.0-beta.7` is ready to install. Downloads are protected by a signed manifest and SHA-256 checksums. The app does not yet have paid Apple notarization or a Windows publisher certificate, so those systems may show an unidentified-developer or unknown-publisher warning.
+> **Public beta available:** `v1.0.0-beta.8` is ready to install. Downloads are protected by a signed manifest and SHA-256 checksums. The app does not yet have paid Apple notarization or a Windows publisher certificate, so those systems may show an unidentified-developer or unknown-publisher warning.
 
 ## Install
 
@@ -39,13 +39,13 @@ No Node.js, Python, Git, or package manager is required.
 **macOS and Linux**
 
 ```sh
-curl -fsSL https://github.com/longnt27/quizzer/releases/download/v1.0.0-beta.7/install.sh | sh
+curl -fsSL https://github.com/longnt27/quizzer/releases/download/v1.0.0-beta.8/install.sh | sh
 ```
 
 **Windows PowerShell**
 
 ```powershell
-irm https://github.com/longnt27/quizzer/releases/download/v1.0.0-beta.7/install.ps1 | iex
+irm https://github.com/longnt27/quizzer/releases/download/v1.0.0-beta.8/install.ps1 | iex
 ```
 
 The installer detects x64 or arm64, verifies the release before installing, adds `quizzer` to your user PATH, registers the desktop app, and opens the guided setup. The command installers are Quizzer's supported distribution path.

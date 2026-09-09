@@ -66,6 +66,7 @@ export interface UpdaterStatus {
   state: UpdateState;
   currentVersion: string;
   channel: UpdateChannel;
+  autoDownload: boolean;
   target: UpdateTarget;
   keyStatus: KeyStatus;
   mechanism: 'staged-ready' | 'staged-development' | 'manual-handoff';
@@ -115,6 +116,7 @@ export interface QuizzerDesktopUpdaterApi {
   getStatus: () => Promise<UpdaterStatus>;
   checkForUpdates: (options?: CheckUpdateOptions) => Promise<UpdaterStatus>;
   downloadUpdate: () => Promise<UpdaterStatus>;
+  setAutoDownload: (enabled: boolean) => Promise<UpdaterStatus>;
   applyUpdate: (options?: ApplyUpdateOptions) => Promise<ApplyUpdateResult>;
   discardUpdate: () => Promise<DiscardUpdateResult>;
   rollbackUpdate: () => Promise<RollbackResult>;

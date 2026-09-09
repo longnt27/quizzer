@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { FuseVersion, FuseV1Options } from '@electron/fuses';
 import forgeConfig, { electronExecutableForBuild, electronFuseConfig } from '../forge.config.mjs';
+
+test('packages the complete built-in vector index dependency graph', async () => {
+  const packageMetadata = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.equal(packageMetadata.dependencies['apache-arrow'], '^18.1.0');
+});
 
 test('packages application code in an ASAR archive', () => {
   assert.deepEqual(forgeConfig.packagerConfig.asar, {
