@@ -40,3 +40,10 @@ export async function setInterfaceMode(page: Page, mode: 'simple' | 'advanced') 
   }
   await expect(dialog).toBeHidden();
 }
+
+export async function openPromptStudio(page: Page) {
+  await page.locator('.sidebar-footer:visible').getByRole('button', { name: 'Settings' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Settings' });
+  await dialog.getByRole('tab', { name: 'Prompt Studio' }).click();
+  return dialog;
+}

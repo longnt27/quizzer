@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { dismissOnboarding, setInterfaceMode } from './helpers';
+import { dismissOnboarding, openPromptStudio, setInterfaceMode } from './helpers';
 
 const pendingBrowserChanges = (page: import('@playwright/test').Page) => page.evaluate(async () => {
   const database = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -22,7 +22,7 @@ test('keeps an offline prompt edit locally and publishes it after reconnect', as
   const profileName = `Offline recovery ${testInfo.workerIndex}-${Date.now()}`;
   await dismissOnboarding(page);
   await setInterfaceMode(page, 'advanced');
-  await page.getByRole('button', { name: 'Prompt Studio' }).click();
+  await openPromptStudio(page);
 
   await context.setOffline(true);
   await page.getByRole('button', { name: 'Clone selected' }).click();
@@ -42,7 +42,7 @@ test('keeps an offline prompt edit locally and publishes it after reconnect', as
     const verificationPage = await verificationContext.newPage();
     await dismissOnboarding(verificationPage);
     await setInterfaceMode(verificationPage, 'advanced');
-    await verificationPage.getByRole('button', { name: 'Prompt Studio' }).click();
+    await openPromptStudio(verificationPage);
     await expect(verificationPage.getByRole('button', { name: profileName, exact: false })).toBeVisible();
   } finally {
     await verificationContext.close();
