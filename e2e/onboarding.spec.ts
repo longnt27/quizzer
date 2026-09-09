@@ -185,7 +185,10 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await page.getByRole('button', { name: /Check answer/ }).click();
   await expect(page.getByRole('button', { name: /Ask AI about this answer/ })).toBeVisible();
   await expect(page.locator('[data-onboarding-target="practice-feedback"]').filter({ visible: true }).first()).toBeVisible();
-  await expect(page.locator('[data-onboarding-target="citations"]').filter({ visible: true }).first()).toBeVisible();
+  const groundingSources = page.getByRole('region', { name: 'Grounding sources' });
+  await expect(groundingSources).toBeVisible();
+  await expect(groundingSources.getByText('coordination', { exact: true })).toHaveCount(1);
+  await expect(groundingSources.locator('code')).toHaveCount(0);
   await expect(page.locator('[data-onboarding-target="ask-ai"]').filter({ visible: true }).first()).toBeVisible();
   await page.getByRole('button', { name: 'Pause' }).click();
 
