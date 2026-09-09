@@ -23,7 +23,7 @@ test('applies accents immediately in both themes and preserves the choice after 
   await chooseAccent(page, 'Purple');
   await expect(page.locator('html')).toHaveAttribute('data-accent', 'purple');
   await expect.poll(() => primaryColor(page)).toBe('#531dab');
-  await expect(page.locator('.home-page').getByRole('button', { name: 'Add documents', exact: true })).toHaveCSS('background-color', 'rgb(83, 29, 171)');
+  await expect(page.locator('.home-page button[data-onboarding-target="document"]')).toHaveCSS('background-color', 'rgb(83, 29, 171)');
   await expect(dialog.getByRole('tab', { name: 'Overall', exact: true })).toHaveCSS('background-color', 'rgb(249, 240, 255)');
   // Appearance changes neither require nor enable the server settings save.
   await expect(dialog.getByRole('button', { name: 'Save changes' })).toBeDisabled();
