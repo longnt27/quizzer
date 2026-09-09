@@ -39,5 +39,10 @@ export function PluginJobDetails({ children, working }: { children: ReactNode; w
 }
 
 export function IntegrationStatusGate({ loading, children }: { loading: boolean; children: ReactNode }) {
-  return loading ? <div className="plugin-loading"><Spin /></div> : <>{children}</>;
+  return (
+    <Space direction="vertical" size="small" style={{ width: '100%' }}>
+      {loading ? <Space size="small" className="plugin-detection-status"><Spin size="small" /><Typography.Text type="secondary">Detecting installed tools and models…</Typography.Text></Space> : null}
+      {children}
+    </Space>
+  );
 }
