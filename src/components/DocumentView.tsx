@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Alert, Button, Card, Descriptions, Empty, Input, List, Popover, Space, Spin, Tabs, Tag, Typography } from 'antd';
 import { formatErrorMessage } from '../utils/errorFormatting';
-import { DatabaseOutlined, DownloadOutlined, InfoCircleOutlined, ReloadOutlined, RobotOutlined, SearchOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, DatabaseOutlined, DownloadOutlined, InfoCircleOutlined, ReloadOutlined, RobotOutlined, SearchOutlined } from '@ant-design/icons';
 import { ErrorDisplay } from './ErrorDisplay';
 import { db, type StoredDocument, type StoredDocumentImage } from '../db/db';
 import { getMessageApi } from '../utils/messageProvider';
@@ -11,7 +11,7 @@ import { syncNow } from '../db/serverSync';
 import { loadStoredBlob, loadStoredImageBlob } from '../utils/objectStore';
 import TagEditor from './TagEditor';
 
-interface Props { documentId: string; }
+interface Props { documentId: string; onBack: () => void; }
 
 interface IndexStatus {
   documents: Array<{ id: string; versionHash: string; chunks: number; indexedAt: number }>;
@@ -70,7 +70,7 @@ function ExtractedImagePreview({ image }: { image: StoredDocumentImage }) {
   return <img className="document-extracted-image" src={url} alt={image.caption || image.name} />;
 }
 
-export default function DocumentView({ documentId }: Props) {
+export default function DocumentView({ documentId, onBack }: Props) {
   const [document, setDocument] = useState<StoredDocument | null>();
   const [originalUrl, setOriginalUrl] = useState('');
   const [originalText, setOriginalText] = useState('');
@@ -200,6 +200,7 @@ export default function DocumentView({ documentId }: Props) {
 
   return (
     <div className="document-view">
+      <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack}>Back to home</Button>
       <div className="document-heading">
         <Typography.Title level={2}>{document.name}</Typography.Title>
         <Popover trigger="click" title="Document details" content={<Descriptions size="small" column={1} items={details} />}>

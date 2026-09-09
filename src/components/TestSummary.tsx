@@ -19,6 +19,7 @@ import { getMessageApi } from '../utils/messageProvider';
 import { countQuestionTypes, getQuestionType, isQuestionCorrect } from '../utils/questions';
 import { buildCoveragePlan, ensureDocumentChunks, retrievalContextForSlots } from '../utils/sourcePlanning';
 import { syncNow } from '../db/serverSync';
+import { ArrowLeftOutlined } from '@ant-design/icons';
 
 const { Title, Paragraph, Text } = Typography;
 const shuffle = <T,>(items: T[]): T[] => {
@@ -35,6 +36,7 @@ interface Props {
     setSession: (s: TestSession) => void;
     onNewTestCreated: (s: string) => void;
     setStarting: (b: boolean) => void;
+    onBack: () => void;
 }
 
 const formatDate = (timestamp: number) => {
@@ -49,7 +51,7 @@ const formatTime = (timestamp: number) => {
 };
 
 
-const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setStarting }) => {
+const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setStarting, onBack }) => {
     const [rawJson, setRawJson] = useState<string | null>(null);
     const [jsonError, setJsonError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
@@ -225,6 +227,7 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
                     gap: 24,
                 }}
             >
+                <Button className="test-back-button" type="text" icon={<ArrowLeftOutlined />} onClick={onBack}>Back to home</Button>
                 {/* Left: Summary Card */}
                 <div className="summary-main">
                     <Card

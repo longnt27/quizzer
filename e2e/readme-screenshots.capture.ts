@@ -105,14 +105,14 @@ test('capture current product states for the README', async ({ page }) => {
   await advancedDialog.getByRole('button', { name: 'Queue combined test' }).click();
   await expect(page.getByText('1 choice · 1 reasoning · 0 attempts')).toBeVisible({ timeout: 60_000 });
 
-  await page.getByRole('button', { name: 'Home' }).click();
+  await page.getByRole('button', { name: 'Back to home' }).click();
   await page.getByRole('tab', { name: 'Documents' }).click();
   await page.getByRole('region', { name: 'Documents library' })
     .getByRole('heading', { name: 'distributed-systems-field-guide' }).click();
   await expect(page.getByText(/^Indexed ·/)).toBeVisible();
   await screenshot(page, 'document-current.jpg');
 
-  await page.getByRole('button', { name: 'Home' }).click();
+  await page.getByRole('button', { name: 'Back to home' }).click();
   await expect(page.getByRole('heading', { name: 'Welcome to Quizzer' })).toBeVisible();
   await screenshot(page, 'home-current.jpg');
 

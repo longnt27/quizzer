@@ -104,7 +104,6 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
     onOpenPlugins: () => { setShowPluginsModal(true); setMobileMenuOpen(false); },
     onOpenSettings: () => { setShowSettingsModal(true); setMobileMenuOpen(false); },
     onOpenGeneration: () => { setShowGenerationCenter(true); setMobileMenuOpen(false); },
-    onOpenHome: () => select(null),
     onOpenTutorial: () => { setShowOnboarding(true); setMobileMenuOpen(false); },
     profile,
     dark,
@@ -164,7 +163,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
         </header>
       )}
       <main className={`app-main ${mobile && session?.mode !== 'taking' ? 'with-mobile-header' : ''}`}>
-        {selection?.kind === 'document' ? <DocumentView documentId={selection.id} /> : selection?.kind === 'test' ? (
+        {selection?.kind === 'document' ? <DocumentView documentId={selection.id} onBack={() => select(null)} /> : selection?.kind === 'test' ? (
           <MainContent
             selectedTestId={selection.id}
             setSelectedTestId={id => setSelection({ kind: 'test', id })}
@@ -172,6 +171,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
             setSession={setSession}
             onAddTest={() => setShowAddModal(true)}
             onOpenDocument={id => select({ kind: 'document', id })}
+            onBack={() => select(null)}
           />
         ) : profile ? <HomePage profile={profile} onAddDocument={() => setShowDocumentModal(true)} onAddTest={() => setShowAddModal(true)}
           onOpenGeneration={() => setShowGenerationCenter(true)} onOpenPlugins={() => setShowPluginsModal(true)}

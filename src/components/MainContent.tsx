@@ -16,10 +16,11 @@ interface Props {
     setSession: (s: TestSession | null) => void;
     onAddTest: () => void;
     onOpenDocument: (id: string) => void;
+    onBack: () => void;
     timeLimit?: number;
 }
 
-const MainContent: React.FC<Props> = ({ selectedTestId, setSelectedTestId, session, setSession, onAddTest, onOpenDocument }) => {
+const MainContent: React.FC<Props> = ({ selectedTestId, setSelectedTestId, session, setSession, onAddTest, onOpenDocument, onBack }) => {
     const [test, setTest] = useState<StoredTest | null>(null);
     const [draft, setDraft] = useState<StoredTestDraft | undefined>();
     const [starting, setStarting] = useState(false);
@@ -92,7 +93,7 @@ const MainContent: React.FC<Props> = ({ selectedTestId, setSelectedTestId, sessi
     const latest = test.attempts[test.attempts.length - 1];
 
     if ((!test.attempts.length || draft) && !session) {
-        return <TestStart test={test} draft={draft} onStart={handleStartTest} onResume={() => void handleResume()} onOpenDocument={onOpenDocument} />;
+        return <TestStart test={test} draft={draft} onStart={handleStartTest} onResume={() => void handleResume()} onOpenDocument={onOpenDocument} onBack={onBack} />;
     }
 
     if (session?.mode === 'taking') {
@@ -112,11 +113,12 @@ const MainContent: React.FC<Props> = ({ selectedTestId, setSelectedTestId, sessi
                 onStart={handleStartTest}
                 onResume={() => void handleResume()}
                 onOpenDocument={onOpenDocument}
+                onBack={onBack}
             />
         );
     }
 
-    return <TestSummary test={test} setSession={setSession} setStarting={setStarting} onNewTestCreated={handleNewTestCreated} />;
+    return <TestSummary test={test} setSession={setSession} setStarting={setStarting} onNewTestCreated={handleNewTestCreated} onBack={onBack} />;
 };
 
 export default MainContent;

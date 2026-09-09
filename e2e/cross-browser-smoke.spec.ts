@@ -8,8 +8,8 @@ test('exposes semantic main navigation and keyboard-accessible settings after on
 
   const navigation = page.locator('.desktop-sidebar');
   await expect(navigation).toBeVisible();
+  await expect(navigation.locator('button').filter({ hasText: 'Home' })).toHaveCount(0);
   const navigationItems = [
-    navigation.locator('button').filter({ hasText: 'Home' }),
     navigation.locator('[role="tab"]').filter({ hasText: 'Documents' }),
     navigation.locator('[role="tab"]').filter({ hasText: 'Tests' }),
     navigation.locator('button').filter({ hasText: 'Activity' }),

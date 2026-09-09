@@ -1,5 +1,5 @@
 import { Alert, Button, Typography, Checkbox, InputNumber, Popconfirm, Radio, Space, Tag } from 'antd';
-import { FileTextOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, FileTextOutlined } from '@ant-design/icons';
 import type { StoredTest, StoredTestDraft } from '../db/db';
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -14,9 +14,10 @@ interface Props {
     onStart: (options: { timeLimit?: number; practice: boolean }) => void;
     onResume: () => void;
     onOpenDocument: (id: string) => void;
+    onBack: () => void;
 }
 
-const TestStart: React.FC<Props> = ({ test, draft, onStart, onResume, onOpenDocument }) => {
+const TestStart: React.FC<Props> = ({ test, draft, onStart, onResume, onOpenDocument, onBack }) => {
     const [timed, setTimed] = useState(false);
     const [durationMinutes, setDurationMinutes] = useState(15); // default to 15 mins
     const [mode, setMode] = useState<'test' | 'practice'>('test');
@@ -25,6 +26,7 @@ const TestStart: React.FC<Props> = ({ test, draft, onStart, onResume, onOpenDocu
     const sourceDocuments = useLiveQuery(() => db.documents.bulkGet(documentIds), [test.id, documentIds.join('|')]);
 
     return <div className="test-start">
+      <Button className="test-back-button" type="text" icon={<ArrowLeftOutlined />} onClick={onBack}>Back to home</Button>
       <div className="test-start-main">
         <Title level={2} style={{ marginBottom: 8 }}>{test.name}</Title>
         <Paragraph type="secondary" style={{ fontSize: 16, marginBottom: 32 }}>
