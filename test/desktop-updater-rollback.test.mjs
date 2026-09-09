@@ -641,7 +641,7 @@ test('applyUpdate in packaged mode reports staged-ready mechanism, handoffPendin
     assert.equal(result.handoffPending, true);
     assert.equal(result.mechanism, 'staged-ready');
     assert.equal(result.restartRequested, true);
-    assert.match(result.message, /handed off to system installer/i);
+    assert.match(result.message, /install it and restart/i);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

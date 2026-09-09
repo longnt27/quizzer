@@ -200,6 +200,23 @@ test('channel selection persists in userData atomically and survives restart', a
   }
 });
 
+test('automatic downloads default on and the user preference persists across restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'quizzer-auto-download-test-'));
+  try {
+    const updater = new DesktopUpdater({ userDataDir: directory, currentVersion: '1.0.0' });
+    assert.equal((await updater.getStatus()).autoDownload, true);
+
+    const disabled = await updater.setAutoDownload(false);
+    assert.equal(disabled.autoDownload, false);
+
+    const restarted = new DesktopUpdater({ userDataDir: directory, currentVersion: '1.0.0' });
+    assert.equal((await restarted.getStatus()).autoDownload, false);
+    await assert.rejects(updater.setAutoDownload('yes'), /autoDownload must be a boolean/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('verified staged update is recovered and remains applicable after restart', async () => {
   const env = await setupTestEnv('1.2.0');
   try {

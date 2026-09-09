@@ -4,10 +4,18 @@ import test from 'node:test';
 import { isTrustedRendererUrl } from '../desktop/security.mjs';
 
 import {
+  validateAutoDownloadPreference,
   validateUpdaterApplyOptions,
   validateUpdaterChannel,
   validateUpdaterCheckOptions,
 } from '../desktop/updater-ipc.mjs';
+
+test('updater IPC auto-download preference accepts only booleans', () => {
+  assert.equal(validateAutoDownloadPreference(true), true);
+  assert.equal(validateAutoDownloadPreference(false), false);
+  assert.throws(() => validateAutoDownloadPreference('false'), /autoDownload must be a boolean/);
+  assert.throws(() => validateAutoDownloadPreference(null), /autoDownload must be a boolean/);
+});
 
 test('renderer origin verification rejects untrusted origins from accessing updater IPC', () => {
   assert.equal(isTrustedRendererUrl('quizzer://app/'), true);
@@ -78,6 +86,7 @@ test('preload script exports only frozen, context-isolated updater surface', asy
   assert.match(preloadSource, /ipcRenderer\.invoke\('updater:status'\)/);
   assert.match(preloadSource, /ipcRenderer\.invoke\('updater:check'/);
   assert.match(preloadSource, /ipcRenderer\.invoke\('updater:download'\)/);
+  assert.match(preloadSource, /ipcRenderer\.invoke\('updater:set-auto-download'/);
   assert.match(preloadSource, /ipcRenderer\.invoke\('updater:apply'/);
   assert.match(preloadSource, /ipcRenderer\.invoke\('updater:rollback'\)/);
 

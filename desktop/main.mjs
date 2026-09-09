@@ -8,7 +8,7 @@ import { isAllowedExternalUrl, isTrustedRendererUrl } from './security.mjs';
 import { executableSearchPath, serviceRestartDelay, waitForServiceReady } from './service-process.mjs';
 import { protectedBackgroundFallback, summarizeBackgroundState } from './background-policy.mjs';
 import { DesktopUpdater } from './updater.mjs';
-import { validateUpdaterCheckOptions, validateUpdaterApplyOptions } from './updater-ipc.mjs';
+import { validateAutoDownloadPreference, validateUpdaterCheckOptions, validateUpdaterApplyOptions } from './updater-ipc.mjs';
 import { RELEASE_TRUSTED_KEYS } from '../release/trust.mjs';
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'quizzer', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
@@ -95,6 +95,10 @@ const registerValidatedIpc = () => {
   ipcMain.handle('updater:download', async event => {
     if (!isTrustedRenderer(event)) throw new Error('Untrusted renderer');
     return desktopUpdater?.downloadUpdate();
+  });
+  ipcMain.handle('updater:set-auto-download', async (event, enabled) => {
+    if (!isTrustedRenderer(event)) throw new Error('Untrusted renderer');
+    return desktopUpdater?.setAutoDownload(validateAutoDownloadPreference(enabled));
   });
   ipcMain.handle('updater:apply', async (event, options) => {
     if (!isTrustedRenderer(event)) throw new Error('Untrusted renderer');
@@ -316,6 +320,8 @@ app.whenReady().then(async () => {
     userDataDir: app.getPath('userData'),
     currentVersion: app.getVersion() || '1.0.0-beta.5',
     isPackaged: app.isPackaged,
+    applicationPath: dirname(dirname(dirname(app.getPath('exe')))),
+    currentPid: process.pid,
     fetch: net.fetch,
     trustedKeys: RELEASE_TRUSTED_KEYS,
   });
