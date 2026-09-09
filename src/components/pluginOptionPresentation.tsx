@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Spin } from 'antd';
+import { Collapse, Space, Spin, Typography } from 'antd';
 import {
   ApiOutlined, CodeOutlined, DatabaseOutlined, DesktopOutlined, FileSearchOutlined, GlobalOutlined,
   GoogleOutlined, MessageOutlined, OpenAIOutlined, RocketOutlined, RobotOutlined, ScanOutlined,
@@ -29,8 +29,13 @@ export function PluginGlyph({ title, fallback }: { title: string; fallback: Reac
   return <>{fallback}</>;
 }
 
-export function PluginJobDetails({ children }: { children: ReactNode; working: boolean }) {
-  return <>{children}</>;
+export function PluginJobDetails({ children, working }: { children: ReactNode; working: boolean }) {
+  return (
+    <Space direction="vertical" size="small" style={{ width: '100%' }}>
+      {working ? <Space size="small"><Spin size="small" /><Typography.Text type="secondary">Working…</Typography.Text></Space> : null}
+      <Collapse ghost size="small" items={[{ key: 'logs', label: 'View logs', children }]} />
+    </Space>
+  );
 }
 
 export function IntegrationStatusGate({ loading, children }: { loading: boolean; children: ReactNode }) {
