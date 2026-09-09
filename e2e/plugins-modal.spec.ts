@@ -41,6 +41,18 @@ test('Plugins & models exposes capability tabs without inline settings dropdowns
   await expect(ollamaSettings.getByText('Resource limits')).toHaveCount(0);
 });
 
+test('Plugins & models keeps detection in the title and does not expose local plugin installation', async ({ page }) => {
+  await dismissOnboarding(page);
+  await setInterfaceMode(page, 'advanced');
+  await page.getByRole('button', { name: 'Configure AI' }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Plugins & models' });
+  await expect(dialog.getByRole('button', { name: 'Detect plugins and models again' })).toBeVisible();
+  await expect(dialog.getByText('Choose a capability, then enable a detected option or install one.')).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Install local plugin' })).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Detect again', exact: true })).toHaveCount(0);
+});
+
 test('uninstalled plugin and provider options do not show enable switches', async ({ page }) => {
   await page.route('**/api/integrations', route => route.fulfill({
     contentType: 'application/json',
