@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Card, Empty, Input, List, Space, Spin, Tabs, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Descriptions, Empty, Input, List, Popover, Space, Spin, Tabs, Tag, Typography } from 'antd';
 import { formatErrorMessage } from '../utils/errorFormatting';
-import { DatabaseOutlined, DownloadOutlined, ReloadOutlined, RobotOutlined, SearchOutlined } from '@ant-design/icons';
+import { DatabaseOutlined, DownloadOutlined, InfoCircleOutlined, ReloadOutlined, RobotOutlined, SearchOutlined } from '@ant-design/icons';
 import { ErrorDisplay } from './ErrorDisplay';
 import { db, type StoredDocument, type StoredDocumentImage } from '../db/db';
 import { getMessageApi } from '../utils/messageProvider';
@@ -9,6 +9,7 @@ import DocumentAskModal from './DocumentAskModal';
 import { serviceJson, serviceRequest } from '../utils/serviceApi';
 import { syncNow } from '../db/serverSync';
 import { loadStoredBlob, loadStoredImageBlob } from '../utils/objectStore';
+import TagEditor from './TagEditor';
 
 interface Props { documentId: string; }
 
@@ -71,7 +72,6 @@ function ExtractedImagePreview({ image }: { image: StoredDocumentImage }) {
 
 export default function DocumentView({ documentId }: Props) {
   const [document, setDocument] = useState<StoredDocument | null>();
-  const [tagText, setTagText] = useState('');
   const [originalUrl, setOriginalUrl] = useState('');
   const [originalText, setOriginalText] = useState('');
   const [originalLoading, setOriginalLoading] = useState(false);
@@ -90,7 +90,6 @@ export default function DocumentView({ documentId }: Props) {
     setDocument(undefined);
     void db.documents.get(documentId).then(item => {
       setDocument(item ?? null);
-      setTagText(item?.tags.join(', ') ?? '');
     });
   }, [documentId]);
 
@@ -124,11 +123,16 @@ export default function DocumentView({ documentId }: Props) {
   if (document === undefined) return <Spin style={{ margin: 40 }} />;
   if (document === null) return <Typography.Title level={4}>Document not found</Typography.Title>;
 
-  const saveTags = async () => {
-    const tags = [...new Set(tagText.split(',').map(tag => tag.trim()).filter(Boolean))];
-    await db.documents.update(document.id, { tags });
+  const saveTags = async (tags: string[]) => {
+    const previous = document.tags;
     setDocument({ ...document, tags });
-    message.success('Tags saved');
+    try {
+      await db.documents.update(document.id, { tags });
+      message.success('Tags updated');
+    } catch (error) {
+      setDocument({ ...document, tags: previous });
+      message.error(formatErrorMessage(error, 'storage'));
+    }
   };
 
   const indexDocument = async () => {
@@ -184,39 +188,36 @@ export default function DocumentView({ documentId }: Props) {
   };
 
   const indexed = indexStatus?.documents.find(item => item.id === document.id);
+  const details = [
+    { key: 'type', label: 'Type', children: document.mimeType || 'document' },
+    ...(document.pageCount ? [{ key: 'pages', label: 'Pages', children: document.pageCount }] : []),
+    ...(document.parserVersion ? [{ key: 'extractor', label: 'Extractor', children: document.parserVersion }] : []),
+    { key: 'index', label: 'Index', children: indexed ? `${indexed.chunks} spans` : 'Not indexed' },
+    ...(document.images?.length ? [{ key: 'images', label: 'Images', children: document.images.length }] : []),
+    ...(document.extractedAt ? [{ key: 'extracted', label: 'Extracted', children: new Date(document.extractedAt).toLocaleString() }] : []),
+    ...(document.extractionHistory?.length ? [{ key: 'history', label: 'Prior extractions', children: document.extractionHistory.length }] : []),
+  ];
 
   return (
     <div className="document-view">
-      <Typography.Title level={2}>{document.name}</Typography.Title>
-      <Space wrap style={{ marginBottom: 16 }}>
-        <Tag>{document.mimeType || 'document'}</Tag>
-        {document.pageCount && <Tag>{document.pageCount} pages</Tag>}
-        {document.tags.map(tag => <Tag color="blue" key={tag}>{tag}</Tag>)}
-        {!!document.images?.length && <Tag color="purple">{document.images.length} extracted images</Tag>}
-        {document.parserVersion && <Tag color="cyan">Extractor · {document.parserVersion}</Tag>}
-        {indexed ? <Tag color="green">Indexed · {indexed.chunks} spans</Tag> : <Tag>Not indexed</Tag>}
-      </Space>
+      <div className="document-heading">
+        <Typography.Title level={2}>{document.name}</Typography.Title>
+        <Popover trigger="click" title="Document details" content={<Descriptions size="small" column={1} items={details} />}>
+          <Button type="text" shape="circle" icon={<InfoCircleOutlined />} aria-label="Document details" />
+        </Popover>
+      </div>
+      <TagEditor tags={document.tags} subject={document.name} onChange={tags => void saveTags(tags)} />
       <Space wrap style={{ marginBottom: 20 }}>
         <Button type="primary" icon={<RobotOutlined />} onClick={() => setAskOpen(true)}>Ask AI about this document</Button>
         <Button icon={indexed ? <ReloadOutlined /> : <DatabaseOutlined />} loading={indexing} onClick={() => void indexDocument()}>{indexed ? 'Reindex document' : 'Index for retrieval'}</Button>
         <Button icon={<ReloadOutlined />} loading={reextracting} disabled={!document.originalFile} onClick={() => void reextract()}>Re-extract original</Button>
       </Space>
-      {document.extractedAt && <Typography.Paragraph type="secondary">
-        Extracted {new Date(document.extractedAt).toLocaleString()} · schema v{document.extractionSchemaVersion ?? 0}
-        {document.extractionHistory?.length ? ` · ${document.extractionHistory.length} prior extraction${document.extractionHistory.length === 1 ? '' : 's'} retained` : ''}
-      </Typography.Paragraph>}
       {indexStatus?.dense?.enabled && <Alert style={{ marginBottom: 16 }} showIcon
         type={indexStatus.dense.status === 'unavailable' ? 'warning' : 'info'}
         message={indexStatus.dense.status === 'ready'
           ? `Dense retrieval ready · ${indexStatus.dense.embeddingModel}`
           : indexStatus.dense.status === 'unavailable' ? 'Dense retrieval is unavailable; sparse search remains ready' : 'Dense retrieval will be built during indexing'}
         description={indexStatus.dense.status === 'unavailable' ? 'Quizzer will continue using keyword search for this document.' : undefined} />}
-      <Card size="small" title="Tags" style={{ marginBottom: 20 }}>
-        <Space.Compact style={{ width: '100%' }}>
-          <Input value={tagText} onChange={event => setTagText(event.target.value)} placeholder="lecture, networking, exam-1" />
-          <Button type="primary" onClick={saveTags}>Save</Button>
-        </Space.Compact>
-      </Card>
       <Tabs defaultActiveKey="extracted" items={[
         { key: 'extracted', label: 'Extracted content', children: <Card>
           <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace, monospace' }}>{document.content}</Typography.Paragraph>
