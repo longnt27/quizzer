@@ -6,7 +6,6 @@ import { db, type StoredAppProfile } from '../db/db';
 import { getMessageApi } from '../utils/messageProvider';
 import { countQuestionTypes } from '../utils/questions';
 import { serverSyncStatus, syncNow } from '../db/serverSync';
-import { restartOnboarding } from '../utils/appProfile';
 
 export type LibrarySelection = { kind: 'test' | 'document'; id: string } | null;
 
@@ -111,13 +110,12 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
         )}
       </div>
       <div className="sidebar-footer">
-        {profile && <Button type={!profile.onboarding.completedAt && !profile.onboarding.skipped ? 'primary' : 'text'} icon={<QuestionCircleOutlined />}
-          onClick={async () => {
-            if (profile.onboarding.completedAt || profile.onboarding.skipped) await restartOnboarding();
-            onOpenTutorial();
-          }}>
-          {!profile.onboarding.completedAt && !profile.onboarding.skipped ? 'Resume setup' : 'Restart tutorial'}
-        </Button>}
+        {profile && (!profile.onboarding.completedAt && !profile.onboarding.skipped) && (
+          <Button type="primary" icon={<QuestionCircleOutlined />}
+            onClick={() => onOpenTutorial()}>
+            Resume setup
+          </Button>
+        )}
         <Button type="text" icon={<CloudSyncOutlined spin={sync.status === 'syncing'} />} onClick={() => { setSyncDetailsOpen(true); void syncNow(); }}>
           <Badge status={sync.status === 'synced' ? 'success' : sync.status === 'offline' ? 'warning' : 'processing'} />
           {sync.status === 'offline' ? 'Offline — saved locally' : sync.lastSyncedAt ? 'Saved on server' : 'Syncing library'}

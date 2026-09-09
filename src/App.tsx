@@ -19,7 +19,7 @@ import type { StoredAppProfile } from './db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import HomePage from './components/HomePage';
 import OnboardingGuide from './components/OnboardingGuide';
-import { recordOnboardingDocument, recordOnboardingGeneration, restartOnboarding, setInterfaceMode } from './utils/appProfile';
+import { recordOnboardingDocument, recordOnboardingGeneration, setInterfaceMode } from './utils/appProfile';
 import { useRuntimeSettings } from './utils/useRuntimeSettings';
 import UpdateAvailableNotifier from './components/UpdateAvailableNotifier';
 import {
@@ -127,7 +127,6 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
         case 'plugins': setShowPluginsModal(true); break;
         case 'prompts': setShowSettingsModal('prompts'); break;
         case 'mode': if (interfaceMode) void setInterfaceMode(interfaceMode === 'simple' ? 'advanced' : 'simple'); break;
-        case 'tutorial': void restartOnboarding().then(() => setShowOnboarding(true)); break;
         case 'theme': onThemeChange(!dark); break;
       }
     };
@@ -144,7 +143,6 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
     { id: 'settings', label: 'Open Settings', description: 'Search and edit resolved application settings.', shortcut: formatKeyboardShortcut(keyboardShortcuts.settings), icon: <SettingOutlined />, run: () => setShowSettingsModal(true) },
     ...(profile?.interfaceMode === 'advanced' ? [{ id: 'prompts', label: 'Open Prompt Studio', description: 'Edit, validate, preview, import, and export prompt profiles.', keywords: ['templates', 'generation', 'grading', 'rag'], shortcut: formatKeyboardShortcut(keyboardShortcuts.prompts), icon: <ExperimentOutlined />, run: () => setShowSettingsModal('prompts') }] : []),
     { id: 'mode', label: `Switch to ${profile?.interfaceMode === 'advanced' ? 'Simple' : 'Advanced'} mode`, description: 'Change disclosure without changing stored capabilities or data.', keywords: ['interface'], shortcut: formatKeyboardShortcut(keyboardShortcuts.mode), icon: <SwapOutlined />, run: () => profile && setInterfaceMode(profile.interfaceMode === 'simple' ? 'advanced' : 'simple') },
-    { id: 'tutorial', label: 'Restart tutorial', description: 'Return to the resumable first-run walkthrough.', keywords: ['help', 'onboarding'], shortcut: formatKeyboardShortcut(keyboardShortcuts.tutorial), icon: <QuestionCircleOutlined />, run: async () => { await restartOnboarding(); setShowOnboarding(true); } },
     { id: 'theme', label: `Use ${dark ? 'light' : 'dark'} theme`, description: 'Change the application color theme.', keywords: ['appearance'], shortcut: formatKeyboardShortcut(keyboardShortcuts.theme), icon: dark ? <SunOutlined /> : <MoonOutlined />, run: () => onThemeChange(!dark) },
   ];
 
