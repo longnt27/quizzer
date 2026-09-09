@@ -19,6 +19,7 @@ import {
   type ShortcutActionId,
 } from '../utils/keyboardShortcuts';
 import UpdaterStatusView from './UpdaterStatus';
+import PromptStudio from './PromptStudio';
 
 type SettingValue = string | number | boolean;
 type SettingsValues = Record<string, SettingValue>;
@@ -57,10 +58,11 @@ interface Props {
   keyboardShortcuts: KeyboardShortcuts;
   onKeyboardShortcutChange: (actionId: ShortcutActionId, shortcut: string) => void;
   onOpenCommandPalette: () => void;
+  initialTab?: SettingsTab;
   onClose: () => void;
 }
 
-type SettingsTab = 'overall' | 'shortcuts' | 'generation' | 'retrieval' | 'documents' | 'advanced';
+export type SettingsTab = 'overall' | 'shortcuts' | 'generation' | 'retrieval' | 'documents' | 'prompts' | 'advanced';
 
 const settingsTabs: { key: SettingsTab; label: string; description: string }[] = [
   { key: 'overall', label: 'Overall', description: 'Appearance, interface mode, updates, and hardware profile.' },
@@ -68,6 +70,7 @@ const settingsTabs: { key: SettingsTab; label: string; description: string }[] =
   { key: 'generation', label: 'Generation', description: 'Question generation defaults and provider resource limits.' },
   { key: 'retrieval', label: 'Retrieval', description: 'Search planning, context, reranking, and embeddings.' },
   { key: 'documents', label: 'Documents', description: 'Document extraction and OCR behavior.' },
+  { key: 'prompts', label: 'Prompt Studio', description: 'Edit, validate, preview, import, and export prompt profiles.' },
   { key: 'advanced', label: 'Advanced', description: 'Background work and plugin development settings.' },
 ];
 
@@ -124,7 +127,7 @@ export default function SettingsModal({
   const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(() => new Set());
   const [unsetKeys, setUnsetKeys] = useState<Set<string>>(() => new Set());
   const [query, setQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<SettingsTab>('overall');
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? 'overall');
   const [recordingShortcut, setRecordingShortcut] = useState<ShortcutActionId>();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -453,7 +456,7 @@ export default function SettingsModal({
   const tabItems = settingsTabs.map(tab => ({
     key: tab.key,
     label: tab.label,
-    children: <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+    children: tab.key === 'prompts' ? <PromptStudio /> : <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>{tab.description}</Typography.Paragraph>
       {tab.key === 'overall' ? overall : tab.key === 'shortcuts' ? shortcutSettings : definitionRows(tab.key)}
     </Space>,
