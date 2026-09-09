@@ -169,6 +169,8 @@ test('resumes real onboarding and finishes through durable quiz practice', async
 
   await expect(page.getByRole('heading', { name: 'Try one question' })).toBeVisible();
   await page.getByRole('button', { name: 'Open coordination quiz' }).click();
+  await expect(page.locator('.test-source-item')).toHaveRole('button');
+  await expect(page.getByRole('button', { name: 'Open document' })).toHaveCount(0);
   await page.locator('.ant-radio-button-wrapper').filter({ hasText: 'Practice mode' }).click();
   await page.getByRole('button', { name: 'Start Practice' }).click();
   await expect(page.getByRole('heading', { name: 'Question 1' })).toBeVisible();

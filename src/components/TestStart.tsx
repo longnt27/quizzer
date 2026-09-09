@@ -1,5 +1,5 @@
 import { Alert, Button, Typography, Checkbox, InputNumber, Popconfirm, Radio, Space, Tag } from 'antd';
-import { FileTextOutlined, LinkOutlined } from '@ant-design/icons';
+import { FileTextOutlined } from '@ant-design/icons';
 import type { StoredTest, StoredTestDraft } from '../db/db';
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -68,17 +68,19 @@ const TestStart: React.FC<Props> = ({ test, draft, onStart, onResume, onOpenDocu
         {documentIds.length ? <div className="test-source-list">
           {documentIds.map((documentId, index) => {
             const document = sourceDocuments?.[index];
-            return <div className="test-source-item" key={documentId}>
-              <div>
+            const content = <>
+              <span className="test-source-copy">
                 <Typography.Text strong>{document?.name ?? (sourceDocuments ? 'Deleted document' : 'Loading source…')}</Typography.Text>
-                <div className="test-source-meta">
+                <span className="test-source-meta">
                   {document?.pageCount && <Tag>{document.pageCount} pages</Tag>}
                   {document?.tags.map(tag => <Tag key={tag}>{tag}</Tag>)}
                   {!document && sourceDocuments && <Tag color="error">No longer in library</Tag>}
-                </div>
-              </div>
-              {document && <Button type="link" icon={<LinkOutlined />} onClick={() => onOpenDocument(document.id)}>Open document</Button>}
-            </div>;
+                </span>
+              </span>
+            </>;
+            return document
+              ? <button type="button" className="test-source-item" key={documentId} onClick={() => onOpenDocument(document.id)}>{content}</button>
+              : <div className="test-source-item is-unavailable" key={documentId}>{content}</div>;
           })}
         </div> : <Alert type="info" showIcon message="Source information is unavailable"
           description="This test was created before Quizzer recorded document origins, or it was imported without source metadata." />}
