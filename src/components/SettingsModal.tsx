@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Alert, Button, Divider, Input, InputNumber, Modal, Radio, Select, Space, Spin, Switch, Tag, Typography } from 'antd';
 import { ErrorDisplay } from './ErrorDisplay';
-import { formatErrorMessage } from '../utils/errorFormatting';
 import { ReloadOutlined, SearchOutlined, SettingOutlined, UndoOutlined } from '@ant-design/icons';
 import type { StoredAppProfile } from '../db/db';
 import type { GenerationProvider, HardwareProfileId, InterfaceMode } from '../types';
