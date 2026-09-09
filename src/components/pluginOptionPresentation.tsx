@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { isValidElement, type ReactNode } from 'react';
 import { Collapse, Space, Spin, Typography } from 'antd';
 import {
   ApiOutlined, CodeOutlined, DatabaseOutlined, DesktopOutlined, FileSearchOutlined, GlobalOutlined,
@@ -7,6 +7,14 @@ import {
 } from '@ant-design/icons';
 
 const normalized = (value: string) => value.toLowerCase();
+const syntheticStatusMessages = new Set(['Antigravity is connected.']);
+
+const nodeText = (node: ReactNode): string => {
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(nodeText).join('');
+  if (isValidElement<{ children?: ReactNode }>(node)) return nodeText(node.props.children);
+  return '';
+};
 
 export function PluginGlyph({ title, fallback }: { title: string; fallback: ReactNode }) {
   const name = normalized(title);
@@ -30,6 +38,8 @@ export function PluginGlyph({ title, fallback }: { title: string; fallback: Reac
 }
 
 export function PluginJobDetails({ children, working }: { children: ReactNode; working: boolean }) {
+  const message = nodeText(children).trim();
+  if (!working && syntheticStatusMessages.has(message)) return null;
   return (
     <Space direction="vertical" size="small" style={{ width: '100%' }}>
       {working ? <Space size="small"><Spin size="small" /><Typography.Text type="secondary">Working…</Typography.Text></Space> : null}
