@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Alert, Badge, Button, Checkbox, Empty, Input, InputNumber, List, Modal, Progress, Select, Space, Tag, Typography } from 'antd';
-import { CloseOutlined, DatabaseOutlined, LoadingOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Alert, Button, Checkbox, Empty, Input, InputNumber, List, Modal, Progress, Select, Space, Tag, Typography } from 'antd';
+import { CloseOutlined, DatabaseOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type StoredGenerationJob, type StoredIndexJob } from '../db/db';
 import type { GenerationProvider } from '../types';
@@ -369,7 +369,7 @@ export function GenerationCenter({ open, onClose, onOpenTest, onManagePlugins }:
   </Modal>;
 }
 
-export function GenerationActivity({ onOpen }: { onOpen: () => void }) {
+export function useActivitySummary() {
   const activity = useLiveQuery(async () => {
     const [generation, indexing] = await Promise.all([
       db.generationJobs.where('status').anyOf('queued', 'running', 'waiting', 'paused', 'error').toArray(),
@@ -378,12 +378,10 @@ export function GenerationActivity({ onOpen }: { onOpen: () => void }) {
     return { generation, indexing };
   }, []);
   const count = (activity?.generation.length ?? 0) + (activity?.indexing.length ?? 0);
-  if (!count) return null;
   const running = (activity?.generation.filter(job => job.status === 'running').length ?? 0)
     + (activity?.indexing.filter(job => job.status === 'running').length ?? 0);
   const attention = (activity?.generation.filter(job => job.status === 'paused' || job.status === 'waiting' || job.status === 'error').length ?? 0)
     + (activity?.indexing.filter(job => job.status === 'failed').length ?? 0);
-  return <Button className="generation-activity" type="primary" onClick={onOpen} icon={running ? <LoadingOutlined spin /> : <PlayCircleOutlined />}>
-    <Badge count={count} size="small" offset={[10, -5]}>{running ? `${running} job${running === 1 ? '' : 's'} active` : attention ? `${attention} need attention` : 'Work queued'}</Badge>
-  </Button>;
+  
+  return { count, running, attention };
 }

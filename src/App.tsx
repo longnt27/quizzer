@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { App as AntdApp, Button, ConfigProvider, Drawer, Grid, Layout, theme } from 'antd';
-import { ApiOutlined, ExperimentOutlined, FileAddOutlined, FormOutlined, HomeOutlined, MenuOutlined, MoonOutlined, QuestionCircleOutlined, SettingOutlined, SwapOutlined, SyncOutlined, SunOutlined } from '@ant-design/icons';
+import { ApiOutlined, ExperimentOutlined, FileAddOutlined, FormOutlined, HomeOutlined, MenuOutlined, MoonOutlined, SettingOutlined, SwapOutlined, SyncOutlined, SunOutlined } from '@ant-design/icons';
 import Sidebar, { type LibrarySelection } from './components/Sidebar';
 import MainContent from './components/MainContent';
 import AddTestModal from './components/AddTestModal';
@@ -10,7 +10,7 @@ import PluginsModal from './components/PluginsModal';
 import SettingsModal from './components/SettingsModal';
 import CommandPalette, { type PaletteCommand } from './components/CommandPalette';
 import GenerationWorker from './components/GenerationWorker';
-import { GenerationActivity, GenerationCenter } from './components/GenerationCenter';
+import { GenerationCenter } from './components/GenerationCenter';
 import { setMessageApi } from './utils/messageProvider';
 import { setModalApi } from './utils/modalProvider';
 import type { TestSession } from './types';
@@ -197,7 +197,6 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
         onOpenPlugins={() => setShowPluginsModal(true)} onAddDocument={() => setShowDocumentModal(true)} onAddTest={() => setShowAddModal(true)}
         onOpenTest={id => { setSelection({ kind: 'test', id }); setShowOnboarding(false); }}
         overlayOpen={Boolean(showPluginsModal || showDocumentModal || showAddModal || showGenerationCenter || showSettingsModal || showCommandPalette)} />}
-      {session?.mode !== 'taking' && <GenerationActivity onOpen={() => setShowGenerationCenter(true)} />}
     </Layout>
   </>;
 }

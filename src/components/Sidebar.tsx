@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { Button, Empty, Input, Layout, List, Popconfirm, Space, Tabs, Tag, Typography } from 'antd';
+import { Badge, Button, Empty, Input, Layout, List, Popconfirm, Space, Tabs, Tag, Typography } from 'antd';
 import { ApiOutlined, DeleteOutlined, ExperimentOutlined, FileTextOutlined, FormOutlined, HomeOutlined, PlusOutlined, QuestionCircleOutlined, SearchOutlined, SettingOutlined, SyncOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type StoredAppProfile } from '../db/db';
 import { getMessageApi } from '../utils/messageProvider';
 import { countQuestionTypes } from '../utils/questions';
-
+import { useActivitySummary } from './GenerationCenter';
 export type LibrarySelection = { kind: 'test' | 'document'; id: string } | null;
 
 interface Props {
@@ -30,6 +30,7 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
   const [tab, setTab] = useState<'tests' | 'documents'>(selection?.kind === 'document' ? 'documents' : 'tests');
   const [query, setQuery] = useState('');
   const message = getMessageApi();
+  const activity = useActivitySummary();
 
   const normalizedQuery = query.trim().toLowerCase();
   const visibleTests = tests.filter(test => test.name.toLowerCase().includes(normalizedQuery));
@@ -101,7 +102,20 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
             Resume setup
           </Button>
         )}
-        <Button type="text" icon={<SyncOutlined />} onClick={onOpenGeneration}>Activity</Button>
+        <Button type="text" icon={<SyncOutlined spin={activity.running > 0} />} onClick={onOpenGeneration}>
+          <Space>
+            Activity
+            {activity.count > 0 && (
+              <Badge
+                count={activity.count}
+                size="small"
+                style={{
+                  backgroundColor: activity.attention ? '#cf1322' : activity.running ? '#1677ff' : '#8c8c8c',
+                }}
+              />
+            )}
+          </Space>
+        </Button>
         <Button data-onboarding-target="provider" type="text" icon={<ApiOutlined />} onClick={onOpenPlugins}>Plugins & models</Button>
         <Button type="text" icon={<SettingOutlined />} onClick={onOpenSettings}>Settings</Button>
         {profile?.interfaceMode === 'advanced' && <Button type="text" icon={<ExperimentOutlined />} onClick={onOpenPromptStudio}>Prompt Studio</Button>}
