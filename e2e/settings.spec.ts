@@ -84,28 +84,27 @@ test('sidebar stays focused while command shortcuts are configurable and persist
   await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
 });
 
-test('Settings sidebar keyboard navigation and narrow layout', async ({ page }) => {
+test('Settings sidebar supports tablist keyboard navigation and narrow layout', async ({ page }) => {
   await dismissOnboarding(page);
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+,' : 'Control+,');
   const dialog = page.locator('.ant-modal-content').filter({ hasText: 'Settings' });
   await expect(dialog.getByText('Settings', { exact: true })).toBeVisible();
 
-  // Keyboard navigation
-  await dialog.getByRole('tab', { name: 'Overall' }).focus();
-  await page.keyboard.press('Tab');
-  await page.keyboard.press('Space'); // assuming next is Shortcuts
+  const overall = dialog.getByRole('tab', { name: 'Overall' });
+  await overall.focus();
+  await page.keyboard.press('ArrowDown');
   await expect(dialog.getByRole('tab', { name: 'Shortcuts' })).toHaveAttribute('aria-selected', 'true');
-  
-  // Enter key
-  await dialog.getByRole('tab', { name: 'Retrieval' }).focus();
-  await page.keyboard.press('Enter');
-  await expect(dialog.getByRole('tab', { name: 'Retrieval' })).toHaveAttribute('aria-selected', 'true');
+  await expect(dialog.getByRole('tab', { name: 'Shortcuts' })).toBeFocused();
+  await expect(overall).toHaveAttribute('tabindex', '-1');
 
-  // Narrow layout
+  await page.keyboard.press('End');
+  await expect(dialog.getByRole('tab', { name: 'Advanced' })).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('Home');
+  await expect(overall).toHaveAttribute('aria-selected', 'true');
+  await expect(overall).toBeFocused();
+
   await page.setViewportSize({ width: 500, height: 800 });
-  // check if sidebar is row
   const sidebar = dialog.locator('.settings-sidebar');
-  const box = await sidebar.boundingBox();
-  expect(box?.width).toBeGreaterThan(400); // full width
-  expect(box?.height).toBeLessThan(100); // height is small
+  await expect(sidebar).toHaveCSS('flex-direction', 'row');
+  await expect(dialog.locator('.settings-content-pane')).toHaveCSS('overflow-y', 'auto');
 });

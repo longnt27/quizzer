@@ -459,6 +459,18 @@ export default function SettingsModal({
     </Space>,
   }));
 
+  const moveTabFocus = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
+    let nextIndex: number | undefined;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') nextIndex = (index + 1) % tabItems.length;
+    if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') nextIndex = (index - 1 + tabItems.length) % tabItems.length;
+    if (event.key === 'Home') nextIndex = 0;
+    if (event.key === 'End') nextIndex = tabItems.length - 1;
+    if (nextIndex === undefined) return;
+    event.preventDefault();
+    setActiveTab(tabItems[nextIndex].key as SettingsTab);
+    event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[nextIndex]?.focus();
+  };
+
   return (
     <Modal open title={<Space><SettingOutlined /> Settings</Space>} width={880} onCancel={onClose} footer={[
       <Button key="cancel" onClick={onClose}>Cancel</Button>,
@@ -479,17 +491,19 @@ export default function SettingsModal({
         ].filter(Boolean).join(' ')} />}
         {loading ? <div className="settings-loading"><Spin /></div> : !error && (
           <div className="settings-layout">
-            <div className="settings-sidebar" role="tablist" aria-orientation="vertical">
-              {tabItems.map(tab => (
-                <div key={tab.key} role="tab" aria-selected={activeTab === tab.key} tabIndex={0}
+            <div className="settings-sidebar" role="tablist" aria-label="Settings categories" aria-orientation="vertical">
+              {tabItems.map((tab, index) => (
+                <button key={tab.key} type="button" role="tab" id={`settings-tab-${tab.key}`}
+                  aria-controls="settings-panel" aria-selected={activeTab === tab.key} tabIndex={activeTab === tab.key ? 0 : -1}
                   onClick={() => setActiveTab(tab.key as SettingsTab)}
-                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActiveTab(tab.key as SettingsTab); } }}
+                  onKeyDown={event => moveTabFocus(event, index)}
                   className="settings-sidebar-item">
                   {tab.label}
-                </div>
+                </button>
               ))}
             </div>
-            <div className="settings-content-pane" role="tabpanel" tabIndex={0}>
+            <div className="settings-content-pane" role="tabpanel" id="settings-panel"
+              aria-labelledby={`settings-tab-${activeTab}`} tabIndex={0}>
               {tabItems.find(t => t.key === activeTab)?.children}
             </div>
           </div>
