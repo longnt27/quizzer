@@ -82,7 +82,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
     onSelect: select,
     onAddTest: () => { setShowAddModal(true); setMobileMenuOpen(false); },
     onAddDocument: () => { setShowDocumentModal(true); setMobileMenuOpen(false); },
-    onOpenPlugins: () => { setShowPluginsModal(true); setMobileMenuOpenOpen(false); },
+    onOpenPlugins: () => { setShowPluginsModal(true); setMobileMenuOpen(false); },
     onOpenSettings: () => { setShowSettingsModal(true); setMobileMenuOpen(false); },
     onOpenGeneration: () => { setShowGenerationCenter(true); setMobileMenuOpen(false); },
     onOpenTutorial: () => { setShowOnboarding(true); setMobileMenuOpen(false); },
