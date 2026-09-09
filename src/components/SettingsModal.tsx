@@ -119,6 +119,7 @@ export default function SettingsModal({
   keyboardShortcuts,
   onKeyboardShortcutChange,
   onOpenCommandPalette,
+  initialTab,
   onClose,
 }: Props) {
   const [contract, setContract] = useState<SettingsContract>();
@@ -453,7 +454,7 @@ export default function SettingsModal({
     </section> : <Typography.Text type="secondary">No shortcut actions match this search.</Typography.Text>}
   </Space>;
 
-  const tabItems = settingsTabs.map(tab => ({
+  const tabItems = settingsTabs.filter(tab => advanced || tab.key !== 'prompts').map(tab => ({
     key: tab.key,
     label: tab.label,
     children: tab.key === 'prompts' ? <PromptStudio /> : <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -474,13 +475,17 @@ export default function SettingsModal({
     event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[nextIndex]?.focus();
   };
 
-  return (
-    <Modal open title={<Space><SettingOutlined /> Settings</Space>} width={880} onCancel={onClose} footer={[
+  const footer = activeTab === 'prompts'
+    ? <Button onClick={onClose}>Close</Button>
+    : [
       <Button key="cancel" onClick={onClose}>Cancel</Button>,
       <Button key="profile" icon={<UndoOutlined />} disabled={!contract} onClick={resetToProfile}>Reset to selected profile</Button>,
       <Button key="defaults" disabled={!contract} onClick={resetToDefaults}>Built-in defaults</Button>,
       <Button key="save" type="primary" loading={saving} disabled={!dirtyKeys.size && !unsetKeys.size} onClick={() => void save()}>Save changes</Button>,
-    ]}>
+    ];
+
+  return (
+    <Modal open title={<Space><SettingOutlined /> Settings</Space>} width={activeTab === 'prompts' ? 1120 : 880} onCancel={onClose} footer={footer}>
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
           Browse settings by category or search across every category. Values show their source and any resource or indexing impact before saving.

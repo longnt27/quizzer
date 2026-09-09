@@ -7,6 +7,10 @@ test('immediate reversible Simple/Advanced disclosure with stored data retained'
 
   const studioButton = page.getByRole('button', { name: 'Prompt Studio' });
   await expect(page.getByRole('button', { name: 'Switch to Advanced mode' })).toHaveCount(0);
+  await page.locator('.sidebar-footer:visible').getByRole('button', { name: 'Settings' }).click();
+  const simpleSettings = page.getByRole('dialog', { name: 'Settings' });
+  await expect(simpleSettings.getByRole('tab', { name: 'Prompt Studio' })).toHaveCount(0);
+  await simpleSettings.getByRole('button', { name: 'Cancel' }).click();
   await setInterfaceMode(page, 'advanced');
   await expect(studioButton).toBeVisible();
   await expect(page.getByText('System health', { exact: true })).toBeVisible();
@@ -16,8 +20,7 @@ test('immediate reversible Simple/Advanced disclosure with stored data retained'
   await page.getByLabel('Prompt profile name').fill('Mode-safe profile');
   await page.getByRole('button', { name: 'Save new version' }).click();
   await expect(page.getByText('Mode-safe profile saved as version 2')).toBeVisible();
-  await page.locator('.ant-modal-content').filter({ hasText: 'Prompt Studio' })
-    .getByRole('button', { name: 'Close', exact: true }).last().click();
+  await page.getByRole('dialog', { name: 'Settings' }).locator('.ant-modal-footer').getByRole('button', { name: 'Close', exact: true }).click();
 
   await setInterfaceMode(page, 'simple');
   await expect(studioButton).toBeHidden();
