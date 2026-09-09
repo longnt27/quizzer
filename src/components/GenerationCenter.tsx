@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Checkbox, Empty, Input, InputNumber, List, Modal, Progress, Select, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Checkbox, Collapse, Empty, Input, InputNumber, List, Modal, Progress, Select, Space, Tag, Typography } from 'antd';
 import { ErrorDisplay } from './ErrorDisplay';
 import { formatErrorMessage } from '../utils/errorFormatting';
 import { CloseOutlined, DatabaseOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons';
@@ -14,6 +14,7 @@ import { getMessageApi } from '../utils/messageProvider';
 import { useConfiguredProviders } from '../utils/useConfiguredProviders';
 import { serviceJson } from '../utils/serviceApi';
 import { applyServiceRecord } from '../db/serverSync';
+import { summarizeGenerationRejections } from '../utils/generationRejections';
 
 const terminalStatuses = new Set(['completed', 'cancelled']);
 const statusColor: Record<StoredGenerationJob['status'], string> = {
@@ -89,6 +90,7 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
   const alreadyAuthorized = job.errorCode === 'cost_ceiling'
     ? hasPendingCeilingAuthorization(job) : hasRecoveryAuthorization(job);
   const selectedRoute = resolveJobRoute(job, provider, model);
+  const rejectionSummary = summarizeGenerationRejections(job.rejections);
   const accountingIdentity = `${job.id}:${job.errorCode ?? ''}:${job.recoveryAttemptId ?? ''}:${job.options.costCeilingMicroUsd ?? ''}`;
 
   const resetAccountingForm = () => {
@@ -204,6 +206,13 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
       {job.progress && !terminalStatuses.has(job.status) && <Typography.Text type="secondary">
         {job.progress.phase === 'requesting' ? 'Requesting' : 'Checking'} {job.progress.currentType?.replaceAll('-', ' ')} · round {job.progress.round}/{job.progress.maxRounds} · {job.rejected} rejected
       </Typography.Text>}
+      {rejectionSummary.length > 0 && <Collapse size="small" items={[{
+        key: 'rejections',
+        label: `Why ${job.rejected} candidate${job.rejected === 1 ? ' was' : 's were'} rejected`,
+        children: <List size="small" dataSource={rejectionSummary} renderItem={item => <List.Item>
+          <List.Item.Meta title={`${item.typeLabel} · ${item.count}`} description={item.reasonLabel} />
+        </List.Item>} />,
+      }]} />}
       {!!job.providerAttempts?.length && <div>
         <Typography.Text type="secondary">Route history</Typography.Text>
         <Space wrap style={{ marginLeft: 8 }}>{job.providerAttempts.map((attempt, index) => <Tag key={`${attempt.at}:${index}`}
