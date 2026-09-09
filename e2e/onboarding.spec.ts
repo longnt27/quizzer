@@ -223,7 +223,6 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await page.getByRole('button', { name: 'Resume setup' }).click();
   await expect(page.getByRole('heading', { name: 'Try one question' })).toBeVisible();
   await expect(page.getByText('First question answered')).toBeVisible();
-  await page.getByRole('button', { name: 'Continue' })).toBeEnabled();
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('heading', { name: 'You’re ready' })).toBeVisible();
   await page.getByRole('button', { name: 'Finish' }).click();
