@@ -39,7 +39,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDocumentModal, setShowDocumentModal] = useState(false);
   const [showPluginsModal, setShowPluginsModal] = useState(false);
-  const [showSettingsModal, setShowSettingsModal] = useState<boolean | 'prompts'>(false);
+  const [showSettingsModal, setShowSettingsModal] = useState<boolean | 'prompts' | 'updates'>(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showGenerationCenter, setShowGenerationCenter] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(true);
@@ -81,8 +81,6 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
     setSession(null);
     setMobileMenuOpen(false);
   }, []);
-  const openSettings = useCallback(() => setShowSettingsModal(true), []);
-
   const updateKeyboardShortcut = (actionId: ShortcutActionId, shortcut: string) => {
     const changed = changeKeyboardShortcut(keyboardShortcuts, actionId, shortcut);
     if (!changed.ok) {
@@ -152,7 +150,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
 
   return <>
     <GenerationWorker />
-    <UpdateAvailableNotifier onOpenSettings={openSettings} />
+    <UpdateAvailableNotifier onOpenSettings={() => setShowSettingsModal('updates')} />
     <Layout className="app-shell">
       {!mobile && session?.mode !== 'taking' && <Sidebar {...sidebarProps} />}
       {mobile && session?.mode !== 'taking' && (

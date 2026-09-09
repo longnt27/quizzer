@@ -30,4 +30,13 @@ test('Plugins & models exposes capability tabs without inline settings dropdowns
   await expect(dialog.getByText('Codex Agent', { exact: true })).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Settings' }).first()).toBeVisible();
   await expect(dialog.locator('.ant-select')).toHaveCount(0);
+
+  await dialog.getByRole('button', { name: 'Settings for Codex Agent' }).click();
+  const codexSettings = page.getByRole('dialog', { name: 'Codex Agent settings' });
+  await expect(codexSettings.getByRole('spinbutton', { name: 'Maximum concurrency for Codex Agent' })).toBeVisible();
+  await codexSettings.getByRole('button', { name: 'Done' }).click();
+
+  await dialog.getByRole('button', { name: 'Settings for Ollama Local' }).click();
+  const ollamaSettings = page.getByRole('dialog', { name: 'Ollama Local settings' });
+  await expect(ollamaSettings.getByText('Resource limits')).toHaveCount(0);
 });

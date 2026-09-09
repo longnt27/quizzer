@@ -255,6 +255,10 @@ test('exposes settings schema, precedence, and validated updates', async () => {
   assert.ok(schema.registry.some(item => item.key === 'embeddings.model'));
   assert.ok(schema.registry.some(item => item.key === 'embeddings.embedderPlugin'));
   assert.ok(schema.registry.some(item => item.key === 'retrieval.rerankerPlugin'));
+  for (const key of ['extraction.extractorPlugin', 'extraction.ocrPlugin', 'embeddings.embedderPlugin', 'retrieval.vectorIndexPlugin', 'retrieval.rerankerPlugin']) {
+    const definition = schema.registry.find(item => item.key === key);
+    assert.deepEqual(definition.enum, ['builtin']);
+  }
   assert.equal(schema.profiles.balanced['generation.concurrency'], 3);
   assert.equal(schema.profiles.balanced['embeddings.model'], 'all-minilm');
   assert.equal(schema.profiles.max['embeddings.model'], 'bge-m3');

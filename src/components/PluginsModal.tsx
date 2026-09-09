@@ -709,14 +709,17 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
           ) : null}
         </>
       ) : null}
-      <Divider orientation="left" plain>Resource Limits</Divider>
-      <Space>
-        <Typography.Text>Maximum concurrency</Typography.Text>
-        <InputNumber aria-label="Maximum concurrency" min={1} max={10} value={concurrencies[modelSettingsProvider.id] ?? 2}
-          onChange={value => {
-            if (value !== null) setConcurrencies(current => ({ ...current, [modelSettingsProvider.id]: value }));
-          }} />
-      </Space>
+      {concurrencies[modelSettingsProvider.id] !== undefined ? <>
+        <Divider orientation="left" plain>Resource limits</Divider>
+        <Space>
+          <Typography.Text>Maximum concurrency</Typography.Text>
+          <InputNumber aria-label={`Maximum concurrency for ${providerName(modelSettingsProvider.label)}`} min={1} max={10}
+            value={concurrencies[modelSettingsProvider.id]}
+            onChange={value => {
+              if (value !== null) setConcurrencies(current => ({ ...current, [modelSettingsProvider.id]: value }));
+            }} />
+        </Space>
+      </> : null}
     </Space>
   ) : null;
 
