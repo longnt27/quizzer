@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Card, Descriptions, Divider, Drawer, Input, Radio, Space, Spin, Steps, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Descriptions, Divider, Drawer, Radio, Space, Spin, Progress, Tag, Typography } from 'antd';
 import { ApiOutlined, CheckCircleOutlined, FileAddOutlined, FormOutlined, LaptopOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type StoredAppProfile } from '../db/db';
 import type { HardwareCapabilities, HardwareProfileId, InterfaceMode, OnboardingStep } from '../types';
 import { useConfiguredProviders } from '../utils/useConfiguredProviders';
-import { advanceOnboarding, goToOnboardingStep, ONBOARDING_STEPS, setHardwareProfile, setInterfaceMode, skipOnboarding, updateAppProfile } from '../utils/appProfile';
+import { advanceOnboarding, goToOnboardingStep, ONBOARDING_STEPS, setHardwareProfile, setInterfaceMode, skipOnboarding } from '../utils/appProfile';
 import { serviceFetch } from '../utils/serviceApi';
 import { getModalApi } from '../utils/modalProvider';
 
@@ -22,7 +22,7 @@ interface Props {
 }
 
 const labels: Record<OnboardingStep, string> = {
-  welcome: 'Welcome', hardware: 'Hardware', provider: 'AI', document: 'Document', instruction: 'Goal', generate: 'Generate', practice: 'Practice', complete: 'Finish',
+  welcome: 'Welcome', hardware: 'Hardware', provider: 'AI', document: 'Document', generate: 'Generate', practice: 'Practice', complete: 'Finish',
 };
 
 const profileDetails: Record<HardwareProfileId, string> = {
@@ -34,7 +34,6 @@ const profileDetails: Record<HardwareProfileId, string> = {
 const coachmarkCopy: Partial<Record<OnboardingStep, { selector: string; title: string; body: string }>> = {
   provider: { selector: '[data-onboarding-target="provider"]', title: 'Set up an AI route', body: 'Use this real control to connect or review the provider used for generation.' },
   document: { selector: '[data-onboarding-target="document"]', title: 'Import your source', body: 'Add a readable PDF, text, or Markdown document here. The step completes only after it is saved.' },
-  instruction: { selector: '[data-onboarding-target="learning-instruction"], [data-onboarding-target="create-test"]', title: 'Shape the first quiz', body: 'Your learning goal is carried into the real test-creation form when you create the quiz.' },
   generate: { selector: '[data-onboarding-target="create-test"]', title: 'Create the quiz', body: 'Open the real creation form, choose the source, review the route, and queue the test.' },
   practice: { selector: '[data-onboarding-target="practice-feedback"], [data-onboarding-target="citations"], [data-onboarding-target="ask-ai"], [data-onboarding-target="practice"]', title: 'Practice and inspect evidence', body: 'Answer, check the feedback, then review citations or ask AI about this answer.' },
 };
@@ -117,11 +116,9 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
   const [hardware, setHardware] = useState<HardwareCapabilities>();
   const [hardwareError, setHardwareError] = useState('');
   const recommendationApplied = useRef(false);
-  const [instruction, setInstruction] = useState(profile.defaultLearningInstruction ?? '');
   const step = profile.onboarding.currentStep;
   const index = ONBOARDING_STEPS.indexOf(step);
 
-  useEffect(() => setInstruction(profile.defaultLearningInstruction ?? ''), [profile.defaultLearningInstruction]);
   useEffect(() => {
     if (!open || hardware || hardwareError) return;
     void serviceFetch('/api/system/capabilities').then(async response => {
@@ -147,7 +144,6 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
     hardware: Boolean(hardware) || Boolean(hardwareError),
     provider: configured.providers.length > 0,
     document: Boolean(onboardingDocument),
-    instruction: true,
     generate: Boolean(generationJob && generatedTest),
     practice: practiceComplete,
     complete: true,
@@ -156,7 +152,6 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
   const next = async () => {
     if (step === 'welcome') await setInterfaceMode(profile.interfaceMode);
     if (step === 'hardware') await setHardwareProfile(profile.hardwareProfile);
-    if (step === 'instruction') await updateAppProfile({ defaultLearningInstruction: instruction.trim() || undefined });
     if (step === 'complete') {
       await advanceOnboarding('complete', 'complete');
       onFinish();
@@ -181,11 +176,13 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
       <Typography.Text type="secondary">Step {index + 1} of {ONBOARDING_STEPS.length}</Typography.Text>
       <Button type="primary" disabled={!requirementMet[step]} onClick={() => void next()}>{step === 'complete' ? 'Finish' : 'Continue'}</Button>
     </div>}>
-    <Steps size="small" current={index === 0 ? 0 : 1} direction="vertical" className="onboarding-steps"
-      items={ONBOARDING_STEPS.slice(Math.max(0, index - 1), Math.min(ONBOARDING_STEPS.length, index + 2)).map(item => {
-        const itemIndex = ONBOARDING_STEPS.indexOf(item);
-        return { title: labels[item], status: itemIndex < index ? 'finish' : itemIndex === index ? 'process' : 'wait' };
-      })} />
+    <div className="onboarding-progress" aria-label="Setup progress" role="progressbar" aria-valuenow={index + 1} aria-valuemin={1} aria-valuemax={ONBOARDING_STEPS.length}>
+      <div className="onboarding-progress-copy">
+        <Typography.Text strong>Step {index + 1} of {ONBOARDING_STEPS.length}</Typography.Text>
+        <Typography.Text type="secondary">{labels[step]}</Typography.Text>
+      </div>
+      <Progress percent={Math.round((index / (ONBOARDING_STEPS.length - 1)) * 100)} showInfo={false} size="small" />
+    </div>
     <Divider />
 
     {step === 'welcome' && <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -232,14 +229,6 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
       <Typography.Paragraph>Add a PDF, Markdown, or text file. This step completes only after readable content is extracted and saved.</Typography.Paragraph>
       {onboardingDocument ? <Alert type="success" showIcon message={`${onboardingDocument.name} is readable and saved`} /> : null}
       <Button type="primary" icon={<FileAddOutlined />} onClick={onAddDocument}>Add document</Button>
-    </Space>}
-
-    {step === 'instruction' && <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      <Typography.Title level={3}>What do you want to learn?</Typography.Title>
-      <Typography.Paragraph>Give Quizzer an optional emphasis. It is saved as your starting value and snapshotted with each generated test.</Typography.Paragraph>
-      <Input.TextArea rows={5} maxLength={2000} showCount value={instruction} onChange={event => setInstruction(event.target.value)}
-        placeholder="For example: coding questions about Terraform only" />
-      <Typography.Text type="secondary">Leave this blank for broad coverage. Source documents are always treated as untrusted content, never as instructions.</Typography.Text>
     </Space>}
 
     {step === 'generate' && <Space direction="vertical" size="middle" style={{ width: '100%' }}>

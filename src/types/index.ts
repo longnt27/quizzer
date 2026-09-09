@@ -199,7 +199,7 @@ export interface GenerationProfile {
   batchSize: number;
 }
 
-export type OnboardingStep = 'welcome' | 'hardware' | 'provider' | 'document' | 'instruction' | 'generate' | 'practice' | 'complete';
+export type OnboardingStep = 'welcome' | 'hardware' | 'provider' | 'document' | 'generate' | 'practice' | 'complete';
 
 export interface OnboardingState {
   onboardingVersion: number;

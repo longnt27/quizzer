@@ -85,7 +85,7 @@ export default function HomePage({ profile, onAddDocument, onAddTest, onOpenGene
     </div>
 
     {showWhatsNew && <Alert closable type="info" showIcon icon={<RocketOutlined />} message="Quizzer 1.0 setup is here"
-      description="Your existing library is unchanged. You can now choose a hardware profile, use Simple or Advanced creation, and attach a learning instruction to every quiz."
+      description="Your existing library is unchanged. You can now choose a hardware profile and use Simple or Advanced creation."
       onClose={() => void updateAppProfile({ whatsNewDismissedVersion: CURRENT_WHATS_NEW_VERSION })}
       action={<Button size="small" onClick={onOpenTutorial}>View walkthrough</Button>} />}
 

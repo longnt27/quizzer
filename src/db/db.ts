@@ -227,6 +227,7 @@ export interface StoredAppProfile {
   interfaceMode: InterfaceMode;
   hardwareProfile: HardwareProfileId;
   onboarding: OnboardingState;
+  /** Retained for backward-compatible profile sync; new quizzes start with a blank per-test instruction. */
   defaultLearningInstruction?: string;
   upgradedExistingLibrary: boolean;
   whatsNewDismissedVersion?: number;

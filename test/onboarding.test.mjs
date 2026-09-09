@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ONBOARDING_STEPS, ONBOARDING_VERSION, validateOnboardingState } from '../server/onboarding.mjs';
+import { ONBOARDING_STEPS, ONBOARDING_VERSION, normalizeOnboardingState, validateOnboardingState } from '../server/onboarding.mjs';
 
 const state = changes => ({
   onboardingVersion: ONBOARDING_VERSION,
@@ -38,4 +38,17 @@ test('rejects malformed, incoherent, or unsupported onboarding state', () => {
   assert.throws(() => validateOnboardingState(state({ documentId: '' })), /document id/);
   assert.throws(() => validateOnboardingState(state({ generationJobId: 'job-1' })), /recorded together/);
   assert.throws(() => validateOnboardingState(state({ generationTestId: 'test-1' })), /recorded together/);
+});
+
+test('moves profiles paused on the removed goal step directly to generation', () => {
+  const legacy = state({
+    completedSteps: ['welcome', 'hardware', 'provider', 'document', 'instruction'],
+    currentStep: 'instruction',
+  });
+  assert.deepEqual(normalizeOnboardingState(legacy), {
+    ...legacy,
+    completedSteps: ['welcome', 'hardware', 'provider', 'document'],
+    currentStep: 'generate',
+  });
+  assert.equal(validateOnboardingState(legacy).currentStep, 'generate');
 });

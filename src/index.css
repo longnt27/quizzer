@@ -126,6 +126,7 @@ button, input, textarea, select { font: inherit; }
 .onboarding-steps .ant-steps-item { padding-bottom: 4px !important; }
 .onboarding-steps .ant-steps-item-description { display: none; }
 .onboarding-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.onboarding-progress-copy { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
 .onboarding-choice-grid { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .onboarding-choice-grid .ant-radio-button-wrapper { height: auto; min-height: 116px; padding: 18px; border: 1px solid var(--border) !important; border-radius: 10px !important; white-space: normal; }
 .onboarding-choice-grid .ant-radio-button-wrapper::before { display: none; }

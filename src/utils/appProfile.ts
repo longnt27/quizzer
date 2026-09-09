@@ -1,5 +1,5 @@
 import { db, type StoredAppProfile } from '../db/db';
-import type { HardwareProfileId, InterfaceMode, OnboardingStep } from '../types';
+import type { HardwareProfileId, InterfaceMode, OnboardingState, OnboardingStep } from '../types';
 import { serviceJson } from './serviceApi';
 
 export const CURRENT_ONBOARDING_VERSION = 1;
@@ -9,7 +9,6 @@ export const ONBOARDING_STEPS: OnboardingStep[] = [
   'hardware',
   'provider',
   'document',
-  'instruction',
   'generate',
   'practice',
   'complete',
@@ -38,9 +37,28 @@ export const createDefaultProfile = (hasExistingLibrary: boolean, now = Date.now
       },
 });
 
+export const normalizeLegacyAppProfile = (profile: StoredAppProfile): StoredAppProfile => {
+  const legacyCurrentStep = (profile.onboarding as unknown as { currentStep: string }).currentStep;
+  const legacyCompletedSteps = (profile.onboarding as unknown as { completedSteps: string[] }).completedSteps;
+  const currentStep = legacyCurrentStep === 'instruction'
+    ? 'generate'
+    : ONBOARDING_STEPS.includes(legacyCurrentStep as OnboardingStep)
+      ? legacyCurrentStep as OnboardingStep
+      : 'welcome';
+  const completedSteps = legacyCompletedSteps.filter((step): step is OnboardingStep =>
+    ONBOARDING_STEPS.includes(step as OnboardingStep));
+  if (currentStep === legacyCurrentStep && completedSteps.length === legacyCompletedSteps.length) return profile;
+  const onboarding: OnboardingState = { ...profile.onboarding, currentStep, completedSteps };
+  return { ...profile, updatedAt: Date.now(), onboarding };
+};
+
 export const ensureAppProfile = async () => {
   const existing = await db.profiles.get('default');
-  if (existing) return existing;
+  if (existing) {
+    const normalized = normalizeLegacyAppProfile(existing);
+    if (normalized !== existing) await db.profiles.put(normalized);
+    return normalized;
+  }
   const hasExistingLibrary = (await db.tests.count()) > 0 || (await db.documents.count()) > 0;
   const profile = createDefaultProfile(hasExistingLibrary);
   await db.profiles.add(profile).catch(async error => {
