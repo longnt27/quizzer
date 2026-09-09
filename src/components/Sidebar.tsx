@@ -1,6 +1,6 @@
 import { useState, useSyncExternalStore } from 'react';
 import { Alert, Badge, Button, Empty, Input, Layout, List, Modal, Popconfirm, Progress, Space, Tabs, Tag, Typography } from 'antd';
-import { ApiOutlined, CloudSyncOutlined, DeleteOutlined, ExperimentOutlined, FileTextOutlined, FormOutlined, HomeOutlined, PlusOutlined, QuestionCircleOutlined, SearchOutlined, SettingOutlined, SyncOutlined } from '@ant-design/icons';
+import { ApiOutlined, DatabaseOutlined, DeleteOutlined, ExperimentOutlined, FileTextOutlined, FormOutlined, HomeOutlined, PlusOutlined, QuestionCircleOutlined, SearchOutlined, SettingOutlined, SyncOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type StoredAppProfile } from '../db/db';
 import { getMessageApi } from '../utils/messageProvider';
@@ -116,21 +116,21 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
             Resume setup
           </Button>
         )}
-        <Button type="text" icon={<CloudSyncOutlined spin={sync.status === 'syncing'} />} onClick={() => { setSyncDetailsOpen(true); void syncNow(); }}>
+        <Button type="text" icon={<DatabaseOutlined spin={sync.status === 'syncing'} />} onClick={() => { setSyncDetailsOpen(true); void syncNow(); }}>
           <Badge status={sync.status === 'synced' ? 'success' : sync.status === 'offline' ? 'warning' : 'processing'} />
-          {sync.status === 'offline' ? 'Offline — saved locally' : sync.lastSyncedAt ? 'Saved on server' : 'Syncing library'}
+          {sync.status === 'offline' ? 'Offline — saved in browser' : sync.lastSyncedAt ? 'Saved to index' : 'Indexing locally...'}
         </Button>
         <Button type="text" icon={<SyncOutlined />} onClick={onOpenGeneration}>Activity</Button>
         <Button data-onboarding-target="provider" type="text" icon={<ApiOutlined />} onClick={onOpenPlugins}>Plugins & models</Button>
         <Button type="text" icon={<SettingOutlined />} onClick={onOpenSettings}>Settings</Button>
         {profile?.interfaceMode === 'advanced' && <Button type="text" icon={<ExperimentOutlined />} onClick={onOpenPromptStudio}>Prompt Studio</Button>}
       </div>
-      <Modal title="Library sync" open={syncDetailsOpen} onCancel={() => setSyncDetailsOpen(false)} footer={[
-        <Button key="sync" loading={sync.status === 'syncing'} onClick={() => void syncNow()}>Sync now</Button>,
+      <Modal title="Local database" open={syncDetailsOpen} onCancel={() => setSyncDetailsOpen(false)} footer={[
+        <Button key="sync" loading={sync.status === 'syncing'} onClick={() => void syncNow()}>Save now</Button>,
         <Button key="close" type="primary" onClick={() => setSyncDetailsOpen(false)}>Close</Button>,
       ]}>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          <Progress aria-label="Library synchronization progress" percent={sync.percent} status={sync.status === 'offline' ? 'exception' : sync.status === 'synced' ? 'success' : 'active'} />
+          <Progress aria-label="Local database progress" percent={sync.percent} status={sync.status === 'offline' ? 'exception' : sync.status === 'synced' ? 'success' : 'active'} />
           <div>
             <Typography.Text strong>{sync.detail}</Typography.Text><br />
             <Typography.Text type="secondary">

@@ -37,7 +37,7 @@ const collections: SyncCollection[] = ['tests', 'documents', 'generationJobs', '
 const listeners = new Set<() => void>();
 let snapshot: ServerSyncSnapshot = {
   status: 'starting', phase: 'idle', percent: 0, completed: 0, total: 0, pending: 0,
-  detail: 'Connecting to the server library…',
+  detail: 'Connecting to the local library…',
 };
 let remoteApplyDepth = 0;
 let syncPromise: Promise<void> | undefined;
@@ -120,7 +120,7 @@ export const queueServerChange = async (collection: SyncCollection, id: string, 
 const markChanged = (collection: SyncCollection, id: string, deleted: boolean) => {
   window.setTimeout(() => {
     void queueServerChange(collection, id, deleted).catch(error => {
-      console.warn('Quizzer could not queue a browser change for server synchronization.', error);
+      console.warn('Quizzer could not queue a browser change for database synchronization.', error);
     });
   }, 0);
 };
@@ -241,14 +241,14 @@ const postSync = (body: string, batch: number, batchCount: number) => new Promis
       completed: event.loaded, total: event.total, detail: 'Receiving the shared library…',
     });
   };
-  request.onerror = () => reject(new Error('Cannot reach the Quizzer server'));
-  request.ontimeout = () => reject(new Error('Server sync timed out'));
+  request.onerror = () => reject(new Error('Cannot reach the local database'));
+  request.ontimeout = () => reject(new Error('Database sync timed out'));
   request.onload = () => {
     let payload: { cursor?: number; changes?: ServerChange[]; error?: string } = {};
     try { payload = JSON.parse(request.responseText); }
-    catch { reject(new Error('The server returned an invalid sync response')); return; }
+    catch { reject(new Error('The local database returned an invalid sync response')); return; }
     if (request.status < 200 || request.status >= 300 || !Array.isArray(payload.changes) || !Number.isSafeInteger(payload.cursor)) {
-      reject(new Error(payload.error || `Server storage failed (${request.status})`));
+      reject(new Error(payload.error || `Database storage failed (${request.status})`));
       return;
     }
     resolve({ cursor: payload.cursor as number, changes: payload.changes });
@@ -306,7 +306,7 @@ const runSync = async () => {
     }), batchNumber, batches.length);
     updateSnapshot({
       phase: 'applying', percent: 75, completed: 0, total: payload.changes.length,
-      detail: payload.changes.length ? `Applying server changes from batch ${batchNumber} of ${batches.length}…` : 'Library is already up to date.',
+      detail: payload.changes.length ? `Applying database changes from batch ${batchNumber} of ${batches.length}…` : 'Library is already up to date.',
     });
     cursor = payload.cursor;
     await applyServerChanges(payload.changes, cursor, batch, batchNumber === batches.length, migration);
@@ -319,13 +319,13 @@ export const syncNow = () => {
   syncPromise = runSync()
     .then(async () => updateSnapshot({
       status: 'synced', phase: 'complete', percent: 100, completed: 0, total: 0,
-      pending: await db.syncChanges.count(), detail: 'Everything is saved on the server.', lastSyncedAt: Date.now(), error: undefined,
+      pending: await db.syncChanges.count(), detail: 'Everything is saved in the local database.', lastSyncedAt: Date.now(), error: undefined,
     }))
     .catch(error => {
-      console.warn('Quizzer server sync is unavailable; changes remain in IndexedDB.', error);
+      console.warn('Quizzer database sync is unavailable; changes remain in IndexedDB.', error);
       void db.syncChanges.count().then(pending => updateSnapshot({
         status: 'offline', phase: 'error', pending, detail: 'Changes are safe in this browser and will retry automatically.',
-        error: error instanceof Error ? error.message : 'Server sync failed',
+        error: error instanceof Error ? error.message : 'Database sync failed',
       }));
     })
     .finally(() => { syncPromise = undefined; });
