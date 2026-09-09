@@ -191,7 +191,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
       {showSettingsModal && profile && <SettingsModal profile={profile} dark={dark} onThemeChange={onThemeChange}
         keyboardShortcuts={keyboardShortcuts} onKeyboardShortcutChange={updateKeyboardShortcut}
         initialTab={typeof showSettingsModal === 'string' ? showSettingsModal : undefined}
-        onOpenCommandPalette={() => { setShowSettingsModal(false); setShowCommandPalette(true); }} onClose={() => setShowSettingsModal(false)} />}
+        onClose={() => setShowSettingsModal(false)} />}
       <CommandPalette open={showCommandPalette} commands={commands} onClose={() => setShowCommandPalette(false)} />
       {showGenerationCenter && <GenerationCenter open onClose={() => setShowGenerationCenter(false)} onManagePlugins={() => setShowPluginsModal(true)} onOpenTest={id => {
         setSelection({ kind: 'test', id }); setSession(null);
