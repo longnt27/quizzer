@@ -181,7 +181,11 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
       <Typography.Text type="secondary">Step {index + 1} of {ONBOARDING_STEPS.length}</Typography.Text>
       <Button type="primary" disabled={!requirementMet[step]} onClick={() => void next()}>{step === 'complete' ? 'Finish' : 'Continue'}</Button>
     </div>}>
-    <div aria-label="Setup progress" role="progressbar" aria-valuenow={index + 1} aria-valuemin={1} aria-valuemax={ONBOARDING_STEPS.length}>
+    <div className="onboarding-progress" aria-label="Setup progress" role="progressbar" aria-valuenow={index + 1} aria-valuemin={1} aria-valuemax={ONBOARDING_STEPS.length}>
+      <div className="onboarding-progress-copy">
+        <Typography.Text strong>Step {index + 1} of {ONBOARDING_STEPS.length}</Typography.Text>
+        <Typography.Text type="secondary">{labels[step]}</Typography.Text>
+      </div>
       <Progress percent={Math.round((index / (ONBOARDING_STEPS.length - 1)) * 100)} showInfo={false} size="small" />
     </div>
     <Divider />
