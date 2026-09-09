@@ -124,7 +124,14 @@ export const skipOnboarding = async () => {
   });
 };
 
-
+export const restartOnboarding = async () => updateAppProfile({
+  onboarding: {
+    onboardingVersion: CURRENT_ONBOARDING_VERSION,
+    completedSteps: [],
+    currentStep: 'welcome',
+    skipped: false,
+  },
+});
 
 export const recordOnboardingDocument = async (documentId: string) => {
   const profile = await ensureAppProfile();
