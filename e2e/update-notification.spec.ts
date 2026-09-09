@@ -58,7 +58,7 @@ test('notifies once for an available update and opens its Settings details witho
 
   const settings = page.getByRole('dialog', { name: 'Settings' });
   await expect(settings).toBeVisible();
-  await expect(settings.getByRole('tab', { name: 'Overall' })).toHaveAttribute('aria-selected', 'true');
+  await expect(settings.getByRole('tab', { name: 'Software Updates' })).toHaveAttribute('aria-selected', 'true');
   await expect(settings.locator('.updater-status-card').getByText('Software Updates', { exact: true })).toBeVisible();
   await expect.poll(() => updaterCalls(page)).toMatchObject({ check: 1, download: 0, apply: 0 });
 

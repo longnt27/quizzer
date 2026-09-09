@@ -12,7 +12,11 @@ test('Settings search/reset and keyboard accessibility', async ({ page }) => {
   await expect(dialog.getByRole('radiogroup', { name: 'Theme' })).toBeVisible();
   await expect(dialog.locator('.settings-row').filter({ hasText: 'Interface mode' }).getByText('Advanced', { exact: true })).toBeVisible();
   await expect(dialog.getByRole('combobox', { name: 'Hardware profile' })).toBeVisible();
-  await expect(dialog.getByText('Software Updates')).toBeVisible();
+  await expect(dialog.getByRole('tab', { name: 'Software Updates' })).toBeVisible();
+  await expect(dialog.locator('.updater-status-card')).toHaveCount(0);
+  await dialog.getByRole('tab', { name: 'Software Updates' }).click();
+  await expect(dialog.getByRole('region', { name: 'Software updates' }).getByText('Desktop Updates')).toBeVisible();
+  await dialog.getByRole('tab', { name: 'Overall' }).click();
 
   await dialog.getByText('Dark', { exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
@@ -20,8 +24,10 @@ test('Settings search/reset and keyboard accessibility', async ({ page }) => {
 
   await dialog.getByRole('tab', { name: 'Retrieval' }).click();
   await expect(dialog.getByRole('spinbutton', { name: 'Context budget' })).toBeVisible();
+  await expect(dialog.getByRole('combobox', { name: 'Reranker component' })).toBeVisible();
   await dialog.getByRole('tab', { name: 'Documents' }).click();
   await expect(dialog.getByRole('switch', { name: 'OCR' })).toBeVisible();
+  await expect(dialog.getByRole('combobox', { name: 'Document extractor component' })).toBeVisible();
 
   const search = dialog.getByLabel('Search settings');
   await search.fill('Generation concurrency');
@@ -82,4 +88,31 @@ test('sidebar stays focused while command shortcuts are configurable and persist
   await dismissOnboarding(page, false);
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+Y' : 'Control+Shift+Y');
   await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
+});
+
+test('Settings sidebar supports tablist keyboard navigation and narrow layout', async ({ page }) => {
+  await dismissOnboarding(page);
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+,' : 'Control+,');
+  const dialog = page.locator('.ant-modal-content').filter({ hasText: 'Settings' });
+  await expect(dialog.getByText('Settings', { exact: true })).toBeVisible();
+
+  const overall = dialog.getByRole('tab', { name: 'Overall' });
+  await overall.focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(dialog.getByRole('tab', { name: 'Software Updates' })).toHaveAttribute('aria-selected', 'true');
+  await expect(dialog.getByRole('tab', { name: 'Software Updates' })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(dialog.getByRole('tab', { name: 'Shortcuts' })).toHaveAttribute('aria-selected', 'true');
+  await expect(overall).toHaveAttribute('tabindex', '-1');
+
+  await page.keyboard.press('End');
+  await expect(dialog.getByRole('tab', { name: 'Advanced' })).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('Home');
+  await expect(overall).toHaveAttribute('aria-selected', 'true');
+  await expect(overall).toBeFocused();
+
+  await page.setViewportSize({ width: 500, height: 800 });
+  const sidebar = dialog.locator('.settings-sidebar');
+  await expect(sidebar).toHaveCSS('flex-direction', 'row');
+  await expect(dialog.locator('.settings-content-pane')).toHaveCSS('overflow-y', 'auto');
 });

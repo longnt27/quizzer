@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { Alert, Button, Divider, Input, InputNumber, Modal, Radio, Select, Space, Spin, Switch, Tabs, Tag, Typography } from 'antd';
+import { Alert, Button, Divider, Input, InputNumber, Modal, Radio, Select, Space, Spin, Switch, Tag, Typography } from 'antd';
 import { ReloadOutlined, SearchOutlined, SettingOutlined, UndoOutlined } from '@ant-design/icons';
 import type { StoredAppProfile } from '../db/db';
 import type { GenerationProvider, HardwareProfileId, InterfaceMode } from '../types';
@@ -19,6 +19,7 @@ import {
   type ShortcutActionId,
 } from '../utils/keyboardShortcuts';
 import UpdaterStatusView from './UpdaterStatus';
+import PromptStudio from './PromptStudio';
 
 type SettingValue = string | number | boolean;
 type SettingsValues = Record<string, SettingValue>;
@@ -57,21 +58,25 @@ interface Props {
   keyboardShortcuts: KeyboardShortcuts;
   onKeyboardShortcutChange: (actionId: ShortcutActionId, shortcut: string) => void;
   onOpenCommandPalette: () => void;
+  initialTab?: SettingsTab;
   onClose: () => void;
 }
 
-type SettingsTab = 'overall' | 'shortcuts' | 'generation' | 'retrieval' | 'documents' | 'advanced';
+export type SettingsTab = 'overall' | 'shortcuts' | 'generation' | 'retrieval' | 'documents' | 'prompts' | 'updates' | 'advanced';
 
 const settingsTabs: { key: SettingsTab; label: string; description: string }[] = [
-  { key: 'overall', label: 'Overall', description: 'Appearance, interface mode, updates, and hardware profile.' },
+  { key: 'overall', label: 'Overall', description: 'Appearance, interface mode, and hardware profile.' },
+  { key: 'updates', label: 'Software Updates', description: 'Check for and install Quizzer software updates.' },
   { key: 'shortcuts', label: 'Shortcuts', description: 'Open the command palette or assign safe keyboard shortcuts to its actions.' },
   { key: 'generation', label: 'Generation', description: 'Question generation defaults and provider resource limits.' },
   { key: 'retrieval', label: 'Retrieval', description: 'Search planning, context, reranking, and embeddings.' },
   { key: 'documents', label: 'Documents', description: 'Document extraction and OCR behavior.' },
+  { key: 'prompts', label: 'Prompt Studio', description: 'Edit, validate, preview, import, and export prompt profiles.' },
   { key: 'advanced', label: 'Advanced', description: 'Background work and plugin development settings.' },
 ];
 
-const overallExtraSearchTerms = ['theme', 'appearance', 'light', 'dark', 'software update', 'update', 'version', 'stable', 'beta'];
+const overallExtraSearchTerms = ['theme', 'appearance', 'light', 'dark'];
+const updatesExtraSearchTerms = ['software update', 'update', 'version', 'stable', 'beta'];
 const shortcutExtraSearchTerms = [
   'keyboard', 'shortcut', 'command palette',
   ...SHORTCUT_ACTIONS.flatMap(action => [action.label.toLowerCase(), action.description.toLowerCase()]),
@@ -80,7 +85,7 @@ const shortcutExtraSearchTerms = [
 const tabForDefinition = (definition: SettingDefinition): SettingsTab => {
   const section = definition.key.split('.')[0];
   if (section === 'interface' || section === 'hardware') return 'overall';
-  if (section === 'generation' || section === 'providers') return 'generation';
+  if (section === 'generation') return 'generation';
   if (section === 'retrieval' || section === 'embeddings') return 'retrieval';
   if (section === 'extraction') return 'documents';
   return 'advanced';
@@ -116,6 +121,7 @@ export default function SettingsModal({
   keyboardShortcuts,
   onKeyboardShortcutChange,
   onOpenCommandPalette,
+  initialTab,
   onClose,
 }: Props) {
   const [contract, setContract] = useState<SettingsContract>();
@@ -124,7 +130,7 @@ export default function SettingsModal({
   const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(() => new Set());
   const [unsetKeys, setUnsetKeys] = useState<Set<string>>(() => new Set());
   const [query, setQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<SettingsTab>('overall');
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? 'overall');
   const [recordingShortcut, setRecordingShortcut] = useState<ShortcutActionId>();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -264,7 +270,7 @@ export default function SettingsModal({
 
   const advanced = (draft['interface.mode'] ?? profile.interfaceMode) === 'advanced';
   const visibleDefinitions = useMemo(() => (contract?.registry ?? [])
-    .filter(definition => advanced || definition.visibility === 'basic'), [advanced, contract]);
+    .filter(definition => !definition.key.startsWith('providers.') && (advanced || definition.visibility === 'basic')), [advanced, contract]);
   const definitions = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return visibleDefinitions.filter(definition => !normalized || [definition.title, definition.description, definition.key, definition.environment]
@@ -276,6 +282,7 @@ export default function SettingsModal({
     if (!normalized) return;
     const matchingTab = settingsTabs.find(tab => definitions.some(definition => tabForDefinition(definition) === tab.key)
       || (tab.key === 'overall' && overallExtraSearchTerms.some(term => term.includes(normalized) || normalized.includes(term)))
+      || (tab.key === 'updates' && updatesExtraSearchTerms.some(term => term.includes(normalized) || normalized.includes(term)))
       || (tab.key === 'shortcuts' && shortcutExtraSearchTerms.some(term => term.includes(normalized) || normalized.includes(term))));
     if (matchingTab) setActiveTab(matchingTab.key);
   }, [definitions, query]);
@@ -351,8 +358,8 @@ export default function SettingsModal({
   };
 
   const overallSearch = query.trim().toLowerCase();
-  const showTheme = !overallSearch || overallExtraSearchTerms.slice(0, 4).some(term => term.includes(overallSearch) || overallSearch.includes(term));
-  const showUpdates = !overallSearch || overallExtraSearchTerms.slice(4).some(term => term.includes(overallSearch) || overallSearch.includes(term));
+  const showTheme = !overallSearch || overallExtraSearchTerms.some(term => term.includes(overallSearch) || overallSearch.includes(term));
+  const showUpdates = !overallSearch || updatesExtraSearchTerms.some(term => term.includes(overallSearch) || overallSearch.includes(term));
   const hasOverallDefinitions = definitions.some(definition => tabForDefinition(definition) === 'overall');
 
   const overall = <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -375,12 +382,16 @@ export default function SettingsModal({
         </div>
       </div>
     </section>}
-    {definitionRows('overall', showTheme || showUpdates)}
+    {definitionRows('overall', showTheme)}
+    {!showTheme && !hasOverallDefinitions && <Typography.Text type="secondary">No overall settings match this search.</Typography.Text>}
+  </Space>;
+
+  const updatesSettings = <Space direction="vertical" size="middle" style={{ width: '100%' }}>
     {showUpdates && <section className="settings-section" aria-labelledby="settings-updates">
       <Divider orientation="left" plain><span id="settings-updates">Software updates</span></Divider>
       <UpdaterStatusView />
     </section>}
-    {!showTheme && !showUpdates && !hasOverallDefinitions && <Typography.Text type="secondary">No overall settings match this search.</Typography.Text>}
+    {!showUpdates && <Typography.Text type="secondary">No software update settings match this search.</Typography.Text>}
   </Space>;
 
   const applyShortcut = (actionId: ShortcutActionId, shortcut: string) => {
@@ -417,8 +428,7 @@ export default function SettingsModal({
     || ['keyboard', 'shortcut'].some(value => value.includes(overallSearch) || overallSearch.includes(value)));
 
   const shortcutSettings = <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-    <Alert type="info" showIcon message="Keyboard shortcuts use Ctrl on Windows/Linux and Command on macOS."
-      description="Changes are saved immediately. Choose Record, then press a primary modifier and one key. Press Backspace to clear or Escape to cancel. Duplicate and operating-system-reserved shortcuts are rejected." />
+
     <Button onClick={onOpenCommandPalette}>Open command palette</Button>
     {shortcutActions.length ? <section className="settings-section" aria-labelledby="settings-keyboard-shortcuts">
       <Divider orientation="left" plain><span id="settings-keyboard-shortcuts">Command palette actions</span></Divider>
@@ -450,22 +460,38 @@ export default function SettingsModal({
     </section> : <Typography.Text type="secondary">No shortcut actions match this search.</Typography.Text>}
   </Space>;
 
-  const tabItems = settingsTabs.map(tab => ({
+  const tabItems = settingsTabs.filter(tab => advanced || tab.key !== 'prompts').map(tab => ({
     key: tab.key,
     label: tab.label,
-    children: <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+    children: tab.key === 'prompts' ? <PromptStudio /> : <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>{tab.description}</Typography.Paragraph>
-      {tab.key === 'overall' ? overall : tab.key === 'shortcuts' ? shortcutSettings : definitionRows(tab.key)}
+      {tab.key === 'overall' ? overall : tab.key === 'shortcuts' ? shortcutSettings : tab.key === 'updates' ? updatesSettings : definitionRows(tab.key)}
     </Space>,
   }));
 
-  return (
-    <Modal open title={<Space><SettingOutlined /> Settings</Space>} width={880} onCancel={onClose} footer={[
+  const moveTabFocus = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
+    let nextIndex: number | undefined;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') nextIndex = (index + 1) % tabItems.length;
+    if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') nextIndex = (index - 1 + tabItems.length) % tabItems.length;
+    if (event.key === 'Home') nextIndex = 0;
+    if (event.key === 'End') nextIndex = tabItems.length - 1;
+    if (nextIndex === undefined) return;
+    event.preventDefault();
+    setActiveTab(tabItems[nextIndex].key as SettingsTab);
+    event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[nextIndex]?.focus();
+  };
+
+  const footer = activeTab === 'prompts'
+    ? <Button onClick={onClose}>Close</Button>
+    : [
       <Button key="cancel" onClick={onClose}>Cancel</Button>,
       <Button key="profile" icon={<UndoOutlined />} disabled={!contract} onClick={resetToProfile}>Reset to selected profile</Button>,
       <Button key="defaults" disabled={!contract} onClick={resetToDefaults}>Built-in defaults</Button>,
       <Button key="save" type="primary" loading={saving} disabled={!dirtyKeys.size && !unsetKeys.size} onClick={() => void save()}>Save changes</Button>,
-    ]}>
+    ];
+
+  return (
+    <Modal open title={<Space><SettingOutlined /> Settings</Space>} width={activeTab === 'prompts' ? 1120 : 880} onCancel={onClose} footer={footer}>
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
           Browse settings by category or search across every category. Values show their source and any resource or indexing impact before saving.
@@ -477,7 +503,25 @@ export default function SettingsModal({
           needsReindex && 'Affected documents must be reindexed.',
           needsRestart && 'Quizzer must be restarted.',
         ].filter(Boolean).join(' ')} />}
-        {loading ? <div className="settings-loading"><Spin /></div> : !error && <Tabs activeKey={activeTab} onChange={key => setActiveTab(key as SettingsTab)} items={tabItems} />}
+        {loading ? <div className="settings-loading"><Spin /></div> : !error && (
+          <div className="settings-layout">
+            <div className="settings-sidebar" role="tablist" aria-label="Settings categories" aria-orientation="vertical">
+              {tabItems.map((tab, index) => (
+                <button key={tab.key} type="button" role="tab" id={`settings-tab-${tab.key}`}
+                  aria-controls="settings-panel" aria-selected={activeTab === tab.key} tabIndex={activeTab === tab.key ? 0 : -1}
+                  onClick={() => setActiveTab(tab.key as SettingsTab)}
+                  onKeyDown={event => moveTabFocus(event, index)}
+                  className="settings-sidebar-item">
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <div className="settings-content-pane" role="tabpanel" id="settings-panel"
+              aria-labelledby={`settings-tab-${activeTab}`} tabIndex={0}>
+              {tabItems.find(t => t.key === activeTab)?.children}
+            </div>
+          </div>
+        )}
       </Space>
     </Modal>
   );

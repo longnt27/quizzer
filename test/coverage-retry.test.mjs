@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { isRetryableCoverageFailure } from '../scripts/coverage-retry.mjs';
+import { coverageArgumentsForAttempt, isRetryableCoverageFailure } from '../scripts/coverage-retry.mjs';
 
 const incompleteReport = `
 1..366
@@ -13,6 +13,13 @@ const incompleteReport = `
 test('retries a bounded number of incomplete experimental coverage reports after every test passes', () => {
   assert.equal(isRetryableCoverageFailure({ attempt: 1, signal: null, output: incompleteReport }), true);
   assert.equal(isRetryableCoverageFailure({ attempt: 2, signal: null, output: incompleteReport }), true);
+});
+
+test('serializes coverage retries after keeping the first attempt parallel', () => {
+  const args = ['--test', '--experimental-test-coverage', 'test/example.test.mjs'];
+  assert.equal(coverageArgumentsForAttempt(args, 1), args);
+  assert.deepEqual(coverageArgumentsForAttempt(args, 2), ['--test-concurrency=1', ...args]);
+  assert.deepEqual(coverageArgumentsForAttempt(args, 3), ['--test-concurrency=1', ...args]);
 });
 
 test('never retries test failures, signals, unrelated errors, or the final incomplete report', () => {
