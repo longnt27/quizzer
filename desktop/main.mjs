@@ -315,6 +315,10 @@ const createTray = () => {
 };
 
 app.whenReady().then(async () => {
+  // Quizzer exposes its supported navigation inside the application. Removing
+  // Electron's default menu also prevents production users from invoking
+  // renderer reload, zoom, and developer-tool actions.
+  Menu.setApplicationMenu(null);
   credentialVault = new CredentialVault(join(app.getPath('userData'), 'credentials.json'), safeStorage);
   desktopUpdater = new DesktopUpdater({
     userDataDir: app.getPath('userData'),
