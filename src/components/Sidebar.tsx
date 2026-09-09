@@ -1,26 +1,12 @@
-import { useState, useSyncExternalStore } from 'react';
-import { Alert, Badge, Button, Empty, Input, Layout, List, Modal, Popconfirm, Progress, Space, Tabs, Tag, Typography } from 'antd';
-import { ApiOutlined, CloudSyncOutlined, DeleteOutlined, ExperimentOutlined, FileTextOutlined, FormOutlined, HomeOutlined, PlusOutlined, QuestionCircleOutlined, SearchOutlined, SettingOutlined, SyncOutlined } from '@ant-design/icons';
+import { useState } from 'react';
+import { Badge, Button, Empty, Input, Layout, List, Popconfirm, Space, Tabs, Tag, Typography } from 'antd';
+import { ApiOutlined, DeleteOutlined, ExperimentOutlined, FileTextOutlined, FormOutlined, HomeOutlined, PlusOutlined, QuestionCircleOutlined, SearchOutlined, SettingOutlined, SyncOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type StoredAppProfile } from '../db/db';
 import { getMessageApi } from '../utils/messageProvider';
 import { countQuestionTypes } from '../utils/questions';
-import { serverSyncStatus, syncNow } from '../db/serverSync';
-import { restartOnboarding } from '../utils/appProfile';
-
+import { useActivitySummary } from '../utils/useActivitySummary';
 export type LibrarySelection = { kind: 'test' | 'document'; id: string } | null;
-
-const formatBytes = (bytes: number) => {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ['KB', 'MB', 'GB', 'TB'];
-  let value = bytes / 1024;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`;
-};
 
 interface Props {
   selection: LibrarySelection;
@@ -43,9 +29,13 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
   const documents = useLiveQuery(() => db.documents.orderBy('createdAt').reverse().toArray(), []) ?? [];
   const [tab, setTab] = useState<'tests' | 'documents'>(selection?.kind === 'document' ? 'documents' : 'tests');
   const [query, setQuery] = useState('');
-  const [syncDetailsOpen, setSyncDetailsOpen] = useState(false);
   const message = getMessageApi();
-  const sync = useSyncExternalStore(serverSyncStatus.subscribe, serverSyncStatus.getSnapshot);
+  const activity = useActivitySummary();
+  const activityLabel = activity.running > 0
+    ? `${activity.running} job${activity.running === 1 ? '' : 's'} active`
+    : activity.attention > 0
+      ? `${activity.attention} need attention`
+      : activity.count > 0 ? 'Work queued' : 'Activity';
 
   const normalizedQuery = query.trim().toLowerCase();
   const visibleTests = tests.filter(test => test.name.toLowerCase().includes(normalizedQuery));
@@ -111,41 +101,30 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
         )}
       </div>
       <div className="sidebar-footer">
-        {profile && <Button type={!profile.onboarding.completedAt && !profile.onboarding.skipped ? 'primary' : 'text'} icon={<QuestionCircleOutlined />}
-          onClick={async () => {
-            if (profile.onboarding.completedAt || profile.onboarding.skipped) await restartOnboarding();
-            onOpenTutorial();
-          }}>
-          {!profile.onboarding.completedAt && !profile.onboarding.skipped ? 'Resume setup' : 'Restart tutorial'}
-        </Button>}
-        <Button type="text" icon={<CloudSyncOutlined spin={sync.status === 'syncing'} />} onClick={() => { setSyncDetailsOpen(true); void syncNow(); }}>
-          <Badge status={sync.status === 'synced' ? 'success' : sync.status === 'offline' ? 'warning' : 'processing'} />
-          {sync.status === 'offline' ? 'Offline — saved locally' : sync.lastSyncedAt ? 'Saved on server' : 'Syncing library'}
+        {profile && (!profile.onboarding.completedAt && !profile.onboarding.skipped) && (
+          <Button type="primary" icon={<QuestionCircleOutlined />}
+            onClick={() => onOpenTutorial()}>
+            Resume setup
+          </Button>
+        )}
+        <Button type="text" aria-label={activityLabel} icon={<SyncOutlined spin={activity.running > 0} />} onClick={onOpenGeneration}>
+          <Space>
+            Activity
+            {activity.count > 0 && (
+              <Badge
+                count={activity.count}
+                size="small"
+                style={{
+                  backgroundColor: activity.attention ? '#cf1322' : activity.running ? '#1677ff' : '#8c8c8c',
+                }}
+              />
+            )}
+          </Space>
         </Button>
-        <Button type="text" icon={<SyncOutlined />} onClick={onOpenGeneration}>Activity</Button>
         <Button data-onboarding-target="provider" type="text" icon={<ApiOutlined />} onClick={onOpenPlugins}>Plugins & models</Button>
         <Button type="text" icon={<SettingOutlined />} onClick={onOpenSettings}>Settings</Button>
         {profile?.interfaceMode === 'advanced' && <Button type="text" icon={<ExperimentOutlined />} onClick={onOpenPromptStudio}>Prompt Studio</Button>}
       </div>
-      <Modal title="Library sync" open={syncDetailsOpen} onCancel={() => setSyncDetailsOpen(false)} footer={[
-        <Button key="sync" loading={sync.status === 'syncing'} onClick={() => void syncNow()}>Sync now</Button>,
-        <Button key="close" type="primary" onClick={() => setSyncDetailsOpen(false)}>Close</Button>,
-      ]}>
-        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          <Progress aria-label="Library synchronization progress" percent={sync.percent} status={sync.status === 'offline' ? 'exception' : sync.status === 'synced' ? 'success' : 'active'} />
-          <div>
-            <Typography.Text strong>{sync.detail}</Typography.Text><br />
-            <Typography.Text type="secondary">
-              {sync.total > 0 && (sync.phase === 'uploading' || sync.phase === 'receiving'
-                ? `${formatBytes(sync.completed)} of ${formatBytes(sync.total)} · `
-                : `${sync.completed.toLocaleString()} of ${sync.total.toLocaleString()} records · `)}
-              {sync.pending} pending local {sync.pending === 1 ? 'change' : 'changes'}
-              {sync.lastSyncedAt && ` · Last saved ${new Date(sync.lastSyncedAt).toLocaleTimeString()}`}
-            </Typography.Text>
-          </div>
-          {sync.error && <Alert type="warning" showIcon message={sync.error} description="Quizzer will keep retrying. Your unsent changes remain in this browser." />}
-        </Space>
-      </Modal>
     </div>
   );
   return embedded ? content : <Layout.Sider width={290} theme={dark ? 'dark' : 'light'} className="desktop-sidebar">{content}</Layout.Sider>;

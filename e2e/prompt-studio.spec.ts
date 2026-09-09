@@ -8,8 +8,11 @@ test('Prompt Studio clone/edit/validate plus import/export', async ({ page }) =>
   await setInterfaceMode(page, 'advanced');
   await page.getByRole('button', { name: 'Prompt Studio' }).click();
 
-  const studio = page.locator('.ant-modal-content').filter({ hasText: 'Prompt Studio' });
-  await expect(studio.getByText('Prompt Studio', { exact: true })).toBeVisible();
+  const studio = page.getByRole('dialog', { name: 'Settings' });
+  await expect(studio.getByRole('tab', { name: 'Prompt Studio' })).toHaveAttribute('aria-selected', 'true');
+  await expect(studio.getByRole('button', { name: 'Reset to selected profile' })).toHaveCount(0);
+  await expect(studio.getByRole('button', { name: 'Save changes' })).toHaveCount(0);
+  await expect(studio.locator('.ant-modal-footer').getByRole('button', { name: 'Close', exact: true })).toBeVisible();
   await expect(studio.getByText('The built-in profile is read-only')).toBeHidden();
   await expect(studio.getByText('Security boundaries stay outside editable templates')).toBeHidden();
 

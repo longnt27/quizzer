@@ -85,14 +85,15 @@ test('resumes real onboarding and finishes through durable quiz practice', async
 
   await expect(page.getByRole('heading', { name: 'Learn from your own material' })).toBeVisible();
   const onboarding = page.locator('.onboarding-drawer');
-  await expect(onboarding.getByRole('progressbar', { name: 'Onboarding progress' })).toHaveCount(0);
-  await expect(onboarding.locator('.ant-steps-item')).toHaveCount(2);
+  await expect(onboarding.getByRole('progressbar', { name: 'Setup progress' })).toHaveAttribute('aria-valuenow', '1');
+  await expect(onboarding.locator('.onboarding-progress')).toContainText(/Step 1 of \d+Welcome/);
   await onboarding.getByText('Simple', { exact: true }).click();
   await expect(onboarding.getByRole('radio', { name: /^Simple/ })).toBeChecked();
   await expect(page.getByRole('button', { name: 'Switch to Advanced mode' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('heading', { name: 'Choose a hardware profile' })).toBeVisible();
-  await expect(onboarding.locator('.ant-steps-item')).toHaveCount(3);
+  await expect(onboarding.getByRole('progressbar', { name: 'Setup progress' })).toHaveAttribute('aria-valuenow', '2');
+  await expect(onboarding.locator('.onboarding-progress')).toContainText(/Step 2 of \d+Hardware/);
   await expect(page.getByRole('button', { name: 'Use recommendation' })).toHaveCount(0);
   await expect(onboarding.getByRole('radio', { checked: true })).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'Continue' })).toBeEnabled({ timeout: 15_000 });
@@ -139,11 +140,9 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await expect(page.getByText('coordination is readable and saved')).toBeVisible();
   await page.getByRole('button', { name: 'Continue' }).click();
 
-  await expect(page.getByRole('heading', { name: 'What do you want to learn?' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'What do you want to learn?' })).toHaveCount(0);
   await expect(page.locator('[data-onboarding-target="create-test"]').filter({ visible: true }).first()).toBeVisible();
   await expect(page.locator('.onboarding-coachmark')).toBeVisible();
-  await page.getByPlaceholder('For example: coding questions about Terraform only').fill('Focus on safe concurrent updates.');
-  await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('heading', { name: 'Create your first quiz' })).toBeVisible();
 
   await page.reload();
@@ -156,7 +155,8 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await quizLength.focus();
   await quizLength.press('ArrowDown');
   await page.locator('.ant-select-dropdown:visible').getByText('Quick · 10 questions').click();
-  await expect(creationDialog.getByRole('textbox', { name: 'Learning goal' })).toHaveValue('Focus on safe concurrent updates.');
+  await expect(creationDialog.getByRole('textbox', { name: 'Learning goal' })).toHaveValue('');
+  await creationDialog.getByRole('textbox', { name: 'Learning goal' }).fill('Focus on safe concurrent updates.');
   await expect(creationDialog.getByRole('button', { name: 'Create test' })).toBeDisabled();
   await creationDialog.getByRole('checkbox', { name: 'Allow Quizzer to send these excerpts for this test.' }).check();
   await creationDialog.getByRole('button', { name: 'Create test' }).click();
@@ -223,7 +223,8 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   const recoveryJob = page.locator('.generation-job').filter({ hasText: 'coordination quiz (2)' });
   await expect(recoveryJob.getByText('paused', { exact: true })).toBeVisible({ timeout: 60_000 });
   await expect(recoveryJob.getByText('8/10', { exact: true })).toBeVisible();
-  await expect(recoveryJob.getByText('Quota exhausted for this route')).toBeVisible();
+  await expect(recoveryJob.getByText('The AI provider limit was reached.')).toBeVisible();
+  await expect(recoveryJob.getByText(/wait for the provider limit to reset or continue with another provider/i)).toBeVisible();
   await expect(recoveryJob.getByText('Codex – Agent · failed · 8 saved')).toBeVisible();
   await expect(recoveryJob.locator('.ant-select-selection-item')).toHaveText('Claude – Agent');
   await recoveryJob.getByRole('button', { name: 'Continue' }).click();

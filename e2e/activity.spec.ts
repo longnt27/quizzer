@@ -3,7 +3,8 @@ import { dismissOnboarding } from './helpers';
 
 test('activity is a monitoring-only view', async ({ page }) => {
   await dismissOnboarding(page);
-  await page.getByRole('button', { name: 'View activity' }).click();
+  await expect(page.locator('.generation-activity')).toHaveCount(0);
+  await page.locator('.desktop-sidebar').getByRole('button', { name: 'Activity', exact: true }).click();
 
   const activity = page.getByRole('dialog', { name: 'Activity' });
   await expect(activity).toBeVisible();

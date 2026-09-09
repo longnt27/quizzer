@@ -9,9 +9,8 @@ import DocumentView from './components/DocumentView';
 import PluginsModal from './components/PluginsModal';
 import SettingsModal from './components/SettingsModal';
 import CommandPalette, { type PaletteCommand } from './components/CommandPalette';
-import PromptStudio from './components/PromptStudio';
 import GenerationWorker from './components/GenerationWorker';
-import { GenerationActivity, GenerationCenter } from './components/GenerationCenter';
+import { GenerationCenter } from './components/GenerationCenter';
 import { setMessageApi } from './utils/messageProvider';
 import { setModalApi } from './utils/modalProvider';
 import type { TestSession } from './types';
@@ -40,9 +39,8 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDocumentModal, setShowDocumentModal] = useState(false);
   const [showPluginsModal, setShowPluginsModal] = useState(false);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState<boolean | 'prompts' | 'updates'>(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
-  const [showPromptStudio, setShowPromptStudio] = useState(false);
   const [showGenerationCenter, setShowGenerationCenter] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -83,8 +81,6 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
     setSession(null);
     setMobileMenuOpen(false);
   }, []);
-  const openSettings = useCallback(() => setShowSettingsModal(true), []);
-
   const updateKeyboardShortcut = (actionId: ShortcutActionId, shortcut: string) => {
     const changed = changeKeyboardShortcut(keyboardShortcuts, actionId, shortcut);
     if (!changed.ok) {
@@ -95,7 +91,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
       saveKeyboardShortcuts(changed.shortcuts);
       setKeyboardShortcuts(changed.shortcuts);
     } catch {
-      messageApi.error('Could not save keyboard shortcuts');
+      messageApi.error('Could not save keyboard shortcuts. Try again, or restart Quizzer if the problem continues.');
     }
   };
 
@@ -106,7 +102,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
     onAddDocument: () => { setShowDocumentModal(true); setMobileMenuOpen(false); },
     onOpenPlugins: () => { setShowPluginsModal(true); setMobileMenuOpen(false); },
     onOpenSettings: () => { setShowSettingsModal(true); setMobileMenuOpen(false); },
-    onOpenPromptStudio: () => { setShowPromptStudio(true); setMobileMenuOpen(false); },
+    onOpenPromptStudio: () => { setShowSettingsModal('prompts'); setMobileMenuOpen(false); },
     onOpenGeneration: () => { setShowGenerationCenter(true); setMobileMenuOpen(false); },
     onOpenHome: () => select(null),
     onOpenTutorial: () => { setShowOnboarding(true); setMobileMenuOpen(false); },
@@ -129,7 +125,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
         case 'document-add': setShowDocumentModal(true); break;
         case 'activity': setShowGenerationCenter(true); break;
         case 'plugins': setShowPluginsModal(true); break;
-        case 'prompts': setShowPromptStudio(true); break;
+        case 'prompts': setShowSettingsModal('prompts'); break;
         case 'mode': if (interfaceMode) void setInterfaceMode(interfaceMode === 'simple' ? 'advanced' : 'simple'); break;
         case 'tutorial': void restartOnboarding().then(() => setShowOnboarding(true)); break;
         case 'theme': onThemeChange(!dark); break;
@@ -146,7 +142,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
     { id: 'activity', label: 'Open Activity', description: 'Review indexing and generation checkpoints.', keywords: ['activity', 'jobs', 'indexing'], shortcut: formatKeyboardShortcut(keyboardShortcuts.activity), icon: <SyncOutlined />, run: () => setShowGenerationCenter(true) },
     { id: 'plugins', label: 'Open plugins & models', description: 'Configure providers, extraction, OCR, and external plugins.', keywords: ['provider', 'api', 'models'], shortcut: formatKeyboardShortcut(keyboardShortcuts.plugins), icon: <ApiOutlined />, run: () => setShowPluginsModal(true) },
     { id: 'settings', label: 'Open Settings', description: 'Search and edit resolved application settings.', shortcut: formatKeyboardShortcut(keyboardShortcuts.settings), icon: <SettingOutlined />, run: () => setShowSettingsModal(true) },
-    ...(profile?.interfaceMode === 'advanced' ? [{ id: 'prompts', label: 'Open Prompt Studio', description: 'Edit, validate, preview, import, and export prompt profiles.', keywords: ['templates', 'generation', 'grading', 'rag'], shortcut: formatKeyboardShortcut(keyboardShortcuts.prompts), icon: <ExperimentOutlined />, run: () => setShowPromptStudio(true) }] : []),
+    ...(profile?.interfaceMode === 'advanced' ? [{ id: 'prompts', label: 'Open Prompt Studio', description: 'Edit, validate, preview, import, and export prompt profiles.', keywords: ['templates', 'generation', 'grading', 'rag'], shortcut: formatKeyboardShortcut(keyboardShortcuts.prompts), icon: <ExperimentOutlined />, run: () => setShowSettingsModal('prompts') }] : []),
     { id: 'mode', label: `Switch to ${profile?.interfaceMode === 'advanced' ? 'Simple' : 'Advanced'} mode`, description: 'Change disclosure without changing stored capabilities or data.', keywords: ['interface'], shortcut: formatKeyboardShortcut(keyboardShortcuts.mode), icon: <SwapOutlined />, run: () => profile && setInterfaceMode(profile.interfaceMode === 'simple' ? 'advanced' : 'simple') },
     { id: 'tutorial', label: 'Restart tutorial', description: 'Return to the resumable first-run walkthrough.', keywords: ['help', 'onboarding'], shortcut: formatKeyboardShortcut(keyboardShortcuts.tutorial), icon: <QuestionCircleOutlined />, run: async () => { await restartOnboarding(); setShowOnboarding(true); } },
     { id: 'theme', label: `Use ${dark ? 'light' : 'dark'} theme`, description: 'Change the application color theme.', keywords: ['appearance'], shortcut: formatKeyboardShortcut(keyboardShortcuts.theme), icon: dark ? <SunOutlined /> : <MoonOutlined />, run: () => onThemeChange(!dark) },
@@ -154,7 +150,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
 
   return <>
     <GenerationWorker />
-    <UpdateAvailableNotifier onOpenSettings={openSettings} />
+    <UpdateAvailableNotifier onOpenSettings={() => setShowSettingsModal('updates')} />
     <Layout className="app-shell">
       {!mobile && session?.mode !== 'taking' && <Sidebar {...sidebarProps} />}
       {mobile && session?.mode !== 'taking' && (
@@ -181,7 +177,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
       <Drawer placement="left" width="min(88vw, 340px)" open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} styles={{ body: { padding: 0 } }}>
         <Sidebar {...sidebarProps} embedded />
       </Drawer>
-      {showAddModal && profile && <AddTestModal profile={profile} onClose={() => setShowAddModal(false)} onManagePlugins={() => setShowPluginsModal(true)} onOpenPromptStudio={() => setShowPromptStudio(true)}
+      {showAddModal && profile && <AddTestModal profile={profile} onClose={() => setShowAddModal(false)} onManagePlugins={() => setShowPluginsModal(true)} onOpenPromptStudio={() => setShowSettingsModal('prompts')}
         onCreated={async jobs => { const job = jobs[0]; if (job) await recordOnboardingGeneration(job.id, job.testId); }} />}
       {showDocumentModal && <AddDocumentModal onClose={() => setShowDocumentModal(false)} onCreated={async id => {
         await recordOnboardingDocument(id);
@@ -190,9 +186,9 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
       {showPluginsModal && profile && <PluginsModal interfaceMode={profile.interfaceMode} onClose={() => setShowPluginsModal(false)} />}
       {showSettingsModal && profile && <SettingsModal profile={profile} dark={dark} onThemeChange={onThemeChange}
         keyboardShortcuts={keyboardShortcuts} onKeyboardShortcutChange={updateKeyboardShortcut}
+        initialTab={typeof showSettingsModal === 'string' ? showSettingsModal : undefined}
         onOpenCommandPalette={() => { setShowSettingsModal(false); setShowCommandPalette(true); }} onClose={() => setShowSettingsModal(false)} />}
       <CommandPalette open={showCommandPalette} commands={commands} onClose={() => setShowCommandPalette(false)} />
-      {showPromptStudio && <PromptStudio onClose={() => setShowPromptStudio(false)} />}
       {showGenerationCenter && <GenerationCenter open onClose={() => setShowGenerationCenter(false)} onManagePlugins={() => setShowPluginsModal(true)} onOpenTest={id => {
         setSelection({ kind: 'test', id }); setSession(null);
       }} />}
@@ -200,8 +196,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
         onPause={() => setShowOnboarding(false)} onFinish={() => { setShowOnboarding(false); select(null); }}
         onOpenPlugins={() => setShowPluginsModal(true)} onAddDocument={() => setShowDocumentModal(true)} onAddTest={() => setShowAddModal(true)}
         onOpenTest={id => { setSelection({ kind: 'test', id }); setShowOnboarding(false); }}
-        overlayOpen={showPluginsModal || showDocumentModal || showAddModal || showPromptStudio || showGenerationCenter || showSettingsModal || showCommandPalette} />}
-      {session?.mode !== 'taking' && <GenerationActivity onOpen={() => setShowGenerationCenter(true)} />}
+        overlayOpen={Boolean(showPluginsModal || showDocumentModal || showAddModal || showGenerationCenter || showSettingsModal || showCommandPalette)} />}
     </Layout>
   </>;
 }

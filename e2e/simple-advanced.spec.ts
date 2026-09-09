@@ -7,6 +7,10 @@ test('immediate reversible Simple/Advanced disclosure with stored data retained'
 
   const studioButton = page.getByRole('button', { name: 'Prompt Studio' });
   await expect(page.getByRole('button', { name: 'Switch to Advanced mode' })).toHaveCount(0);
+  await page.locator('.sidebar-footer:visible').getByRole('button', { name: 'Settings' }).click();
+  const simpleSettings = page.getByRole('dialog', { name: 'Settings' });
+  await expect(simpleSettings.getByRole('tab', { name: 'Prompt Studio' })).toHaveCount(0);
+  await simpleSettings.getByRole('button', { name: 'Cancel' }).click();
   await setInterfaceMode(page, 'advanced');
   await expect(studioButton).toBeVisible();
   await expect(page.getByText('System health', { exact: true })).toBeVisible();
@@ -16,8 +20,7 @@ test('immediate reversible Simple/Advanced disclosure with stored data retained'
   await page.getByLabel('Prompt profile name').fill('Mode-safe profile');
   await page.getByRole('button', { name: 'Save new version' }).click();
   await expect(page.getByText('Mode-safe profile saved as version 2')).toBeVisible();
-  await page.locator('.ant-modal-content').filter({ hasText: 'Prompt Studio' })
-    .getByRole('button', { name: 'Close', exact: true }).last().click();
+  await page.getByRole('dialog', { name: 'Settings' }).locator('.ant-modal-footer').getByRole('button', { name: 'Close', exact: true }).click();
 
   await setInterfaceMode(page, 'simple');
   await expect(studioButton).toBeHidden();
@@ -68,7 +71,10 @@ test('Advanced creation submits explicit per-test generation and RAG overrides',
   await setInterfaceMode(page, 'advanced');
   await page.getByRole('button', { name: 'Create test' }).last().click();
   const advancedDialog = page.locator('.ant-modal-content').filter({ hasText: 'Create tests from documents' });
-  await expect(advancedDialog.getByText('Advanced generation controls')).toBeVisible();
+  await expect(advancedDialog.getByRole('searchbox', { name: 'Find documents' })).toBeVisible();
+  await expect(advancedDialog.getByRole('combobox', { name: 'Filter documents by tag' })).toBeVisible();
+  await expect(advancedDialog.getByRole('combobox', { name: 'Sort documents' })).toBeVisible();
+  await advancedDialog.getByText('Custom test content', { exact: true }).click();
   await advancedDialog.getByText('advanced-controls', { exact: true }).click();
   const difficulty = advancedDialog.getByRole('combobox', { name: 'Target difficulty' });
   await difficulty.focus();
@@ -76,6 +82,10 @@ test('Advanced creation submits explicit per-test generation and RAG overrides',
   const difficultyMenu = page.locator('.ant-select-dropdown:visible');
   await expect(difficultyMenu).toBeVisible();
   await difficultyMenu.getByText('Advanced', { exact: true }).click();
+  await advancedDialog.getByText('Instructions by question type', { exact: true }).click();
+  await advancedDialog.getByRole('textbox', { name: 'Fill in the blank instruction' }).fill('Use short operational terms only.');
+  await advancedDialog.getByText('Custom provider settings', { exact: true }).click();
+  await expect(advancedDialog.getByText('Advanced generation controls')).toBeVisible();
   await advancedDialog.getByRole('spinbutton', { name: 'Per-test context budget' }).fill('12288');
   await advancedDialog.getByRole('spinbutton', { name: 'Per-test batch size' }).fill('7');
   await advancedDialog.getByRole('spinbutton', { name: 'Validation round limit' }).fill('2');
@@ -83,7 +93,7 @@ test('Advanced creation submits explicit per-test generation and RAG overrides',
   await advancedDialog.getByRole('spinbutton', { name: 'Minimum instruction matches' }).fill('1');
   await advancedDialog.getByRole('checkbox', { name: 'Rerank retrieved evidence' }).check();
   await expect(advancedDialog.getByText('Estimated retrieval budget: up to 12,288 tokens per request')).toBeVisible();
-  await advancedDialog.getByRole('checkbox', { name: /I approve sending selected excerpts/ }).check();
+  await advancedDialog.getByRole('checkbox', { name: /Approve sending selected excerpts/ }).check();
   await advancedDialog.getByRole('button', { name: 'Queue combined test' }).click();
 
   await expect.poll(() => createdJobs.length).toBe(1);
@@ -91,6 +101,7 @@ test('Advanced creation submits explicit per-test generation and RAG overrides',
     generationProfile?: unknown;
     ragProfile?: Record<string, unknown>;
     resolvedSettings?: Record<string, unknown>;
+    questionInstructions?: Record<string, string>;
   };
   expect(options.generationProfile).toEqual({
     difficulty: 'advanced',
@@ -99,6 +110,7 @@ test('Advanced creation submits explicit per-test generation and RAG overrides',
   });
   expect(options.ragProfile).toMatchObject({ contextBudget: 12_288, rerank: true, override: true });
   expect(options.ragProfile?.contextBudget).not.toBe(options.resolvedSettings?.['retrieval.contextBudget']);
+  expect(options.questionInstructions).toEqual({ 'fill-blank': 'Use short operational terms only.' });
 });
 
 test('Simple creation is a plain source, length, and learning-goal flow', async ({ page }) => {

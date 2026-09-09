@@ -17,6 +17,7 @@ import {
 } from 'antd';
 import { PauseOutlined, RobotOutlined } from '@ant-design/icons';
 import type { InputRef } from 'antd';
+import { formatErrorMessage } from '../utils/errorFormatting';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
 import type { AIConversationTurn, QuizAnswer } from '../types';
 import { getQuestionAnswerTexts, getQuestionType, isQuestionCorrect } from '../utils/questions';
@@ -187,7 +188,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                 } catch (error) {
                     finishedRef.current = false;
                     setJudgeProgress(null);
-                    if ((error as Error).name !== 'AbortError') message.error((error as Error).message);
+                    if ((error as Error).name !== 'AbortError') message.error(formatErrorMessage(error, 'ai'));
                     return;
                 } finally {
                     judgeControllerRef.current = null;
@@ -240,7 +241,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
             onPause(savedDraft);
         } catch (error) {
             finishedRef.current = false;
-            message.error((error as Error).message);
+            message.error(formatErrorMessage(error, 'storage'));
         } finally {
             setPausing(false);
         }

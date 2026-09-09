@@ -8,6 +8,7 @@ import remarkGfm from 'remark-gfm';
 import type { AIAnswer, AIConversationTurn, AISourceReference, GenerationProvider } from '../types';
 import { getProviderSettings } from '../utils/providerSettings';
 import { useConfiguredProviders } from '../utils/useConfiguredProviders';
+import { ErrorDisplay } from './ErrorDisplay';
 import { db } from '../db/db';
 import { getPdfSourcePreview, type PdfSourcePreview } from '../utils/pdf';
 import { loadStoredBlob } from '../utils/objectStore';
@@ -232,7 +233,7 @@ export default function AskAIModal({ title, emptyMessage, loadingMessage, onClos
           </div>
         </div>}
         </div>
-        {error && <Alert className="ai-chat-error" type="error" showIcon message={error} />}
+        {error && <ErrorDisplay className="ai-chat-error" error={error} context="ai" />}
         <div className="ai-chat-composer">
           <Input.TextArea ref={questionRef} value={question} onChange={event => setQuestion(event.target.value)} autoFocus={false}
             autoSize={{ minRows: 1, maxRows: 7 }} placeholder="Ask about the attached material…" onKeyDown={event => {

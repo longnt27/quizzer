@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Divider, Empty, Input, List, Modal, Popover, Space, Tabs, Tag, Typography } from 'antd';
-import { CopyOutlined, DeleteOutlined, DownloadOutlined, ExperimentOutlined, ReloadOutlined, SaveOutlined, UploadOutlined } from '@ant-design/icons';
+import { Alert, Button, Divider, Empty, Input, List, Popover, Space, Tabs, Tag, Typography } from 'antd';
+import { formatErrorMessage } from '../utils/errorFormatting';
+import { CopyOutlined, DeleteOutlined, DownloadOutlined, ReloadOutlined, SaveOutlined, UploadOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db, type StoredPromptProfile } from '../db/db';
@@ -12,7 +13,6 @@ import {
 import { getMessageApi } from '../utils/messageProvider';
 import { getModalApi } from '../utils/modalProvider';
 
-interface Props { onClose: () => void; }
 
 const tabLabels: Record<PromptTemplateKind, string> = {
   generation: 'Generation',
@@ -84,7 +84,7 @@ SECURITY RULES (protected by Quizzer and not editable in Prompt Studio):
 - Preserve source-span identifiers through ranking and compression.`;
 };
 
-export default function PromptStudio({ onClose }: Props) {
+export default function PromptStudio() {
   const savedProfiles = useLiveQuery(() => db.promptProfiles.orderBy('updatedAt').reverse().toArray(), []) ?? [];
   const profiles: PromptProfile[] = [BUILT_IN_PROMPT_PROFILE, ...savedProfiles];
   const [selectedId, setSelectedId] = useState(BUILT_IN_PROMPT_PROFILE.id);
@@ -139,7 +139,7 @@ export default function PromptStudio({ onClose }: Props) {
       await flushPromptProfileChange(next.id);
       message.success(`${next.name} saved as version ${next.version}`);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Could not save prompt profile');
+      message.error(formatErrorMessage(error, 'settings'));
     } finally {
       setSaving(false);
     }
@@ -193,7 +193,7 @@ export default function PromptStudio({ onClose }: Props) {
       setSelectedId(candidate.id);
       message.success(`${candidate.name} imported`);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Prompt profile JSON is invalid');
+      message.error(formatErrorMessage(error, 'settings'));
     }
   };
 
@@ -203,55 +203,53 @@ export default function PromptStudio({ onClose }: Props) {
   }));
 
   return (
-    <Modal open width={1120} title={<Space><ExperimentOutlined /> Prompt Studio</Space>} footer={<Button onClick={onClose}>Close</Button>} onCancel={onClose}>
-      <div className="prompt-studio-layout">
-        <aside className="prompt-profile-sidebar" aria-label="Prompt profiles">
-          <Button block type="primary" icon={<CopyOutlined />} onClick={() => void cloneSelected()}>Clone selected</Button>
-          <Button block icon={<DownloadOutlined />} onClick={() => fileInput.current?.click()}>Import JSON</Button>
-          <input hidden ref={fileInput} type="file" accept="application/json,.json"
-            onChange={event => { const file = event.target.files?.[0]; if (file) void importProfile(file); event.target.value = ''; }} />
-          <List dataSource={profiles} locale={{ emptyText: <Empty description="No prompt profiles" /> }} renderItem={profile => <List.Item>
-            <button type="button" className={`prompt-profile-choice${profile.id === selected.id ? ' is-selected' : ''}`} onClick={() => setSelectedId(profile.id)}>
-              <Typography.Text strong>{profile.name}</Typography.Text>
-              <span><Tag>v{profile.version}</Tag>{profile.builtIn && <Tag color="blue">Built in</Tag>}</span>
-            </button>
-          </List.Item>} />
-        </aside>
-        <section className="prompt-studio-editor">
-          <div className="prompt-studio-heading">
-            <div>
-              <Input aria-label="Prompt profile name" value={draft.name} disabled={Boolean(selected.builtIn)} maxLength={100}
-                onChange={event => setDraft(current => ({ ...current, name: event.target.value }))} />
-              <Input aria-label="Prompt profile description" value={draft.description} disabled={Boolean(selected.builtIn)} maxLength={500}
-                placeholder="Describe when this profile should be used" onChange={event => setDraft(current => ({ ...current, description: event.target.value }))} />
-            </div>
-            <Space wrap>
-              <Button icon={<UploadOutlined />} onClick={exportProfile}>Export</Button>
-              {!selected.builtIn && <Button icon={<ReloadOutlined />} disabled={!changed} onClick={() => setDraft(cloneProfile(selected))}>Discard edits</Button>}
-              {!selected.builtIn && <Button type="primary" icon={<SaveOutlined />} loading={saving} disabled={!changed || hasErrors || !draft.name.trim()} onClick={() => void save()}>Save new version</Button>}
-              {!selected.builtIn && <Button danger icon={<DeleteOutlined />} onClick={remove}>Delete</Button>}
-            </Space>
+    <div className="prompt-studio-layout">
+      <aside className="prompt-profile-sidebar" aria-label="Prompt profiles">
+        <Button block type="primary" icon={<CopyOutlined />} onClick={() => void cloneSelected()}>Clone selected</Button>
+        <Button block icon={<DownloadOutlined />} onClick={() => fileInput.current?.click()}>Import JSON</Button>
+        <input hidden ref={fileInput} type="file" accept="application/json,.json"
+          onChange={event => { const file = event.target.files?.[0]; if (file) void importProfile(file); event.target.value = ''; }} />
+        <List dataSource={profiles} locale={{ emptyText: <Empty description="No prompt profiles" /> }} renderItem={profile => <List.Item>
+          <button type="button" className={`prompt-profile-choice${profile.id === selected.id ? ' is-selected' : ''}`} onClick={() => setSelectedId(profile.id)}>
+            <Typography.Text strong>{profile.name}</Typography.Text>
+            <span><Tag>v{profile.version}</Tag>{profile.builtIn && <Tag color="blue">Built in</Tag>}</span>
+          </button>
+        </List.Item>} />
+      </aside>
+      <section className="prompt-studio-editor">
+        <div className="prompt-studio-heading">
+          <div>
+            <Input aria-label="Prompt profile name" value={draft.name} disabled={Boolean(selected.builtIn)} maxLength={100}
+              onChange={event => setDraft(current => ({ ...current, name: event.target.value }))} />
+            <Input aria-label="Prompt profile description" value={draft.description} disabled={Boolean(selected.builtIn)} maxLength={500}
+              placeholder="Describe when this profile should be used" onChange={event => setDraft(current => ({ ...current, description: event.target.value }))} />
           </div>
-          <Tabs activeKey={activeTab} onChange={key => setActiveTab(key as PromptTemplateKind)} items={(Object.keys(tabLabels) as PromptTemplateKind[]).map(kind => ({
-            key: kind,
-            label: tabLabels[kind],
-            children: <Space direction="vertical" size="small" style={{ width: '100%' }}>
-              <Space size={[4, 4]} wrap>
-                <Typography.Text type="secondary">Available placeholders:</Typography.Text>
-                {placeholderHelp[kind].map(({ name, description }) => <Popover key={name} title={`{{${name}}}`} content={description} trigger={['hover', 'focus', 'click']}>
-                  <Tag tabIndex={0} aria-label={`${name} placeholder: ${description}`}>{`{{${name}}}`}</Tag>
-                </Popover>)}
-              </Space>
-              <Input.TextArea className="prompt-template-editor" aria-label={`${tabLabels[kind]} prompt template`} rows={14}
-                value={draft.templates[kind]} disabled={Boolean(selected.builtIn)} onChange={event => updateTemplate(kind, event.target.value)} />
-              {!!errors[kind]?.length && <Alert type="error" showIcon message={`${tabLabels[kind]} template needs attention`} description={errors[kind]!.join(' ')} />}
-            </Space>,
-          }))} />
-          <Divider orientation="left" plain>Preview</Divider>
-          <Button type="link" onClick={() => setShowPreview(value => !value)}>{showPreview ? 'Hide rendered preview' : 'Show rendered preview'}</Button>
-          {showPreview && <pre className="prompt-preview">{previewFor(activeTab, draft)}</pre>}
-        </section>
-      </div>
-    </Modal>
+          <Space wrap>
+            <Button icon={<UploadOutlined />} onClick={exportProfile}>Export</Button>
+            {!selected.builtIn && <Button icon={<ReloadOutlined />} disabled={!changed} onClick={() => setDraft(cloneProfile(selected))}>Discard edits</Button>}
+            {!selected.builtIn && <Button type="primary" icon={<SaveOutlined />} loading={saving} disabled={!changed || hasErrors || !draft.name.trim()} onClick={() => void save()}>Save new version</Button>}
+            {!selected.builtIn && <Button danger icon={<DeleteOutlined />} onClick={remove}>Delete</Button>}
+          </Space>
+        </div>
+        <Tabs activeKey={activeTab} onChange={key => setActiveTab(key as PromptTemplateKind)} items={(Object.keys(tabLabels) as PromptTemplateKind[]).map(kind => ({
+          key: kind,
+          label: tabLabels[kind],
+          children: <Space direction="vertical" size="small" style={{ width: '100%' }}>
+            <Space size={[4, 4]} wrap>
+              <Typography.Text type="secondary">Available placeholders:</Typography.Text>
+              {placeholderHelp[kind].map(({ name, description }) => <Popover key={name} title={`{{${name}}}`} content={description} trigger={['hover', 'focus', 'click']}>
+                <Tag tabIndex={0} aria-label={`${name} placeholder: ${description}`}>{`{{${name}}}`}</Tag>
+              </Popover>)}
+            </Space>
+            <Input.TextArea className="prompt-template-editor" aria-label={`${tabLabels[kind]} prompt template`} rows={14}
+              value={draft.templates[kind]} disabled={Boolean(selected.builtIn)} onChange={event => updateTemplate(kind, event.target.value)} />
+            {!!errors[kind]?.length && <Alert type="error" showIcon message={`${tabLabels[kind]} template needs attention`} description={errors[kind]!.join(' ')} />}
+          </Space>,
+        }))} />
+        <Divider orientation="left" plain>Preview</Divider>
+        <Button type="link" onClick={() => setShowPreview(value => !value)}>{showPreview ? 'Hide rendered preview' : 'Show rendered preview'}</Button>
+        {showPreview && <pre className="prompt-preview">{previewFor(activeTab, draft)}</pre>}
+      </section>
+    </div>
   );
 }

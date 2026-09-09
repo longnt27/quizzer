@@ -199,7 +199,7 @@ export interface GenerationProfile {
   batchSize: number;
 }
 
-export type OnboardingStep = 'welcome' | 'hardware' | 'provider' | 'document' | 'instruction' | 'generate' | 'practice' | 'complete';
+export type OnboardingStep = 'welcome' | 'hardware' | 'provider' | 'document' | 'generate' | 'practice' | 'complete';
 
 export interface OnboardingState {
   onboardingVersion: number;
@@ -231,6 +231,7 @@ export interface GenerationOptions {
   multipleChoiceMode?: 'single' | 'multiple' | 'mixed';
   coverageStrategy?: CoverageStrategy;
   customInstruction?: string;
+  questionInstructions?: Partial<Record<QuestionType, string>>;
   promptProfileSnapshot?: PromptProfileSnapshot;
   ragProfile?: RAGProfile;
   generationProfile?: GenerationProfile;

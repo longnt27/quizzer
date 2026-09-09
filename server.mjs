@@ -1148,7 +1148,22 @@ const handleVersionedApi = async (request, response, url) => {
       return true;
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/settings/schema') {
-      send(response, 200, { schema: SETTINGS_SCHEMA, registry: SETTINGS_REGISTRY, profiles: HARDWARE_PROFILE_SETTINGS });
+      const manager = await getPluginManager();
+      const plugins = await manager.list();
+      const getPluginEnum = (capability) => ['builtin', ...plugins
+        .filter(plugin => plugin.enabled && plugin.compatible && plugin.status === 'installed' && plugin.capabilities.includes(capability))
+        .map(plugin => plugin.id)];
+
+      const registry = SETTINGS_REGISTRY.map(definition => {
+        if (definition.key === 'retrieval.rerankerPlugin') return { ...definition, enum: getPluginEnum('reranker') };
+        if (definition.key === 'retrieval.vectorIndexPlugin') return { ...definition, enum: getPluginEnum('vector-index') };
+        if (definition.key === 'extraction.extractorPlugin') return { ...definition, enum: getPluginEnum('extractor') };
+        if (definition.key === 'extraction.ocrPlugin') return { ...definition, enum: getPluginEnum('ocr') };
+        if (definition.key === 'embeddings.embedderPlugin') return { ...definition, enum: getPluginEnum('embedder') };
+        return definition;
+      });
+
+      send(response, 200, { schema: SETTINGS_SCHEMA, registry, profiles: HARDWARE_PROFILE_SETTINGS });
       return true;
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/backups') {

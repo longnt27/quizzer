@@ -6,6 +6,7 @@ import { db, type StoredAppProfile } from '../db/db';
 import { CURRENT_WHATS_NEW_VERSION, ONBOARDING_STEPS, updateAppProfile } from '../utils/appProfile';
 import { serviceRequest } from '../utils/serviceApi';
 import { useConfiguredProviders } from '../utils/useConfiguredProviders';
+import { ErrorDisplay } from './ErrorDisplay';
 
 interface IndexHealth {
   documentCount: number;
@@ -85,7 +86,7 @@ export default function HomePage({ profile, onAddDocument, onAddTest, onOpenGene
     </div>
 
     {showWhatsNew && <Alert closable type="info" showIcon icon={<RocketOutlined />} message="Quizzer 1.0 setup is here"
-      description="Your existing library is unchanged. You can now choose a hardware profile, use Simple or Advanced creation, and attach a learning instruction to every quiz."
+      description="Your existing library is unchanged. You can now choose a hardware profile and use Simple or Advanced creation."
       onClose={() => void updateAppProfile({ whatsNewDismissedVersion: CURRENT_WHATS_NEW_VERSION })}
       action={<Button size="small" onClick={onOpenTutorial}>View walkthrough</Button>} />}
 
@@ -114,7 +115,7 @@ export default function HomePage({ profile, onAddDocument, onAddTest, onOpenGene
     </Card>
 
     {advanced && <Card title="System health" extra={<Button size="small" icon={<ReloadOutlined spin={systemHealth.loading} />} onClick={() => void refreshHealth()}>Refresh</Button>}>
-      {systemHealth.error && <Alert type="error" showIcon message="Quizzer's local service could not be reached" description={systemHealth.error} style={{ marginBottom: 12 }} />}
+      {systemHealth.error && <ErrorDisplay error={systemHealth.error} context="service" style={{ marginBottom: 12 }} />}
       <List size="small" dataSource={healthRows} renderItem={item => <List.Item actions={item.label === 'AI routes' || item.label === 'Plugins'
         ? [<Button type="link" size="small" key="manage" onClick={onOpenPlugins}>Manage</Button>] : undefined}>
         <List.Item.Meta avatar={<span className="system-health-icon">{item.icon}</span>} title={<Space><Badge status={item.status} />{item.label}</Space>} description={item.detail} />
