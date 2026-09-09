@@ -180,9 +180,7 @@ button, input, textarea, select { font: inherit; }
 .question-citations { width: 100%; margin-top: 20px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
 .question-citations p { margin: 4px 0 8px; }
 .question-citations ul { margin: 0; padding-left: 20px; }
-.question-citations li { display: grid; grid-template-columns: minmax(120px, 0.35fr) minmax(0, 1fr); gap: 10px; align-items: baseline; margin-top: 6px; }
-.question-citations code { overflow-wrap: anywhere; white-space: normal; }
-@media (max-width: 640px) { .question-citations li { grid-template-columns: 1fr; gap: 2px; } }
+.question-citations li { margin-top: 6px; }
 .ai-chat-shell { display: flex; min-height: min(680px, 78vh); flex-direction: column; gap: 12px; }
 .ai-chat-toolbar { display: grid; gap: 10px; }
 .ai-chat-scope { display: flex; align-items: center; gap: 10px; padding: 11px 13px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); }
