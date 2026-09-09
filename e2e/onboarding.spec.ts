@@ -1,4 +1,23 @@
-import { expect, test, type Route } from '@playwright/test';
+import { expect, test, type Page, type Route } from '@playwright/test';
+
+async function readSavedDrafts(page: Page) {
+  return page.evaluate(async () => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('QuizDB');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      return await new Promise<Array<{ testId: string; pausedAt?: number }>>((resolve, reject) => {
+        const request = database.transaction('testDrafts', 'readonly').objectStore('testDrafts').getAll();
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    } finally {
+      database.close();
+    }
+  });
+}
 
 const candidateQuestions = (type: string, count: number) => Array.from({ length: count }, (_, index) => {
   const number = index + 1;
@@ -211,9 +230,25 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await expect(page.getByRole('heading', { name: 'Welcome to Quizzer' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Resume setup' })).toHaveCount(0);
 
+  const savedDrafts = await readSavedDrafts(page);
+  expect(savedDrafts).toHaveLength(1);
+  expect(savedDrafts[0].pausedAt).toBeGreaterThan(0);
+
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Question 1' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Welcome to Quizzer' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Question 1' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Pause', exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Learn from your own material' })).toHaveCount(0);
+  // Merely opening the app must not unpause the timer or rewrite saved work.
+  expect(await readSavedDrafts(page)).toEqual(savedDrafts);
+  const resumeLearning = page.locator('.ant-card').filter({ has: page.getByText('Resume learning', { exact: true }) });
+  await resumeLearning.getByRole('button', { name: 'coordination quiz', exact: true }).click();
+  await expect(page.getByText('Paused practice available')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Question 1' })).toHaveCount(0);
+  expect(await readSavedDrafts(page)).toEqual(savedDrafts);
+  await page.getByRole('button', { name: 'Resume Practice', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Question 1' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Ask AI about this answer/ })).toBeVisible();
   await page.getByRole('button', { name: 'Pause' }).click();
   await page.getByRole('button', { name: 'Back to home' }).click();
   await expect(page.getByRole('heading', { name: 'Welcome to Quizzer' })).toBeVisible();
