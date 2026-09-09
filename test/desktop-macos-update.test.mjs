@@ -79,13 +79,17 @@ test('prepares a verified DMG bundle with fixed native commands and a non-app st
     assert.doesNotMatch(plan.args[4], /\.app$/);
     assert.equal((await readFile(plan.args[0], 'utf8')), macosUpdateHelperSource());
 
-    assert.deepEqual(calls.map(call => [call.command, call.args[0]]), [
-      ['/usr/bin/hdiutil', 'attach'],
-      ['/usr/libexec/PlistBuddy', '-c'],
-      ['/usr/libexec/PlistBuddy', '-c'],
-      ['/usr/bin/ditto', '--noqtn'],
-      ['/usr/bin/hdiutil', 'detach'],
+    assert.deepEqual(calls.map(call => call.command), [
+      '/usr/bin/hdiutil',
+      '/usr/libexec/PlistBuddy',
+      '/usr/libexec/PlistBuddy',
+      '/usr/bin/ditto',
+      '/usr/bin/hdiutil',
     ]);
+    assert.equal(calls[0].args[0], 'attach');
+    assert.match(calls[3].args[0], /\/mount\/Quizzer\.app$/);
+    assert.match(calls[3].args[1], /\/Quizzer\.next$/);
+    assert.equal(calls[4].args[0], 'detach');
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

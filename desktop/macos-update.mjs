@@ -155,7 +155,7 @@ export const prepareMacosDmgUpdate = async ({
       throw new Error(`DMG application version ${versionResult.stdout.trim() || '(missing)'} does not match signed version ${targetVersion}`);
     }
 
-    await runner('/usr/bin/ditto', ['--noqtn', sourceApp, nextApp]);
+    await runner('/usr/bin/ditto', [sourceApp, nextApp]);
     await assertDirectoryWithoutSymlink(nextApp, 'Prepared Quizzer application');
     await writeFile(helperPath, HELPER_SOURCE, { mode: 0o700 });
   } catch (error) {
