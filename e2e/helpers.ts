@@ -5,14 +5,21 @@ export async function dismissOnboarding(page: Page, navigate = true) {
   await page.locator('.app-shell').waitFor();
   const welcome = page.getByRole('heading', { name: 'Welcome to Quizzer' });
   const pause = page.getByRole('button', { name: 'Pause' });
+  const onboarding = page.locator('.onboarding-drawer');
   await expect.poll(async () => await welcome.isVisible() || await pause.isVisible()).toBe(true);
   if (await pause.isVisible()) {
+    // Restarting setup while a practice session is paused can restore both
+    // surfaces after reload. Dismiss the drawer before operating the session
+    // underneath it so its mask cannot intercept the click.
+    if (await onboarding.isVisible()) {
+      await onboarding.getByRole('button', { name: 'Close' }).click();
+      await expect(onboarding).toBeHidden();
+    }
     await pause.click();
     await page.getByRole('button', { name: 'Home' }).click();
   }
   await expect(welcome).toBeVisible();
 
-  const onboarding = page.locator('.onboarding-drawer');
   if (await onboarding.isVisible()) {
     await onboarding.getByRole('button', { name: 'Close' }).click();
     await expect(onboarding).toBeHidden();
