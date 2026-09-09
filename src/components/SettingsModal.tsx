@@ -21,6 +21,8 @@ import {
 } from '../utils/keyboardShortcuts';
 import UpdaterStatusView from './UpdaterStatus';
 import PromptStudio from './PromptStudio';
+import AccentColorSetting from './AccentColorSetting';
+import { ACCENT_COLORS } from '../utils/accentColor';
 
 type SettingValue = string | number | boolean;
 type SettingsValues = Record<string, SettingValue>;
@@ -76,6 +78,7 @@ const settingsTabs: { key: SettingsTab; label: string; description: string }[] =
 ];
 
 const overallExtraSearchTerms = ['theme', 'appearance', 'light', 'dark'];
+const accentSearchTerms = ['accent color', 'appearance', 'buttons', 'links', 'highlights', ...ACCENT_COLORS.map(color => color.label.toLowerCase())];
 const updatesExtraSearchTerms = ['software update', 'update', 'version', 'stable', 'beta'];
 const tabForDefinition = (definition: SettingDefinition): SettingsTab => {
   const section = definition.key.split('.')[0];
@@ -314,6 +317,9 @@ export default function SettingsModal({
       if (tab.key === 'overall' && searchMatches(normalizedQuery, ['Theme', 'Choose the application color theme', ...overallExtraSearchTerms])) {
         results.push({ key: 'theme', label: 'Theme', description: 'Overall appearance · Choose the application color theme.', tab: 'overall', targetId: 'setting-theme' });
       }
+      if (tab.key === 'overall' && searchMatches(normalizedQuery, accentSearchTerms)) {
+        results.push({ key: 'accent-color', label: 'Accent color', description: 'Overall appearance - Color of buttons, links, and highlights.', tab: 'overall', targetId: 'setting-accent-color' });
+      }
       if (tab.key === 'updates' && searchMatches(normalizedQuery, [tab.label, tab.description, ...updatesExtraSearchTerms])) {
         results.push({ key: 'updates', label: tab.label, description: 'Check for stable or beta software update versions.', tab: 'updates', targetId: 'setting-updates' });
       }
@@ -422,14 +428,15 @@ export default function SettingsModal({
 
   const overallSearch = query.trim().toLowerCase();
   const showTheme = !overallSearch || overallExtraSearchTerms.some(term => term.includes(overallSearch) || overallSearch.includes(term));
+  const showAccent = !overallSearch || searchMatches(overallSearch, accentSearchTerms);
   const showUpdates = !overallSearch || updatesExtraSearchTerms.some(term => term.includes(overallSearch) || overallSearch.includes(term));
   const hasOverallDefinitions = definitions.some(definition => tabForDefinition(definition) === 'overall');
 
   const overall = <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-    {showTheme && <section className="settings-section" aria-labelledby="settings-appearance">
+    {(showTheme || showAccent) && <section className="settings-section" aria-labelledby="settings-appearance">
       <Divider orientation="left" plain><span id="settings-appearance">Appearance</span></Divider>
       <div className="settings-list">
-        <div className="settings-row" id="setting-theme" tabIndex={-1}>
+        {showTheme && <div className="settings-row" id="setting-theme" tabIndex={-1}>
           <div className="settings-copy">
             <Typography.Text strong>Theme</Typography.Text>
             <Typography.Text type="secondary">Choose the application color theme. This preference is applied immediately.</Typography.Text>
@@ -442,11 +449,12 @@ export default function SettingsModal({
                 onChange={event => onThemeChange(event.target.value === 'dark')} />
             </div>
           </div>
-        </div>
+        </div>}
+        {showAccent && <AccentColorSetting />}
       </div>
     </section>}
-    {definitionRows('overall', showTheme)}
-    {!showTheme && !hasOverallDefinitions && <Typography.Text type="secondary">No overall settings match this search.</Typography.Text>}
+    {definitionRows('overall', showTheme || showAccent)}
+    {!showTheme && !showAccent && !hasOverallDefinitions && <Typography.Text type="secondary">No overall settings match this search.</Typography.Text>}
   </Space>;
 
   const updatesSettings = <Space direction="vertical" size="middle" style={{ width: '100%' }}>

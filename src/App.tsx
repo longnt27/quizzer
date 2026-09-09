@@ -22,6 +22,9 @@ import OnboardingGuide from './components/OnboardingGuide';
 import { recordOnboardingDocument, recordOnboardingGeneration, restartOnboarding, setInterfaceMode } from './utils/appProfile';
 import { useRuntimeSettings } from './utils/useRuntimeSettings';
 import UpdateAvailableNotifier from './components/UpdateAvailableNotifier';
+import { getAccentPalette } from './utils/accentColor';
+import { useAccentColor } from './utils/useAccentColor';
+import './accent.css';
 import {
   SHORTCUT_ACTIONS,
   changeKeyboardShortcut,
@@ -205,6 +208,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
 }
 
 export default function App() {
+  const accent = useAccentColor();
   const [dark, setDark] = useState(() => {
     const saved = localStorage.getItem('quizzer.theme');
     return saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -216,13 +220,22 @@ export default function App() {
     localStorage.setItem('quizzer.theme', dark ? 'dark' : 'light');
   }, [dark]);
 
+  const { primary, selected, onPrimary } = getAccentPalette(accent, dark);
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.accent = accent;
+    root.style.setProperty('--accent', primary);
+    root.style.setProperty('--selected', selected);
+    root.style.setProperty('--on-accent', onPrimary);
+  }, [accent, primary, selected, onPrimary]);
+
   return (
     <ConfigProvider theme={{
       algorithm: dark ? theme.darkAlgorithm : theme.defaultAlgorithm,
       token: dark ? {
-        colorPrimary: '#69b1ff', colorLink: '#69b1ff', colorTextLightSolid: '#101214', colorTextSecondary: '#b7c0cd', colorTextDescription: '#b7c0cd', borderRadius: 8,
+        colorPrimary: primary, colorLink: primary, colorTextLightSolid: onPrimary, colorTextSecondary: '#b7c0cd', colorTextDescription: '#b7c0cd', borderRadius: 8,
       } : {
-        colorPrimary: '#0050b3', colorLink: '#0050b3', colorTextSecondary: '#595959', colorTextDescription: '#595959', colorTextDisabled: '#666666', borderRadius: 8,
+        colorPrimary: primary, colorLink: primary, colorTextSecondary: '#595959', colorTextDescription: '#595959', colorTextDisabled: '#666666', borderRadius: 8,
       },
     }}>
       <AntdApp>
