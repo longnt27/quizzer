@@ -112,35 +112,40 @@ const cosineSimilarity = (left, right) => {
   return dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm) || 1);
 };
 
-export const validGeneratedCandidate = (candidate, type, multipleChoiceMode = 'mixed') => {
+export const generatedCandidateRejectionReason = (candidate, type, multipleChoiceMode = 'mixed') => {
   if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)
-    || candidate.type !== type || !boundedText(candidate.statement, 8)) return false;
-  if (lessonBoundedPatterns.some(pattern => pattern.test(candidate.statement))) return false;
+    || candidate.type !== type || !boundedText(candidate.statement, 8)) return 'invalid-schema';
+  if (lessonBoundedPatterns.some(pattern => pattern.test(candidate.statement))) return 'invalid-schema';
   const allowed = type === 'multiple-choice' ? ['type', 'statement', 'answer']
     : type === 'fill-blank' ? ['type', 'statement', 'acceptedAnswers', 'explanation']
       : ['type', 'statement', 'referenceAnswer', 'explanation'];
-  if (Object.keys(candidate).some(key => !allowed.includes(key))) return false;
+  if (Object.keys(candidate).some(key => !allowed.includes(key))) return 'invalid-schema';
   if (type === 'fill-blank') {
-    return candidate.statement.split('_____').length === 2 && Array.isArray(candidate.acceptedAnswers)
-      && candidate.acceptedAnswers.length >= 3 && candidate.acceptedAnswers.length <= 16
-      && candidate.acceptedAnswers.every(answer => boundedText(answer))
-      && new Set(candidate.acceptedAnswers.map(normalize)).size === candidate.acceptedAnswers.length
-      && boundedText(candidate.explanation);
+    if (candidate.statement.split('_____').length !== 2) return 'missing-blank';
+    if (!Array.isArray(candidate.acceptedAnswers)
+      || candidate.acceptedAnswers.length < 3 || candidate.acceptedAnswers.length > 16) return 'accepted-answer-count';
+    if (!candidate.acceptedAnswers.every(answer => boundedText(answer))) return 'invalid-accepted-answer';
+    if (new Set(candidate.acceptedAnswers.map(normalize)).size !== candidate.acceptedAnswers.length) return 'duplicate-accepted-answer';
+    if (!boundedText(candidate.explanation)) return 'missing-explanation';
+    return null;
   }
   if (type === 'reasoning' || type === 'coding') {
-    return boundedText(candidate.referenceAnswer, 20) && boundedText(candidate.explanation);
+    return boundedText(candidate.referenceAnswer, 20) && boundedText(candidate.explanation) ? null : 'invalid-schema';
   }
-  if (!Array.isArray(candidate.answer) || candidate.answer.length < 3 || candidate.answer.length > 6) return false;
+  if (!Array.isArray(candidate.answer) || candidate.answer.length < 3 || candidate.answer.length > 6) return 'invalid-schema';
   if (!candidate.answer.every(answer => answer && typeof answer === 'object' && !Array.isArray(answer)
     && Object.keys(answer).every(key => ['correct', 'content', 'explanation'].includes(key))
-    && typeof answer.correct === 'boolean' && boundedText(answer.content) && boundedText(answer.explanation, 12))) return false;
+    && typeof answer.correct === 'boolean' && boundedText(answer.content) && boundedText(answer.explanation, 12))) return 'invalid-schema';
   const correct = candidate.answer.filter(answer => answer.correct).length;
-  if (correct < 1 || correct >= candidate.answer.length) return false;
-  if (multipleChoiceMode === 'single' && correct !== 1) return false;
-  if (multipleChoiceMode === 'multiple' && correct < 2) return false;
+  if (correct < 1 || correct >= candidate.answer.length) return 'invalid-schema';
+  if (multipleChoiceMode === 'single' && correct !== 1) return 'invalid-schema';
+  if (multipleChoiceMode === 'multiple' && correct < 2) return 'invalid-schema';
   return new Set(candidate.answer.map(answer => normalize(answer.content))).size === candidate.answer.length
-    && balancedChoiceLengths(candidate.answer);
+    && balancedChoiceLengths(candidate.answer) ? null : 'invalid-schema';
 };
+
+export const validGeneratedCandidate = (candidate, type, multipleChoiceMode = 'mixed') =>
+  generatedCandidateRejectionReason(candidate, type, multipleChoiceMode) === null;
 
 export const extractGenerationJson = output => {
   if (typeof output !== 'string') return [];
@@ -316,7 +321,7 @@ const generationPrompt = ({ source, type, count, accepted, options }) => {
   const multipleChoiceRule = type !== 'multiple-choice' ? ''
     : options.multipleChoiceMode === 'single' ? 'Every question must have exactly one correct choice.'
       : options.multipleChoiceMode === 'multiple' ? 'Every question must have at least two correct choices and one incorrect choice.' : '';
-  const instruction = [options.customInstruction, source.instruction].filter(Boolean).join('\n\n');
+  const instruction = [options.customInstruction, options.questionInstructions?.[type], source.instruction].filter(Boolean).join('\n\n');
   const editable = renderTemplate(options.promptProfileSnapshot?.templates?.generation
     ?? options.promptProfileSnapshot?.template ?? DEFAULT_TEMPLATE, {
     count, questionType: type, typeInstructions: typeInstructions[type], multipleChoiceRule,
@@ -593,11 +598,13 @@ export const executeGenerationJob = async (claimedJob, dependencies) => {
           recordRejection({ type, round, reason: 'out-of-coverage' }, candidates.length - requested);
         }
         const validCandidates = candidates.slice(0, requested).flatMap((candidate, sourceIndex) => {
-          if (!validGeneratedCandidate(candidate, type, options.multipleChoiceMode)) {
-            recordRejection({ type, round, reason: 'invalid-schema', statement: candidate?.statement });
+          const schemaRejection = generatedCandidateRejectionReason(candidate, type, options.multipleChoiceMode);
+          if (schemaRejection) {
+            recordRejection({ type, round, reason: schemaRejection, statement: candidate?.statement });
             return [];
           }
-          const quality = assessQuestionQuality(candidate, source.evidenceBySlot[sourceIndex], options.customInstruction);
+          const quality = assessQuestionQuality(candidate, source.evidenceBySlot[sourceIndex],
+            [options.customInstruction, options.questionInstructions?.[type]].filter(Boolean).join('\n\n'));
           const validation = options.generationProfile?.validation;
           const groundingAccepted = quality.groundingScore >= (validation?.minGroundingScore ?? 0);
           const instructionAccepted = (quality.instructionMatches?.length ?? 0) >= (validation?.minInstructionMatches ?? 0);

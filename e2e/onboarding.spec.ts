@@ -223,7 +223,8 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   const recoveryJob = page.locator('.generation-job').filter({ hasText: 'coordination quiz (2)' });
   await expect(recoveryJob.getByText('paused', { exact: true })).toBeVisible({ timeout: 60_000 });
   await expect(recoveryJob.getByText('8/10', { exact: true })).toBeVisible();
-  await expect(recoveryJob.getByText('Quota exhausted for this route')).toBeVisible();
+  await expect(recoveryJob.getByText('The AI provider limit was reached.')).toBeVisible();
+  await expect(recoveryJob.getByText(/wait for the provider limit to reset or continue with another provider/i)).toBeVisible();
   await expect(recoveryJob.getByText('Codex – Agent · failed · 8 saved')).toBeVisible();
   await expect(recoveryJob.locator('.ant-select-selection-item')).toHaveText('Claude – Agent');
   await recoveryJob.getByRole('button', { name: 'Continue' }).click();

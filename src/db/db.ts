@@ -8,7 +8,8 @@ export interface GenerationRejection {
   at: number;
   type: QuestionType;
   round: number;
-  reason: 'invalid-schema' | 'ungrounded' | 'instruction-mismatch' | 'duplicate' | 'empty-response' | 'out-of-coverage';
+  reason: 'invalid-schema' | 'ungrounded' | 'instruction-mismatch' | 'duplicate' | 'empty-response' | 'out-of-coverage'
+    | 'missing-blank' | 'accepted-answer-count' | 'invalid-accepted-answer' | 'duplicate-accepted-answer' | 'missing-explanation';
   count: number;
   statement?: string;
 }

@@ -91,7 +91,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
       saveKeyboardShortcuts(changed.shortcuts);
       setKeyboardShortcuts(changed.shortcuts);
     } catch {
-      messageApi.error('Could not save keyboard shortcuts');
+      messageApi.error('Could not save keyboard shortcuts. Try again, or restart Quizzer if the problem continues.');
     }
   };
 

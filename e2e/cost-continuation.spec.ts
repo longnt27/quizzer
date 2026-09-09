@@ -111,7 +111,9 @@ test('durable cost continuation requires ordered authorization, preserves checkp
   await ceilingModal.locator('input#cost-ceiling-e2e-cost-ceiling').fill('2.00');
   await confirm.click();
 
-  await expect(page.getByText(/authorization recorded, but resume could not be queued/i)).toBeVisible();
+  const resumeNotice = page.locator('.ant-message-notice').filter({ hasText: 'Authorization was saved' });
+  await expect(resumeNotice).toContainText(/authorization was saved, but generation could not resume/i);
+  await expect(resumeNotice).toContainText(/open activity to retry unfinished questions or choose another provider/i);
   expect(events.map(event => event.kind)).toEqual(['ceiling-accounting', 'ceiling-resume']);
   expect(events[0]).toEqual({
     kind: 'ceiling-accounting',
@@ -176,7 +178,8 @@ test('durable cost continuation requires ordered authorization, preserves checkp
   // A historical over-ceiling marker is informational only; it must not open
   // the accounting confirmation dialog or issue an accounting mutation.
   const historical = jobNamed(page, 'Historical over-ceiling warning');
-  await expect(historical.getByText('Provider usage exceeded the historical ceiling; review before continuing.')).toBeVisible();
+  await expect(historical.getByText('Generation exceeded its recorded ceiling')).toBeVisible();
+  await expect(historical.getByText(/review the accounting history before starting another generation/i)).toBeVisible();
   await historical.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('dialog').filter({ hasText: 'Raise ceiling and continue' })).toHaveCount(0);
   await expect(page.getByRole('dialog').filter({ hasText: 'Confirm cost recovery' })).toHaveCount(0);

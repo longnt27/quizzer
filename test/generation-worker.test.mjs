@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   buildGenerationCoveragePlan, executeGenerationJob, extractGenerationJson,
-  GenerationJobWorker, generationQuestionSchemas, requestedQuestionCounts, validGeneratedCandidate,
+  generatedCandidateRejectionReason, GenerationJobWorker, generationQuestionSchemas, requestedQuestionCounts, validGeneratedCandidate,
 } from '../server/generation-worker.mjs';
 import {
   validateCoveragePlan, validateGenerationRejectionTransition, validateProviderAttemptTransition,
@@ -29,6 +29,7 @@ const optionsFor = ({ provider = 'codex', questionCounts, routeChain } = {}) => 
     multipleChoiceMode: 'single',
     coverageStrategy: 'cross-document',
     customInstruction: 'Focus on leases and coordination.',
+    questionInstructions: { 'fill-blank': 'Prefer the shortest accepted operational term.' },
     promptProfileSnapshot: {
       id: 'test-profile', version: 1, name: 'Test profile',
       template: 'Create {{count}} {{questionType}} items. {{typeInstructions}} {{multipleChoiceRule}} {{instruction}} Avoid: {{acceptedQuestions}}',
@@ -143,6 +144,9 @@ test('service worker retrieves, validates, checkpoints, and atomically completes
   assert.deepEqual(requests.map(request => request.type), ['multiple-choice', 'fill-blank', 'reasoning', 'coding']);
   assert.ok(requests.every(request => request.prompt.includes('SECURITY RULES (protected by Quizzer')));
   assert.ok(requests.every(request => request.prompt.includes('Focus on leases and coordination.')));
+  assert.ok(requests.find(request => request.type === 'fill-blank').prompt.includes('Prefer the shortest accepted operational term.'));
+  assert.ok(requests.filter(request => request.type !== 'fill-blank')
+    .every(request => !request.prompt.includes('Prefer the shortest accepted operational term.')));
   assert.ok(requests.every(request => request.prompt.includes('Target difficulty: advanced')));
   assert.ok(harness.retrievalCalls.every(request => request.rerank === true));
   assert.ok(requests.every(request => request.prompt.includes('Source span: doc-')));
@@ -532,6 +536,9 @@ test('bounds schemas, candidates, JSON extraction, and coverage inputs', () => {
     { correct: false, content: 'Retry', explanation: 'This explanation has enough detail.' },
   ] }, 'multiple-choice'), false);
   assert.equal(validGeneratedCandidate({ ...candidateFor('fill-blank'), acceptedAnswers: ['same', 'SAME', 'third'] }, 'fill-blank'), false);
+  assert.equal(generatedCandidateRejectionReason({ ...candidateFor('fill-blank'), statement: 'This has no blank marker.' }, 'fill-blank'), 'missing-blank');
+  assert.equal(generatedCandidateRejectionReason({ ...candidateFor('fill-blank'), acceptedAnswers: ['one'] }, 'fill-blank'), 'accepted-answer-count');
+  assert.equal(generatedCandidateRejectionReason({ ...candidateFor('fill-blank'), acceptedAnswers: ['same', 'SAME', 'third'] }, 'fill-blank'), 'duplicate-accepted-answer');
   assert.throws(() => buildGenerationCoveragePlan([], 1), /no usable text chunks/);
   const plan = buildGenerationCoveragePlan(documents, 5, 'proportional', 123);
   assert.equal(plan.createdAt, 123);

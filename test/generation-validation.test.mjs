@@ -21,6 +21,7 @@ const options = () => ({
   multipleChoiceMode: 'single',
   coverageStrategy: 'balanced',
   customInstruction: 'Focus on operational tradeoffs.',
+  questionInstructions: { 'fill-blank': 'Prefer concise operational terminology.' },
   ragProfile: { id: 'balanced', retrieval: 'hybrid', contextBudget: 8_192, rerank: true },
   routeChain: [{ provider: 'openai', model: 'gpt-5-mini', privacy: 'remote-api', paid: true, approved: true }],
   resolvedSettings,
@@ -153,6 +154,9 @@ test('bounds prompt, route, instruction, and resolved-setting snapshots', () => 
   assert.throws(() => validateGenerationOptions({ ...value, multipleChoiceMode: 'sometimes' }), /multiple-choice mode/);
   assert.throws(() => validateGenerationOptions({ ...value, coverageStrategy: 'random' }), /coverage strategy/);
   assert.throws(() => validateGenerationOptions({ ...value, customInstruction: '' }), /Custom learning instruction/);
+  assert.throws(() => validateGenerationOptions({ ...value, questionInstructions: {} }), /cannot be empty/);
+  assert.throws(() => validateGenerationOptions({ ...value, questionInstructions: { essay: 'Explain it.' } }), /unsupported fields: essay/);
+  assert.throws(() => validateGenerationOptions({ ...value, questionInstructions: { reasoning: '' } }), /reasoning instruction/);
   assert.throws(() => validateGenerationOptions({ ...value, routeChain: [] }), /1-10 routes/);
   assert.throws(() => validateGenerationOptions({
     ...value, routeChain: [{ ...value.routeChain[0], model: 'other' }],
@@ -214,6 +218,9 @@ test('keeps generation semantics and route history immutable across failover', (
   assert.throws(() => validateGenerationOptionsTransition(value, {
     ...continued, customInstruction: 'Replace the original learning goal.',
   }, { allowRouteApproval: true }), /customInstruction cannot change/);
+  assert.throws(() => validateGenerationOptionsTransition(value, {
+    ...continued, questionInstructions: { 'fill-blank': 'Change the queued instructions.' },
+  }, { allowRouteApproval: true }), /questionInstructions cannot change/);
   assert.throws(() => validateGenerationOptionsTransition({ ...value, generationProfile: {
     difficulty: 'intermediate', batchSize: 10, validation: { maxRounds: 5, minGroundingScore: 0, minInstructionMatches: 0 },
   } }, { ...continued, generationProfile: {

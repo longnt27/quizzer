@@ -15,6 +15,7 @@ const questionTypes = new Set(['multiple-choice', 'fill-blank', 'reasoning', 'co
 const coverageStrategies = new Set(['balanced', 'proportional', 'ai-selected', 'cross-document']);
 const rejectionReasons = new Set([
   'invalid-schema', 'ungrounded', 'instruction-mismatch', 'duplicate', 'empty-response', 'out-of-coverage',
+  'missing-blank', 'accepted-answer-count', 'invalid-accepted-answer', 'duplicate-accepted-answer', 'missing-explanation',
 ]);
 const secretName = /(api.?key|password|secret|token|credential)/i;
 const pluginIdPattern = /^[a-z0-9](?:[a-z0-9.-]{0,126}[a-z0-9])?$/;
@@ -129,7 +130,7 @@ const routeMatchesOptions = (route, options) => route.provider === options.provi
 // field immutable on resume; approval is the sole field that may transition.
 const routeWithoutApproval = ({ approved, ...route }) => route;
 const immutableGenerationOptionKeys = [
-  'questionCount', 'questionCounts', 'multipleChoiceMode', 'coverageStrategy', 'customInstruction',
+  'questionCount', 'questionCounts', 'multipleChoiceMode', 'coverageStrategy', 'customInstruction', 'questionInstructions',
   'promptProfileSnapshot', 'ragProfile', 'generationProfile', 'resolvedSettings', 'costCeilingMicroUsd',
 ];
 
@@ -137,7 +138,7 @@ export const validateGenerationOptions = (input, { requireSnapshots = false, req
   const options = requireObject(input, 'Generation options must be an object');
   rejectUnknown(options, new Set([
     'provider', 'model', 'questionCount', 'questionCounts', 'multipleChoiceMode', 'coverageStrategy',
-    'customInstruction', 'promptProfileSnapshot', 'ragProfile', 'routeChain', 'resolvedSettings',
+    'customInstruction', 'questionInstructions', 'promptProfileSnapshot', 'ragProfile', 'routeChain', 'resolvedSettings',
     'generationProfile', 'costCeilingMicroUsd',
   ]), 'Generation options');
   if (!generationProviders.has(options.provider)) throw new Error(`Unsupported generation provider: ${options.provider}`);
@@ -167,6 +168,14 @@ export const validateGenerationOptions = (input, { requireSnapshots = false, req
   }
   if (options.customInstruction !== undefined && !boundedText(options.customInstruction, 1, 2_000)) {
     throw new Error('Custom learning instruction must contain 1-2000 characters');
+  }
+  if (options.questionInstructions !== undefined) {
+    const instructions = requireObject(options.questionInstructions, 'Question-type instructions must be an object');
+    rejectUnknown(instructions, questionTypes, 'Question-type instructions');
+    if (!Object.keys(instructions).length) throw new Error('Question-type instructions cannot be empty');
+    for (const [type, instruction] of Object.entries(instructions)) {
+      if (!boundedText(instruction, 1, 2_000)) throw new Error(`${type} instruction must contain 1-2000 characters`);
+    }
   }
   if (options.costCeilingMicroUsd !== undefined) validateCostCeiling(options.costCeilingMicroUsd);
   if (options.promptProfileSnapshot !== undefined) validatePromptSnapshot(options.promptProfileSnapshot);

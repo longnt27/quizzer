@@ -313,7 +313,7 @@ export async function generateQuiz(
       const source = sourceProvider
         ? await sourceProvider({ type, typeAccepted, count: requested, round })
         : { content, images };
-      const sourceFocus = [options.customInstruction, focus, source.instruction].filter(Boolean).join('\n\n');
+      const sourceFocus = [options.customInstruction, options.questionInstructions?.[type], focus, source.instruction].filter(Boolean).join('\n\n');
       let candidates: unknown[];
       try {
         candidates = await requestCandidates(buildPrompt(source.content, type, requested, accepted, sourceFocus, activeOptions.multipleChoiceMode,

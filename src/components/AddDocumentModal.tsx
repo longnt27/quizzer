@@ -9,6 +9,7 @@ import { getMessageApi } from '../utils/messageProvider';
 import { chunkDocumentContent, STRUCTURAL_CHUNKER_VERSION } from '../utils/documentChunks';
 import { getProviderSettings } from '../utils/providerSettings';
 import { serviceFetch } from '../utils/serviceApi';
+import { ErrorDisplay } from './ErrorDisplay';
 
 interface PendingDocument {
   id: string;
@@ -163,7 +164,7 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
               </Space>
               <Input placeholder="Tags, separated by commas" value={item.tags.join(', ')}
                 onChange={event => update(item.id, { tags: parseTags(event.target.value) })} />
-              {item.error && <Typography.Text type="danger">{item.error}</Typography.Text>}
+              {item.error && <ErrorDisplay error={item.error} context="document" />}
               {item.stage && <Typography.Text type="secondary">{item.stage}</Typography.Text>}
             </Space>
           </List.Item>
