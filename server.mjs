@@ -465,12 +465,13 @@ const integrationStatus = async () => {
   const settings = await loadResolvedSettings(appDataDirectory);
   const runtime = await llamaCppRuntime.getStatus();
   const llamaEndpoint = runtime.state === 'running' ? llamaCppRuntime.endpointFor({ host: '127.0.0.1', port: runtime.port }) : settings.values['providers.llama-cpp.endpoint'];
-  const [codexInstalled, codexConnected, claudeInstalled, claudeConnected, antigravityInstalled, ollamaInstalled, ollama, llamaCpp, managedMarker, systemMarker, managedOcr] = await Promise.all([
+  const [codexInstalled, codexConnected, claudeInstalled, claudeConnected, antigravityInstalled, antigravityConnected, ollamaInstalled, ollama, llamaCpp, managedMarker, systemMarker, managedOcr] = await Promise.all([
     commandWorks('codex', ['--version']),
     commandWorks('codex', ['login', 'status']),
     commandWorks('claude', ['--version']),
     commandWorks('claude', ['auth', 'status']),
     commandWorks('agy', ['--version']),
+    commandWorks('agy', ['-p', '/model', '--output-format', 'json'], 15_000),
     commandWorks(ollamaExecutable, ['--version']),
     listOllamaModels(globalThis.fetch, AbortSignal.timeout(3_000)).catch(() => ({ serverReady: false, models: [] })),
     getLlamaCppStatus({ endpoint: llamaEndpoint }, globalThis.fetch, AbortSignal.timeout(3_500)),
@@ -485,8 +486,10 @@ const integrationStatus = async () => {
     'claude-agent': { installed: claudeInstalled, connected: claudeConnected, job: integrationJobs['claude-agent'] },
     'antigravity-agent': {
       installed: antigravityInstalled,
-      connected: integrationJobs['antigravity-agent'].state === 'complete',
-      job: integrationJobs['antigravity-agent'],
+      connected: antigravityConnected || integrationJobs['antigravity-agent'].state === 'complete',
+      job: antigravityConnected && integrationJobs['antigravity-agent'].state !== 'working'
+        ? { state: 'complete', message: 'Antigravity is connected.' }
+        : integrationJobs['antigravity-agent'],
     },
     gemini: { available: true },
     anthropic: { available: true },
@@ -599,14 +602,14 @@ const connectCodex = () => {
   });
 };
 
-const connectAgent = (provider, command, args, startingMessage) => {
+const connectAgent = (provider, command, args, startingMessage, completedMessage) => {
   if (integrationJobs[provider].state === 'working') return;
   integrationJobs[provider] = { state: 'working', message: startingMessage };
   void runCommand(command, args, {
     timeout: 15 * 60_000,
     onOutput: output => { integrationJobs[provider].message = output || integrationJobs[provider].message; },
   }).then(output => {
-    integrationJobs[provider] = { state: 'complete', message: output || `${provider} is connected.` };
+    integrationJobs[provider] = { state: 'complete', message: completedMessage || output || `${provider} is connected.` };
   }).catch(error => {
     integrationJobs[provider] = { state: 'error', message: error instanceof Error ? error.message : `${provider} login failed` };
   });
@@ -615,6 +618,7 @@ const connectAgent = (provider, command, args, startingMessage) => {
 const connectClaude = () => connectAgent('claude-agent', 'claude', ['auth', 'login'], 'Starting Claude sign-in…');
 const connectAntigravity = () => connectAgent(
   'antigravity-agent', 'agy', ['-p', '/model', '--output-format', 'json'], 'Starting Antigravity sign-in…',
+  'Antigravity is connected.',
 );
 
 const downloadAndRunScript = async (url, args, onOutput) => {
