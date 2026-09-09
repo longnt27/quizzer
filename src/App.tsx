@@ -81,6 +81,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
     setSession(null);
     setMobileMenuOpen(false);
   }, []);
+  const openUpdateSettings = useCallback(() => setShowSettingsModal('updates'), []);
   const updateKeyboardShortcut = (actionId: ShortcutActionId, shortcut: string) => {
     const changed = changeKeyboardShortcut(keyboardShortcuts, actionId, shortcut);
     if (!changed.ok) {
@@ -152,7 +153,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
     <GenerationWorker />
     <UpdateAvailableNotifier
       isTestActive={session?.mode === 'taking'}
-      onOpenSettings={() => setShowSettingsModal('updates')}
+      onOpenSettings={openUpdateSettings}
     />
     <Layout className="app-shell">
       {!mobile && session?.mode !== 'taking' && <Sidebar {...sidebarProps} />}

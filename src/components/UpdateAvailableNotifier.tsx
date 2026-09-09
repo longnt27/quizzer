@@ -71,8 +71,12 @@ export default function UpdateAvailableNotifier({ isTestActive, onOpenSettings }
       });
     };
 
-    void checkOncePerSession(updater).then(status => {
-      if (!active || !status || isTestActive) return;
+    void checkOncePerSession(updater).then(async cachedStatus => {
+      if (!active || !cachedStatus || isTestActive) return;
+      const status = cachedStatus.state === 'available'
+        ? await updater.getStatus().catch(() => cachedStatus)
+        : cachedStatus;
+      if (!active || isTestActive) return;
       if (status.state === 'downloaded') {
         showReadyToInstall(status);
         return;
