@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Badge, Button, Empty, Input, Layout, List, Popconfirm, Space, Tabs, Tag, Typography } from 'antd';
-import { ApiOutlined, DeleteOutlined, FileTextOutlined, FormOutlined, HomeOutlined, PlusOutlined, QuestionCircleOutlined, SearchOutlined, SettingOutlined, SyncOutlined } from '@ant-design/icons';
+import { ApiOutlined, DeleteOutlined, FileTextOutlined, FormOutlined, PlusOutlined, QuestionCircleOutlined, SearchOutlined, SettingOutlined, SyncOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type StoredAppProfile } from '../db/db';
 import { getMessageApi } from '../utils/messageProvider';
@@ -16,14 +16,13 @@ interface Props {
   onOpenPlugins: () => void;
   onOpenSettings: () => void;
   onOpenGeneration: () => void;
-  onOpenHome: () => void;
   onOpenTutorial: () => void;
   profile?: StoredAppProfile;
   dark: boolean;
   embedded?: boolean;
 }
 
-export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument, onOpenPlugins, onOpenSettings, onOpenGeneration, onOpenHome, onOpenTutorial, profile, dark, embedded = false }: Props) {
+export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument, onOpenPlugins, onOpenSettings, onOpenGeneration, onOpenTutorial, profile, dark, embedded = false }: Props) {
   const tests = useLiveQuery(() => db.tests.orderBy('createdAt').reverse().toArray(), []) ?? [];
   const documents = useLiveQuery(() => db.documents.orderBy('createdAt').reverse().toArray(), []) ?? [];
   const [tab, setTab] = useState<'tests' | 'documents'>(selection?.kind === 'document' ? 'documents' : 'tests');
@@ -56,9 +55,6 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
   const content = (
     <div className="sidebar-content">
       <Typography.Title level={4} style={{ textAlign: 'center', margin: '22px 0 10px' }}>Quizzer</Typography.Title>
-      <div className="sidebar-home">
-        <Button block type={!selection ? 'primary' : 'text'} icon={<HomeOutlined />} onClick={onOpenHome}>Home</Button>
-      </div>
       <Tabs activeKey={tab} onChange={key => { setTab(key as typeof tab); setQuery(''); }} centered
         items={[
           { key: 'tests', label: 'Tests', icon: <FormOutlined /> },

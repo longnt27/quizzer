@@ -215,7 +215,7 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await expect(page.getByRole('heading', { name: 'Question 1' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Learn from your own material' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Pause' }).click();
-  await page.getByRole('button', { name: 'Home' }).click();
+  await page.getByRole('button', { name: 'Back to home' }).click();
   await expect(page.getByRole('heading', { name: 'Welcome to Quizzer' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Resume setup' })).toHaveCount(0);
 

@@ -48,7 +48,7 @@ test.describe('Quizzer desktop shell', () => {
     }
   });
 
-  test('loads the real custom-protocol renderer with a narrow isolated preload and navigates Home', async () => {
+  test('loads the real custom-protocol renderer with a narrow isolated preload and switches sidebar destinations', async () => {
     const page = await app.firstWindow();
     assert.equal(await app.evaluate(({ app: electronApp }) => electronApp.isPackaged), false);
     await expect(page).toHaveURL('quizzer://app/');
@@ -94,7 +94,7 @@ test.describe('Quizzer desktop shell', () => {
     const documentsTab = page.locator('.desktop-sidebar').getByRole('tab', { name: 'Documents' });
     await documentsTab.click();
     await expect(page.getByText('No documents yet')).toBeVisible();
-    await page.locator('.desktop-sidebar button').filter({ hasText: /^Home$/ }).click();
+    await expect(page.locator('.desktop-sidebar button').filter({ hasText: /^Home$/ })).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'Welcome to Quizzer' })).toBeVisible();
   });
 });

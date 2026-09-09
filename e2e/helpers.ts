@@ -16,7 +16,7 @@ export async function dismissOnboarding(page: Page, navigate = true) {
       await expect(onboarding).toBeHidden();
     }
     await pause.click();
-    await page.getByRole('button', { name: 'Home' }).click();
+    await page.getByRole('button', { name: 'Back to home' }).click();
   }
   await expect(welcome).toBeVisible();
 
