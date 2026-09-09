@@ -62,10 +62,11 @@ interface Props {
   onClose: () => void;
 }
 
-export type SettingsTab = 'overall' | 'shortcuts' | 'generation' | 'retrieval' | 'documents' | 'prompts' | 'advanced';
+export type SettingsTab = 'overall' | 'shortcuts' | 'generation' | 'retrieval' | 'documents' | 'prompts' | 'updates' | 'advanced';
 
 const settingsTabs: { key: SettingsTab; label: string; description: string }[] = [
-  { key: 'overall', label: 'Overall', description: 'Appearance, interface mode, updates, and hardware profile.' },
+  { key: 'overall', label: 'Overall', description: 'Appearance, interface mode, and hardware profile.' },
+  { key: 'updates', label: 'Software Updates', description: 'Check for and install Quizzer software updates.' },
   { key: 'shortcuts', label: 'Shortcuts', description: 'Open the command palette or assign safe keyboard shortcuts to its actions.' },
   { key: 'generation', label: 'Generation', description: 'Question generation defaults and provider resource limits.' },
   { key: 'retrieval', label: 'Retrieval', description: 'Search planning, context, reranking, and embeddings.' },
@@ -74,7 +75,8 @@ const settingsTabs: { key: SettingsTab; label: string; description: string }[] =
   { key: 'advanced', label: 'Advanced', description: 'Background work and plugin development settings.' },
 ];
 
-const overallExtraSearchTerms = ['theme', 'appearance', 'light', 'dark', 'software update', 'update', 'version', 'stable', 'beta'];
+const overallExtraSearchTerms = ['theme', 'appearance', 'light', 'dark'];
+const updatesExtraSearchTerms = ['software update', 'update', 'version', 'stable', 'beta'];
 const shortcutExtraSearchTerms = [
   'keyboard', 'shortcut', 'command palette',
   ...SHORTCUT_ACTIONS.flatMap(action => [action.label.toLowerCase(), action.description.toLowerCase()]),
@@ -83,7 +85,7 @@ const shortcutExtraSearchTerms = [
 const tabForDefinition = (definition: SettingDefinition): SettingsTab => {
   const section = definition.key.split('.')[0];
   if (section === 'interface' || section === 'hardware') return 'overall';
-  if (section === 'generation' || section === 'providers') return 'generation';
+  if (section === 'generation') return 'generation';
   if (section === 'retrieval' || section === 'embeddings') return 'retrieval';
   if (section === 'extraction') return 'documents';
   return 'advanced';
@@ -268,7 +270,7 @@ export default function SettingsModal({
 
   const advanced = (draft['interface.mode'] ?? profile.interfaceMode) === 'advanced';
   const visibleDefinitions = useMemo(() => (contract?.registry ?? [])
-    .filter(definition => advanced || definition.visibility === 'basic'), [advanced, contract]);
+    .filter(definition => !definition.key.startsWith('providers.') && (advanced || definition.visibility === 'basic')), [advanced, contract]);
   const definitions = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return visibleDefinitions.filter(definition => !normalized || [definition.title, definition.description, definition.key, definition.environment]
@@ -280,6 +282,7 @@ export default function SettingsModal({
     if (!normalized) return;
     const matchingTab = settingsTabs.find(tab => definitions.some(definition => tabForDefinition(definition) === tab.key)
       || (tab.key === 'overall' && overallExtraSearchTerms.some(term => term.includes(normalized) || normalized.includes(term)))
+      || (tab.key === 'updates' && updatesExtraSearchTerms.some(term => term.includes(normalized) || normalized.includes(term)))
       || (tab.key === 'shortcuts' && shortcutExtraSearchTerms.some(term => term.includes(normalized) || normalized.includes(term))));
     if (matchingTab) setActiveTab(matchingTab.key);
   }, [definitions, query]);
@@ -355,8 +358,8 @@ export default function SettingsModal({
   };
 
   const overallSearch = query.trim().toLowerCase();
-  const showTheme = !overallSearch || overallExtraSearchTerms.slice(0, 4).some(term => term.includes(overallSearch) || overallSearch.includes(term));
-  const showUpdates = !overallSearch || overallExtraSearchTerms.slice(4).some(term => term.includes(overallSearch) || overallSearch.includes(term));
+  const showTheme = !overallSearch || overallExtraSearchTerms.some(term => term.includes(overallSearch) || overallSearch.includes(term));
+  const showUpdates = !overallSearch || updatesExtraSearchTerms.some(term => term.includes(overallSearch) || overallSearch.includes(term));
   const hasOverallDefinitions = definitions.some(definition => tabForDefinition(definition) === 'overall');
 
   const overall = <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -379,12 +382,16 @@ export default function SettingsModal({
         </div>
       </div>
     </section>}
-    {definitionRows('overall', showTheme || showUpdates)}
+    {definitionRows('overall', showTheme)}
+    {!showTheme && !hasOverallDefinitions && <Typography.Text type="secondary">No overall settings match this search.</Typography.Text>}
+  </Space>;
+
+  const updatesSettings = <Space direction="vertical" size="middle" style={{ width: '100%' }}>
     {showUpdates && <section className="settings-section" aria-labelledby="settings-updates">
       <Divider orientation="left" plain><span id="settings-updates">Software updates</span></Divider>
       <UpdaterStatusView />
     </section>}
-    {!showTheme && !showUpdates && !hasOverallDefinitions && <Typography.Text type="secondary">No overall settings match this search.</Typography.Text>}
+    {!showUpdates && <Typography.Text type="secondary">No software update settings match this search.</Typography.Text>}
   </Space>;
 
   const applyShortcut = (actionId: ShortcutActionId, shortcut: string) => {
@@ -421,8 +428,7 @@ export default function SettingsModal({
     || ['keyboard', 'shortcut'].some(value => value.includes(overallSearch) || overallSearch.includes(value)));
 
   const shortcutSettings = <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-    <Alert type="info" showIcon message="Keyboard shortcuts use Ctrl on Windows/Linux and Command on macOS."
-      description="Changes are saved immediately. Choose Record, then press a primary modifier and one key. Press Backspace to clear or Escape to cancel. Duplicate and operating-system-reserved shortcuts are rejected." />
+
     <Button onClick={onOpenCommandPalette}>Open command palette</Button>
     {shortcutActions.length ? <section className="settings-section" aria-labelledby="settings-keyboard-shortcuts">
       <Divider orientation="left" plain><span id="settings-keyboard-shortcuts">Command palette actions</span></Divider>
@@ -459,7 +465,7 @@ export default function SettingsModal({
     label: tab.label,
     children: tab.key === 'prompts' ? <PromptStudio /> : <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>{tab.description}</Typography.Paragraph>
-      {tab.key === 'overall' ? overall : tab.key === 'shortcuts' ? shortcutSettings : definitionRows(tab.key)}
+      {tab.key === 'overall' ? overall : tab.key === 'shortcuts' ? shortcutSettings : tab.key === 'updates' ? updatesSettings : definitionRows(tab.key)}
     </Space>,
   }));
 

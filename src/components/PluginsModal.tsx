@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Alert, Button, Divider, Empty, Input, Modal, Space, Spin, Switch, Tabs, Tag, Typography } from 'antd';
+import { Alert, Button, Divider, Empty, Input, InputNumber, Modal, Space, Spin, Switch, Tabs, Tag, Typography } from 'antd';
 import {
   ApiOutlined, CloudDownloadOutlined, DeleteOutlined, FileSearchOutlined, FolderOpenOutlined,
   LoginOutlined, ReloadOutlined, RobotOutlined, RollbackOutlined, ScanOutlined, SettingOutlined,
@@ -158,6 +158,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
   const [enabledTools, setEnabledTools] = useState(initial.enabledTools);
   const [apiKeys, setApiKeys] = useState<Record<string, string>>(() => Object.fromEntries(API_PROVIDERS.map(provider => [provider.id, getApiKey(provider.id)])));
   const [rememberedProviders, setRememberedProviders] = useState<Set<string>>(new Set());
+  const [concurrencies, setConcurrencies] = useState<Record<string, number>>({});
   const [credentialStorage, setCredentialStorage] = useState<{ available: boolean; backend: string; message: string }>({
     available: false,
     backend: 'unavailable',
@@ -237,6 +238,12 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       if (typeof settings.values['providers.llama-cpp.model'] === 'string') {
         setModels(current => ({ ...current, 'llama-cpp': settings.values['providers.llama-cpp.model'] as string }));
       }
+      const loadedConcurrencies: Record<string, number> = {};
+      for (const provider of PROVIDERS) {
+        const value = settings.values[`providers.${provider.id}.maxConcurrency`];
+        if (typeof value === 'number') loadedConcurrencies[provider.id] = value;
+      }
+      setConcurrencies(loadedConcurrencies);
       if (typeof settings.values['providers.llama-cpp.executablePath'] === 'string') setLlamaCppExecutablePath(settings.values['providers.llama-cpp.executablePath']);
       if (typeof settings.values['providers.llama-cpp.modelPath'] === 'string') setLlamaCppModelPath(settings.values['providers.llama-cpp.modelPath']);
       setExternalError('');
@@ -541,6 +548,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
         'embeddings.embedderPlugin': embedderPlugin,
         'retrieval.vectorIndexPlugin': vectorIndexPlugin,
         'retrieval.rerankerPlugin': rerankerPlugin,
+        ...Object.fromEntries(Object.entries(concurrencies).map(([id, val]) => [`providers.${id}.maxConcurrency`, val])),
       } });
       if (models['llama-cpp']?.trim()) {
         await serviceJson('/api/v1/integrations/llama-cpp/configure', 'POST', {
@@ -701,6 +709,14 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
           ) : null}
         </>
       ) : null}
+      <Divider orientation="left" plain>Resource Limits</Divider>
+      <Space>
+        <Typography.Text>Maximum concurrency</Typography.Text>
+        <InputNumber aria-label="Maximum concurrency" min={1} max={10} value={concurrencies[modelSettingsProvider.id] ?? 2}
+          onChange={value => {
+            if (value !== null) setConcurrencies(current => ({ ...current, [modelSettingsProvider.id]: value }));
+          }} />
+      </Space>
     </Space>
   ) : null;
 
