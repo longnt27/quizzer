@@ -10,7 +10,6 @@ export const SHORTCUT_ACTIONS = [
   { id: 'plugins', label: 'Open plugins & models', description: 'Configure providers, tools, and plugins.' },
   { id: 'prompts', label: 'Open Prompt Studio', description: 'Open prompt profiles when Advanced mode is active.' },
   { id: 'mode', label: 'Switch interface mode', description: 'Toggle between Simple and Advanced mode.' },
-  { id: 'tutorial', label: 'Restart tutorial', description: 'Restart the guided setup.' },
   { id: 'theme', label: 'Switch theme', description: 'Toggle between the light and dark themes.' },
 ] as const;
 
@@ -27,7 +26,6 @@ export const DEFAULT_KEYBOARD_SHORTCUTS: KeyboardShortcuts = {
   plugins: '',
   prompts: '',
   mode: '',
-  tutorial: '',
   theme: '',
 };
 
