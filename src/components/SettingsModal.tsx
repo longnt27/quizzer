@@ -477,7 +477,7 @@ export default function SettingsModal({
           needsReindex && 'Affected documents must be reindexed.',
           needsRestart && 'Quizzer must be restarted.',
         ].filter(Boolean).join(' ')} />}
-        {loading ? <div className="settings-loading"><Spin /></div> : !error && <Tabs activeKey={activeTab} onChange={key => setActiveTab(key as SettingsTab)} items={tabItems} />}
+        {loading ? <div className="settings-loading"><Spin /></div> : !error && <Tabs tabPosition="left" activeKey={activeTab} onChange={key => setActiveTab(key as SettingsTab)} items={tabItems} />}
       </Space>
     </Modal>
   );
