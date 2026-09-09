@@ -181,11 +181,10 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
       <Typography.Text type="secondary">Step {index + 1} of {ONBOARDING_STEPS.length}</Typography.Text>
       <Button type="primary" disabled={!requirementMet[step]} onClick={() => void next()}>{step === 'complete' ? 'Finish' : 'Continue'}</Button>
     </div>}>
-    <Steps size="small" current={index === 0 ? 0 : 1} direction="vertical" className="onboarding-steps"
-      items={ONBOARDING_STEPS.slice(Math.max(0, index - 1), Math.min(ONBOARDING_STEPS.length, index + 2)).map(item => {
-        const itemIndex = ONBOARDING_STEPS.indexOf(item);
-        return { title: labels[item], status: itemIndex < index ? 'finish' : itemIndex === index ? 'process' : 'wait' };
-      })} />
+    <div aria-label="Setup progress" role="navigation">
+      <Steps size="small" current={index} responsive={true} className="onboarding-steps"
+        items={ONBOARDING_STEPS.map(item => ({ title: labels[item] }))} />
+    </div>
     <Divider />
 
     {step === 'welcome' && <Space direction="vertical" size="middle" style={{ width: '100%' }}>
