@@ -150,7 +150,10 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
 
   return <>
     <GenerationWorker />
-    <UpdateAvailableNotifier onOpenSettings={() => setShowSettingsModal('updates')} />
+    <UpdateAvailableNotifier
+      isTestActive={session?.mode === 'taking'}
+      onOpenSettings={() => setShowSettingsModal('updates')}
+    />
     <Layout className="app-shell">
       {!mobile && session?.mode !== 'taking' && <Sidebar {...sidebarProps} />}
       {mobile && session?.mode !== 'taking' && (
