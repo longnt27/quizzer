@@ -188,7 +188,7 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
                 } catch (error) {
                     finishedRef.current = false;
                     setJudgeProgress(null);
-                    if ((error as Error).name !== 'AbortError') message.error(formatErrorMessage((error as Error).message));
+                    if ((error as Error).name !== 'AbortError') message.error(formatErrorMessage(error, 'ai'));
                     return;
                 } finally {
                     judgeControllerRef.current = null;
@@ -237,11 +237,11 @@ const TestTaking: React.FC<Props> = ({ test, onFinish, onPause, timeLimit, pract
             await queueServerChange('testDrafts', test.id, false);
             await syncNow();
             if (serverSyncStatus.getSnapshot().status === 'synced') message.success('Practice paused and saved on the server');
-            else message.warning(formatErrorMessage('Practice paused locally. Keep this machine online until it syncs before continuing elsewhere.'));
+            else message.warning('Practice paused locally. Keep this machine online until it syncs before continuing elsewhere.');
             onPause(savedDraft);
         } catch (error) {
             finishedRef.current = false;
-            message.error(formatErrorMessage((error as Error).message));
+            message.error(formatErrorMessage(error, 'storage'));
         } finally {
             setPausing(false);
         }

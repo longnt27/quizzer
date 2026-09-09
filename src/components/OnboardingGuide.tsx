@@ -5,6 +5,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type StoredAppProfile } from '../db/db';
 import type { HardwareCapabilities, HardwareProfileId, InterfaceMode, OnboardingStep } from '../types';
 import { useConfiguredProviders } from '../utils/useConfiguredProviders';
+import { ErrorDisplay } from './ErrorDisplay';
 import { advanceOnboarding, goToOnboardingStep, ONBOARDING_STEPS, setHardwareProfile, setInterfaceMode, skipOnboarding } from '../utils/appProfile';
 import { serviceFetch } from '../utils/serviceApi';
 import { getModalApi } from '../utils/modalProvider';
@@ -197,7 +198,7 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
     {step === 'hardware' && <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <Typography.Title level={3}>Choose a hardware profile</Typography.Title>
       {!hardware && !hardwareError && <Space><Spin /><Typography.Text>Scanning CPU, memory, and free disk space…</Typography.Text></Space>}
-      {hardwareError && <Alert type="warning" showIcon message={hardwareError} description="Lite is safe on every supported machine. You can change this later." />}
+      {hardwareError && <ErrorDisplay error={hardwareError} context="service" type="warning" />}
       {hardware && <>
         <Descriptions bordered size="small" column={2} items={[
           { key: 'cpu', label: 'CPU', children: `${hardware.cpuCores} cores` },
@@ -236,7 +237,7 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
       <Typography.Title level={3}>Create your first quiz</Typography.Title>
       <Typography.Paragraph>Review the source, learning goal, provider, and privacy note, then queue generation. Progress is checkpointed in Activity.</Typography.Paragraph>
       {generationJob && ['queued', 'running', 'waiting', 'paused'].includes(generationJob.status) && <Alert type="info" showIcon message="Your quiz is being generated" description="You can pause this walkthrough and come back when it finishes." />}
-      {generationJob?.status === 'error' && <Alert type="warning" showIcon message="Generation needs attention" description={generationJob.error || 'Open Activity to retry or switch routes without losing progress.'} />}
+      {generationJob?.status === 'error' && <ErrorDisplay error={generationJob.error || 'Generation stopped'} context="generation" type="warning" />}
       {generatedTest && <Alert type="success" showIcon message={`${generatedTest.name} is ready`} description={`${generatedTest.questions.length} validated questions`} />}
       <Button type="primary" icon={<FormOutlined />} onClick={onAddTest}>{generatedTest ? 'Create another test' : 'Create test'}</Button>
     </Space>}

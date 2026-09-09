@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Alert, Button, Divider, Empty, Input, InputNumber, Modal, Space, Spin, Switch, Tabs, Tag, Typography } from 'antd';
 import { formatErrorMessage } from '../utils/errorFormatting';
+import { ErrorDisplay } from './ErrorDisplay';
 import {
   ApiOutlined, CloudDownloadOutlined, DeleteOutlined, FileSearchOutlined, FolderOpenOutlined,
   LoginOutlined, ReloadOutlined, RobotOutlined, RollbackOutlined, ScanOutlined, SettingOutlined,
@@ -293,7 +294,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       }
       await refresh();
     } catch (error) {
-      message.error(formatErrorMessage(error instanceof Error ? error.message : 'Could not start plugin action'));
+      message.error(formatErrorMessage(error, 'plugin'));
     }
   };
 
@@ -325,7 +326,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       await serviceJson('/api/v1/integrations/llama-cpp/runtime/stop', 'POST', {});
       await refresh();
     } catch (error) {
-      message.error(formatErrorMessage(error instanceof Error ? error.message : 'Could not stop llama.cpp'));
+      message.error(formatErrorMessage(error, 'plugin'));
     }
   };
 
@@ -341,7 +342,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
 
   const pullOllamaModel = () => {
     const model = models.ollama?.trim();
-    if (!model) return message.warning(formatErrorMessage('Enter an Ollama model name first'));
+    if (!model) return message.warning('Enter an Ollama model name first.');
     getModalApi().confirm({
       title: `Download ${model}?`,
       content: 'Model downloads can require several gigabytes of disk space. The model stays on this device and Quizzer will not send document content to a remote provider.',
@@ -355,7 +356,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
 
   const installEmbeddingModel = () => {
     const model = status?.embeddings?.model;
-    if (!model) return message.warning(formatErrorMessage('Embedding settings are still loading'));
+    if (!model) return message.warning('Embedding settings are still loading. Try again in a moment.');
     getModalApi().confirm({
       title: `Download ${model} for dense retrieval?`,
       content: model === 'bge-m3'
@@ -379,7 +380,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       message.success(`${result.plugin.name ?? result.plugin.id} installed`);
       await refreshExternal();
     } catch (error) {
-      message.error(formatErrorMessage(error instanceof Error ? error.message : 'Could not install plugin'));
+      message.error(formatErrorMessage(error, 'plugin'));
     } finally {
       setPluginAction('');
     }
@@ -392,14 +393,14 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       if (result.health) {
         setHealthResults(current => ({ ...current, [plugin.id]: result.health! }));
         if (result.health.ok) message.success(`${plugin.name ?? plugin.id} is healthy`);
-        else message.warning(formatErrorMessage(result.health.error || `${plugin.name ?? plugin.id} failed its health check`));
+        else message.warning(formatErrorMessage(result.health.error, 'plugin'));
       } else {
         message.success(action === 'rollback' ? `${plugin.name ?? plugin.id} rolled back and disabled` : `${plugin.name ?? plugin.id} ${action}d`);
       }
       await refreshExternal();
       return true;
     } catch (error) {
-      message.error(formatErrorMessage(error instanceof Error ? error.message : `Could not ${action} plugin`));
+      message.error(formatErrorMessage(error, 'plugin'));
       return false;
     } finally {
       setPluginAction('');
@@ -445,7 +446,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       message.success(`${result.plugin.name ?? result.plugin.id} installed`);
       await refreshExternal();
     } catch (error) {
-      message.error(formatErrorMessage(error instanceof Error ? error.message : 'Could not install registry plugin'));
+      message.error(formatErrorMessage(error, 'plugin'));
     } finally {
       setPluginAction('');
     }
@@ -469,7 +470,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       message.success(`Updated ${result.plugin.name ?? plugin.name ?? plugin.id}`);
       await refreshExternal();
     } catch (error) {
-      message.error(formatErrorMessage(error instanceof Error ? error.message : 'Could not update plugin'));
+      message.error(formatErrorMessage(error, 'plugin'));
     } finally {
       setPluginAction('');
     }
@@ -501,7 +502,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       });
       return;
     }
-    if (!credentialStorage.available) return message.warning(formatErrorMessage(credentialStorage.message));
+    if (!credentialStorage.available) return message.warning('Secure credential storage is unavailable. Keep the key for this session or review your operating-system keychain.');
     getModalApi().confirm({
       title: `Remember ${providerName(provider.label)} credentials?`,
       content: 'Quizzer will encrypt this API key with the operating system. It is never included in exports, backups, or diagnostics.',
@@ -563,7 +564,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       message.success('Plugin settings saved');
       onClose();
     } catch (error) {
-      message.error(formatErrorMessage(error instanceof Error ? error.message : 'Could not save plugin settings'));
+      message.error(formatErrorMessage(error, 'plugin'));
     } finally {
       setSaving(false);
     }
@@ -692,7 +693,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
           <Input aria-label="llama.cpp local endpoint" value={llamaCppEndpoint} onChange={event => setLlamaCppEndpoint(event.target.value)} addonBefore="Local endpoint" />
           <Input aria-label="llama.cpp model name" value={models['llama-cpp']}
             onChange={event => setModels(current => ({ ...current, 'llama-cpp': event.target.value }))} addonBefore="Model" />
-          {status?.['llama-cpp']?.error ? <Alert type="warning" showIcon message="llama.cpp server is not ready" description={status['llama-cpp'].error} /> : null}
+          {status?.['llama-cpp']?.error ? <ErrorDisplay error={status['llama-cpp'].error} context="provider" type="warning" /> : null}
           {interfaceMode === 'advanced' ? (
             <>
               <Divider orientation="left" plain>Managed runtime</Divider>
@@ -704,7 +705,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
                   ? <Button danger onClick={() => void stopManagedRuntime()}>Stop local server</Button>
                   : <Button type="primary" onClick={startManagedRuntime} disabled={!status?.['llama-cpp']?.runtime?.configured}>Start local server</Button>}
               </Space>
-              {status?.['llama-cpp']?.runtime?.lastError ? <Alert type="error" showIcon message={status['llama-cpp'].runtime.lastError} /> : null}
+              {status?.['llama-cpp']?.runtime?.lastError ? <ErrorDisplay error={status['llama-cpp'].runtime.lastError} context="provider" /> : null}
               {status?.['llama-cpp']?.runtime?.output ? <pre className="plugin-output">{status['llama-cpp'].runtime.output}</pre> : null}
             </>
           ) : null}
@@ -856,8 +857,8 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
           </Space>
         </div>
         {interfaceMode !== 'advanced' ? <Typography.Text type="secondary">Advanced mode is required to install third-party plugins.</Typography.Text> : null}
-        {statusError ? <Alert type="error" showIcon message={statusError} action={<Button size="small" onClick={() => void refresh()}>Retry</Button>} /> : null}
-        {externalError ? <Alert type="error" showIcon message={externalError} action={<Button size="small" onClick={() => void refreshExternal()}>Retry</Button>} /> : null}
+        {statusError ? <Space direction="vertical"><ErrorDisplay error={statusError} context="plugin" /><Button size="small" onClick={() => void refresh()}>Retry detection</Button></Space> : null}
+        {externalError ? <Space direction="vertical"><ErrorDisplay error={externalError} context="plugin" /><Button size="small" onClick={() => void refreshExternal()}>Retry plugins</Button></Space> : null}
         {!status && !statusError ? <div className="plugin-loading"><Spin /></div> : (
           <Tabs defaultActiveKey="document-extraction" items={[
             { key: 'document-extraction', label: 'Document extraction', children: documentTab },
@@ -885,7 +886,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
               {(managedPlugin.capabilities ?? []).map(capability => <Tag key={capability}>{capability}</Tag>)}
             </Space>
             {developerMode && managedPlugin.trust !== 'signed' ? <Alert type="warning" showIcon message="Advanced Developer Mode is active for this unsigned plugin." /> : null}
-            {managedPlugin.warning || managedPlugin.error ? <Alert type={managedPlugin.status === 'broken' ? 'error' : 'warning'} showIcon message={managedPlugin.warning || managedPlugin.error} /> : null}
+            {managedPlugin.warning || managedPlugin.error ? <ErrorDisplay error={managedPlugin.warning || managedPlugin.error} context="plugin" type={managedPlugin.status === 'broken' ? 'error' : 'warning'} /> : null}
             {managedPlugin.resources ? <Typography.Text type="secondary">Estimated resources: {managedPlugin.resources.memoryMB.toLocaleString()} MB memory · {managedPlugin.resources.diskMB.toLocaleString()} MB disk</Typography.Text> : null}
             {managedPlugin.permissions ? (
               <div className="plugin-permissions">
@@ -898,11 +899,10 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
                 </Space>
               </div>
             ) : null}
-            {healthResults[managedPlugin.id] ? (
-              <Alert type={healthResults[managedPlugin.id].ok ? 'success' : 'error'} showIcon
-                message={healthResults[managedPlugin.id].ok ? `Healthy · ${healthResults[managedPlugin.id].durationMs} ms` : 'Health check failed'}
-                description={healthResults[managedPlugin.id].error} />
-            ) : null}
+            {healthResults[managedPlugin.id]?.ok ? <Alert type="success" showIcon message={`Healthy · ${healthResults[managedPlugin.id].durationMs} ms`} /> : null}
+            {healthResults[managedPlugin.id] && !healthResults[managedPlugin.id].ok
+              ? <ErrorDisplay error={healthResults[managedPlugin.id].error || 'Health check failed'} context="plugin" />
+              : null}
             <Space wrap>
               <Space>
                 <Switch checked={managedPlugin.enabled}

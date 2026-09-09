@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Alert, Button, Divider, Input, InputNumber, Modal, Radio, Select, Space, Spin, Switch, Tag, Typography } from 'antd';
+import { ErrorDisplay } from './ErrorDisplay';
 import { formatErrorMessage } from '../utils/errorFormatting';
 import { ReloadOutlined, SearchOutlined, SettingOutlined, UndoOutlined } from '@ant-design/icons';
 import type { StoredAppProfile } from '../db/db';
@@ -398,7 +399,7 @@ export default function SettingsModal({
   const applyShortcut = (actionId: ShortcutActionId, shortcut: string) => {
     const changed = changeKeyboardShortcut(keyboardShortcuts, actionId, shortcut);
     if (!changed.ok) {
-      message.error(formatErrorMessage(changed.error));
+      message.error(changed.error);
       return;
     }
     onKeyboardShortcutChange(actionId, changed.shortcuts[actionId]);
@@ -418,7 +419,7 @@ export default function SettingsModal({
     }
     const shortcut = shortcutFromKeyboardEvent(event.nativeEvent);
     if (!shortcut) {
-      message.warning(formatErrorMessage('Press Ctrl or Command with one supported key. Add Shift or Alt if needed.'));
+      message.warning('Press Ctrl or Command with one supported key. Add Shift or Alt if needed.');
       return;
     }
     applyShortcut(actionId, shortcut);
@@ -499,7 +500,7 @@ export default function SettingsModal({
         </Typography.Paragraph>
         <Input allowClear prefix={<SearchOutlined />} value={query} onChange={event => setQuery(event.target.value)}
           aria-label="Search settings" placeholder="Search settings, descriptions, keys, or environment variables" />
-        {error && <Alert type="error" showIcon message={error} action={<Button size="small" icon={<ReloadOutlined />} onClick={() => void load()}>Retry</Button>} />}
+        {error && <div><ErrorDisplay error={error} context="settings" /><Button size="small" icon={<ReloadOutlined />} onClick={() => void load()}>Retry settings</Button></div>}
         {(needsReindex || needsRestart) && <Alert type="warning" showIcon message="These changes have follow-up work" description={[
           needsReindex && 'Affected documents must be reindexed.',
           needsRestart && 'Quizzer must be restarted.',

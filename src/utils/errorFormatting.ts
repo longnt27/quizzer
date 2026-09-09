@@ -1,120 +1,98 @@
+export type ErrorContext =
+  | 'generic'
+  | 'service'
+  | 'storage'
+  | 'settings'
+  | 'document'
+  | 'indexing'
+  | 'retrieval'
+  | 'embedding'
+  | 'generation'
+  | 'provider'
+  | 'plugin'
+  | 'updater'
+  | 'ai';
+
 export interface HumanReadableProblem {
   problem: string;
-  nextStep?: string;
-  rawError?: string;
+  nextStep: string;
 }
 
-export function formatError(error: unknown, context: string = 'Error'): HumanReadableProblem {
-  const msg = error instanceof Error ? error.message : typeof error === 'string' ? error : JSON.stringify(error);
+const readableText = (error: unknown): string => {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') return error.message;
+  return '';
+};
 
-  console.error(`[${context}]`, error);
+const fallbackByContext: Record<ErrorContext, HumanReadableProblem> = {
+  generic: { problem: 'Quizzer could not complete that action.', nextStep: 'Try again. If it keeps failing, restart Quizzer.' },
+  service: { problem: "Quizzer's local service is unavailable.", nextStep: 'Restart Quizzer, then try again.' },
+  storage: { problem: 'Quizzer could not save the latest changes.', nextStep: 'Keep Quizzer open; it will retry automatically.' },
+  settings: { problem: 'Quizzer could not load or save settings.', nextStep: 'Try again. Restart Quizzer if settings remain unavailable.' },
+  document: { problem: 'Quizzer could not process this document.', nextStep: 'Check the file, then try importing it again.' },
+  indexing: { problem: 'Quizzer could not finish indexing this document.', nextStep: 'Keyword search may still work. Open Activity to retry indexing.' },
+  retrieval: { problem: 'Quizzer could not retrieve source passages.', nextStep: 'Try the search again or review retrieval settings.' },
+  embedding: { problem: 'Semantic search is unavailable.', nextStep: 'Keyword search remains available. Check the embedding service and model in Plugins & models.' },
+  generation: { problem: 'Quizzer could not finish generating this test.', nextStep: 'Open Activity to retry unfinished questions or choose another provider.' },
+  provider: { problem: 'The selected AI provider is unavailable.', nextStep: 'Check its connection in Plugins & models or choose another provider.' },
+  plugin: { problem: 'Quizzer could not complete the plugin action.', nextStep: 'Check the plugin status in Plugins & models, then try again.' },
+  updater: { problem: 'Quizzer could not complete the update action.', nextStep: 'Check your connection and try again later.' },
+  ai: { problem: 'Quizzer could not get an AI response.', nextStep: 'Check the selected provider in Plugins & models, then try again.' },
+};
 
-  const lowerMsg = msg.toLowerCase();
+export function formatError(error: unknown, context: ErrorContext = 'generic'): HumanReadableProblem {
+  const message = readableText(error);
+  const normalized = message.toLowerCase();
 
-  // Dense Indexing / Network Failures
-  if (lowerMsg.includes('sparse indexing completed, but dense indexing') || lowerMsg.includes('bge-m3 is unavailable')) {
-    return {
-      problem: 'Advanced semantic search is temporarily unavailable.',
-      nextStep: 'Keyword search remains available. Verify your configured local embedding service/model in Plugins & models.',
-      rawError: msg
-    };
+  // Preserve technical details in diagnostics, never in product copy.
+  console.error(`[Quizzer:${context}]`, error);
+
+  if (normalized.includes('sparse indexing completed, but dense indexing')
+    || normalized.includes('dense indexing')
+    || normalized.includes('bge-m3 is unavailable')
+    || (context === 'embedding' && (normalized.includes('fetch failed') || normalized.includes('unavailable')))) {
+    return fallbackByContext.embedding;
   }
 
-  if (lowerMsg.includes('fetch failed') || lowerMsg.includes('network error') || lowerMsg.includes('failed to fetch')) {
+  if (normalized.includes('quota') || normalized.includes('rate limit') || normalized.includes('provider_limit') || normalized.includes('429')) {
     return {
-      problem: 'Could not connect to the network.',
-      nextStep: 'Please check your internet connection and try again.',
-      rawError: msg
-    };
-  }
-
-  if (lowerMsg.includes('could not index document')) {
-    return {
-      problem: 'Failed to process this document for searching.',
-      nextStep: 'Try removing and adding the document again.',
-      rawError: msg
-    };
-  }
-
-  // File parsing / extraction
-  if (lowerMsg.includes('no original file content found') || lowerMsg.includes('source document is unavailable')) {
-    return {
-      problem: 'The original document file is missing or inaccessible.',
-      nextStep: 'Re-add the document to the library to restore access.',
-      rawError: msg
-    };
-  }
-  
-  if (lowerMsg.includes('could not be opened') || lowerMsg.includes('extract document')) {
-    return {
-      problem: 'Could not read the document content.',
-      nextStep: 'Ensure the file is not corrupted or try uploading a different format.',
-      rawError: msg
+      problem: 'The AI provider limit was reached.',
+      nextStep: 'Wait for the provider limit to reset or continue with another provider from Activity.',
     };
   }
 
-  // Generation / Providers
-  if (lowerMsg.includes('connect an ai provider')) {
+  if (normalized.includes('unauthorized') || normalized.includes('forbidden') || normalized.includes('invalid api key')
+    || normalized.includes('provider_auth') || normalized.includes('authentication')) {
     return {
-      problem: 'No AI provider is connected.',
-      nextStep: 'Go to Plugins & Models in settings to connect a provider.',
-      rawError: msg
-    };
-  }
-  
-  if (lowerMsg.includes('rejected fill in the blank') || lowerMsg.includes('agy output')) {
-    return {
-      problem: 'The AI struggled to create a fill-in-the-blank question.',
-      nextStep: 'Try simplifying your source text or choose a different question type.',
-      rawError: msg
-    };
-  }
-  if (lowerMsg.includes('structured output parsing failed') || lowerMsg.includes('json')) {
-    return {
-      problem: 'The AI returned an invalid response format.',
-      nextStep: 'Try switching to a different model or provider.',
-      rawError: msg
+      problem: 'The AI provider could not authenticate.',
+      nextStep: 'Review its credentials in Plugins & models, then try again.',
     };
   }
 
-  // Known UI validations (Preserve these if they are already readable)
-  if (lowerMsg.includes('between 1 and 200 questions') || lowerMsg.includes('choose at least one')) {
+  if (normalized.includes('no original file') || normalized.includes('source document is unavailable')
+    || normalized.includes('extract document') || normalized.includes('could not be opened')
+    || normalized.includes('unsupported file')) {
+    return fallbackByContext.document;
+  }
+
+  if (normalized.includes('release manifest') || normalized.includes('github release url') || normalized.includes('checksum')
+    || normalized.includes('signature') || normalized.includes('download')) {
     return {
-      problem: msg,
-      rawError: msg
+      problem: 'Quizzer could not verify the available update.',
+      nextStep: 'Try again later or download the release manually from the Quizzer GitHub Releases page.',
     };
   }
 
-  // Updates
-  if (lowerMsg.includes('update') || lowerMsg.includes('download') || lowerMsg.includes('rollback')) {
-    return {
-      problem: 'Encountered an issue with the application update.',
-      nextStep: 'Please try checking for updates again later, or reinstall the app if the issue persists.',
-      rawError: msg
-    };
-  }
-  
-  // Sync
-  if (lowerMsg.includes('sync')) {
-    return {
-      problem: 'Could not sync your data to the cloud.',
-      nextStep: 'Quizzer will keep retrying automatically. Your changes are saved locally.',
-      rawError: msg
-    };
+  if (normalized.includes('fetch failed') || normalized.includes('failed to fetch') || normalized.includes('network error')
+    || normalized.includes('connection lost') || normalized.includes('timed out') || normalized.includes('cannot reach')) {
+    return fallbackByContext[context === 'generic' ? 'service' : context];
   }
 
-  // Default fallback
-  return {
-    problem: 'An unexpected issue occurred.',
-    nextStep: 'Please try your action again.',
-    rawError: msg
-  };
+  return fallbackByContext[context];
 }
 
-export function formatErrorMessage(error: unknown, context?: string): string {
+export function formatErrorMessage(error: unknown, context: ErrorContext = 'generic'): string {
   const formatted = formatError(error, context);
-  if (formatted.nextStep) {
-    return `${formatted.problem} ${formatted.nextStep}`;
-  }
-  return formatted.problem;
+  return `${formatted.problem} ${formatted.nextStep}`;
 }

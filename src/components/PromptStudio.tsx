@@ -139,7 +139,7 @@ export default function PromptStudio() {
       await flushPromptProfileChange(next.id);
       message.success(`${next.name} saved as version ${next.version}`);
     } catch (error) {
-      message.error(formatErrorMessage(error instanceof Error ? error.message : 'Could not save prompt profile'));
+      message.error(formatErrorMessage(error, 'settings'));
     } finally {
       setSaving(false);
     }
@@ -193,7 +193,7 @@ export default function PromptStudio() {
       setSelectedId(candidate.id);
       message.success(`${candidate.name} imported`);
     } catch (error) {
-      message.error(formatErrorMessage(error instanceof Error ? error.message : 'Prompt profile JSON is invalid'));
+      message.error(formatErrorMessage(error, 'settings'));
     }
   };
 

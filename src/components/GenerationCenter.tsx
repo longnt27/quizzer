@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Alert, Button, Checkbox, Empty, Input, InputNumber, List, Modal, Progress, Select, Space, Tag, Typography } from 'antd';
+import { ErrorDisplay } from './ErrorDisplay';
 import { formatErrorMessage } from '../utils/errorFormatting';
 import { CloseOutlined, DatabaseOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -115,10 +116,10 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
   }, [configured.providers, job.options.model, job.options.provider, job.status, pausedForCost]);
 
   const resume = async (resumeJob = job) => {
-    if (!configured.providers.some(item => item.id === provider)) return message.error(formatErrorMessage('Connect the selected AI provider first'));
+    if (!configured.providers.some(item => item.id === provider)) return message.error('Connect the selected AI provider first.');
     const route = resolveJobRoute(resumeJob, provider, model);
     if (resumeJob.options.costCeilingMicroUsd !== undefined && !route.pricing) {
-      return message.error(formatErrorMessage('The selected route has no verified pricing. Choose a priced model or configure explicit pricing in Advanced mode before continuing.'));
+      return message.error('The selected route has no verified pricing. Choose a priced model or configure explicit pricing in Advanced mode before continuing.');
     }
     const existingRoutes = resumeJob.options.routeChain ?? [];
     const existingIndex = existingRoutes.findIndex(existing => routeMatches(existing, provider, model));
@@ -128,14 +129,14 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
     try {
       await resumeGenerationJob(resumeJob.id, { ...resumeJob.options, provider, model: model.trim() || undefined, routeChain });
     } catch (error) {
-      message.error(formatErrorMessage(error instanceof Error ? error.message : 'Could not queue generation resume'));
+      message.error(formatErrorMessage(error, 'generation'));
     }
   };
 
   const continueAccounting = async () => {
     const isCeiling = job.errorCode === 'cost_ceiling';
     const reason = accountingReason.trim();
-    const fail = (detail: string) => { setAccountingValidation(detail); return message.error(formatErrorMessage(detail)); };
+    const fail = (detail: string) => { setAccountingValidation(detail); return message.error(detail); };
     setAccountingValidation('');
     if (!configured.providers.some(item => item.id === provider)) return fail('Connect the selected AI provider before authorizing this continuation');
     if (!reason || reason.length > 500) return fail('Enter a reason between 1 and 500 characters');
@@ -171,7 +172,7 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
         // raise/approval when only the queue request failed.
         setAccountingModalOpen(false);
         resetAccountingForm();
-        message.error(formatErrorMessage(`Authorization recorded, but resume could not be queued: ${error instanceof Error ? error.message : 'service unavailable'}. Choose Resume to retry.`));
+        message.error(`Authorization was saved, but generation could not resume. Choose Resume to try again. ${formatErrorMessage(error, 'generation')}`);
         return;
       }
       setAccountingModalOpen(false);
@@ -180,8 +181,8 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
       if (authorizationApplied) {
         setAccountingModalOpen(false);
         resetAccountingForm();
-        message.error(formatErrorMessage(`Authorization recorded, but resume could not be queued: ${error instanceof Error ? error.message : 'service unavailable'}. Choose Resume to retry.`));
-      } else message.error(formatErrorMessage(error instanceof Error ? error.message : 'Could not confirm accounting recovery'));
+        message.error(`Authorization was saved, but generation could not resume. Choose Resume to try again. ${formatErrorMessage(error, 'generation')}`);
+      } else message.error(formatErrorMessage(error, 'generation'));
     } finally {
       setAccountingWorking(false);
     }
@@ -228,7 +229,7 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
             : 'Saved questions and usage totals are preserved. Raise the ceiling through the service after reviewing the estimated impact, then continue.'
           : pausedForCost ? 'Saved questions and usage totals are preserved. Review the accounting history and choose Continue after the service confirms a safe route.'
             : 'The provider reported usage above the historical ceiling. Review the accounting history before starting another generation.'} />}
-      {job.error && <Alert type={job.status === 'error' ? 'error' : 'warning'} showIcon message={job.error} />}
+      {job.error && <ErrorDisplay error={job.error} context="generation" type={job.status === 'error' ? 'error' : 'warning'} />}
       {job.status === 'paused' && <Space direction="vertical" style={{ width: '100%' }}>
         <Typography.Text type="secondary">Accepted questions are saved. Choose a provider for only the unfinished portion.</Typography.Text>
         {!configured.loading && !configured.providers.length && <Alert type="warning" showIcon message="No AI provider is configured"
@@ -312,7 +313,7 @@ function IndexJobItem({ job }: { job: StoredIndexJob }) {
       const result = await serviceJson<{ job: StoredIndexJob }>(`/api/v1/index/jobs/${encodeURIComponent(job.id)}/${action}`, 'POST', {});
       await applyServiceRecord('indexJobs', result.job.id, result.job);
     } catch (error) {
-      message.error(formatErrorMessage(error instanceof Error ? error.message : `Could not ${action} indexing`));
+      message.error(formatErrorMessage(error, 'indexing'));
     } finally {
       setWorking(false);
     }
@@ -334,7 +335,7 @@ function IndexJobItem({ job }: { job: StoredIndexJob }) {
         {job.results.some(result => result.reused) ? ' · unchanged documents reused' : ''}
       </Typography.Text>
       {job.recoveredAt && <Alert type="info" showIcon message="Recovered after an interruption" description="Only documents without a committed checkpoint were continued." />}
-      {job.error && <Alert type="error" showIcon message={job.error} />}
+      {job.error && <ErrorDisplay error={job.error} context="indexing" />}
       <Space wrap>
         {(job.status === 'queued' || job.status === 'running') && <Button danger size="small" loading={working} icon={<CloseOutlined />}
           onClick={() => void control('cancel')}>Cancel</Button>}

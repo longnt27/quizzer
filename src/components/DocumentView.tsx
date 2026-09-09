@@ -64,7 +64,7 @@ function ExtractedImagePreview({ image }: { image: StoredDocumentImage }) {
     });
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [image]);
-  if (error) return <Alert type="warning" showIcon message="Image unavailable" description={error} />;
+  if (error) return <ErrorDisplay error={error} context="document" type="warning" />;
   if (!url) return <Spin tip="Loading image…"><div style={{ minHeight: 120 }} /></Spin>;
   return <img className="document-extracted-image" src={url} alt={image.caption || image.name} />;
 }
@@ -139,7 +139,7 @@ export default function DocumentView({ documentId }: Props) {
       setIndexStatus(response.status);
       message.success('Document indexed for retrieval');
     } catch (error) {
-      message.error(formatErrorMessage(error instanceof Error ? error.message : 'Could not index document'));
+      message.error(formatErrorMessage(error, 'indexing'));
     } finally {
       setIndexing(false);
     }
@@ -156,7 +156,7 @@ export default function DocumentView({ documentId }: Props) {
       setRetrieval(undefined);
       message.success(`Re-extracted with ${response.document.parserVersion ?? 'the current converter'} and rebuilt the index`);
     } catch (error) {
-      message.error(formatErrorMessage(error instanceof Error ? error.message : 'Could not re-extract document'));
+      message.error(formatErrorMessage(error, 'document'));
     } finally {
       setReextracting(false);
     }
@@ -240,14 +240,14 @@ export default function DocumentView({ documentId }: Props) {
           <Input.Search enterButton={<><SearchOutlined /> Retrieve</>} size="large" value={retrievalQuery} loading={retrieving}
             onChange={event => setRetrievalQuery(event.target.value)} onSearch={() => void previewRetrieval()}
             aria-label="Retrieval query" placeholder="For example: How does remote state locking work?" />
-          {retrievalError && <Alert style={{ marginTop: 14 }} type="error" showIcon message={retrievalError} />}
+          {retrievalError && <ErrorDisplay style={{ marginTop: 14 }} error={retrievalError} context="retrieval" />}
           {retrieval && <Space direction="vertical" size="middle" style={{ width: '100%', marginTop: 16 }}>
             <Alert type={retrieval.confidence === 'low' ? 'warning' : 'info'} showIcon
               message={`${retrieval.confidence[0].toUpperCase() + retrieval.confidence.slice(1)} retrieval confidence`}
               description={`${retrieval.results.length} passage${retrieval.results.length === 1 ? '' : 's'} · ${retrieval.method === 'hybrid-rrf' ? 'hybrid sparse + dense ranking' : 'sparse BM25 ranking'}${retrieval.planningTrace && retrieval.planningTrace.mode !== 'none' ? ` · ${retrieval.planningTrace.mode} plan with ${retrieval.planningTrace.variants.length} bounded variants` : ''}${retrieval.reranking?.status !== 'disabled' ? ` · reranked by ${retrieval.reranking?.component}` : ''} · approximately ${retrieval.estimatedContextTokens.toLocaleString()} context tokens${retrieval.correctivePass ? ' · one corrective retrieval pass used' : ''}`} />
             {retrieval.planningTrace?.fallback && <Alert type="info" showIcon message="Query planning used a safe fallback" description={retrieval.planningTrace.reason} />}
-            {retrieval.dense?.status === 'unavailable' && <ErrorDisplay error={retrieval.dense.error || retrieval.indexingError} context="Dense Retrieval" type="warning" />}
-            {retrieval.reranking?.status === 'fallback' && <Alert type="warning" showIcon message="Configured reranker unavailable; using built-in local reranking" description={retrieval.reranking.issue} />}
+            {retrieval.dense?.status === 'unavailable' && <ErrorDisplay error={retrieval.dense.error || retrieval.indexingError || 'Dense retrieval unavailable'} context="embedding" type="warning" />}
+            {retrieval.reranking?.status === 'fallback' && <ErrorDisplay error={retrieval.reranking.issue || 'Configured reranker unavailable'} context="retrieval" type="warning" />}
             {retrieval.refusal && <Alert type="warning" showIcon message={retrieval.refusal} />}
             <List dataSource={retrieval.results} locale={{ emptyText: <Empty description="No indexed evidence found" /> }} renderItem={(result, position) => <List.Item>
               <Card size="small" className="retrieval-result" title={<Space wrap><Tag color="blue">#{position + 1}</Tag><Typography.Text>{result.breadcrumb || result.documentName}</Typography.Text></Space>}
@@ -261,7 +261,7 @@ export default function DocumentView({ documentId }: Props) {
         </Card> },
         { key: 'original', label: 'Original file', children: <Card>
           {!document.originalFile ? <Alert type="info" showIcon message="The original file is unavailable" description="This document may have been added by an older Quizzer version that stored only extracted text." />
-            : originalError ? <Alert type="error" showIcon message="The original file could not be opened" description={originalError} />
+            : originalError ? <ErrorDisplay error={originalError} context="document" />
               : originalLoading ? <Spin tip="Loading and verifying the original file…"><div style={{ minHeight: 120 }} /></Spin>
                 : document.mimeType === 'application/pdf' ? <iframe className="document-original-frame" src={originalUrl} title={`Original ${document.name}`} />
                   : document.mimeType.startsWith('image/') ? <img className="document-original-image" src={originalUrl} alt={document.name} />

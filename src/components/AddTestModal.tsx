@@ -142,10 +142,10 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
 
   const create = async () => {
     if (!selected.length) return;
-    if (questionCount < 1 || questionCount > 200) return message.error(formatErrorMessage('Choose between 1 and 200 questions in total'));
-    if (!configured.providers.some(item => item.id === provider)) return message.error(formatErrorMessage('Connect an AI provider in Plugins & models first'));
-    if (!routesApproved) return message.error(formatErrorMessage('Approve the selected AI routes before queueing this test'));
-    if (costCeilingDollars !== null && proposedRoutes.some(route => !route.pricing)) return message.error(formatErrorMessage(finiteCeilingPricingMessage));
+    if (questionCount < 1 || questionCount > 200) return message.error('Choose between 1 and 200 questions in total.');
+    if (!configured.providers.some(item => item.id === provider)) return message.error('Connect an AI provider in Plugins & models first.');
+    if (!routesApproved) return message.error('Approve the selected AI routes before queueing this test.');
+    if (costCeilingDollars !== null && proposedRoutes.some(route => !route.pricing)) return message.error(finiteCeilingPricingMessage);
     setSaving(true);
     try {
       await syncNow();
@@ -209,7 +209,7 @@ export default function AddTestModal({ onClose, onManagePlugins, onOpenPromptStu
       message.success(`${jobs.length} test${jobs.length === 1 ? '' : 's'} queued. You can keep using Quizzer while generation runs.`);
       onClose();
     } catch (error) {
-      message.error(formatErrorMessage((error as Error).message));
+      message.error(formatErrorMessage(error, 'generation'));
       setSaving(false);
     }
   };

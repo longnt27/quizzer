@@ -1,25 +1,17 @@
-import React from 'react';
+import type { CSSProperties } from 'react';
 import { Alert } from 'antd';
-import { formatError } from '../utils/errorFormatting';
+import { formatError, type ErrorContext } from '../utils/errorFormatting';
 
 interface ErrorDisplayProps {
   error: unknown;
-  context?: string;
+  context?: ErrorContext;
   type?: 'error' | 'warning' | 'info';
-  style?: React.CSSProperties;
+  style?: CSSProperties;
+  className?: string;
 }
 
-export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({ error, context = 'Error', type = 'error', style }) => {
+export function ErrorDisplay({ error, context = 'generic', type = 'error', style, className }: ErrorDisplayProps) {
   if (!error) return null;
   const formatted = formatError(error, context);
-
-  return (
-    <Alert
-      type={type}
-      showIcon
-      message={formatted.problem}
-      description={formatted.nextStep}
-      style={style}
-    />
-  );
-};
+  return <Alert className={className} type={type} showIcon message={formatted.problem} description={formatted.nextStep} style={style} />;
+}

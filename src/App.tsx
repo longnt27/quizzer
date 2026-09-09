@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import { App as AntdApp, Button, ConfigProvider, Drawer, Grid, Layout, theme } from 'antd';
-import { formatErrorMessage } from './utils/errorFormatting';
 import { ApiOutlined, ExperimentOutlined, FileAddOutlined, FormOutlined, HomeOutlined, MenuOutlined, MoonOutlined, QuestionCircleOutlined, SettingOutlined, SwapOutlined, SyncOutlined, SunOutlined } from '@ant-design/icons';
 import Sidebar, { type LibrarySelection } from './components/Sidebar';
 import MainContent from './components/MainContent';
@@ -85,14 +84,14 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
   const updateKeyboardShortcut = (actionId: ShortcutActionId, shortcut: string) => {
     const changed = changeKeyboardShortcut(keyboardShortcuts, actionId, shortcut);
     if (!changed.ok) {
-      messageApi.error(formatErrorMessage(changed.error));
+      messageApi.error(changed.error);
       return;
     }
     try {
       saveKeyboardShortcuts(changed.shortcuts);
       setKeyboardShortcuts(changed.shortcuts);
     } catch {
-      messageApi.error(formatErrorMessage('Could not save keyboard shortcuts'));
+      messageApi.error('Could not save keyboard shortcuts. Try again, or restart Quizzer if the problem continues.');
     }
   };
 

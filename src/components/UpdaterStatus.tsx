@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Card, Descriptions, Divider, Progress, Radio, Space, Tag, Typography } from 'antd';
 import { formatErrorMessage } from '../utils/errorFormatting';
+import { ErrorDisplay } from './ErrorDisplay';
 import {
   CheckCircleOutlined,
   CloudDownloadOutlined,
@@ -66,10 +67,10 @@ export default function UpdaterStatusView() {
       } else if (next.state === 'up-to-date') {
         message.success('Quizzer is up to date');
       } else if (next.state === 'error') {
-        message.error(formatErrorMessage(next.error || 'Failed to check for updates'));
+        message.error(formatErrorMessage(next.error, 'updater'));
       }
     } catch (err) {
-      message.error(formatErrorMessage(err instanceof Error ? err.message : 'Update check failed'));
+      message.error(formatErrorMessage(err, 'updater'));
     } finally {
       setLoading(false);
     }
@@ -88,7 +89,7 @@ export default function UpdaterStatusView() {
       setStatus(next);
       message.success('Update downloaded and verified');
     } catch (err) {
-      message.error(formatErrorMessage(err instanceof Error ? err.message : 'Download failed'));
+      message.error(formatErrorMessage(err, 'updater'));
       await refreshStatus();
     } finally {
       setDownloading(false);
@@ -103,7 +104,7 @@ export default function UpdaterStatusView() {
       setStatus(result.status);
       message.success(result.message || 'Verified staged package — installer handoff pending');
     } catch (err) {
-      message.error(formatErrorMessage(err instanceof Error ? err.message : 'Verification failed'));
+      message.error(formatErrorMessage(err, 'updater'));
       await refreshStatus();
     } finally {
       setApplying(false);
@@ -125,7 +126,7 @@ export default function UpdaterStatusView() {
           setStatus(result.status);
           message.info('Staged update discarded');
         } catch (err) {
-          message.error(formatErrorMessage(err instanceof Error ? err.message : 'Discard failed'));
+          message.error(formatErrorMessage(err, 'updater'));
           await refreshStatus();
         } finally {
           setDiscarding(false);
@@ -148,7 +149,7 @@ export default function UpdaterStatusView() {
           setStatus(result.status);
           message.info(result.message);
         } catch (err) {
-          message.error(formatErrorMessage(err instanceof Error ? err.message : 'Rollback handoff failed'));
+          message.error(formatErrorMessage(err, 'updater'));
           await refreshStatus();
         } finally {
           setRollingBack(false);
@@ -344,29 +345,15 @@ export default function UpdaterStatusView() {
           />
         )}
 
-        {state === 'error' && (
-          <Alert
-            type="error"
-            showIcon
-            icon={<ExclamationCircleOutlined />}
-            message="Update check or download failed"
-            description={status?.error}
-            action={
-              <Button size="small" icon={<ReloadOutlined />} onClick={() => void handleCheck()}>
-                Retry
-              </Button>
-            }
-          />
-        )}
+        {state === 'error' && <Space direction="vertical" style={{ width: '100%' }}>
+          <ErrorDisplay error={status?.error || 'Update check failed'} context="updater" />
+          <Button size="small" icon={<ReloadOutlined />} onClick={() => void handleCheck()}>Retry update</Button>
+        </Space>}
 
-        {state === 'unsupported' && (
-          <Alert
-            type="warning"
-            showIcon
-            message="No supported update artifact"
-            description={status?.error || `No compatible update is available for ${status?.target.platform}/${status?.target.architecture}.`}
-          />
-        )}
+        {state === 'unsupported' && <ErrorDisplay
+          error={status?.error || `No compatible update is available for ${status?.target.platform}/${status?.target.architecture}.`}
+          context="updater" type="warning"
+        />}
 
         {status?.rollbackInfo && (
           <Alert

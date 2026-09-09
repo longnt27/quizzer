@@ -107,7 +107,7 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
     const handleNewTestSameFile = async () => {
             const source = await getSourceMaterial();
             if (!source.content) {
-                message.error(formatErrorMessage('No original file content found. Cannot regenerate.'));
+                message.error('The original document is unavailable. Re-add it before regenerating this explanation.');
                 return;
             }
 
@@ -135,7 +135,7 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
                 onNewTestCreated(newId);
 
             } catch (err: unknown) {
-                message.error({ content: formatErrorMessage(err instanceof Error ? err.message : 'Something went wrong'), key });
+                message.error({ content: formatErrorMessage(err, 'generation'), key });
             } finally {
                 setIsLoading(false);
             }
@@ -152,7 +152,7 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
             }
             const source = await getSourceMaterial();
             if (!source.content) {
-                message.error(formatErrorMessage('The source document is unavailable for this older quiz.'));
+                message.error('The source document is unavailable for this older quiz. Re-add it before asking for an explanation.');
                 return;
             }
             const key = 'focus';
@@ -179,7 +179,7 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
                 message.success({ content: 'Focused practice quiz created', key });
                 onNewTestCreated(newId);
             } catch (error) {
-                message.error({ content: formatErrorMessage((error as Error).message), key });
+                message.error({ content: formatErrorMessage(error, 'generation'), key });
             } finally {
                 setIsLoading(false);
             }
