@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Card, Descriptions, Divider, Drawer, Input, Radio, Space, Spin, Progress, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Descriptions, Divider, Drawer, Radio, Space, Spin, Progress, Tag, Typography } from 'antd';
 import { ApiOutlined, CheckCircleOutlined, FileAddOutlined, FormOutlined, LaptopOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type StoredAppProfile } from '../db/db';
 import type { HardwareCapabilities, HardwareProfileId, InterfaceMode, OnboardingStep } from '../types';
 import { useConfiguredProviders } from '../utils/useConfiguredProviders';
-import { advanceOnboarding, goToOnboardingStep, ONBOARDING_STEPS, setHardwareProfile, setInterfaceMode, skipOnboarding, updateAppProfile } from '../utils/appProfile';
+import { advanceOnboarding, goToOnboardingStep, ONBOARDING_STEPS, setHardwareProfile, setInterfaceMode, skipOnboarding } from '../utils/appProfile';
 import { serviceFetch } from '../utils/serviceApi';
 import { getModalApi } from '../utils/modalProvider';
 
@@ -230,8 +230,6 @@ export default function OnboardingGuide({ open, profile, onPause, onFinish, onOp
       {onboardingDocument ? <Alert type="success" showIcon message={`${onboardingDocument.name} is readable and saved`} /> : null}
       <Button type="primary" icon={<FileAddOutlined />} onClick={onAddDocument}>Add document</Button>
     </Space>}
-
-
 
     {step === 'generate' && <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <FormOutlined className="onboarding-hero-icon" />

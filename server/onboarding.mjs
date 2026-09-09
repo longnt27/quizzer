@@ -27,7 +27,20 @@ const optionalId = (value, label) => {
   if (typeof value !== 'string' || !value.trim() || value.length > 500) throw new Error(`${label} is invalid`);
 };
 
-export const validateOnboardingState = input => {
+export const normalizeOnboardingState = input => {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return input;
+  const hasRemovedStep = input.currentStep === 'instruction'
+    || (Array.isArray(input.completedSteps) && input.completedSteps.includes('instruction'));
+  if (!hasRemovedStep) return input;
+  const currentStep = input.currentStep === 'instruction' ? 'generate' : input.currentStep;
+  const completedSteps = Array.isArray(input.completedSteps)
+    ? input.completedSteps.filter(step => step !== 'instruction')
+    : input.completedSteps;
+  return { ...input, currentStep, completedSteps };
+};
+
+export const validateOnboardingState = rawInput => {
+  const input = normalizeOnboardingState(rawInput);
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Onboarding state must be an object');
   const unknown = Object.keys(input).filter(key => !allowedFields.has(key));
   if (unknown.length) throw new Error(`Unknown onboarding field: ${unknown.join(', ')}`);

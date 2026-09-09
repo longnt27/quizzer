@@ -140,11 +140,9 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await expect(page.getByText('coordination is readable and saved')).toBeVisible();
   await page.getByRole('button', { name: 'Continue' }).click();
 
-  await expect(page.getByRole('heading', { name: 'What do you want to learn?' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'What do you want to learn?' })).toHaveCount(0);
   await expect(page.locator('[data-onboarding-target="create-test"]').filter({ visible: true }).first()).toBeVisible();
   await expect(page.locator('.onboarding-coachmark')).toBeVisible();
-  await page.getByPlaceholder('For example: coding questions about Terraform only').fill('Focus on safe concurrent updates.');
-  await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('heading', { name: 'Create your first quiz' })).toBeVisible();
 
   await page.reload();
@@ -157,7 +155,8 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await quizLength.focus();
   await quizLength.press('ArrowDown');
   await page.locator('.ant-select-dropdown:visible').getByText('Quick · 10 questions').click();
-  await expect(creationDialog.getByRole('textbox', { name: 'Learning goal' })).toHaveValue('Focus on safe concurrent updates.');
+  await expect(creationDialog.getByRole('textbox', { name: 'Learning goal' })).toHaveValue('');
+  await creationDialog.getByRole('textbox', { name: 'Learning goal' }).fill('Focus on safe concurrent updates.');
   await expect(creationDialog.getByRole('button', { name: 'Create test' })).toBeDisabled();
   await creationDialog.getByRole('checkbox', { name: 'Allow Quizzer to send these excerpts for this test.' }).check();
   await creationDialog.getByRole('button', { name: 'Create test' }).click();

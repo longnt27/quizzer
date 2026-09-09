@@ -181,7 +181,7 @@ const validateChange = (change, { bootstrap = false, trusted = false } = {}) => 
   }
   if (!change.deleted && change.collection === 'profiles') {
     if (change.id !== 'default' || change.data.id !== 'default') throw new Error('Application profile id must be default');
-    validateOnboardingState(change.data.onboarding);
+    change.data.onboarding = validateOnboardingState(change.data.onboarding);
   }
   if (!bootstrap && !trusted && change.collection === 'generationJobs') {
     if (!change.deleted) throw new Error('Generation jobs must be created and updated through /api/v1/jobs');
