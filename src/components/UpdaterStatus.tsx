@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Button, Card, Descriptions, Divider, Progress, Radio, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Descriptions, Divider, Progress, Radio, Space, Switch, Tag, Typography } from 'antd';
 import { formatErrorMessage } from '../utils/errorFormatting';
 import { ErrorDisplay } from './ErrorDisplay';
 import {
@@ -58,12 +58,19 @@ export default function UpdaterStatusView() {
     if (!window.quizzerDesktop?.updater) return;
     setLoading(true);
     try {
-      const next = await window.quizzerDesktop.updater.checkForUpdates({
+      let next = await window.quizzerDesktop.updater.checkForUpdates({
         channel: channelOverride || status?.channel,
       });
       setStatus(next);
       if (next.state === 'available') {
-        message.info(`Update ${next.updateInfo?.version} is available`);
+        if (next.autoDownload) {
+          setDownloading(true);
+          next = await window.quizzerDesktop.updater.downloadUpdate();
+          setStatus(next);
+          message.success(`Update ${next.updateInfo?.version} downloaded and verified`);
+        } else {
+          message.info(`Update ${next.updateInfo?.version} is available`);
+        }
       } else if (next.state === 'up-to-date') {
         message.success('Quizzer is up to date');
       } else if (next.state === 'error') {
@@ -73,6 +80,7 @@ export default function UpdaterStatusView() {
       message.error(formatErrorMessage(err, 'updater'));
     } finally {
       setLoading(false);
+      setDownloading(false);
     }
   };
 
@@ -96,11 +104,30 @@ export default function UpdaterStatusView() {
     }
   };
 
+  const handleAutoDownloadChange = async (enabled: boolean) => {
+    if (!window.quizzerDesktop?.updater) return;
+    try {
+      let next = await window.quizzerDesktop.updater.setAutoDownload(enabled);
+      setStatus(next);
+      if (enabled && next.state === 'available') {
+        setDownloading(true);
+        next = await window.quizzerDesktop.updater.downloadUpdate();
+        setStatus(next);
+        message.success('Automatic downloads enabled; update downloaded and verified');
+      }
+    } catch (err) {
+      message.error(formatErrorMessage(err, 'updater'));
+      await refreshStatus();
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   const handleApply = async () => {
     if (!window.quizzerDesktop?.updater) return;
     setApplying(true);
     try {
-      const result = await window.quizzerDesktop.updater.applyUpdate();
+      const result = await window.quizzerDesktop.updater.applyUpdate({ restart: true });
       setStatus(result.status);
       message.success(result.message || 'Verified staged package — installer handoff pending');
     } catch (err) {
@@ -215,6 +242,19 @@ export default function UpdaterStatusView() {
           </Space>
         </div>
 
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
+          <div>
+            <Typography.Text>Download updates automatically</Typography.Text>
+            <div><Typography.Text type="secondary" style={{ fontSize: 12 }}>Quizzer still waits for you to install and restart.</Typography.Text></div>
+          </div>
+          <Switch
+            aria-label="Download updates automatically"
+            checked={status?.autoDownload ?? true}
+            onChange={enabled => void handleAutoDownloadChange(enabled)}
+            disabled={!status || loading || downloading || applying || discarding || rollingBack}
+          />
+        </div>
+
         {/* State Alerts & Actions */}
         {state === 'available' && status?.updateInfo && (
           <Alert
@@ -262,7 +302,7 @@ export default function UpdaterStatusView() {
             description={
               <Space direction="vertical" size="small" style={{ width: '100%', marginTop: 8 }}>
                 <Typography.Text type="secondary">
-                  SHA-256 and Ed25519 signature verified in scoped staging. Ready to verify host package and stage for installer handoff.
+                  SHA-256 and Ed25519 signature verified in private staging. Install now to replace Quizzer and restart automatically.
                 </Typography.Text>
                 <Space>
                   <Button
@@ -272,7 +312,7 @@ export default function UpdaterStatusView() {
                     onClick={() => void handleApply()}
                     loading={applying}
                   >
-                    Verify staged package
+                    Install and restart
                   </Button>
                   <Button
                     size="small"
@@ -293,11 +333,11 @@ export default function UpdaterStatusView() {
             type="success"
             showIcon
             icon={<CheckCircleOutlined />}
-            message="Installer handoff successful"
+            message="Update installation started"
             description={
               <Space direction="vertical" size="small" style={{ width: '100%', marginTop: 8 }}>
                 <Typography.Text type="secondary">
-                  The update package has been downloaded, cryptographically verified, and handed off to the system installer. Complete the installation in the system window that opened.
+                  Quizzer is closing to install the verified update and restart. On platforms that use a system installer, follow its prompts.
                 </Typography.Text>
                 <Button
                   size="small"
@@ -385,13 +425,13 @@ export default function UpdaterStatusView() {
             )}
           </Descriptions.Item>
           <Descriptions.Item label="Safety guarantee">
-            All updates are cryptographically verified with Ed25519 signatures and SHA-256 digests in scoped staging before handoff. In-place binary replacement without an explicit platform adapter is never executed.
+            All updates are cryptographically verified with Ed25519 signatures and SHA-256 digests in private staging. The macOS adapter also validates the application bundle identity and version before replacement.
           </Descriptions.Item>
           <Descriptions.Item label="Runtime mode">
             {status?.mechanism === 'manual-handoff'
               ? 'Packaged desktop application (verified staging; manual installation required)'
               : status?.mechanism === 'staged-ready'
-                ? 'Packaged desktop application (verified staging; platform handoff enabled)'
+                ? 'Packaged desktop application (verified staging; install and restart enabled)'
                 : 'Development mode (verified staging; binary replacement simulated)'}
           </Descriptions.Item>
         </Descriptions>
