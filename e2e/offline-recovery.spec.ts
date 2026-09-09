@@ -1,6 +1,23 @@
 import { expect, test } from '@playwright/test';
 import { dismissOnboarding, setInterfaceMode } from './helpers';
 
+const pendingBrowserChanges = (page: import('@playwright/test').Page) => page.evaluate(async () => {
+  const database = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open('QuizDB');
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  try {
+    return await new Promise<number>((resolve, reject) => {
+      const request = database.transaction('syncChanges', 'readonly').objectStore('syncChanges').count();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  } finally {
+    database.close();
+  }
+});
+
 test('keeps an offline prompt edit locally and publishes it after reconnect', async ({ browser, context, page }, testInfo) => {
   const profileName = `Offline recovery ${testInfo.workerIndex}-${Date.now()}`;
   await dismissOnboarding(page);
@@ -13,10 +30,12 @@ test('keeps an offline prompt edit locally and publishes it after reconnect', as
   await page.getByLabel('Prompt profile name').fill(profileName);
   await page.getByRole('button', { name: 'Save new version' }).click();
   await expect(page.getByText(`${profileName} saved as version 2`)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Offline — saved locally' })).toBeVisible();
+  await expect.poll(() => pendingBrowserChanges(page)).toBeGreaterThan(0);
+  await expect(page.getByRole('button', { name: /Syncing library|Saved on server|Offline — saved locally/ })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Library sync' })).toHaveCount(0);
 
   await context.setOffline(false);
-  await expect(page.getByRole('button', { name: 'Saved on server' })).toBeVisible({ timeout: 15_000 });
+  await expect.poll(() => pendingBrowserChanges(page), { timeout: 15_000 }).toBe(0);
 
   const verificationContext = await browser.newContext({ baseURL: new URL(page.url()).origin });
   try {
