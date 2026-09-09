@@ -54,13 +54,31 @@ test('Settings search/reset and keyboard accessibility', async ({ page }) => {
 test('sidebar stays focused while command shortcuts are configurable and persistent', async ({ page }) => {
   await dismissOnboarding(page);
 
+  // Skip tutorial to reach finished state
   const sidebar = page.locator('.sidebar-footer');
+  if (await sidebar.getByRole('button', { name: 'Resume setup' }).isVisible()) {
+    await sidebar.getByRole('button', { name: 'Resume setup' }).click();
+    await page.getByRole('button', { name: 'Skip' }).click();
+    await page.getByRole('button', { name: 'Skip for now' }).click();
+  }
+
   const tutorialAction = sidebar.locator('button').filter({ hasText: /Resume setup|Restart tutorial/ });
-  await expect(tutorialAction).toHaveCount(1);
-  await expect(tutorialAction).toBeVisible();
+  await expect(tutorialAction).toHaveCount(0);
   await expect(sidebar.getByRole('button', { name: 'Command palette' })).toHaveCount(0);
   await expect(sidebar.getByRole('button', { name: /Switch to (Simple|Advanced) mode/ })).toHaveCount(0);
   await expect(sidebar.getByRole('button', { name: /(Light|Dark) mode/ })).toHaveCount(0);
+
+  // Test that command palette can still restart the tutorial
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+k' : 'Control+k');
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  await expect(palette).toBeVisible();
+  await palette.getByRole('textbox', { name: 'Search Quizzer commands' }).fill('Restart tutorial');
+  await palette.getByRole('button', { name: /Restart tutorial/ }).click();
+  
+  const onboarding = page.locator('.onboarding-drawer');
+  await expect(onboarding).toBeVisible();
+  await onboarding.getByRole('button', { name: 'Close' }).click();
+  await expect(onboarding).toBeHidden();
 
   await page.locator('.sidebar-footer:visible').getByRole('button', { name: 'Settings' }).click();
   const settings = page.getByRole('dialog', { name: 'Settings' });
