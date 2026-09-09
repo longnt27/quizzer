@@ -31,9 +31,9 @@ export async function setInterfaceMode(page: Page, mode: 'simple' | 'advanced') 
   const dialog = page.getByRole('dialog', { name: 'Settings' });
   const row = dialog.locator('.settings-row').filter({ hasText: 'Interface mode' });
   const target = mode === 'advanced' ? 'Advanced' : 'Simple';
-  if (!await row.getByText(target, { exact: true }).isVisible()) {
-    await row.locator('.ant-select-selector').click();
-    await page.locator('.ant-select-dropdown:visible').getByText(target, { exact: true }).click();
+  const targetOption = row.getByRole('radio', { name: target });
+  if (!await targetOption.isChecked()) {
+    await row.getByText(target, { exact: true }).click();
     await dialog.getByRole('button', { name: 'Save changes' }).click();
   } else {
     await dialog.getByRole('button', { name: 'Cancel' }).click();

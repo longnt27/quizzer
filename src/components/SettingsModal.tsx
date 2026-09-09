@@ -58,7 +58,6 @@ interface Props {
   onThemeChange: (dark: boolean) => void;
   keyboardShortcuts: KeyboardShortcuts;
   onKeyboardShortcutChange: (actionId: ShortcutActionId, shortcut: string) => void;
-  onOpenCommandPalette: () => void;
   initialTab?: SettingsTab;
   onClose: () => void;
 }
@@ -78,11 +77,6 @@ const settingsTabs: { key: SettingsTab; label: string; description: string }[] =
 
 const overallExtraSearchTerms = ['theme', 'appearance', 'light', 'dark'];
 const updatesExtraSearchTerms = ['software update', 'update', 'version', 'stable', 'beta'];
-const shortcutExtraSearchTerms = [
-  'keyboard', 'shortcut', 'command palette',
-  ...SHORTCUT_ACTIONS.flatMap(action => [action.label.toLowerCase(), action.description.toLowerCase()]),
-];
-
 const tabForDefinition = (definition: SettingDefinition): SettingsTab => {
   const section = definition.key.split('.')[0];
   if (section === 'interface' || section === 'hardware') return 'overall';
@@ -108,12 +102,36 @@ const sourceLabel = (source: string) => source.startsWith('profile:')
   ? `${source.slice('profile:'.length).toUpperCase()} profile`
   : source === 'app-profile' ? 'App profile' : `${source[0]?.toUpperCase() ?? ''}${source.slice(1)}`;
 
-const resourceColor: Record<SettingDefinition['resourceEffect'], string | undefined> = {
-  none: undefined,
-  low: '#237804',
-  medium: '#7a4b00',
-  high: '#a61d24',
-};
+interface SettingsSearchResult {
+  key: string;
+  label: string;
+  description: string;
+  tab: SettingsTab;
+  targetId: string;
+}
+
+const settingTargetId = (key: string) => `setting-${key.replace(/[^a-z0-9-]/gi, '-')}`;
+const searchMatches = (query: string, values: string[]) => values.some(value => value.toLowerCase().includes(query));
+
+function HighlightMatch({ text, query }: { text: string; query: string }) {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return text;
+  const parts: Array<{ text: string; match: boolean }> = [];
+  let start = 0;
+  while (start < text.length) {
+    const matchAt = text.toLowerCase().indexOf(normalized, start);
+    if (matchAt < 0) {
+      parts.push({ text: text.slice(start), match: false });
+      break;
+    }
+    if (matchAt > start) parts.push({ text: text.slice(start, matchAt), match: false });
+    parts.push({ text: text.slice(matchAt, matchAt + normalized.length), match: true });
+    start = matchAt + normalized.length;
+  }
+  return <>{parts.map((part, index) => part.match
+    ? <mark key={`${index}-${part.text}`}>{part.text}</mark>
+    : <span key={`${index}-${part.text}`}>{part.text}</span>)}</>;
+}
 
 export default function SettingsModal({
   profile,
@@ -121,7 +139,6 @@ export default function SettingsModal({
   onThemeChange,
   keyboardShortcuts,
   onKeyboardShortcutChange,
-  onOpenCommandPalette,
   initialTab,
   onClose,
 }: Props) {
@@ -132,6 +149,7 @@ export default function SettingsModal({
   const [unsetKeys, setUnsetKeys] = useState<Set<string>>(() => new Set());
   const [query, setQuery] = useState('');
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? 'overall');
+  const [focusTarget, setFocusTarget] = useState('');
   const [recordingShortcut, setRecordingShortcut] = useState<ShortcutActionId>();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -272,21 +290,57 @@ export default function SettingsModal({
   const advanced = (draft['interface.mode'] ?? profile.interfaceMode) === 'advanced';
   const visibleDefinitions = useMemo(() => (contract?.registry ?? [])
     .filter(definition => !definition.key.startsWith('providers.') && (advanced || definition.visibility === 'basic')), [advanced, contract]);
+  const normalizedQuery = query.trim().toLowerCase();
   const definitions = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    return visibleDefinitions.filter(definition => !normalized || [definition.title, definition.description, definition.key, definition.environment]
-      .some(value => value.toLowerCase().includes(normalized)));
-  }, [query, visibleDefinitions]);
+    return visibleDefinitions.filter(definition => !normalizedQuery || searchMatches(normalizedQuery,
+      [definition.title, definition.description, definition.key, definition.environment]));
+  }, [normalizedQuery, visibleDefinitions]);
+
+  const searchResults = useMemo<SettingsSearchResult[]>(() => {
+    if (!normalizedQuery) return [];
+    const results: SettingsSearchResult[] = [];
+    const addDefinitions = (tab: SettingsTab) => visibleDefinitions
+      .filter(definition => tabForDefinition(definition) === tab && searchMatches(normalizedQuery,
+        [definition.title, definition.description, definition.key, definition.environment]))
+      .forEach(definition => results.push({
+        key: definition.key,
+        label: definition.title,
+        description: `${settingsTabs.find(item => item.key === tab)?.label} · ${[definition.description, definition.key, definition.environment]
+          .find(value => value.toLowerCase().includes(normalizedQuery)) ?? definition.description}`,
+        tab,
+        targetId: settingTargetId(definition.key),
+      }));
+    for (const tab of settingsTabs.filter(item => advanced || item.key !== 'prompts')) {
+      if (tab.key === 'overall' && searchMatches(normalizedQuery, ['Theme', 'Choose the application color theme', ...overallExtraSearchTerms])) {
+        results.push({ key: 'theme', label: 'Theme', description: 'Overall appearance · Choose the application color theme.', tab: 'overall', targetId: 'setting-theme' });
+      }
+      if (tab.key === 'updates' && searchMatches(normalizedQuery, [tab.label, tab.description, ...updatesExtraSearchTerms])) {
+        results.push({ key: 'updates', label: tab.label, description: 'Check for stable or beta software update versions.', tab: 'updates', targetId: 'setting-updates' });
+      }
+      if (tab.key === 'shortcuts') for (const action of SHORTCUT_ACTIONS) {
+        if (searchMatches(normalizedQuery, [action.label, action.description, 'keyboard', 'shortcut', 'command palette'])) results.push({
+          key: `shortcut-${action.id}`, label: action.label, description: `Shortcuts · Keyboard shortcut for a command palette action. ${action.description}`,
+          tab: 'shortcuts', targetId: settingTargetId(`shortcut-${action.id}`),
+        });
+      }
+      if (tab.key === 'prompts' && searchMatches(normalizedQuery, [tab.label, tab.description])) {
+        results.push({ key: 'prompts', label: tab.label, description: tab.description, tab: 'prompts', targetId: 'settings-panel' });
+      }
+      addDefinitions(tab.key);
+    }
+    return results;
+  }, [advanced, normalizedQuery, visibleDefinitions]);
 
   useEffect(() => {
-    const normalized = query.trim().toLowerCase();
-    if (!normalized) return;
-    const matchingTab = settingsTabs.find(tab => definitions.some(definition => tabForDefinition(definition) === tab.key)
-      || (tab.key === 'overall' && overallExtraSearchTerms.some(term => term.includes(normalized) || normalized.includes(term)))
-      || (tab.key === 'updates' && updatesExtraSearchTerms.some(term => term.includes(normalized) || normalized.includes(term)))
-      || (tab.key === 'shortcuts' && shortcutExtraSearchTerms.some(term => term.includes(normalized) || normalized.includes(term))));
-    if (matchingTab) setActiveTab(matchingTab.key);
-  }, [definitions, query]);
+    if (!focusTarget) return;
+    const frame = window.requestAnimationFrame(() => {
+      const target = document.getElementById(focusTarget);
+      target?.scrollIntoView({ block: 'center' });
+      target?.focus({ preventScroll: true });
+      setFocusTarget('');
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeTab, focusTarget]);
 
   const pendingDefinitions = (contract?.registry ?? []).filter(definition => dirtyKeys.has(definition.key) || unsetKeys.has(definition.key));
   const needsReindex = pendingDefinitions.some(definition => definition.reindexRequired);
@@ -294,6 +348,13 @@ export default function SettingsModal({
 
   const control = (definition: SettingDefinition) => {
     const value = draft[definition.key];
+    if (definition.key === 'interface.mode') return (
+      <div role="radiogroup" aria-label={definition.title}>
+        <Radio.Group optionType="button" buttonStyle="solid" value={String(value)}
+          options={(definition.enum ?? ['simple', 'advanced']).map(option => ({ value: option, label: option[0].toUpperCase() + option.slice(1) }))}
+          onChange={event => setValue(definition.key, event.target.value)} />
+      </div>
+    );
     if (definition.key === 'generation.defaultProvider') return (
       <Select aria-label={definition.title} value={String(value)} onChange={next => setValue(definition.key, next)}
         options={PROVIDERS.map(provider => ({ value: provider.id, label: provider.label }))} />
@@ -316,6 +377,7 @@ export default function SettingsModal({
   const definitionRows = (tab: SettingsTab, suppressEmpty = false) => {
     const tabDefinitions = definitions.filter(definition => tabForDefinition(definition) === tab);
     const sections = [...new Set(tabDefinitions.map(definition => definition.key.split('.')[0]))];
+    const showSectionTitles = sections.length > 1;
     if (!tabDefinitions.length && suppressEmpty) return null;
     if (!tabDefinitions.length) return (
       <Typography.Text type="secondary">
@@ -325,8 +387,8 @@ export default function SettingsModal({
       </Typography.Text>
     );
     return sections.map(section => (
-      <section className="settings-section" key={section} aria-labelledby={`settings-${section}`}>
-        <Divider orientation="left" plain><span id={`settings-${section}`}>{sectionLabels[section] ?? section}</span></Divider>
+      <section className="settings-section" key={section} aria-label={sectionLabels[section] ?? section}>
+        {showSectionTitles && <Divider orientation="left" plain>{sectionLabels[section] ?? section}</Divider>}
         <div className="settings-list">
           {tabDefinitions.filter(definition => definition.key.startsWith(`${section}.`)).map(definition => {
             const changed = dirtyKeys.has(definition.key) || unsetKeys.has(definition.key);
@@ -334,15 +396,15 @@ export default function SettingsModal({
             const resetSource = definition.key !== 'hardware.profile' && contract?.profiles[selectedProfile]?.[definition.key] !== undefined
               ? `profile:${selectedProfile}`
               : 'default';
-            return <div className={`settings-row${changed ? ' is-changed' : ''}`} key={definition.key}>
+            return <div className={`settings-row${changed ? ' is-changed' : ''}`} id={settingTargetId(definition.key)} tabIndex={-1} key={definition.key}>
               <div className="settings-copy">
                 <Typography.Text strong>{definition.title}</Typography.Text>
                 <Typography.Text type="secondary">{definition.description}</Typography.Text>
                 <Space size={[4, 4]} wrap>
                   <Tag>{sourceLabel(unsetKeys.has(definition.key) ? resetSource : resolved?.sources[definition.key] ?? 'default')}</Tag>
-                  {definition.resourceEffect !== 'none' && <Tag color={resourceColor[definition.resourceEffect]}>{definition.resourceEffect} resource impact</Tag>}
-                  {definition.reindexRequired && <Tag color="#8a3b00">Reindex required</Tag>}
-                  {definition.restartRequired && <Tag color="#a8071a">Restart required</Tag>}
+                  {definition.resourceEffect !== 'none' && <Tag>{definition.resourceEffect} resource impact</Tag>}
+                  {definition.reindexRequired && <Tag>Reindex required</Tag>}
+                  {definition.restartRequired && <Tag>Restart required</Tag>}
                   {advanced && <Typography.Text code>{definition.key}</Typography.Text>}
                 </Space>
               </div>
@@ -367,7 +429,7 @@ export default function SettingsModal({
     {showTheme && <section className="settings-section" aria-labelledby="settings-appearance">
       <Divider orientation="left" plain><span id="settings-appearance">Appearance</span></Divider>
       <div className="settings-list">
-        <div className="settings-row">
+        <div className="settings-row" id="setting-theme" tabIndex={-1}>
           <div className="settings-copy">
             <Typography.Text strong>Theme</Typography.Text>
             <Typography.Text type="secondary">Choose the application color theme. This preference is applied immediately.</Typography.Text>
@@ -388,8 +450,7 @@ export default function SettingsModal({
   </Space>;
 
   const updatesSettings = <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-    {showUpdates && <section className="settings-section" aria-labelledby="settings-updates">
-      <Divider orientation="left" plain><span id="settings-updates">Software updates</span></Divider>
+    {showUpdates && <section className="settings-section" id="setting-updates" tabIndex={-1} aria-label="Software updates">
       <UpdaterStatusView />
     </section>}
     {!showUpdates && <Typography.Text type="secondary">No software update settings match this search.</Typography.Text>}
@@ -429,15 +490,12 @@ export default function SettingsModal({
     || ['keyboard', 'shortcut'].some(value => value.includes(overallSearch) || overallSearch.includes(value)));
 
   const shortcutSettings = <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-
-    <Button onClick={onOpenCommandPalette}>Open command palette</Button>
-    {shortcutActions.length ? <section className="settings-section" aria-labelledby="settings-keyboard-shortcuts">
-      <Divider orientation="left" plain><span id="settings-keyboard-shortcuts">Command palette actions</span></Divider>
+    {shortcutActions.length ? <section className="settings-section" aria-label="Command palette actions">
       <div className="settings-list">
         {shortcutActions.map(action => {
           const shortcut = keyboardShortcuts[action.id];
           const recording = recordingShortcut === action.id;
-          return <div className="settings-row" key={action.id}>
+          return <div className="settings-row" id={settingTargetId(`shortcut-${action.id}`)} tabIndex={-1} key={action.id}>
             <div className="settings-copy">
               <Typography.Text strong>{action.label}</Typography.Text>
               <Typography.Text type="secondary">{action.description}</Typography.Text>
@@ -464,10 +522,8 @@ export default function SettingsModal({
   const tabItems = settingsTabs.filter(tab => advanced || tab.key !== 'prompts').map(tab => ({
     key: tab.key,
     label: tab.label,
-    children: tab.key === 'prompts' ? <PromptStudio /> : <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>{tab.description}</Typography.Paragraph>
-      {tab.key === 'overall' ? overall : tab.key === 'shortcuts' ? shortcutSettings : tab.key === 'updates' ? updatesSettings : definitionRows(tab.key)}
-    </Space>,
+    children: tab.key === 'prompts' ? <PromptStudio />
+      : tab.key === 'overall' ? overall : tab.key === 'shortcuts' ? shortcutSettings : tab.key === 'updates' ? updatesSettings : definitionRows(tab.key),
   }));
 
   const moveTabFocus = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
@@ -494,11 +550,6 @@ export default function SettingsModal({
   return (
     <Modal open title={<Space><SettingOutlined /> Settings</Space>} width={activeTab === 'prompts' ? 1120 : 880} onCancel={onClose} footer={footer}>
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-          Browse settings by category or search across every category. Values show their source and any resource or indexing impact before saving.
-        </Typography.Paragraph>
-        <Input allowClear prefix={<SearchOutlined />} value={query} onChange={event => setQuery(event.target.value)}
-          aria-label="Search settings" placeholder="Search settings, descriptions, keys, or environment variables" />
         {error && <div><ErrorDisplay error={error} context="settings" /><Button size="small" icon={<ReloadOutlined />} onClick={() => void load()}>Retry settings</Button></div>}
         {(needsReindex || needsRestart) && <Alert type="warning" showIcon message="These changes have follow-up work" description={[
           needsReindex && 'Affected documents must be reindexed.',
@@ -506,19 +557,33 @@ export default function SettingsModal({
         ].filter(Boolean).join(' ')} />}
         {loading ? <div className="settings-loading"><Spin /></div> : !error && (
           <div className="settings-layout">
-            <div className="settings-sidebar" role="tablist" aria-label="Settings categories" aria-orientation="vertical">
-              {tabItems.map((tab, index) => (
-                <button key={tab.key} type="button" role="tab" id={`settings-tab-${tab.key}`}
-                  aria-controls="settings-panel" aria-selected={activeTab === tab.key} tabIndex={activeTab === tab.key ? 0 : -1}
-                  onClick={() => setActiveTab(tab.key as SettingsTab)}
-                  onKeyDown={event => moveTabFocus(event, index)}
-                  className="settings-sidebar-item">
-                  {tab.label}
-                </button>
-              ))}
+            <div className="settings-sidebar">
+              <Input allowClear prefix={<SearchOutlined />} value={query} onChange={event => setQuery(event.target.value)}
+                aria-label="Search settings" placeholder="Search" />
+              {normalizedQuery ? <div className="settings-search-results" aria-label="Settings search results">
+                {searchResults.length ? searchResults.map(result => (
+                  <button key={result.key} type="button" className="settings-search-result" onClick={() => {
+                    setActiveTab(result.tab);
+                    setFocusTarget(result.targetId);
+                  }}>
+                    <strong><HighlightMatch text={result.label} query={normalizedQuery} /></strong>
+                    <span><HighlightMatch text={result.description} query={normalizedQuery} /></span>
+                  </button>
+                )) : <Typography.Text className="settings-search-empty" type="secondary">No settings found</Typography.Text>}
+              </div> : <div className="settings-tab-list" role="tablist" aria-label="Settings categories" aria-orientation="vertical">
+                {tabItems.map((tab, index) => (
+                  <button key={tab.key} type="button" role="tab" id={`settings-tab-${tab.key}`}
+                    aria-controls="settings-panel" aria-selected={activeTab === tab.key} tabIndex={activeTab === tab.key ? 0 : -1}
+                    onClick={() => setActiveTab(tab.key as SettingsTab)}
+                    onKeyDown={event => moveTabFocus(event, index)}
+                    className="settings-sidebar-item">
+                    {tab.label}
+                  </button>
+                ))}
+              </div>}
             </div>
             <div className="settings-content-pane" role="tabpanel" id="settings-panel"
-              aria-labelledby={`settings-tab-${activeTab}`} tabIndex={0}>
+              aria-label={tabItems.find(tab => tab.key === activeTab)?.label} tabIndex={0}>
               {tabItems.find(t => t.key === activeTab)?.children}
             </div>
           </div>
