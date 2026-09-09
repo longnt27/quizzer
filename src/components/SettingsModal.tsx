@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Alert, Button, Divider, Input, InputNumber, Modal, Radio, Select, Space, Spin, Switch, Tag, Typography } from 'antd';
+import { formatErrorMessage } from '../utils/errorFormatting';
 import { ReloadOutlined, SearchOutlined, SettingOutlined, UndoOutlined } from '@ant-design/icons';
 import type { StoredAppProfile } from '../db/db';
 import type { GenerationProvider, HardwareProfileId, InterfaceMode } from '../types';
@@ -397,7 +398,7 @@ export default function SettingsModal({
   const applyShortcut = (actionId: ShortcutActionId, shortcut: string) => {
     const changed = changeKeyboardShortcut(keyboardShortcuts, actionId, shortcut);
     if (!changed.ok) {
-      message.error(changed.error);
+      message.error(formatErrorMessage(changed.error));
       return;
     }
     onKeyboardShortcutChange(actionId, changed.shortcuts[actionId]);
@@ -417,7 +418,7 @@ export default function SettingsModal({
     }
     const shortcut = shortcutFromKeyboardEvent(event.nativeEvent);
     if (!shortcut) {
-      message.warning('Press Ctrl or Command with one supported key. Add Shift or Alt if needed.');
+      message.warning(formatErrorMessage('Press Ctrl or Command with one supported key. Add Shift or Alt if needed.'));
       return;
     }
     applyShortcut(actionId, shortcut);

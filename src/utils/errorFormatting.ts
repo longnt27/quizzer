@@ -15,7 +15,7 @@ export function formatError(error: unknown, context: string = 'Error'): HumanRea
   if (lowerMsg.includes('sparse indexing completed, but dense indexing') || lowerMsg.includes('bge-m3 is unavailable')) {
     return {
       problem: 'Advanced semantic search is temporarily unavailable.',
-      nextStep: 'Basic search is active. Check your network connection to enable advanced search.',
+      nextStep: 'Keyword search remains available. Verify your configured local embedding service/model in Plugins & models.',
       rawError: msg
     };
   }

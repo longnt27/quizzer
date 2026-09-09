@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Alert, Button, Card, Empty, Input, List, Space, Spin, Tabs, Tag, Typography } from 'antd';
+import { formatErrorMessage } from '../utils/errorFormatting';
 import { DatabaseOutlined, DownloadOutlined, ReloadOutlined, RobotOutlined, SearchOutlined } from '@ant-design/icons';
 import { ErrorDisplay } from './ErrorDisplay';
 import { db, type StoredDocument, type StoredDocumentImage } from '../db/db';
@@ -138,7 +139,7 @@ export default function DocumentView({ documentId }: Props) {
       setIndexStatus(response.status);
       message.success('Document indexed for retrieval');
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Could not index document');
+      message.error(formatErrorMessage(error instanceof Error ? error.message : 'Could not index document'));
     } finally {
       setIndexing(false);
     }
@@ -155,7 +156,7 @@ export default function DocumentView({ documentId }: Props) {
       setRetrieval(undefined);
       message.success(`Re-extracted with ${response.document.parserVersion ?? 'the current converter'} and rebuilt the index`);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Could not re-extract document');
+      message.error(formatErrorMessage(error instanceof Error ? error.message : 'Could not re-extract document'));
     } finally {
       setReextracting(false);
     }

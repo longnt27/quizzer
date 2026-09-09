@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Alert, Button, Checkbox, Empty, Input, InputNumber, List, Modal, Progress, Select, Space, Tag, Typography } from 'antd';
+import { formatErrorMessage } from '../utils/errorFormatting';
 import { CloseOutlined, DatabaseOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type StoredGenerationJob, type StoredIndexJob } from '../db/db';
@@ -114,10 +115,10 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
   }, [configured.providers, job.options.model, job.options.provider, job.status, pausedForCost]);
 
   const resume = async (resumeJob = job) => {
-    if (!configured.providers.some(item => item.id === provider)) return message.error('Connect the selected AI provider first');
+    if (!configured.providers.some(item => item.id === provider)) return message.error(formatErrorMessage('Connect the selected AI provider first'));
     const route = resolveJobRoute(resumeJob, provider, model);
     if (resumeJob.options.costCeilingMicroUsd !== undefined && !route.pricing) {
-      return message.error('The selected route has no verified pricing. Choose a priced model or configure explicit pricing in Advanced mode before continuing.');
+      return message.error(formatErrorMessage('The selected route has no verified pricing. Choose a priced model or configure explicit pricing in Advanced mode before continuing.'));
     }
     const existingRoutes = resumeJob.options.routeChain ?? [];
     const existingIndex = existingRoutes.findIndex(existing => routeMatches(existing, provider, model));
@@ -127,14 +128,14 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
     try {
       await resumeGenerationJob(resumeJob.id, { ...resumeJob.options, provider, model: model.trim() || undefined, routeChain });
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Could not queue generation resume');
+      message.error(formatErrorMessage(error instanceof Error ? error.message : 'Could not queue generation resume'));
     }
   };
 
   const continueAccounting = async () => {
     const isCeiling = job.errorCode === 'cost_ceiling';
     const reason = accountingReason.trim();
-    const fail = (detail: string) => { setAccountingValidation(detail); return message.error(detail); };
+    const fail = (detail: string) => { setAccountingValidation(detail); return message.error(formatErrorMessage(detail)); };
     setAccountingValidation('');
     if (!configured.providers.some(item => item.id === provider)) return fail('Connect the selected AI provider before authorizing this continuation');
     if (!reason || reason.length > 500) return fail('Enter a reason between 1 and 500 characters');
@@ -170,7 +171,7 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
         // raise/approval when only the queue request failed.
         setAccountingModalOpen(false);
         resetAccountingForm();
-        message.error(`Authorization recorded, but resume could not be queued: ${error instanceof Error ? error.message : 'service unavailable'}. Choose Resume to retry.`);
+        message.error(formatErrorMessage(`Authorization recorded, but resume could not be queued: ${error instanceof Error ? error.message : 'service unavailable'}. Choose Resume to retry.`));
         return;
       }
       setAccountingModalOpen(false);
@@ -179,8 +180,8 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
       if (authorizationApplied) {
         setAccountingModalOpen(false);
         resetAccountingForm();
-        message.error(`Authorization recorded, but resume could not be queued: ${error instanceof Error ? error.message : 'service unavailable'}. Choose Resume to retry.`);
-      } else message.error(error instanceof Error ? error.message : 'Could not confirm accounting recovery');
+        message.error(formatErrorMessage(`Authorization recorded, but resume could not be queued: ${error instanceof Error ? error.message : 'service unavailable'}. Choose Resume to retry.`));
+      } else message.error(formatErrorMessage(error instanceof Error ? error.message : 'Could not confirm accounting recovery'));
     } finally {
       setAccountingWorking(false);
     }
@@ -311,7 +312,7 @@ function IndexJobItem({ job }: { job: StoredIndexJob }) {
       const result = await serviceJson<{ job: StoredIndexJob }>(`/api/v1/index/jobs/${encodeURIComponent(job.id)}/${action}`, 'POST', {});
       await applyServiceRecord('indexJobs', result.job.id, result.job);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : `Could not ${action} indexing`);
+      message.error(formatErrorMessage(error instanceof Error ? error.message : `Could not ${action} indexing`));
     } finally {
       setWorking(false);
     }

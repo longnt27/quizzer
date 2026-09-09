@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Card, Descriptions, Divider, Progress, Radio, Space, Tag, Typography } from 'antd';
+import { formatErrorMessage } from '../utils/errorFormatting';
 import {
   CheckCircleOutlined,
   CloudDownloadOutlined,
@@ -65,10 +66,10 @@ export default function UpdaterStatusView() {
       } else if (next.state === 'up-to-date') {
         message.success('Quizzer is up to date');
       } else if (next.state === 'error') {
-        message.error(next.error || 'Failed to check for updates');
+        message.error(formatErrorMessage(next.error || 'Failed to check for updates'));
       }
     } catch (err) {
-      message.error(err instanceof Error ? err.message : 'Update check failed');
+      message.error(formatErrorMessage(err instanceof Error ? err.message : 'Update check failed'));
     } finally {
       setLoading(false);
     }
@@ -87,7 +88,7 @@ export default function UpdaterStatusView() {
       setStatus(next);
       message.success('Update downloaded and verified');
     } catch (err) {
-      message.error(err instanceof Error ? err.message : 'Download failed');
+      message.error(formatErrorMessage(err instanceof Error ? err.message : 'Download failed'));
       await refreshStatus();
     } finally {
       setDownloading(false);
@@ -102,7 +103,7 @@ export default function UpdaterStatusView() {
       setStatus(result.status);
       message.success(result.message || 'Verified staged package — installer handoff pending');
     } catch (err) {
-      message.error(err instanceof Error ? err.message : 'Verification failed');
+      message.error(formatErrorMessage(err instanceof Error ? err.message : 'Verification failed'));
       await refreshStatus();
     } finally {
       setApplying(false);
@@ -124,7 +125,7 @@ export default function UpdaterStatusView() {
           setStatus(result.status);
           message.info('Staged update discarded');
         } catch (err) {
-          message.error(err instanceof Error ? err.message : 'Discard failed');
+          message.error(formatErrorMessage(err instanceof Error ? err.message : 'Discard failed'));
           await refreshStatus();
         } finally {
           setDiscarding(false);
@@ -147,7 +148,7 @@ export default function UpdaterStatusView() {
           setStatus(result.status);
           message.info(result.message);
         } catch (err) {
-          message.error(err instanceof Error ? err.message : 'Rollback handoff failed');
+          message.error(formatErrorMessage(err instanceof Error ? err.message : 'Rollback handoff failed'));
           await refreshStatus();
         } finally {
           setRollingBack(false);

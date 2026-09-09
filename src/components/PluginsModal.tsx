@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Alert, Button, Divider, Empty, Input, InputNumber, Modal, Space, Spin, Switch, Tabs, Tag, Typography } from 'antd';
+import { formatErrorMessage } from '../utils/errorFormatting';
 import {
   ApiOutlined, CloudDownloadOutlined, DeleteOutlined, FileSearchOutlined, FolderOpenOutlined,
   LoginOutlined, ReloadOutlined, RobotOutlined, RollbackOutlined, ScanOutlined, SettingOutlined,
@@ -292,7 +293,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       }
       await refresh();
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Could not start plugin action');
+      message.error(formatErrorMessage(error instanceof Error ? error.message : 'Could not start plugin action'));
     }
   };
 
@@ -324,7 +325,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       await serviceJson('/api/v1/integrations/llama-cpp/runtime/stop', 'POST', {});
       await refresh();
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Could not stop llama.cpp');
+      message.error(formatErrorMessage(error instanceof Error ? error.message : 'Could not stop llama.cpp'));
     }
   };
 
@@ -340,7 +341,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
 
   const pullOllamaModel = () => {
     const model = models.ollama?.trim();
-    if (!model) return message.warning('Enter an Ollama model name first');
+    if (!model) return message.warning(formatErrorMessage('Enter an Ollama model name first'));
     getModalApi().confirm({
       title: `Download ${model}?`,
       content: 'Model downloads can require several gigabytes of disk space. The model stays on this device and Quizzer will not send document content to a remote provider.',
@@ -354,7 +355,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
 
   const installEmbeddingModel = () => {
     const model = status?.embeddings?.model;
-    if (!model) return message.warning('Embedding settings are still loading');
+    if (!model) return message.warning(formatErrorMessage('Embedding settings are still loading'));
     getModalApi().confirm({
       title: `Download ${model} for dense retrieval?`,
       content: model === 'bge-m3'
@@ -378,7 +379,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       message.success(`${result.plugin.name ?? result.plugin.id} installed`);
       await refreshExternal();
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Could not install plugin');
+      message.error(formatErrorMessage(error instanceof Error ? error.message : 'Could not install plugin'));
     } finally {
       setPluginAction('');
     }
@@ -391,14 +392,14 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       if (result.health) {
         setHealthResults(current => ({ ...current, [plugin.id]: result.health! }));
         if (result.health.ok) message.success(`${plugin.name ?? plugin.id} is healthy`);
-        else message.warning(result.health.error || `${plugin.name ?? plugin.id} failed its health check`);
+        else message.warning(formatErrorMessage(result.health.error || `${plugin.name ?? plugin.id} failed its health check`));
       } else {
         message.success(action === 'rollback' ? `${plugin.name ?? plugin.id} rolled back and disabled` : `${plugin.name ?? plugin.id} ${action}d`);
       }
       await refreshExternal();
       return true;
     } catch (error) {
-      message.error(error instanceof Error ? error.message : `Could not ${action} plugin`);
+      message.error(formatErrorMessage(error instanceof Error ? error.message : `Could not ${action} plugin`));
       return false;
     } finally {
       setPluginAction('');
@@ -444,7 +445,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       message.success(`${result.plugin.name ?? result.plugin.id} installed`);
       await refreshExternal();
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Could not install registry plugin');
+      message.error(formatErrorMessage(error instanceof Error ? error.message : 'Could not install registry plugin'));
     } finally {
       setPluginAction('');
     }
@@ -468,7 +469,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       message.success(`Updated ${result.plugin.name ?? plugin.name ?? plugin.id}`);
       await refreshExternal();
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Could not update plugin');
+      message.error(formatErrorMessage(error instanceof Error ? error.message : 'Could not update plugin'));
     } finally {
       setPluginAction('');
     }
@@ -500,7 +501,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       });
       return;
     }
-    if (!credentialStorage.available) return message.warning(credentialStorage.message);
+    if (!credentialStorage.available) return message.warning(formatErrorMessage(credentialStorage.message));
     getModalApi().confirm({
       title: `Remember ${providerName(provider.label)} credentials?`,
       content: 'Quizzer will encrypt this API key with the operating system. It is never included in exports, backups, or diagnostics.',
@@ -562,7 +563,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
       message.success('Plugin settings saved');
       onClose();
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Could not save plugin settings');
+      message.error(formatErrorMessage(error instanceof Error ? error.message : 'Could not save plugin settings'));
     } finally {
       setSaving(false);
     }

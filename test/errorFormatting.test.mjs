@@ -11,7 +11,7 @@ test('formatError sanitizes network errors', () => {
 test('formatError sanitizes dense indexing network failures', () => {
   const result = formatError(new Error('Sparse indexing completed, but dense indexing with bge-m3 is unavailable: fetch failed'));
   assert.strictEqual(result.problem, 'Advanced semantic search is temporarily unavailable.');
-  assert.strictEqual(result.nextStep, 'Basic search is active. Check your network connection to enable advanced search.');
+  assert.strictEqual(result.nextStep, 'Keyword search remains available. Verify your configured local embedding service/model in Plugins & models.');
 });
 
 test('formatError handles unmapped technical errors with generic message', () => {
