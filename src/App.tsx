@@ -103,7 +103,6 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
     onAddDocument: () => { setShowDocumentModal(true); setMobileMenuOpen(false); },
     onOpenPlugins: () => { setShowPluginsModal(true); setMobileMenuOpen(false); },
     onOpenSettings: () => { setShowSettingsModal(true); setMobileMenuOpen(false); },
-    onOpenPromptStudio: () => { setShowSettingsModal('prompts'); setMobileMenuOpen(false); },
     onOpenGeneration: () => { setShowGenerationCenter(true); setMobileMenuOpen(false); },
     onOpenHome: () => select(null),
     onOpenTutorial: () => { setShowOnboarding(true); setMobileMenuOpen(false); },

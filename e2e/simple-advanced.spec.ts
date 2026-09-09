@@ -1,21 +1,21 @@
 import { test, expect } from '@playwright/test';
-import { dismissOnboarding, setInterfaceMode } from './helpers';
+import { dismissOnboarding, openPromptStudio, setInterfaceMode } from './helpers';
 
 test('immediate reversible Simple/Advanced disclosure with stored data retained', async ({ page }) => {
   await dismissOnboarding(page);
   await setInterfaceMode(page, 'simple');
 
-  const studioButton = page.getByRole('button', { name: 'Prompt Studio' });
+  const studioButton = page.locator('.sidebar-footer').getByRole('button', { name: 'Prompt Studio' });
   await expect(page.getByRole('button', { name: 'Switch to Advanced mode' })).toHaveCount(0);
   await page.locator('.sidebar-footer:visible').getByRole('button', { name: 'Settings' }).click();
   const simpleSettings = page.getByRole('dialog', { name: 'Settings' });
   await expect(simpleSettings.getByRole('tab', { name: 'Prompt Studio' })).toHaveCount(0);
   await simpleSettings.getByRole('button', { name: 'Cancel' }).click();
   await setInterfaceMode(page, 'advanced');
-  await expect(studioButton).toBeVisible();
+  await expect(studioButton).toHaveCount(0);
   await expect(page.getByText('System health', { exact: true })).toBeVisible();
 
-  await studioButton.click();
+  await openPromptStudio(page);
   await page.getByRole('button', { name: 'Clone selected' }).click();
   await page.getByLabel('Prompt profile name').fill('Mode-safe profile');
   await page.getByRole('button', { name: 'Save new version' }).click();
@@ -31,7 +31,7 @@ test('immediate reversible Simple/Advanced disclosure with stored data retained'
   await expect(studioButton).toBeHidden();
 
   await setInterfaceMode(page, 'advanced');
-  await studioButton.click();
+  await openPromptStudio(page);
   await expect(page.getByRole('button', { name: 'Mode-safe profile' }).first()).toBeVisible();
 });
 

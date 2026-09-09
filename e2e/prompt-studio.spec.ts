@@ -1,14 +1,12 @@
 import { test, expect } from '@playwright/test';
-import { dismissOnboarding, setInterfaceMode } from './helpers';
+import { dismissOnboarding, openPromptStudio, setInterfaceMode } from './helpers';
 import { readFileSync } from 'node:fs';
 
 test('Prompt Studio clone/edit/validate plus import/export', async ({ page }) => {
   await dismissOnboarding(page);
 
   await setInterfaceMode(page, 'advanced');
-  await page.getByRole('button', { name: 'Prompt Studio' }).click();
-
-  const studio = page.getByRole('dialog', { name: 'Settings' });
+  const studio = await openPromptStudio(page);
   await expect(studio.getByRole('tab', { name: 'Prompt Studio' })).toHaveAttribute('aria-selected', 'true');
   await expect(studio.getByRole('button', { name: 'Reset to selected profile' })).toHaveCount(0);
   await expect(studio.getByRole('button', { name: 'Save changes' })).toHaveCount(0);
