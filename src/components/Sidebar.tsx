@@ -5,7 +5,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type StoredAppProfile } from '../db/db';
 import { getMessageApi } from '../utils/messageProvider';
 import { countQuestionTypes } from '../utils/questions';
-import { useActivitySummary } from './GenerationCenter';
+import { useActivitySummary } from '../utils/useActivitySummary';
 export type LibrarySelection = { kind: 'test' | 'document'; id: string } | null;
 
 interface Props {
@@ -31,6 +31,11 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
   const [query, setQuery] = useState('');
   const message = getMessageApi();
   const activity = useActivitySummary();
+  const activityLabel = activity.running > 0
+    ? `${activity.running} job${activity.running === 1 ? '' : 's'} active`
+    : activity.attention > 0
+      ? `${activity.attention} need attention`
+      : activity.count > 0 ? 'Work queued' : 'Activity';
 
   const normalizedQuery = query.trim().toLowerCase();
   const visibleTests = tests.filter(test => test.name.toLowerCase().includes(normalizedQuery));
@@ -102,7 +107,7 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
             Resume setup
           </Button>
         )}
-        <Button type="text" icon={<SyncOutlined spin={activity.running > 0} />} onClick={onOpenGeneration}>
+        <Button type="text" aria-label={activityLabel} icon={<SyncOutlined spin={activity.running > 0} />} onClick={onOpenGeneration}>
           <Space>
             Activity
             {activity.count > 0 && (
