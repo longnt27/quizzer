@@ -9,8 +9,14 @@ async function openSettings(page: Page) {
 }
 
 async function chooseAccent(page: Page, name: string) {
-  await page.getByRole('combobox', { name: 'Accent color' }).click();
+  const row = page.getByRole('dialog', { name: 'Settings', exact: true }).locator('#setting-accent-color');
+  const select = row.getByRole('combobox', { name: 'Accent color', exact: true });
+  // Ant Design renders the selected label over the read-only combobox input.
+  // Click its visible selector so normal pointer actionability checks still apply.
+  await row.locator('.ant-select-selector').click();
+  await expect(select).toHaveAttribute('aria-expanded', 'true');
   await page.locator('.ant-select-dropdown:visible').getByText(name, { exact: true }).click();
+  await expect(select).toHaveAttribute('aria-expanded', 'false');
 }
 
 const primaryColor = (page: Page) => page.evaluate(() => document.documentElement.style.getPropertyValue('--accent'));
