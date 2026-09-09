@@ -102,13 +102,6 @@ const sourceLabel = (source: string) => source.startsWith('profile:')
   ? `${source.slice('profile:'.length).toUpperCase()} profile`
   : source === 'app-profile' ? 'App profile' : `${source[0]?.toUpperCase() ?? ''}${source.slice(1)}`;
 
-const resourceColor: Record<SettingDefinition['resourceEffect'], string | undefined> = {
-  none: undefined,
-  low: '#237804',
-  medium: '#7a4b00',
-  high: '#a61d24',
-};
-
 interface SettingsSearchResult {
   key: string;
   label: string;
@@ -409,9 +402,9 @@ export default function SettingsModal({
                 <Typography.Text type="secondary">{definition.description}</Typography.Text>
                 <Space size={[4, 4]} wrap>
                   <Tag>{sourceLabel(unsetKeys.has(definition.key) ? resetSource : resolved?.sources[definition.key] ?? 'default')}</Tag>
-                  {definition.resourceEffect !== 'none' && <Tag color={resourceColor[definition.resourceEffect]}>{definition.resourceEffect} resource impact</Tag>}
-                  {definition.reindexRequired && <Tag color="#8a3b00">Reindex required</Tag>}
-                  {definition.restartRequired && <Tag color="#a8071a">Restart required</Tag>}
+                  {definition.resourceEffect !== 'none' && <Tag>{definition.resourceEffect} resource impact</Tag>}
+                  {definition.reindexRequired && <Tag>Reindex required</Tag>}
+                  {definition.restartRequired && <Tag>Restart required</Tag>}
                   {advanced && <Typography.Text code>{definition.key}</Typography.Text>}
                 </Space>
               </div>
