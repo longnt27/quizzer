@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Checkbox, Collapse, Empty, Input, InputNumber, List, Modal, Progress, Select, Space, Tabs, Tag, Typography } from 'antd';
+import { Alert, Button, Checkbox, Collapse, Empty, Input, InputNumber, List, Modal, Popconfirm, Progress, Select, Space, Tabs, Tag, Typography } from 'antd';
 import { ErrorDisplay } from './ErrorDisplay';
 import { formatErrorMessage } from '../utils/errorFormatting';
 import { CloseOutlined, DatabaseOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons';
@@ -297,6 +297,8 @@ function JobItem({ job, onOpenTest, onManagePlugins }: { job: StoredGenerationJo
         {(job.status === 'queued' || job.status === 'running' || job.status === 'waiting' || job.status === 'paused') &&
           <Button danger size="small" icon={<CloseOutlined />} onClick={() => void cancelGenerationJob(job.id)}>Cancel</Button>}
         {job.status === 'error' && <Button size="small" icon={<ReloadOutlined />} onClick={() => void retryGenerationJob(job.id)}>Retry from checkpoint</Button>}
+        {job.status === 'error' && <Popconfirm title="Discard this failed generation?" description="Saved progress for this job will be removed." okText="Discard" okButtonProps={{ danger: true }}
+          onConfirm={() => void removeGenerationJob(job.id)}><Button danger size="small" type="text">Discard</Button></Popconfirm>}
         {job.status === 'completed' && <Button size="small" type="primary" onClick={() => onOpenTest(job.testId)}>Open test</Button>}
         {terminalStatuses.has(job.status) && <Button size="small" type="text" onClick={() => void removeGenerationJob(job.id)}>Dismiss</Button>}
       </Space>
@@ -350,6 +352,8 @@ function IndexJobItem({ job }: { job: StoredIndexJob }) {
           onClick={() => void control('cancel')}>Cancel</Button>}
         {(job.status === 'failed' || job.status === 'cancelled') && <Button size="small" loading={working} icon={<ReloadOutlined />}
           onClick={() => void control('resume')}>Resume remaining</Button>}
+        {job.status === 'failed' && <Popconfirm title="Discard this failed indexing job?" description="Saved progress for this job will be removed." okText="Discard" okButtonProps={{ danger: true }}
+          onConfirm={() => void db.indexJobs.delete(job.id)}><Button danger size="small" type="text">Discard</Button></Popconfirm>}
         {(job.status === 'completed' || job.status === 'cancelled') && <Button size="small" type="text"
           onClick={() => void db.indexJobs.delete(job.id)}>Dismiss</Button>}
       </Space>
