@@ -231,6 +231,7 @@ export interface GenerationOptions {
   multipleChoiceMode?: 'single' | 'multiple' | 'mixed';
   coverageStrategy?: CoverageStrategy;
   customInstruction?: string;
+  questionInstructions?: Partial<Record<QuestionType, string>>;
   promptProfileSnapshot?: PromptProfileSnapshot;
   ragProfile?: RAGProfile;
   generationProfile?: GenerationProfile;
