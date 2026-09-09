@@ -181,12 +181,15 @@ button, input, textarea, select { font: inherit; }
 .question-citations p { margin: 4px 0 8px; }
 .question-citations ul { margin: 0; padding-left: 20px; }
 .question-citations li { margin-top: 6px; }
-.ai-chat-shell { display: flex; min-height: min(680px, 78vh); flex-direction: column; gap: 12px; }
+.ask-ai-modal { top: 16px; padding-bottom: 0; }
+.ask-ai-modal .ant-modal-content { max-height: calc(100dvh - 32px); display: flex; flex-direction: column; overflow: hidden; }
+.ask-ai-modal .ant-modal-body { min-height: 0; flex: 1; overflow: hidden; }
+.ai-chat-shell { display: flex; height: min(680px, calc(100dvh - 136px)); min-height: 0; flex-direction: column; gap: 12px; }
 .ai-chat-toolbar { display: grid; gap: 10px; }
 .ai-chat-scope { display: flex; align-items: center; gap: 10px; padding: 11px 13px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); }
 .ai-chat-scope > .anticon { font-size: 20px; color: #1677ff; }
 .ai-chat-scope-tags { display: flex; flex: 1; justify-content: flex-end; flex-wrap: wrap; gap: 4px; }
-.ai-chat-panel { flex: 1; min-height: 320px; max-height: 58vh; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+.ai-chat-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
 .ai-chat-history { flex: 1; min-height: 0; padding: 18px 12px; overflow-y: auto; background: var(--surface); }
 .ai-chat-empty { height: 100%; min-height: 240px; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; text-align: center; }
 .ai-chat-empty > .anticon { font-size: 34px; color: var(--muted); }
@@ -290,10 +293,10 @@ mark { color: #111827; }
   .document-view h2 { font-size: 24px; }
   .document-original-frame { min-height: 65vh; }
   .document-image-grid { grid-template-columns: 1fr; }
-  .ai-chat-shell { min-height: calc(100dvh - 100px); }
+  .ask-ai-modal .ant-modal-content { max-height: calc(100dvh - 16px); }
+  .ai-chat-shell { height: calc(100dvh - 112px); }
   .ai-chat-scope { align-items: flex-start; flex-wrap: wrap; }
   .ai-chat-scope-tags { width: 100%; justify-content: flex-start; }
-  .ai-chat-panel { max-height: none; }
   .ai-chat-bubble { max-width: 85%; }
 
   .test-start { height: auto; min-height: 100%; grid-template-columns: 1fr; overflow: visible; }

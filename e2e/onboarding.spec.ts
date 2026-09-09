@@ -192,6 +192,13 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await expect(groundingSources.getByText('coordination', { exact: true })).toHaveCount(1);
   await expect(groundingSources.locator('code')).toHaveCount(0);
   await expect(page.locator('[data-onboarding-target="ask-ai"]').filter({ visible: true }).first()).toBeVisible();
+  await page.getByRole('button', { name: /Ask AI about this answer/ }).click();
+  const askDialog = page.getByRole('dialog', { name: /Ask AI about question/ });
+  await expect(askDialog).toBeVisible();
+  const askBounds = await askDialog.boundingBox();
+  const viewportHeight = page.viewportSize()?.height ?? 0;
+  expect(askBounds && askBounds.y >= 0 && askBounds.y + askBounds.height <= viewportHeight).toBeTruthy();
+  await askDialog.getByRole('button', { name: 'Close' }).click();
   await page.getByRole('button', { name: 'Pause' }).click();
 
   await page.getByRole('button', { name: 'Resume setup' }).click();
