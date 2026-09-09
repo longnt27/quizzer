@@ -1,6 +1,21 @@
 import { test, expect } from '@playwright/test';
 import { dismissOnboarding, setInterfaceMode } from './helpers';
 
+test('opening Settings keeps scrolling inside the modal and app panes', async ({ page }) => {
+  await dismissOnboarding(page);
+
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+,' : 'Control+,');
+  await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
+
+  const viewportDoesNotScroll = await page.evaluate(() => {
+    const scrollingElement = document.scrollingElement;
+    if (!scrollingElement) return false;
+    return scrollingElement.scrollHeight === scrollingElement.clientHeight
+      && getComputedStyle(document.body).overflow === 'hidden';
+  });
+  expect(viewportDoesNotScroll).toBe(true);
+});
+
 test('Settings search/reset and keyboard accessibility', async ({ page }) => {
   await dismissOnboarding(page);
 

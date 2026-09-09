@@ -31,7 +31,7 @@
 }
 
 * { box-sizing: border-box; }
-html, body, #root { width: 100%; min-width: 320px; min-height: 100%; margin: 0; }
+html, body, #root { width: 100%; min-width: 320px; height: 100%; margin: 0; overflow: hidden; }
 body { background: var(--page); color: var(--text); }
 button, input, textarea, select { font: inherit; }
 
