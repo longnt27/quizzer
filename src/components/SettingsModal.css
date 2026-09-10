@@ -103,3 +103,7 @@
     display: none;
   }
 }
+
+.settings-modal .settings-content-pane {
+  border-radius: 12px;
+}
