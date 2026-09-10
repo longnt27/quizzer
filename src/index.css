@@ -168,7 +168,9 @@ button, input, textarea, select { font: inherit; }
   .onboarding-coach-highlight, .onboarding-coachmark { transition: none !important; animation: none !important; }
 }
 
-.document-view { padding: 32px; max-width: 1100px; margin: 0 auto; }
+.document-view { position: relative; width: 100%; min-height: 100%; }
+.document-back-button { position: absolute; top: 16px; left: 16px; z-index: 1; }
+.document-view-content { width: min(1100px, 100%); margin: 0 auto; padding: 64px 32px 32px; }
 .document-heading { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
 .document-heading h2 { margin: 0; }
 .document-tag-editor { display: grid; gap: 8px; margin-bottom: 20px; }
@@ -288,7 +290,7 @@ mark { color: #111827; }
 @media (max-width: 767px) {
   .app-shell { display: block; }
   .app-main { width: 100%; }
-  .document-view { padding: 16px; }
+  .document-view-content { padding: 56px 16px 16px; }
   .home-page { padding: 20px 14px 36px; }
   .home-heading, .home-card-heading { align-items: stretch; flex-direction: column; gap: 10px; }
   .settings-row { grid-template-columns: 1fr; gap: 12px; }
