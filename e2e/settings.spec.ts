@@ -38,7 +38,8 @@ test('Settings search and keyboard accessibility', async ({ page }) => {
   await accentTrigger.click();
   await expect(page.getByRole('listbox', { name: 'Accent colors' })).toBeVisible();
   await expect(page.getByRole('option', { name: 'Blue' })).toBeVisible();
-  await page.keyboard.press('Escape');
+  await accentTrigger.click();
+  await expect(page.getByRole('listbox', { name: 'Accent colors' })).toBeHidden();
 
   await dialog.getByRole('tab', { name: 'Retrieval' }).click();
   await expect(dialog.getByRole('spinbutton', { name: 'Context budget' })).toBeVisible();
