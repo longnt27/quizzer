@@ -69,24 +69,21 @@ const TestStart: React.FC<Props> = ({ test, draft, onStart, onResume, onOpenDocu
           </Button>}
         </div>
       </section>
-      <aside className="test-source-sidebar">
+      <aside className="test-source-sidebar" style={{ paddingRight: 20 }}>
         <Typography.Title level={5} className="test-source-title"><FileTextOutlined /> Source documents</Typography.Title>
         {documentIds.length ? <div className="test-source-list">
           {documentIds.map((documentId, index) => {
             const document = sourceDocuments?.[index];
-            const content = <>
-              <span className="test-source-copy">
-                <Typography.Text strong>{document?.name ?? (sourceDocuments ? 'Deleted document' : 'Loading source…')}</Typography.Text>
-                <span className="test-source-meta">
-                  {document?.pageCount && <Tag>{document.pageCount} pages</Tag>}
-                  {document?.tags.map(tag => <Tag key={tag}>{tag}</Tag>)}
-                  {!document && sourceDocuments && <Tag color="error">No longer in library</Tag>}
-                </span>
+            const content = <span className="test-source-copy">
+              <Typography.Text strong>{document?.name ?? (sourceDocuments ? 'Deleted document' : 'Loading source…')}</Typography.Text>
+              <span className="test-source-meta">
+                {document?.tags.map(tag => <Tag key={tag}>{tag}</Tag>)}
+                {!document && sourceDocuments && <Tag color="error">No longer in library</Tag>}
               </span>
-            </>;
+            </span>;
             return document
-              ? <button type="button" className="test-source-item" key={documentId} onClick={() => onOpenDocument(document.id)}>{content}</button>
-              : <div className="test-source-item is-unavailable" key={documentId}>{content}</div>;
+              ? <button type="button" className="test-source-item" style={{ border: '1px solid var(--border)' }} key={documentId} onClick={() => onOpenDocument(document.id)}>{content}</button>
+              : <div className="test-source-item is-unavailable" style={{ border: '1px solid var(--border)' }} key={documentId}>{content}</div>;
           })}
         </div> : <Alert type="info" showIcon message="Source information is unavailable"
           description="This test was created before Quizzer recorded document origins, or it was imported without source metadata." />}
