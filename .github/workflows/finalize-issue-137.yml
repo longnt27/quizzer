@@ -1,4 +1,4 @@
-name: Patch issue 137 v2
+name: Finalize issue 137 patch
 on:
   push:
     branches: ['fix/issue-137-proactive-updates']
@@ -12,28 +12,35 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: fix/issue-137-proactive-updates
+          fetch-depth: 2
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Apply and validate updater fix
+      - name: Apply updater patch
         shell: bash
         run: |
-          awk '
+          git show HEAD^:.github/workflows/patch-issue-137.yml | awk '
             /- name: Make desktop update checks proactive and show release notes/ { section=1; next }
             section && /run: \|/ { body=1; next }
             body && /^      - name: Commit fix/ { exit }
             body { sub(/^          /, ""); print }
-          ' .github/workflows/patch-issue-137.yml > /tmp/patch-issue-137.sh
+          ' | sed '/^npm run lint$/d; /^npm test -- --test-name-pattern=/d' > /tmp/patch-issue-137.sh
           test -s /tmp/patch-issue-137.sh
           bash /tmp/patch-issue-137.sh
-      - name: Commit fix
+      - name: Validate updater patch
         shell: bash
         run: |
-          rm .github/workflows/patch-issue-137.yml .github/workflows/patch-issue-137-v2.yml
+          npm run lint
+          node --test test/desktop-updater-manifest.test.mjs test/update-notifier-source.test.mjs
+          npm run build
+      - name: Commit updater fix
+        shell: bash
+        run: |
+          rm .github/workflows/finalize-issue-137.yml
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add desktop/updater.mjs src/types/updater.ts src/components/UpdateAvailableNotifier.tsx src/components/UpdaterStatus.tsx test/desktop-updater-manifest.test.mjs test/update-notifier-source.test.mjs .github/workflows/patch-issue-137.yml .github/workflows/patch-issue-137-v2.yml
+          git add desktop/updater.mjs src/types/updater.ts src/components/UpdateAvailableNotifier.tsx src/components/UpdaterStatus.tsx test/desktop-updater-manifest.test.mjs test/update-notifier-source.test.mjs .github/workflows/finalize-issue-137.yml
           git commit -m 'fix(updater): proactively surface new releases'
           git push origin HEAD:fix/issue-137-proactive-updates
