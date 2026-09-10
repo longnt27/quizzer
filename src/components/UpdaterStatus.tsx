@@ -269,6 +269,12 @@ export default function UpdaterStatusView() {
                   <br />
                   Signature verified: Ed25519 (Key ID: {status.updateInfo.publicKeyId})
                 </Typography.Text>
+                {status.updateInfo.releaseNotes && <details className="update-release-notes">
+                  <summary>What's new in this update</summary>
+                  <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', margin: '8px 0 0' }}>
+                    {status.updateInfo.releaseNotes}
+                  </Typography.Paragraph>
+                </details>}
                 <Button
                   type="primary"
                   size="small"

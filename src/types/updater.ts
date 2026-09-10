@@ -34,6 +34,7 @@ export interface UpdateInfo {
   version: string;
   channel: UpdateChannel;
   publishedAt: string;
+  releaseNotes?: string;
   publicKeyId: string;
   artifact: ReleaseArtifact;
 }

@@ -1,30 +1,49 @@
 import { useEffect } from 'react';
-import { App as AntdApp, Button, Space } from 'antd';
+import { App as AntdApp, Button, Space, Typography } from 'antd';
 import type { QuizzerDesktopUpdaterApi, UpdaterStatus } from '../types/updater';
 
-const UPDATE_CHECK_SESSION_KEY = 'quizzer.startupUpdateCheck.v2';
 const UPDATE_NOTIFICATION_KEY = 'quizzer-update-available';
+const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 
-let startupUpdateCheck: Promise<UpdaterStatus | null> | undefined;
+let updateCheck: Promise<UpdaterStatus | null> | undefined;
+let lastUpdateCheckAt = 0;
 
-const checkOncePerSession = (updater: QuizzerDesktopUpdaterApi) => {
-  if (startupUpdateCheck) return startupUpdateCheck;
-  try {
-    if (sessionStorage.getItem(UPDATE_CHECK_SESSION_KEY)) return Promise.resolve(null);
-    sessionStorage.setItem(UPDATE_CHECK_SESSION_KEY, 'started');
-  } catch { /* The in-memory promise still prevents duplicate checks in restricted storage contexts. */ }
+const performUpdateCheck = async (updater: QuizzerDesktopUpdaterApi): Promise<UpdaterStatus> => {
+  const current = await updater.getStatus();
+  if (current.state === 'downloaded' || current.state === 'downloading' || current.state === 'applying' || current.state === 'installer-handoff-pending') {
+    return current;
+  }
+  if (current.state === 'available') {
+    return current.autoDownload ? updater.downloadUpdate() : current;
+  }
 
-  startupUpdateCheck = (async () => {
-    const current = await updater.getStatus();
-    if (current.state === 'downloaded') return current;
-    const checked = current.state === 'available' ? current : await updater.checkForUpdates();
-    if (checked.state === 'available' && checked.autoDownload) {
-      return updater.downloadUpdate();
-    }
-    return checked;
-  })().catch(() => null);
-  return startupUpdateCheck;
+  const now = Date.now();
+  if (lastUpdateCheckAt && now - lastUpdateCheckAt < UPDATE_CHECK_INTERVAL_MS) return current;
+  lastUpdateCheckAt = now;
+  const checked = await updater.checkForUpdates();
+  if (checked.state === 'available' && checked.autoDownload) return updater.downloadUpdate();
+  return checked;
 };
+
+const checkForUpdates = (updater: QuizzerDesktopUpdaterApi) => {
+  if (updateCheck) return updateCheck;
+  updateCheck = performUpdateCheck(updater)
+    .catch(() => null)
+    .finally(() => { updateCheck = undefined; });
+  return updateCheck;
+};
+
+const UpdateDescription = ({ status, lead }: { status: UpdaterStatus; lead: string }) => (
+  <Space direction="vertical" size={4} style={{ maxWidth: 420 }}>
+    <Typography.Text type="secondary">{lead}</Typography.Text>
+    {status.updateInfo?.releaseNotes && <details className="update-release-notes">
+      <summary>What's new in this update</summary>
+      <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', margin: '8px 0 0' }}>
+        {status.updateInfo.releaseNotes}
+      </Typography.Paragraph>
+    </details>}
+  </Space>
+);
 
 interface Props {
   isTestActive: boolean;
@@ -51,7 +70,7 @@ export default function UpdateAvailableNotifier({ isTestActive, onOpenSettings }
         duration: 0,
         placement: 'bottomLeft',
         message: `Quizzer ${status.updateInfo.version} is ready to install`,
-        description: 'The signed update was downloaded and verified. Quizzer will restart after installation.',
+        description: <UpdateDescription status={status} lead="The signed update was downloaded and verified. Quizzer will restart after installation." />,
         actions: <Space>
           <Button size="small" onClick={onOpenSettings}>Settings</Button>
           <Button type="primary" size="small" onClick={() => {
@@ -71,32 +90,20 @@ export default function UpdateAvailableNotifier({ isTestActive, onOpenSettings }
       });
     };
 
-    void checkOncePerSession(updater).then(async cachedStatus => {
-      if (!active || !cachedStatus || isTestActive) return;
-      const status = cachedStatus.state === 'available'
-        ? await updater.getStatus().catch(() => cachedStatus)
-        : cachedStatus;
-      if (!active || isTestActive) return;
-      if (status.state === 'downloaded') {
-        showReadyToInstall(status);
-        return;
-      }
-      if (status.state !== 'available' || !status.updateInfo) return;
-
+    const showAvailable = (status: UpdaterStatus) => {
+      if (!status.updateInfo) return;
       notification.info({
         key: UPDATE_NOTIFICATION_KEY,
         role: 'status',
         duration: 0,
         placement: 'bottomLeft',
         message: `Quizzer ${status.updateInfo.version} is available`,
-        description: 'Automatic downloads are off. Download the signed update when you are ready.',
+        description: <UpdateDescription status={status} lead="Automatic downloads are off. Download the signed update when you are ready." />,
         actions: <Space>
           <Button size="small" onClick={onOpenSettings}>Settings</Button>
           <Button type="primary" size="small" onClick={() => {
             notification.destroy(UPDATE_NOTIFICATION_KEY);
-            const download = updater.downloadUpdate();
-            startupUpdateCheck = download.catch(() => null);
-            void download.then(downloaded => {
+            void updater.downloadUpdate().then(downloaded => {
               if (active && !isTestActive) showReadyToInstall(downloaded);
             }).catch(error => {
               if (!active) return;
@@ -111,9 +118,28 @@ export default function UpdateAvailableNotifier({ isTestActive, onOpenSettings }
           }}>Download update</Button>
         </Space>,
       });
-    });
+    };
 
-    return () => { active = false; };
+    const surfaceStatus = (status: UpdaterStatus | null) => {
+      if (!active || isTestActive || !status) return;
+      if (status.state === 'downloaded') showReadyToInstall(status);
+      else if (status.state === 'available') showAvailable(status);
+    };
+
+    const refresh = () => { void checkForUpdates(updater).then(surfaceStatus); };
+    const onVisibilityChange = () => { if (document.visibilityState === 'visible') refresh(); };
+
+    refresh();
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    const interval = window.setInterval(refresh, UPDATE_CHECK_INTERVAL_MS);
+
+    return () => {
+      active = false;
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.clearInterval(interval);
+    };
   }, [isTestActive, notification, onOpenSettings]);
 
   return null;

@@ -228,6 +228,9 @@ test('downloadUpdate streams through web ReadableStream getReader and updates pr
         if (url.endsWith('release-manifest.json')) {
           return { ok: true, text: async () => JSON.stringify(env.signed) };
         }
+        if (url.includes('/releases/tags/')) {
+          return { ok: true, text: async () => JSON.stringify({ tag_name: 'v1.2.0', draft: false, body: '' }) };
+        }
         return {
           ok: true,
           body: stream,
