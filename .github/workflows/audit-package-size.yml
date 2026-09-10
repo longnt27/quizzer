@@ -1,0 +1,43 @@
+name: Audit package size
+on:
+  push:
+    branches: ['fix/issue-129-package-size']
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build packaged Electron app
+        run: npm run package:desktop
+      - name: Inspect package payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          PACKAGE_DIR="$(find out -maxdepth 1 -type d -name 'Quizzer-linux-*' -print -quit)"
+          test -n "$PACKAGE_DIR"
+          echo '=== PACKAGE TOTAL ==='
+          du -sh "$PACKAGE_DIR"
+          echo '=== RESOURCES ==='
+          du -h -d 2 "$PACKAGE_DIR/resources" | sort -h | tail -n 50
+          ASAR="$PACKAGE_DIR/resources/app.asar"
+          rm -rf /tmp/quizzer-asar
+          node --input-type=module - "$ASAR" <<'NODE'
+          import { extractAll } from '@electron/asar';
+          const [, , asar] = process.argv;
+          extractAll(asar, '/tmp/quizzer-asar');
+          NODE
+          echo '=== ASAR TOTAL ==='
+          du -sh /tmp/quizzer-asar
+          echo '=== TOP-LEVEL ASAR ==='
+          du -h -d 1 /tmp/quizzer-asar | sort -h
+          echo '=== PACKAGED NODE_MODULES TOP LEVEL ==='
+          du -h -d 1 /tmp/quizzer-asar/node_modules | sort -h | tail -n 80
+          echo '=== UNPACKED NATIVE PAYLOAD ==='
+          if [ -d "$PACKAGE_DIR/resources/app.asar.unpacked" ]; then
+            du -h -d 3 "$PACKAGE_DIR/resources/app.asar.unpacked" | sort -h | tail -n 80
+          fi
