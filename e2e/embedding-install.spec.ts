@@ -19,7 +19,7 @@ test('confirmed bge-m3 download selects the model before starting installation',
   await page.route('**/api/v1/settings', async route => {
     if (route.request().method() !== 'PATCH') return route.continue();
     const body = route.request().postDataJSON() as { values?: Record<string, unknown> };
-    requests.push(`settings:${body.values?.['embeddings.model']}`);
+    if (body.values?.['embeddings.model'] !== undefined) requests.push(`settings:${body.values['embeddings.model']}`);
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ values: body.values ?? {} }) });
   });
   await page.route('**/api/integrations/embeddings/install', async route => {
