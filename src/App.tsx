@@ -7,6 +7,7 @@ import AddTestModal from './components/AddTestModal';
 import AddDocumentModal from './components/AddDocumentModal';
 import DocumentView from './components/DocumentView';
 import PluginsModal from './components/PluginsModal';
+import PluginInstallCancellation from './components/PluginInstallCancellation';
 import SettingsModal from './components/SettingsModal';
 import CommandPalette, { type PaletteCommand } from './components/CommandPalette';
 import GenerationWorker from './components/GenerationWorker';
@@ -135,6 +136,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
 
   return <>
     <GenerationWorker />
+    <PluginInstallCancellation />
     <UpdateAvailableNotifier
       isTestActive={session?.mode === 'taking'}
       onOpenSettings={openUpdateSettings}
