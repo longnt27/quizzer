@@ -32,6 +32,7 @@ test('confirmed bge-m3 download selects the model before starting installation',
   await page.getByRole('button', { name: 'Configure AI' }).click();
   const dialog = page.getByRole('dialog', { name: 'Plugins & models' });
   await dialog.getByRole('tab', { name: 'Embeddings' }).click();
+  await expect(dialog.getByText('Ollama embeddings · bge-m3', { exact: true })).toBeVisible();
   await dialog.getByRole('button', { name: 'Install' }).first().click();
   const confirmation = page.getByRole('dialog', { name: /Download bge-m3 for dense retrieval/ });
   await expect(confirmation).toBeVisible();
