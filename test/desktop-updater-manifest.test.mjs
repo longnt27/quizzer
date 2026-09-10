@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import test from 'node:test';
-import { DesktopUpdater, normalizePublicKey, validateCanonicalReleaseUrl } from '../desktop/updater.mjs';
+import { DesktopUpdater, MAX_RELEASE_NOTES_CHARS, normalizePublicKey, normalizeReleaseNotes, validateCanonicalReleaseUrl } from '../desktop/updater.mjs';
 import { buildReleaseManifest, canonicalizeManifest, privateKeyFromBase64, signReleaseManifest } from '../release/manifest.mjs';
 
 const createSignedManifest = async ({
@@ -224,7 +224,7 @@ test('beta channel discovers prereleases through GitHub Releases API and validat
           text: async () => JSON.stringify([
             { tag_name: 'v1.1.0', prerelease: false, draft: false },
             { tag_name: 'v1.2.0-beta.1', prerelease: true, draft: false },
-            { tag_name: 'v1.2.0-beta.2', prerelease: true, draft: false },
+            { tag_name: 'v1.2.0-beta.2', prerelease: true, draft: false, body: '## What is new\n- Proactive update checks' },
             { tag_name: 'v1.3.0-draft', prerelease: true, draft: true },
           ]),
         };
@@ -242,6 +242,13 @@ test('beta channel discovers prereleases through GitHub Releases API and validat
   assert.ok(manifestUrlFetched.includes('v1.2.0-beta.2'));
   assert.equal(status.state, 'available');
   assert.equal(status.updateInfo.version, '1.2.0-beta.2');
+  assert.match(status.updateInfo.releaseNotes, /Proactive update checks/);
+});
+
+test('release notes are normalized and strictly bounded for display', () => {
+  assert.equal(normalizeReleaseNotes('  First\r\nSecond  '), 'First\nSecond');
+  assert.equal(normalizeReleaseNotes('x'.repeat(MAX_RELEASE_NOTES_CHARS + 50)).length, MAX_RELEASE_NOTES_CHARS);
+  assert.equal(normalizeReleaseNotes(null), '');
 });
 
 test('beta channel rejects releases with malformed or malicious tag syntax', async () => {
