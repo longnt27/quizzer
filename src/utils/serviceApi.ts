@@ -37,12 +37,47 @@ export const serviceAuthorizationHeader = () => {
   return authorizationHeaderForToken(import.meta.env.VITE_QUIZZER_API_TOKEN);
 };
 
-export const serviceFetch = (path: string, init: RequestInit = {}) => {
+let integrationActionTrigger: HTMLButtonElement | null = null;
+
+const isIntegrationMutation = (path: string, init: RequestInit) => {
+  const method = (init.method ?? 'GET').toUpperCase();
+  return method === 'POST' && /^\/api\/(?:v1\/)?integrations\/.+\/(?:install|connect|pull)$/.test(path);
+};
+
+const guardIntegrationTrigger = () => {
+  if (typeof document === 'undefined') return;
+  const active = document.activeElement;
+  if (!(active instanceof HTMLButtonElement)) return;
+  if (integrationActionTrigger && integrationActionTrigger !== active) releaseIntegrationTrigger();
+  integrationActionTrigger = active;
+  active.disabled = true;
+  active.setAttribute('aria-busy', 'true');
+};
+
+const releaseIntegrationTrigger = () => {
+  if (!integrationActionTrigger) return;
+  if (integrationActionTrigger.isConnected) {
+    integrationActionTrigger.disabled = false;
+    integrationActionTrigger.removeAttribute('aria-busy');
+  }
+  integrationActionTrigger = null;
+};
+
+export const serviceFetch = async (path: string, init: RequestInit = {}) => {
   if (!path.startsWith('/api/')) throw new Error('Service API paths must start with /api/');
   const headers = new Headers(init.headers);
   const authorization = serviceAuthorizationHeader();
   if (authorization && !headers.has('Authorization')) headers.set('Authorization', authorization);
-  return fetch(path, { ...init, headers });
+  const guardedMutation = isIntegrationMutation(path, init);
+  if (guardedMutation) guardIntegrationTrigger();
+  try {
+    const response = await fetch(path, { ...init, headers });
+    if (path === '/api/integrations' || (guardedMutation && !response.ok)) releaseIntegrationTrigger();
+    return response;
+  } catch (error) {
+    if (guardedMutation || path === '/api/integrations') releaseIntegrationTrigger();
+    throw error;
+  }
 };
 
 export const serviceRequest = async <Response>(path: string, init: RequestInit = {}): Promise<Response> => {

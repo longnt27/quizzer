@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Alert, Button, Divider, Empty, Input, InputNumber, Modal, Space, Spin, Switch, Tabs, Tag, Typography } from 'antd';
+import { Alert, Button, Divider, Empty, Input, InputNumber, Modal, Space, Switch, Tabs, Tag, Typography } from 'antd';
 import { formatErrorMessage } from '../utils/errorFormatting';
 import { ErrorDisplay } from './ErrorDisplay';
 import {
-  ApiOutlined, CloudDownloadOutlined, DeleteOutlined, FileSearchOutlined, FolderOpenOutlined,
-  LoginOutlined, ReloadOutlined, RobotOutlined, RollbackOutlined, ScanOutlined, SettingOutlined,
-  ShareAltOutlined,
+  ApiOutlined, CloudDownloadOutlined, DeleteOutlined, FileSearchOutlined, LoginOutlined, ReloadOutlined,
+  RobotOutlined, RollbackOutlined, ScanOutlined, SettingOutlined, ShareAltOutlined,
 } from '@ant-design/icons';
 import type { GenerationProvider, InterfaceMode } from '../types';
 import {
@@ -16,6 +15,7 @@ import {
 import { getMessageApi } from '../utils/messageProvider';
 import { getModalApi } from '../utils/modalProvider';
 import { executeTwoPhaseAction, serviceFetch, serviceJson, serviceRequest } from '../utils/serviceApi';
+import { IntegrationStatusGate, PluginGlyph, PluginJobDetails } from './pluginOptionPresentation';
 
 type JobState = 'idle' | 'working' | 'complete' | 'error';
 type AgentStatus = { installed: boolean; connected: boolean; job?: { state: JobState; message: string } };
@@ -129,10 +129,11 @@ interface IntegrationOptionProps {
 function IntegrationOption({
   icon, title, description, state, checked, switchLabel, switchDisabled, showSwitch = true, onToggle, actions, details, warning,
 }: IntegrationOptionProps) {
+  const working = /installing|working/i.test(state);
   return (
     <section className={`plugin-option${warning ? ' plugin-option-warning' : ''}`}>
       <div className="plugin-option-main">
-        <span className="plugin-option-icon" aria-hidden="true">{icon}</span>
+        <span className="plugin-option-icon" aria-hidden="true"><PluginGlyph title={title} fallback={icon} /></span>
         <div className="plugin-option-copy">
           <Typography.Text strong>{title}</Typography.Text>
           <Typography.Text type="secondary">{description}</Typography.Text>
@@ -143,7 +144,7 @@ function IntegrationOption({
           {onToggle && showSwitch ? <Switch checked={checked} disabled={switchDisabled} onChange={onToggle} aria-label={switchLabel ?? `Enable ${title}`} /> : null}
         </Space>
       </div>
-      {details ? <div className="plugin-option-details">{details}</div> : null}
+      {details ? <div className="plugin-option-details"><PluginJobDetails working={working}>{details}</PluginJobDetails></div> : null}
     </section>
   );
 }
@@ -369,22 +370,6 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
         await refresh();
       },
     });
-  };
-
-  const installExternalPlugin = async () => {
-    if (!window.quizzerDesktop) return;
-    const path = await window.quizzerDesktop.selectPluginDirectory();
-    if (!path) return;
-    setPluginAction('install');
-    try {
-      const result = await serviceJson<{ plugin: ExternalPlugin }>('/api/v1/plugins/install', 'POST', { path });
-      message.success(`${result.plugin.name ?? result.plugin.id} installed`);
-      await refreshExternal();
-    } catch (error) {
-      message.error(formatErrorMessage(error, 'plugin'));
-    } finally {
-      setPluginAction('');
-    }
   };
 
   const runExternalAction = async (plugin: ExternalPlugin, action: 'enable' | 'disable' | 'health' | 'rollback') => {
@@ -849,29 +834,21 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
 
   return (
     <>
-      <Modal open title={<Space><ApiOutlined /> Plugins & models</Space>} width={940} onCancel={onClose} onOk={() => void save()}
+      <Modal open title={<Space><ApiOutlined /> Plugins & models <Button type="text" size="small" icon={<ReloadOutlined />}
+        loading={externalLoading} aria-label="Detect plugins and models again"
+        onClick={() => { void refresh(); void refreshExternal(); }} /></Space>} width={940} onCancel={onClose} onOk={() => void save()}
         confirmLoading={saving} okButtonProps={{ disabled: !credentialReady }} okText="Save settings">
-        <div className="plugin-modal-intro">
-          <Typography.Text type="secondary">Choose a capability, then enable a detected option or install one. Configuration stays behind each option’s Settings button.</Typography.Text>
-          <Space wrap>
-            <Button size="small" icon={<FolderOpenOutlined />} loading={pluginAction === 'install'}
-              disabled={interfaceMode !== 'advanced' || !window.quizzerDesktop || Boolean(pluginAction)}
-              onClick={() => void installExternalPlugin()}>Install local plugin</Button>
-            <Button size="small" icon={<ReloadOutlined />} loading={externalLoading}
-              onClick={() => { void refresh(); void refreshExternal(); }}>Detect again</Button>
-          </Space>
-        </div>
         {interfaceMode !== 'advanced' ? <Typography.Text type="secondary">Advanced mode is required to install third-party plugins.</Typography.Text> : null}
         {statusError ? <Space direction="vertical"><ErrorDisplay error={statusError} context="plugin" /><Button size="small" onClick={() => void refresh()}>Retry detection</Button></Space> : null}
         {externalError ? <Space direction="vertical"><ErrorDisplay error={externalError} context="plugin" /><Button size="small" onClick={() => void refreshExternal()}>Retry plugins</Button></Space> : null}
-        {!status && !statusError ? <div className="plugin-loading"><Spin /></div> : (
+        <IntegrationStatusGate loading={!status && !statusError}>
           <Tabs defaultActiveKey="document-extraction" items={[
             { key: 'document-extraction', label: 'Document extraction', children: documentTab },
             { key: 'image-ocr', label: 'Image OCR', children: ocrTab },
             { key: 'embeddings', label: 'Embeddings', children: embeddingsTab },
             { key: 'models', label: 'Models', children: modelsTab },
           ]} />
-        )}
+        </IntegrationStatusGate>
       </Modal>
 
       <Modal open={Boolean(modelSettingsProvider)}
