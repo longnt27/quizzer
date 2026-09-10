@@ -13,7 +13,7 @@ test('opening Settings keeps scrolling inside the modal and app panes', async ({
   expect(viewportDoesNotScroll).toBe(true);
 });
 
-test('Settings search and keyboard accessibility', async ({ page }) => {
+test('Settings changes persist immediately without a Save action', async ({ page }) => {
   await dismissOnboarding(page);
   await setInterfaceMode(page, 'advanced');
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+,' : 'Control+,');
@@ -54,9 +54,18 @@ test('Settings search and keyboard accessibility', async ({ page }) => {
   const concurrencyRow = dialog.locator('.settings-row').filter({ hasText: 'Generation concurrency' });
   await expect(concurrencyRow).toBeFocused();
   const concurrency = dialog.getByRole('spinbutton', { name: 'Generation concurrency' });
-  const selectedProfileConcurrency = await concurrency.inputValue();
+  const persistedConcurrency = page.waitForResponse(response => {
+    if (new URL(response.url()).pathname !== '/api/v1/settings' || response.request().method() !== 'PATCH') return false;
+    try {
+      const body = response.request().postDataJSON() as { values?: Record<string, unknown> };
+      return body.values?.['generation.concurrency'] === 7;
+    } catch {
+      return false;
+    }
+  });
   await concurrency.fill('7');
-  await expect(dialog.getByRole('button', { name: 'Save changes' })).toBeEnabled();
+  await persistedConcurrency;
+  await expect(dialog.getByRole('button', { name: 'Save changes' })).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: /Reset / })).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'Built-in defaults' })).toHaveCount(0);
   await dialog.getByRole('button', { name: 'Cancel' }).click();
@@ -65,7 +74,7 @@ test('Settings search and keyboard accessibility', async ({ page }) => {
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+,' : 'Control+,');
   await dialog.getByLabel('Search settings').fill('Generation concurrency');
   await dialog.locator('.settings-search-result').filter({ hasText: 'Generation concurrency' }).click();
-  await expect(dialog.getByRole('spinbutton', { name: 'Generation concurrency' })).toHaveValue(selectedProfileConcurrency);
+  await expect(dialog.getByRole('spinbutton', { name: 'Generation concurrency' })).toHaveValue('7');
 });
 
 test('sidebar stays focused while command shortcuts are configurable and persistent', async ({ page }) => {
