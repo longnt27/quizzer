@@ -117,7 +117,7 @@ export const serviceJson = async <Response>(
   // The embedding installer deliberately rejects a model that differs from the
   // current resolved setting. Make a confirmed download authoritative by
   // selecting that model first, so a cached Plugins & Models snapshot cannot
-  // turn a valid bge-m3 click into a silent stale-model rejection.
+  // turn a valid bge-m3 click into a stale-model rejection.
   if (path === '/api/integrations/embeddings/install' && method === 'POST' && body && typeof body === 'object') {
     const model = (body as { model?: unknown }).model;
     const confirmed = (body as { confirmed?: unknown }).confirmed;
@@ -138,6 +138,9 @@ export const serviceJson = async <Response>(
   };
   if (path.startsWith('/api/v1/')) return serviceRequest<Response>(path, requestInit);
 
+  // Some built-in integration endpoints predate /api/v1. Keep serviceRequest's
+  // stricter v1-only contract while still sending these authenticated JSON
+  // mutations through serviceFetch and the same structured response parser.
   const headers = new Headers(requestInit.headers);
   if (requestInit.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   const response = await serviceFetch(path, { ...requestInit, headers });
