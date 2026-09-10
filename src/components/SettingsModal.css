@@ -107,3 +107,13 @@
 .settings-modal .settings-content-pane {
   border-radius: 12px;
 }
+
+.ant-modal-wrap:has(.settings-modal) {
+  display: flex;
+  align-items: center;
+}
+
+.settings-modal {
+  top: 0;
+  padding-bottom: 0;
+}

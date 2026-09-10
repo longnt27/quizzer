@@ -16,6 +16,7 @@ import { getMessageApi } from '../utils/messageProvider';
 import { getModalApi } from '../utils/modalProvider';
 import { executeTwoPhaseAction, serviceFetch, serviceJson, serviceRequest } from '../utils/serviceApi';
 import { IntegrationStatusGate, PluginGlyph, PluginJobDetails } from './pluginOptionPresentation';
+import './PluginsModal.css';
 
 type JobState = 'idle' | 'working' | 'complete' | 'error';
 type AgentStatus = { installed: boolean; connected: boolean; job?: { state: JobState; message: string } };
@@ -834,7 +835,7 @@ export default function PluginsModal({ open, interfaceMode, onClose }: Props) {
 
   return (
     <>
-      <Modal open={open} title={<Space><ApiOutlined /> Plugins & models <Button type="text" size="small" icon={<ReloadOutlined />}
+      <Modal open={open} centered className="plugins-modal" title={<Space><ApiOutlined /> Plugins & models <Button type="text" size="small" icon={<ReloadOutlined />}
         loading={externalLoading} aria-label="Detect plugins and models again"
         onClick={() => { void refresh(); void refreshExternal(); }} /></Space>} width={940} onCancel={onClose} onOk={() => void save()}
         confirmLoading={saving} okButtonProps={{ disabled: !credentialReady }} okText="Save settings">
