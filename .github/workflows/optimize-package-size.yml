@@ -1,0 +1,86 @@
+name: Optimize package size
+on:
+  push:
+    branches: ['fix/issue-129-package-size']
+permissions:
+  contents: write
+jobs:
+  optimize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/issue-129-package-size
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Keep renderer dependencies out of the packaged Node runtime
+        shell: bash
+        run: |
+          npm install --save-dev @codemirror/lang-json@^6.0.2 @uiw/react-codemirror@^4.23.13 antd@^5.26.2 dexie@^4.0.11 dexie-react-hooks@^1.1.7 react@^19.1.0 react-dom@^19.1.0 react-markdown@^10.1.0 remark-gfm@^4.0.1 uuid@^14.0.2
+          npm uninstall @google/generative-ai
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('forge.config.mjs')
+          text = path.read_text()
+          anchor = "      /^\\/test($|\\/)/,\n"
+          addition = """      /^\\/e2e($|\\/)/,\n      /^\\/electron-e2e($|\\/)/,\n      /^\\/installers($|\\/)/,\n      /^\\/\\.github($|\\/)/,\n      /^\\/node_modules\\/@lancedb\\/lancedb-linux-(?:x64|arm64)-musl($|\\/)/,\n      /^\\/node_modules\\/@napi-rs\\/canvas-linux-(?:x64|arm64)-musl($|\\/)/,\n"""
+          if anchor not in text:
+              raise SystemExit('forge ignore anchor not found')
+          path.write_text(text.replace(anchor, anchor + addition, 1))
+          PY
+          cat > test/package-size-config.test.mjs <<'EOF'
+          import assert from 'node:assert/strict';
+          import { readFile } from 'node:fs/promises';
+          import test from 'node:test';
+          import forgeConfig from '../forge.config.mjs';
+
+          const browserOnly = [
+            '@codemirror/lang-json', '@uiw/react-codemirror', 'antd', 'dexie', 'dexie-react-hooks',
+            'react', 'react-dom', 'react-markdown', 'remark-gfm', 'uuid',
+          ];
+
+          test('renderer libraries stay build-time only for desktop packaging', async () => {
+            const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+            for (const name of browserOnly) {
+              assert.equal(pkg.dependencies?.[name], undefined, `${name} must not ship as a production Node dependency`);
+              assert.ok(pkg.devDependencies?.[name], `${name} must remain available to Vite at build time`);
+            }
+            assert.equal(pkg.dependencies?.['@google/generative-ai'], undefined, 'unused Google SDK must not be packaged');
+          });
+
+          test('glibc desktop packages exclude duplicate musl native payloads', () => {
+            const ignored = path => forgeConfig.packagerConfig.ignore.some(pattern => pattern.test(path));
+            assert.equal(ignored('/node_modules/@lancedb/lancedb-linux-x64-musl/index.node'), true);
+            assert.equal(ignored('/node_modules/@napi-rs/canvas-linux-x64-musl/skia.linux-x64-musl.node'), true);
+            assert.equal(ignored('/node_modules/@lancedb/lancedb-linux-x64-gnu/index.node'), false);
+          });
+          EOF
+          npm run lint
+          npm test -- --test-name-pattern='renderer libraries|musl native payloads'
+      - name: Build and enforce a meaningful size reduction
+        shell: bash
+        run: |
+          npm run package:desktop
+          PACKAGE_DIR="$(find out -maxdepth 1 -type d -name 'Quizzer-linux-*' -print -quit)"
+          test -n "$PACKAGE_DIR"
+          BYTES="$(du -sb "$PACKAGE_DIR" | cut -f1)"
+          MIB=$((BYTES / 1024 / 1024))
+          echo "Optimized unpacked Linux package: ${MIB} MiB"
+          du -sh "$PACKAGE_DIR/resources" "$PACKAGE_DIR/resources/app.asar" "$PACKAGE_DIR/resources/app.asar.unpacked" || true
+          if [ "$BYTES" -ge $((560 * 1024 * 1024)) ]; then
+            echo "Package is still too large: ${MIB} MiB" >&2
+            exit 1
+          fi
+      - name: Commit optimization
+        shell: bash
+        run: |
+          rm .github/workflows/audit-package-size.yml .github/workflows/optimize-package-size.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add package.json package-lock.json forge.config.mjs test/package-size-config.test.mjs .github/workflows/audit-package-size.yml .github/workflows/optimize-package-size.yml
+          git commit -m 'fix(packaging): reduce desktop app payload'
+          git push origin HEAD:fix/issue-129-package-size
