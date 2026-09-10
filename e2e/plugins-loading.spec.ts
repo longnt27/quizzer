@@ -50,6 +50,7 @@ test('Plugins & models preloads once and only re-detects on manual refresh', asy
   await page.getByRole('button', { name: 'Configure AI' }).click();
   const dialog = page.getByRole('dialog', { name: 'Plugins & models' });
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Save settings' })).toHaveCount(0);
   await dialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(dialog).toBeHidden();
 

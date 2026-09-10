@@ -3,6 +3,7 @@ import { Button, Space, Typography } from 'antd';
 import { StopOutlined } from '@ant-design/icons';
 import { createPortal } from 'react-dom';
 import { cancelActivePluginInstall, isPluginInstallActive, subscribePluginInstallState } from '../utils/serviceApi';
+import ImmediateSettingsPersistence from './ImmediateSettingsPersistence';
 
 interface PendingInstall {
   button: HTMLButtonElement;
@@ -77,6 +78,7 @@ export default function PluginInstallCancellation() {
 
   return (
     <>
+      <ImmediateSettingsPersistence />
       {pending ? createPortal(
         <div role="dialog" aria-label={`Confirm installation of ${pending.name}`} style={{
           position: 'fixed', left: pending.left, top: pending.top, width: 320, zIndex: 2200,
