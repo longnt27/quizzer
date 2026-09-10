@@ -54,7 +54,7 @@ export default function CommandPalette({ open, commands, onClose }: Props) {
             <span className="command-palette-icon" aria-hidden="true">{command.icon}</span>
             <span>
               <Typography.Text strong>{command.label}</Typography.Text>
-              <Typography.Text style={{ color: 'var(--text-muted)' }}>{command.description}</Typography.Text>
+              <Typography.Text style={{ color: 'var(--text)' }}>{command.description}</Typography.Text>
             </span>
             {command.shortcut && <Tag>{command.shortcut}</Tag>}
           </button>

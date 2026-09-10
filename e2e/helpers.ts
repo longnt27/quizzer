@@ -19,11 +19,20 @@ export async function setInterfaceMode(page: Page, mode: 'simple' | 'advanced') 
   const target = mode === 'advanced' ? 'Advanced' : 'Simple';
   const targetOption = row.getByRole('radio', { name: target });
   if (!await targetOption.isChecked()) {
+    const persisted = page.waitForResponse(response => {
+      if (new URL(response.url()).pathname !== '/api/v1/settings' || response.request().method() !== 'PATCH') return false;
+      try {
+        const body = response.request().postDataJSON() as { values?: Record<string, unknown> };
+        return body.values?.['interface.mode'] === mode;
+      } catch {
+        return false;
+      }
+    });
     await row.getByText(target, { exact: true }).click();
-    await dialog.getByRole('button', { name: 'Save changes' }).click();
-  } else {
-    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(targetOption).toBeChecked();
+    await persisted;
   }
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(dialog).toBeHidden();
 }
 

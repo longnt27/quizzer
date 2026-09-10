@@ -109,7 +109,7 @@ interface HealthResult {
   peakRssBytes?: number;
 }
 
-interface Props { interfaceMode: InterfaceMode; onClose: () => void; }
+interface Props { open: boolean; interfaceMode: InterfaceMode; onClose: () => void; }
 
 interface IntegrationOptionProps {
   icon: ReactNode;
@@ -151,7 +151,7 @@ function IntegrationOption({
 
 const providerName = (label: string) => label.replace(' – ', ' ');
 
-export default function PluginsModal({ interfaceMode, onClose }: Props) {
+export default function PluginsModal({ open, interfaceMode, onClose }: Props) {
   const [initial] = useState(() => {
     migrateLegacyGeminiKey();
     return getProviderSettings();
@@ -834,7 +834,7 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
 
   return (
     <>
-      <Modal open title={<Space><ApiOutlined /> Plugins & models <Button type="text" size="small" icon={<ReloadOutlined />}
+      <Modal open={open} title={<Space><ApiOutlined /> Plugins & models <Button type="text" size="small" icon={<ReloadOutlined />}
         loading={externalLoading} aria-label="Detect plugins and models again"
         onClick={() => { void refresh(); void refreshExternal(); }} /></Space>} width={940} onCancel={onClose} onOk={() => void save()}
         confirmLoading={saving} okButtonProps={{ disabled: !credentialReady }} okText="Save settings">
@@ -851,13 +851,13 @@ export default function PluginsModal({ interfaceMode, onClose }: Props) {
         </IntegrationStatusGate>
       </Modal>
 
-      <Modal open={Boolean(modelSettingsProvider)}
+      <Modal open={open && Boolean(modelSettingsProvider)}
         title={modelSettingsProvider ? `${providerName(modelSettingsProvider.label)} settings` : 'Model settings'}
         onCancel={() => setModelSettingsTarget(null)} footer={<Button type="primary" onClick={() => setModelSettingsTarget(null)}>Done</Button>}>
         {providerSettings}
       </Modal>
 
-      <Modal open={Boolean(managedPlugin)} title={managedPlugin ? `Manage ${managedPlugin.name ?? managedPlugin.id}` : 'Manage plugin'}
+      <Modal open={open && Boolean(managedPlugin)} title={managedPlugin ? `Manage ${managedPlugin.name ?? managedPlugin.id}` : 'Manage plugin'}
         width={680} onCancel={() => setManagedPluginId(null)} footer={<Button onClick={() => setManagedPluginId(null)}>Close</Button>}>
         {managedPlugin ? (
           <Space direction="vertical" size="middle" style={{ width: '100%' }}>

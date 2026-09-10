@@ -38,10 +38,34 @@ export const serviceAuthorizationHeader = () => {
 };
 
 let integrationActionTrigger: HTMLButtonElement | null = null;
+let activePluginInstall: AbortController | null = null;
+const pluginInstallListeners = new Set<() => void>();
+
+const emitPluginInstallState = () => {
+  for (const listener of pluginInstallListeners) listener();
+};
+
+export const subscribePluginInstallState = (listener: () => void) => {
+  pluginInstallListeners.add(listener);
+  return () => pluginInstallListeners.delete(listener);
+};
+
+export const isPluginInstallActive = () => activePluginInstall !== null;
+
+export const cancelActivePluginInstall = () => {
+  if (!activePluginInstall) return false;
+  activePluginInstall.abort(new DOMException('Plugin installation cancelled', 'AbortError'));
+  return true;
+};
 
 const isIntegrationMutation = (path: string, init: RequestInit) => {
   const method = (init.method ?? 'GET').toUpperCase();
   return method === 'POST' && /^\/api\/(?:v1\/)?integrations\/.+\/(?:install|connect|pull)$/.test(path);
+};
+
+const isRegistryPluginInstall = (path: string, init: RequestInit) => {
+  const method = (init.method ?? 'GET').toUpperCase();
+  return method === 'POST' && path === '/api/v1/plugins/install';
 };
 
 const guardIntegrationTrigger = () => {
@@ -69,23 +93,39 @@ export const serviceFetch = async (path: string, init: RequestInit = {}) => {
   const authorization = serviceAuthorizationHeader();
   if (authorization && !headers.has('Authorization')) headers.set('Authorization', authorization);
   const guardedMutation = isIntegrationMutation(path, init);
+  const registryInstall = isRegistryPluginInstall(path, init);
   if (guardedMutation) guardIntegrationTrigger();
+
+  let installController: AbortController | undefined;
+  let forwardedAbort: (() => void) | undefined;
+  if (registryInstall) {
+    installController = new AbortController();
+    if (init.signal) {
+      forwardedAbort = () => installController?.abort(init.signal?.reason);
+      if (init.signal.aborted) forwardedAbort();
+      else init.signal.addEventListener('abort', forwardedAbort, { once: true });
+    }
+    activePluginInstall = installController;
+    emitPluginInstallState();
+  }
+
   try {
-    const response = await fetch(path, { ...init, headers });
+    const response = await fetch(path, { ...init, headers, ...(installController ? { signal: installController.signal } : {}) });
     if (path === '/api/integrations' || (guardedMutation && !response.ok)) releaseIntegrationTrigger();
     return response;
   } catch (error) {
     if (guardedMutation || path === '/api/integrations') releaseIntegrationTrigger();
     throw error;
+  } finally {
+    if (forwardedAbort && init.signal) init.signal.removeEventListener('abort', forwardedAbort);
+    if (installController && activePluginInstall === installController) {
+      activePluginInstall = null;
+      emitPluginInstallState();
+    }
   }
 };
 
-export const serviceRequest = async <Response>(path: string, init: RequestInit = {}): Promise<Response> => {
-  if (!path.startsWith('/api/v1/')) throw new Error('Service API paths must start with /api/v1/');
-  const headers = new Headers(init.headers);
-  if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
-
-  const response = await serviceFetch(path, { ...init, headers });
+const parseServiceResponse = async <Response>(response: globalThis.Response): Promise<Response> => {
   const contentType = response.headers.get('content-type') ?? '';
   const payload = contentType.includes('application/json')
     ? await response.json() as Response & ServiceErrorPayload
@@ -104,16 +144,50 @@ export const serviceRequest = async <Response>(path: string, init: RequestInit =
   return payload;
 };
 
-export const serviceJson = <Response>(
+export const serviceRequest = async <Response>(path: string, init: RequestInit = {}): Promise<Response> => {
+  if (!path.startsWith('/api/v1/')) throw new Error('Service API paths must start with /api/v1/');
+  const headers = new Headers(init.headers);
+  if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+
+  const response = await serviceFetch(path, { ...init, headers });
+  return parseServiceResponse<Response>(response);
+};
+
+export const serviceJson = async <Response>(
   path: string,
   method: 'POST' | 'PATCH' | 'PUT' | 'DELETE',
   body?: unknown,
   init: Omit<RequestInit, 'body' | 'method'> = {},
-) => serviceRequest<Response>(path, {
-  ...init,
-  method,
-  ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-});
+): Promise<Response> => {
+  // The embedding installer deliberately rejects a model that differs from the
+  // current resolved setting. Make a confirmed download authoritative by
+  // selecting that model first, so a cached Plugins & Models snapshot cannot
+  // turn a valid bge-m3 click into a silent stale-model rejection.
+  if (path === '/api/integrations/embeddings/install' && method === 'POST' && body && typeof body === 'object') {
+    const model = (body as { model?: unknown }).model;
+    const confirmed = (body as { confirmed?: unknown }).confirmed;
+    if (confirmed === true && typeof model === 'string' && model.trim()) {
+      await serviceRequest('/api/v1/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: { 'embeddings.model': model.trim() } }),
+      });
+      window.dispatchEvent(new Event('quizzer:settings-changed'));
+    }
+  }
+
+  const requestInit: RequestInit = {
+    ...init,
+    method,
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  };
+  if (path.startsWith('/api/v1/')) return serviceRequest<Response>(path, requestInit);
+
+  const headers = new Headers(requestInit.headers);
+  if (requestInit.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  const response = await serviceFetch(path, { ...requestInit, headers });
+  return parseServiceResponse<Response>(response);
+};
 
 export interface TwoPhaseActionOptions {
   onConfirmationRequired: (reasons: string[], details?: Record<string, unknown>) => Promise<boolean>;
