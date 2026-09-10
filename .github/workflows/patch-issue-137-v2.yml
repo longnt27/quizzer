@@ -1,0 +1,39 @@
+name: Patch issue 137 v2
+on:
+  push:
+    branches: ['fix/issue-137-proactive-updates']
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/issue-137-proactive-updates
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply and validate updater fix
+        shell: bash
+        run: |
+          awk '
+            /- name: Make desktop update checks proactive and show release notes/ { section=1; next }
+            section && /run: \|/ { body=1; next }
+            body && /^      - name: Commit fix/ { exit }
+            body { sub(/^          /, ""); print }
+          ' .github/workflows/patch-issue-137.yml > /tmp/patch-issue-137.sh
+          test -s /tmp/patch-issue-137.sh
+          bash /tmp/patch-issue-137.sh
+      - name: Commit fix
+        shell: bash
+        run: |
+          rm .github/workflows/patch-issue-137.yml .github/workflows/patch-issue-137-v2.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add desktop/updater.mjs src/types/updater.ts src/components/UpdateAvailableNotifier.tsx src/components/UpdaterStatus.tsx test/desktop-updater-manifest.test.mjs test/update-notifier-source.test.mjs .github/workflows/patch-issue-137.yml .github/workflows/patch-issue-137-v2.yml
+          git commit -m 'fix(updater): proactively surface new releases'
+          git push origin HEAD:fix/issue-137-proactive-updates
