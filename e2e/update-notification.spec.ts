@@ -14,6 +14,7 @@ const installUpdaterStub = async (
       version: '1.0.0-beta.6',
       channel: 'beta',
       publishedAt: '2026-09-08T00:00:00.000Z',
+      releaseNotes: 'Added proactive update checks and clearer release notes.',
       publicKeyId: 'test-key',
       artifact: {
         name: 'Quizzer.dmg', platform: 'macos', architecture: 'arm64', format: 'dmg',
@@ -90,6 +91,9 @@ test('downloads an available update automatically and installs it with one resta
   const notice = page.locator('.ant-notification-notice').filter({ hasText: 'Quizzer 1.0.0-beta.6 is ready to install' });
   await expect(notice).toHaveCount(1);
   await expect(notice.getByRole('status')).toBeVisible();
+  await expect(notice.getByText("What's new in this update")).toBeVisible();
+  await notice.getByText("What's new in this update").click();
+  await expect(notice.getByText('Added proactive update checks and clearer release notes.')).toBeVisible();
   await expect.poll(() => updaterCalls(page)).toMatchObject({ check: 1, status: 1, download: 1, apply: 0 });
 
   await notice.getByRole('button', { name: 'Install and restart' }).click();
@@ -97,8 +101,9 @@ test('downloads an available update automatically and installs it with one resta
 
   await page.reload();
   await dismissOnboarding(page, false);
-  await expect(page.locator('.ant-notification-notice').filter({ hasText: 'ready to install' })).toHaveCount(0);
-  await expect.poll(() => updaterCalls(page)).toMatchObject({ check: 0, status: 0, download: 0, apply: 0 });
+  const reloadedNotice = page.locator('.ant-notification-notice').filter({ hasText: 'Quizzer 1.0.0-beta.6 is ready to install' });
+  await expect(reloadedNotice).toHaveCount(1);
+  await expect.poll(() => updaterCalls(page)).toMatchObject({ check: 1, status: 1, download: 1, apply: 0 });
 });
 
 test('offers a manual download when automatic downloads are disabled', async ({ page }) => {
