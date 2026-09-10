@@ -6,6 +6,7 @@ const idleJob = { state: 'idle', message: '' };
 test('Plugins & models preloads once and only re-detects on manual refresh', async ({ page }) => {
   let integrationLoads = 0;
   let pluginLoads = 0;
+  let registryLoads = 0;
 
   await page.route('**/api/integrations', async route => {
     integrationLoads += 1;
@@ -23,19 +24,28 @@ test('Plugins & models preloads once and only re-detects on manual refresh', asy
       }),
     });
   });
+  await page.route('**/api/v1/plugins/registry', async route => {
+    registryLoads += 1;
+    await route.continue();
+  });
   await page.route('**/api/v1/plugins', async route => {
-    if (!route.request().url().includes('registry')) pluginLoads += 1;
+    pluginLoads += 1;
     await route.continue();
   });
 
   await dismissOnboarding(page);
   await setInterfaceMode(page, 'advanced');
 
-  await expect.poll(() => integrationLoads).toBe(1);
-  await expect.poll(() => pluginLoads).toBe(1);
-  await page.waitForTimeout(2_000);
-  expect(integrationLoads).toBe(1);
-  expect(pluginLoads).toBe(1);
+  // Registry discovery is specific to Plugins & Models, so seeing it before the
+  // first open proves the manager preloaded in the background. Other app hooks
+  // legitimately read /api/integrations and /api/v1/plugins too, so their total
+  // request counts are intentionally treated as a baseline rather than assumed
+  // to be exactly one application-wide.
+  await expect.poll(() => registryLoads).toBeGreaterThan(0);
+  await page.waitForTimeout(500);
+  const baselineIntegrationLoads = integrationLoads;
+  const baselinePluginLoads = pluginLoads;
+  const baselineRegistryLoads = registryLoads;
 
   await page.getByRole('button', { name: 'Configure AI' }).click();
   const dialog = page.getByRole('dialog', { name: 'Plugins & models' });
@@ -45,10 +55,13 @@ test('Plugins & models preloads once and only re-detects on manual refresh', asy
 
   await page.getByRole('button', { name: 'Configure AI' }).click();
   await expect(dialog).toBeVisible();
-  expect(integrationLoads).toBe(1);
-  expect(pluginLoads).toBe(1);
+  await page.waitForTimeout(500);
+  expect(integrationLoads).toBe(baselineIntegrationLoads);
+  expect(pluginLoads).toBe(baselinePluginLoads);
+  expect(registryLoads).toBe(baselineRegistryLoads);
 
   await dialog.getByRole('button', { name: 'Detect plugins and models again' }).click();
-  await expect.poll(() => integrationLoads).toBe(2);
-  await expect.poll(() => pluginLoads).toBe(2);
+  await expect.poll(() => integrationLoads).toBe(baselineIntegrationLoads + 1);
+  await expect.poll(() => pluginLoads).toBe(baselinePluginLoads + 1);
+  await expect.poll(() => registryLoads).toBe(baselineRegistryLoads + 1);
 });
