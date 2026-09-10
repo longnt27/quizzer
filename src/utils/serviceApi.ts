@@ -80,12 +80,7 @@ export const serviceFetch = async (path: string, init: RequestInit = {}) => {
   }
 };
 
-export const serviceRequest = async <Response>(path: string, init: RequestInit = {}): Promise<Response> => {
-  if (!path.startsWith('/api/v1/')) throw new Error('Service API paths must start with /api/v1/');
-  const headers = new Headers(init.headers);
-  if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
-
-  const response = await serviceFetch(path, { ...init, headers });
+const parseServiceResponse = async <Response>(response: globalThis.Response): Promise<Response> => {
   const contentType = response.headers.get('content-type') ?? '';
   const payload = contentType.includes('application/json')
     ? await response.json() as Response & ServiceErrorPayload
@@ -104,16 +99,53 @@ export const serviceRequest = async <Response>(path: string, init: RequestInit =
   return payload;
 };
 
-export const serviceJson = <Response>(
+export const serviceRequest = async <Response>(path: string, init: RequestInit = {}): Promise<Response> => {
+  if (!path.startsWith('/api/v1/')) throw new Error('Service API paths must start with /api/v1/');
+  const headers = new Headers(init.headers);
+  if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+
+  const response = await serviceFetch(path, { ...init, headers });
+  return parseServiceResponse<Response>(response);
+};
+
+export const serviceJson = async <Response>(
   path: string,
   method: 'POST' | 'PATCH' | 'PUT' | 'DELETE',
   body?: unknown,
   init: Omit<RequestInit, 'body' | 'method'> = {},
-) => serviceRequest<Response>(path, {
-  ...init,
-  method,
-  ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-});
+): Promise<Response> => {
+  // The embedding installer deliberately rejects a model that differs from the
+  // current resolved setting. Make a confirmed download authoritative by
+  // selecting that model first, so a cached Plugins & Models snapshot cannot
+  // turn a valid bge-m3 click into a stale-model rejection.
+  if (path === '/api/integrations/embeddings/install' && method === 'POST' && body && typeof body === 'object') {
+    const model = (body as { model?: unknown }).model;
+    const confirmed = (body as { confirmed?: unknown }).confirmed;
+    if (confirmed === true && typeof model === 'string' && model.trim()) {
+      await serviceRequest('/api/v1/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: { 'embeddings.model': model.trim() } }),
+      });
+      window.dispatchEvent(new Event('quizzer:settings-changed'));
+    }
+  }
+
+  const requestInit: RequestInit = {
+    ...init,
+    method,
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  };
+  if (path.startsWith('/api/v1/')) return serviceRequest<Response>(path, requestInit);
+
+  // Some built-in integration endpoints predate /api/v1. Keep serviceRequest's
+  // stricter v1-only contract while still sending these authenticated JSON
+  // mutations through serviceFetch and the same structured response parser.
+  const headers = new Headers(requestInit.headers);
+  if (requestInit.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  const response = await serviceFetch(path, { ...requestInit, headers });
+  return parseServiceResponse<Response>(response);
+};
 
 export interface TwoPhaseActionOptions {
   onConfirmationRequired: (reasons: string[], details?: Record<string, unknown>) => Promise<boolean>;
