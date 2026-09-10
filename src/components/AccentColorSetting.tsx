@@ -3,6 +3,7 @@ import { Button, Popover, Space, Tag, Typography } from 'antd';
 import { ACCENT_COLORS, type AccentColor } from '../utils/accentColor';
 import { changeAccentColor, useAccentColor } from '../utils/useAccentColor';
 import { getMessageApi } from '../utils/messageProvider';
+import './SettingsModal.css';
 
 export default function AccentColorSetting() {
   const accent = useAccentColor();
