@@ -173,6 +173,8 @@ button, input, textarea, select { font: inherit; }
 .document-heading h2 { margin: 0; }
 .document-tag-editor { display: grid; gap: 8px; margin-bottom: 20px; }
 .document-tag-editor .ant-input { width: 150px; }
+.document-tag-editor .ant-space-item > .ant-tag,
+.document-tag-editor .ant-space-item > .ant-btn { height: 24px; margin-inline-end: 0; display: inline-flex; align-items: center; line-height: 22px; }
 .document-original-frame { width: 100%; height: min(72vh, 900px); min-height: 520px; border: 0; border-radius: 6px; background: #fff; }
 .document-original-image { display: block; max-width: 100%; max-height: 72vh; margin: 0 auto; object-fit: contain; }
 .document-image-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
