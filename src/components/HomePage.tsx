@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Badge, Button, Card, Col, Empty, List, Progress, Row, Space, Statistic, Tag, Typography } from 'antd';
-import { ApiOutlined, DatabaseOutlined, FileAddOutlined, FormOutlined, PlayCircleOutlined, ReloadOutlined, RocketOutlined, SafetyCertificateOutlined, SyncOutlined } from '@ant-design/icons';
+import { ApiOutlined, DatabaseOutlined, FileAddOutlined, FormOutlined, ReloadOutlined, RocketOutlined, SafetyCertificateOutlined, SyncOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type StoredAppProfile } from '../db/db';
 import { CURRENT_WHATS_NEW_VERSION, ONBOARDING_STEPS, updateAppProfile } from '../utils/appProfile';
@@ -123,20 +123,23 @@ export default function HomePage({ profile, onAddDocument, onAddTest, onOpenGene
     </Card>}
 
     <Row gutter={[16, 16]}>
-      <Col xs={24} lg={14}><Card title="Recent tests">
+      <Col xs={24} lg={12}><Card title="Recent tests" style={{ height: '100%' }}>
         {!data?.tests.length ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Your completed tests will appear here" /> : <div className="home-recent-list">
           {data.tests.map(test => <Button key={test.id} type="text" onClick={() => onOpenTest(test.id)}>
             <span>{test.name}</span><Tag>{test.questions.length} questions</Tag>
           </Button>)}
         </div>}
       </Card></Col>
-      <Col xs={24} lg={10}><Card title="Resume learning">
-        {!data?.drafts.length ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No paused sessions" /> : <Space direction="vertical" style={{ width: '100%' }}>
-          {data.drafts.slice(0, 3).map(draft => {
+      <Col xs={24} lg={12}><Card title="Resume learning" style={{ height: '100%' }}>
+        {!data?.drafts.length ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No paused sessions" /> : <div className="home-recent-list">
+          {data.drafts.slice(0, 4).map(draft => {
             const test = data.tests.find(item => item.id === draft.testId);
-            return <Button key={draft.testId} block icon={<PlayCircleOutlined />} onClick={() => onOpenTest(draft.testId)}>{test?.name ?? 'Saved session'}</Button>;
+            return <Button key={draft.testId} type="text" onClick={() => onOpenTest(draft.testId)}>
+              <span>{test?.name ?? 'Saved session'}</span>
+              <Tag>{draft.practice ? 'Practice' : 'Test'} · Q{draft.currentIndex + 1}</Tag>
+            </Button>;
           })}
-        </Space>}
+        </div>}
       </Card></Col>
     </Row>
   </div>;
