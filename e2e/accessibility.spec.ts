@@ -4,6 +4,8 @@ import { dismissOnboarding, setInterfaceMode } from './helpers';
 
 const wcagTags = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22a', 'wcag22aa'];
 
+test.describe.configure({ retries: 0 });
+
 const expectNoWcagViolations = async (page: Page) => {
   await expect(page.locator('[class*="-appear-active"]:visible, [class*="-enter-active"]:visible')).toHaveCount(0);
   const { violations } = await new AxeBuilder({ page }).withTags(wcagTags).analyze();
