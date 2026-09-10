@@ -34,7 +34,8 @@ test('confirmed bge-m3 download selects the model before starting installation',
   await dialog.getByRole('tab', { name: 'Embeddings' }).click();
   await expect(dialog.getByText('Ollama embeddings · bge-m3', { exact: true })).toBeVisible();
   await dialog.getByRole('button', { name: 'Install' }).first().click();
-  const confirmation = page.getByRole('dialog', { name: /Download bge-m3 for dense retrieval/ });
+
+  const confirmation = page.locator('.ant-modal-confirm').filter({ hasText: 'Download bge-m3 for dense retrieval?' });
   await expect(confirmation).toBeVisible();
   await confirmation.getByRole('button', { name: 'Download bge-m3' }).click();
   await expect.poll(() => requests).toEqual(['settings:bge-m3', 'install:bge-m3:true']);
