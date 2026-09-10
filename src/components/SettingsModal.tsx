@@ -506,7 +506,7 @@ export default function SettingsModal({
     ];
 
   return (
-    <Modal open title={<Space><SettingOutlined /> Settings</Space>} width={activeTab === 'prompts' ? 'min(1120px, calc(100vw - 32px))' : 'min(960px, calc(100vw - 32px))'}
+    <Modal open title={<Space><SettingOutlined /> Settings</Space>} width={'min(960px, calc(100vw - 32px))'}
       className="settings-modal" onCancel={onClose} footer={footer}>
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         {error && <div><ErrorDisplay error={error} context="settings" /><Button size="small" icon={<ReloadOutlined />} onClick={() => void load()}>Retry settings</Button></div>}
