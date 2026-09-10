@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Alert, Button, Divider, Input, InputNumber, Modal, Radio, Select, Space, Spin, Switch, Tag, Typography } from 'antd';
 import { ErrorDisplay } from './ErrorDisplay';
-import { ReloadOutlined, SearchOutlined, SettingOutlined, UndoOutlined } from '@ant-design/icons';
+import { ReloadOutlined, SearchOutlined, SettingOutlined } from '@ant-design/icons';
 import type { StoredAppProfile } from '../db/db';
 import type { GenerationProvider, HardwareProfileId, InterfaceMode } from '../types';
 import { updateAppProfile } from '../utils/appProfile';
@@ -218,42 +218,6 @@ export default function SettingsModal({
     apply();
   };
 
-  const resetSetting = (definition: SettingDefinition) => {
-    const selectedProfile = draft['hardware.profile'] as HardwareProfileId;
-    const fallback = definition.key === 'hardware.profile'
-      ? definition.default
-      : contract?.profiles[selectedProfile]?.[definition.key] ?? definition.default;
-    setDraft(current => ({ ...current, [definition.key]: fallback }));
-    setDirtyKeys(current => {
-      const next = new Set(current);
-      next.delete(definition.key);
-      return next;
-    });
-    setUnsetKeys(current => new Set(current).add(definition.key));
-  };
-
-  const resetToProfile = () => {
-    if (!contract) return;
-    const selectedProfile = draft['hardware.profile'] as HardwareProfileId;
-    const nextValues = Object.fromEntries(contract.registry.map(definition => [
-      definition.key,
-      contract.profiles[selectedProfile]?.[definition.key] ?? definition.default,
-    ])) as SettingsValues;
-    nextValues['hardware.profile'] = selectedProfile;
-    nextValues['interface.mode'] = draft['interface.mode'];
-    setDraft(nextValues);
-    setDirtyKeys(new Set(['hardware.profile', 'interface.mode']));
-    setUnsetKeys(new Set(contract.registry.map(definition => definition.key)
-      .filter(key => key !== 'hardware.profile' && key !== 'interface.mode')));
-  };
-
-  const resetToDefaults = () => {
-    if (!contract) return;
-    setDraft(Object.fromEntries(contract.registry.map(definition => [definition.key, definition.default])));
-    setDirtyKeys(new Set(contract.registry.map(definition => definition.key)));
-    setUnsetKeys(new Set());
-  };
-
   const save = async () => {
     if (!contract || (!dirtyKeys.size && !unsetKeys.size)) { onClose(); return; }
     setSaving(true);
@@ -294,10 +258,8 @@ export default function SettingsModal({
   const visibleDefinitions = useMemo(() => (contract?.registry ?? [])
     .filter(definition => !definition.key.startsWith('providers.') && (advanced || definition.visibility === 'basic')), [advanced, contract]);
   const normalizedQuery = query.trim().toLowerCase();
-  const definitions = useMemo(() => {
-    return visibleDefinitions.filter(definition => !normalizedQuery || searchMatches(normalizedQuery,
-      [definition.title, definition.description, definition.key, definition.environment]));
-  }, [normalizedQuery, visibleDefinitions]);
+  const definitions = useMemo(() => visibleDefinitions.filter(definition => !normalizedQuery || searchMatches(normalizedQuery,
+    [definition.title, definition.description, definition.key, definition.environment])), [normalizedQuery, visibleDefinitions]);
 
   const searchResults = useMemo<SettingsSearchResult[]>(() => {
     if (!normalizedQuery) return [];
@@ -398,27 +360,19 @@ export default function SettingsModal({
         <div className="settings-list">
           {tabDefinitions.filter(definition => definition.key.startsWith(`${section}.`)).map(definition => {
             const changed = dirtyKeys.has(definition.key) || unsetKeys.has(definition.key);
-            const selectedProfile = draft['hardware.profile'] as HardwareProfileId;
-            const resetSource = definition.key !== 'hardware.profile' && contract?.profiles[selectedProfile]?.[definition.key] !== undefined
-              ? `profile:${selectedProfile}`
-              : 'default';
             return <div className={`settings-row${changed ? ' is-changed' : ''}`} id={settingTargetId(definition.key)} tabIndex={-1} key={definition.key}>
               <div className="settings-copy">
                 <Typography.Text strong>{definition.title}</Typography.Text>
                 <Typography.Text type="secondary">{definition.description}</Typography.Text>
                 <Space size={[4, 4]} wrap>
-                  <Tag>{sourceLabel(unsetKeys.has(definition.key) ? resetSource : resolved?.sources[definition.key] ?? 'default')}</Tag>
+                  <Tag>{sourceLabel(resolved?.sources[definition.key] ?? 'default')}</Tag>
                   {definition.resourceEffect !== 'none' && <Tag>{definition.resourceEffect} resource impact</Tag>}
                   {definition.reindexRequired && <Tag>Reindex required</Tag>}
                   {definition.restartRequired && <Tag>Restart required</Tag>}
                   {advanced && <Typography.Text code>{definition.key}</Typography.Text>}
                 </Space>
               </div>
-              <div className="settings-control">
-                {control(definition)}
-                <Button type="text" size="small" icon={<UndoOutlined />} disabled={!changed && resolved?.sources[definition.key] !== 'user'}
-                  aria-label={`Reset ${definition.title}`} onClick={() => resetSetting(definition)}>Reset</Button>
-              </div>
+              <div className="settings-control settings-control-single">{control(definition)}</div>
             </div>;
           })}
         </div>
@@ -507,9 +461,7 @@ export default function SettingsModal({
             <div className="settings-copy">
               <Typography.Text strong>{action.label}</Typography.Text>
               <Typography.Text type="secondary">{action.description}</Typography.Text>
-              <Space size={[4, 4]} wrap>
-                <Tag color={shortcut ? 'blue' : undefined}>{shortcut ? formatKeyboardShortcut(shortcut) : 'Not assigned'}</Tag>
-              </Space>
+              <Space size={[4, 4]} wrap><Tag color={shortcut ? 'blue' : undefined}>{shortcut ? formatKeyboardShortcut(shortcut) : 'Not assigned'}</Tag></Space>
             </div>
             <Space className="settings-shortcut-actions" wrap>
               <Button type={recording ? 'primary' : 'default'} aria-label={`Record shortcut for ${action.label}`}
@@ -550,13 +502,12 @@ export default function SettingsModal({
     ? <Button onClick={onClose}>Close</Button>
     : [
       <Button key="cancel" onClick={onClose}>Cancel</Button>,
-      <Button key="profile" icon={<UndoOutlined />} disabled={!contract} onClick={resetToProfile}>Reset to selected profile</Button>,
-      <Button key="defaults" disabled={!contract} onClick={resetToDefaults}>Built-in defaults</Button>,
       <Button key="save" type="primary" loading={saving} disabled={!dirtyKeys.size && !unsetKeys.size} onClick={() => void save()}>Save changes</Button>,
     ];
 
   return (
-    <Modal open title={<Space><SettingOutlined /> Settings</Space>} width={activeTab === 'prompts' ? 1120 : 880} onCancel={onClose} footer={footer}>
+    <Modal open title={<Space><SettingOutlined /> Settings</Space>} width={activeTab === 'prompts' ? 'min(1120px, calc(100vw - 32px))' : 'min(960px, calc(100vw - 32px))'}
+      className="settings-modal" onCancel={onClose} footer={footer}>
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         {error && <div><ErrorDisplay error={error} context="settings" /><Button size="small" icon={<ReloadOutlined />} onClick={() => void load()}>Retry settings</Button></div>}
         {(needsReindex || needsRestart) && <Alert type="warning" showIcon message="These changes have follow-up work" description={[
@@ -582,9 +533,7 @@ export default function SettingsModal({
                 {tabItems.map((tab, index) => (
                   <button key={tab.key} type="button" role="tab" id={`settings-tab-${tab.key}`}
                     aria-controls="settings-panel" aria-selected={activeTab === tab.key} tabIndex={activeTab === tab.key ? 0 : -1}
-                    onClick={() => setActiveTab(tab.key as SettingsTab)}
-                    onKeyDown={event => moveTabFocus(event, index)}
-                    className="settings-sidebar-item">
+                    onClick={() => setActiveTab(tab.key as SettingsTab)} onKeyDown={event => moveTabFocus(event, index)} className="settings-sidebar-item">
                     {tab.label}
                   </button>
                 ))}
