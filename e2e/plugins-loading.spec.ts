@@ -1,13 +1,27 @@
 import { expect, test } from '@playwright/test';
 import { dismissOnboarding, setInterfaceMode } from './helpers';
 
+const idleJob = { state: 'idle', message: '' };
+
 test('Plugins & models preloads once and only re-detects on manual refresh', async ({ page }) => {
   let integrationLoads = 0;
   let pluginLoads = 0;
 
   await page.route('**/api/integrations', async route => {
     integrationLoads += 1;
-    await route.continue();
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        marker: { installed: false, managed: false, job: idleJob },
+        ocr: { installed: false, managed: false, job: idleJob },
+        codex: { installed: false, connected: false, job: idleJob },
+        'claude-agent': { installed: false, connected: false, job: idleJob },
+        'antigravity-agent': { installed: false, connected: false, job: idleJob },
+        ollama: { installed: false, serverReady: false, models: [], job: idleJob },
+        'llama-cpp': { configured: false, serverReady: false, models: [], capabilities: [], runtime: { state: 'idle' } },
+        embeddings: { installed: false, runtimeInstalled: false, model: 'all-minilm', job: idleJob },
+      }),
+    });
   });
   await page.route('**/api/v1/plugins', async route => {
     if (!route.request().url().includes('registry')) pluginLoads += 1;
@@ -19,6 +33,9 @@ test('Plugins & models preloads once and only re-detects on manual refresh', asy
 
   await expect.poll(() => integrationLoads).toBe(1);
   await expect.poll(() => pluginLoads).toBe(1);
+  await page.waitForTimeout(2_000);
+  expect(integrationLoads).toBe(1);
+  expect(pluginLoads).toBe(1);
 
   await page.getByRole('button', { name: 'Configure AI' }).click();
   const dialog = page.getByRole('dialog', { name: 'Plugins & models' });
