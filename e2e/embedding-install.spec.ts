@@ -27,8 +27,7 @@ test('confirmed bge-m3 download selects the model before starting installation',
     requests.push(`install:${body.model}:${body.confirmed}`);
     await route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ accepted: true }) });
   });
-  await page.reload();
-  await dismissOnboarding(page, false);
+  await dismissOnboarding(page);
   await setInterfaceMode(page, 'advanced');
   await page.getByRole('button', { name: 'Configure AI' }).click();
   const dialog = page.getByRole('dialog', { name: 'Plugins & models' });
