@@ -1,0 +1,105 @@
+.settings-modal .ant-modal-content {
+  max-height: calc(100dvh - 32px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.settings-modal .ant-modal-body {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.settings-modal .settings-layout {
+  width: 100%;
+  min-width: 0;
+  height: min(640px, calc(100dvh - 210px));
+  min-height: min(420px, calc(100dvh - 210px));
+  margin-inline: 0;
+  overflow: hidden;
+}
+
+.settings-modal .settings-sidebar {
+  min-width: 190px;
+  width: clamp(190px, 24vw, 230px);
+  flex-basis: clamp(190px, 24vw, 230px);
+}
+
+.settings-modal .settings-sidebar-item {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-modal .settings-content-pane,
+.settings-modal .settings-row,
+.settings-modal .settings-copy,
+.settings-modal .settings-control {
+  min-width: 0;
+}
+
+.accent-color-trigger {
+  width: 36px;
+  min-width: 36px;
+  padding-inline: 0;
+}
+
+.accent-color-dot {
+  width: 20px;
+  height: 20px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 18%);
+  font-size: 11px;
+}
+
+.accent-color-palette {
+  display: grid;
+  grid-template-columns: repeat(4, 32px);
+  gap: 8px;
+  padding: 2px;
+}
+
+.accent-color-swatch {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+
+.accent-color-swatch:hover,
+.accent-color-swatch:focus-visible,
+.accent-color-swatch.is-selected {
+  outline: 2px solid var(--strong-border);
+  outline-offset: 1px;
+}
+
+@media (max-width: 767px) {
+  .settings-modal .settings-layout {
+    height: min(680px, calc(100dvh - 190px));
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .settings-modal .settings-sidebar {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .settings-modal .settings-tab-list {
+    min-width: 0;
+    scrollbar-width: none;
+  }
+
+  .settings-modal .settings-tab-list::-webkit-scrollbar {
+    display: none;
+  }
+}
