@@ -170,7 +170,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
         await recordOnboardingDocument(id);
         setSelection({ kind: 'document', id }); setShowDocumentModal(false);
       }} />}
-      {showPluginsModal && profile && <PluginsModal interfaceMode={profile.interfaceMode} onClose={() => setShowPluginsModal(false)} />}
+      {profile && <PluginsModal open={showPluginsModal} interfaceMode={profile.interfaceMode} onClose={() => setShowPluginsModal(false)} />}
       {showSettingsModal && profile && <SettingsModal profile={profile} dark={dark} onThemeChange={onThemeChange}
         keyboardShortcuts={keyboardShortcuts} onKeyboardShortcutChange={updateKeyboardShortcut}
         initialTab={typeof showSettingsModal === 'string' ? showSettingsModal : undefined}
