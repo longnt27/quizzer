@@ -104,16 +104,35 @@ export const serviceRequest = async <Response>(path: string, init: RequestInit =
   return payload;
 };
 
-export const serviceJson = <Response>(
+export const serviceJson = async <Response>(
   path: string,
   method: 'POST' | 'PATCH' | 'PUT' | 'DELETE',
   body?: unknown,
   init: Omit<RequestInit, 'body' | 'method'> = {},
-) => serviceRequest<Response>(path, {
-  ...init,
-  method,
-  ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-});
+): Promise<Response> => {
+  // The embedding installer deliberately rejects a model that differs from the
+  // current resolved setting. Make a confirmed download authoritative by
+  // selecting that model first, so a cached Plugins & Models snapshot cannot
+  // turn a valid bge-m3 click into a silent stale-model rejection.
+  if (path === '/api/integrations/embeddings/install' && method === 'POST' && body && typeof body === 'object') {
+    const model = (body as { model?: unknown }).model;
+    const confirmed = (body as { confirmed?: unknown }).confirmed;
+    if (confirmed === true && typeof model === 'string' && model.trim()) {
+      await serviceRequest('/api/v1/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: { 'embeddings.model': model.trim() } }),
+      });
+      window.dispatchEvent(new Event('quizzer:settings-changed'));
+    }
+  }
+
+  return serviceRequest<Response>(path, {
+    ...init,
+    method,
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+};
 
 export interface TwoPhaseActionOptions {
   onConfirmationRequired: (reasons: string[], details?: Record<string, unknown>) => Promise<boolean>;
