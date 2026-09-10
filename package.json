@@ -38,24 +38,14 @@
     "release:installers": "node scripts/prepare-release-installers.mjs"
   },
   "dependencies": {
-    "@codemirror/lang-json": "^6.0.2",
-    "@google/generative-ai": "^0.24.1",
     "@lancedb/lancedb": "^0.22.3",
-    "@uiw/react-codemirror": "^4.23.13",
     "apache-arrow": "^18.1.0",
-    "antd": "^5.26.2",
     "better-sqlite3": "^12.11.1",
-    "dexie": "^4.0.11",
-    "dexie-react-hooks": "^1.1.7",
-    "pdfjs-dist": "^5.3.31",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1",
-    "uuid": "^14.0.2"
+    "pdfjs-dist": "^5.3.31"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
+    "@codemirror/lang-json": "^6.0.2",
     "@electron-forge/cli": "^7.11.2",
     "@electron-forge/maker-deb": "^7.11.2",
     "@electron-forge/maker-dmg": "^7.11.2",
@@ -71,7 +61,11 @@
     "@reforged/maker-appimage": "5.3.1",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
+    "@uiw/react-codemirror": "^4.25.11",
     "@vitejs/plugin-react": "^4.5.2",
+    "antd": "^5.29.3",
+    "dexie": "^4.4.6",
+    "dexie-react-hooks": "^1.1.7",
     "electron": "^44.2.0",
     "esbuild": "^0.25.12",
     "eslint": "^9.29.0",
@@ -79,8 +73,13 @@
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^16.2.0",
     "js-yaml": "^4.3.2",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.34.1",
+    "uuid": "^14.0.2",
     "vite": "^7.0.0"
   }
 }
