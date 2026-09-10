@@ -332,7 +332,7 @@ export default function SettingsModal({
         options={definition.enum.map(option => ({ value: option, label: option[0].toUpperCase() + option.slice(1) }))} />
     );
     if (definition.type === 'boolean') return (
-      <Switch aria-label={definition.title} checked={Boolean(value)} checkedChildren="On" unCheckedChildren="Off"
+      <Switch aria-label={definition.title} checked={Boolean(value)}
         onChange={next => setValue(definition.key, next)} />
     );
     if (definition.type === 'integer') return (
