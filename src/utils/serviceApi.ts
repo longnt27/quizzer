@@ -80,12 +80,7 @@ export const serviceFetch = async (path: string, init: RequestInit = {}) => {
   }
 };
 
-export const serviceRequest = async <Response>(path: string, init: RequestInit = {}): Promise<Response> => {
-  if (!path.startsWith('/api/v1/')) throw new Error('Service API paths must start with /api/v1/');
-  const headers = new Headers(init.headers);
-  if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
-
-  const response = await serviceFetch(path, { ...init, headers });
+const parseServiceResponse = async <Response>(response: globalThis.Response): Promise<Response> => {
   const contentType = response.headers.get('content-type') ?? '';
   const payload = contentType.includes('application/json')
     ? await response.json() as Response & ServiceErrorPayload
@@ -102,6 +97,15 @@ export const serviceRequest = async <Response>(path: string, init: RequestInit =
     );
   }
   return payload;
+};
+
+export const serviceRequest = async <Response>(path: string, init: RequestInit = {}): Promise<Response> => {
+  if (!path.startsWith('/api/v1/')) throw new Error('Service API paths must start with /api/v1/');
+  const headers = new Headers(init.headers);
+  if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+
+  const response = await serviceFetch(path, { ...init, headers });
+  return parseServiceResponse<Response>(response);
 };
 
 export const serviceJson = async <Response>(
@@ -127,11 +131,17 @@ export const serviceJson = async <Response>(
     }
   }
 
-  return serviceRequest<Response>(path, {
+  const requestInit: RequestInit = {
     ...init,
     method,
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
+  };
+  if (path.startsWith('/api/v1/')) return serviceRequest<Response>(path, requestInit);
+
+  const headers = new Headers(requestInit.headers);
+  if (requestInit.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  const response = await serviceFetch(path, { ...requestInit, headers });
+  return parseServiceResponse<Response>(response);
 };
 
 export interface TwoPhaseActionOptions {
