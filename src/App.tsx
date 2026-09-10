@@ -56,6 +56,8 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
   const mobile = screens.md === false;
   const profile = useLiveQuery(() => db.profiles.get('default'), []) as StoredAppProfile | undefined;
   const interfaceMode = profile?.interfaceMode;
+  const onboardingOpen = Boolean(profile && showOnboarding && !profile.onboarding.completedAt && !profile.onboarding.skipped);
+  const pluginManagerCanPreload = !window.quizzerDesktop || Boolean(window.quizzerDesktop.credentials);
   useRuntimeSettings(profile);
   setMessageApi(messageApi);
   setModalApi(modalApi);
@@ -170,7 +172,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
         await recordOnboardingDocument(id);
         setSelection({ kind: 'document', id }); setShowDocumentModal(false);
       }} />}
-      {profile && <PluginsModal open={showPluginsModal} interfaceMode={profile.interfaceMode} onClose={() => setShowPluginsModal(false)} />}
+      {profile && (showPluginsModal || (!onboardingOpen && pluginManagerCanPreload)) && <PluginsModal open={showPluginsModal} interfaceMode={profile.interfaceMode} onClose={() => setShowPluginsModal(false)} />}
       {showSettingsModal && profile && <SettingsModal profile={profile} dark={dark} onThemeChange={onThemeChange}
         keyboardShortcuts={keyboardShortcuts} onKeyboardShortcutChange={updateKeyboardShortcut}
         initialTab={typeof showSettingsModal === 'string' ? showSettingsModal : undefined}
@@ -179,7 +181,7 @@ function AppShell({ dark, onThemeChange }: ShellProps) {
       {showGenerationCenter && <GenerationCenter open onClose={() => setShowGenerationCenter(false)} onManagePlugins={() => setShowPluginsModal(true)} onOpenTest={id => {
         setSelection({ kind: 'test', id }); setSession(null);
       }} />}
-      {profile && <OnboardingGuide open={showOnboarding && !profile.onboarding.completedAt && !profile.onboarding.skipped} profile={profile}
+      {profile && <OnboardingGuide open={onboardingOpen} profile={profile}
         onPause={() => setShowOnboarding(false)} onFinish={() => { setShowOnboarding(false); select(null); }}
         onOpenPlugins={() => setShowPluginsModal(true)} onAddDocument={() => setShowDocumentModal(true)} onAddTest={() => setShowAddModal(true)}
         onOpenTest={id => { setSelection({ kind: 'test', id }); setShowOnboarding(false); }}

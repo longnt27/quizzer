@@ -14,8 +14,7 @@ test('Plugins & models preloads once and only re-detects on manual refresh', asy
     await route.continue();
   });
 
-  await page.reload();
-  await dismissOnboarding(page, false);
+  await dismissOnboarding(page);
   await setInterfaceMode(page, 'advanced');
 
   await expect.poll(() => integrationLoads).toBe(1);
