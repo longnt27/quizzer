@@ -1,0 +1,50 @@
+name: Patch issue 143
+on:
+  push:
+    branches: ['fix/issue-143-switch-overlay-text']
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/issue-143-switch-overlay-text
+      - name: Remove switch overlay text
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/components/SettingsModal.tsx')
+          text = path.read_text()
+          old = '<Switch aria-label={definition.title} checked={Boolean(value)} checkedChildren="On" unCheckedChildren="Off"\n        onChange={next => setValue(definition.key, next)} />'
+          new = '<Switch aria-label={definition.title} checked={Boolean(value)}\n        onChange={next => setValue(definition.key, next)} />'
+          if old not in text:
+              raise SystemExit('Boolean settings switch not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          cat > e2e/switch-overlay-text.spec.ts <<'EOF'
+          import { expect, test } from '@playwright/test';
+          import { dismissOnboarding } from './helpers';
+
+          test('Settings switches do not render On or Off overlay text', async ({ page }) => {
+            await dismissOnboarding(page);
+            await page.locator('.sidebar-footer:visible').getByRole('button', { name: 'Settings' }).click();
+            const dialog = page.getByRole('dialog', { name: 'Settings' });
+            await dialog.getByRole('tab', { name: 'Advanced' }).click();
+            const switches = dialog.locator('.ant-switch');
+            await expect(switches.first()).toBeVisible();
+            await expect(switches.filter({ hasText: /^(On|Off)$/ })).toHaveCount(0);
+          });
+          EOF
+      - name: Commit fix
+        shell: bash
+        run: |
+          rm .github/workflows/patch-issue-143.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/components/SettingsModal.tsx e2e/switch-overlay-text.spec.ts .github/workflows/patch-issue-143.yml
+          git commit -m 'fix(settings): remove switch overlay text'
+          git push origin HEAD:fix/issue-143-switch-overlay-text
