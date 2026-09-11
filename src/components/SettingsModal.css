@@ -109,25 +109,14 @@
 }
 
 .ant-modal-wrap:has(.settings-modal) {
-  text-align: center;
-  white-space: nowrap;
-}
-
-.ant-modal-wrap:has(.settings-modal)::before {
-  display: inline-block;
-  width: 0;
-  height: 100%;
-  vertical-align: middle;
-  content: '';
+  display: grid;
+  place-items: center;
 }
 
 .ant-modal-wrap:has(.settings-modal) .settings-modal {
   top: 0;
-  display: inline-block;
   width: min(960px, calc(100vw - 32px));
   max-width: calc(100vw - 32px);
+  margin: 0;
   padding-bottom: 0;
-  text-align: start;
-  vertical-align: middle;
-  white-space: normal;
 }
