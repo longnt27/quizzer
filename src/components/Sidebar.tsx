@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import { Badge, Button, Empty, Input, Layout, List, Popconfirm, Space, Tabs, Tag, Typography } from 'antd';
-import { ApiOutlined, DeleteOutlined, FileTextOutlined, FormOutlined, PlusOutlined, QuestionCircleOutlined, SearchOutlined, SettingOutlined, SyncOutlined } from '@ant-design/icons';
+import { Badge, Button, Empty, Input, Layout, List, Space, Tabs, Tag, Typography } from 'antd';
+import { ApiOutlined, FileTextOutlined, FormOutlined, PlusOutlined, QuestionCircleOutlined, SearchOutlined, SettingOutlined, SyncOutlined } from '@ant-design/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type StoredAppProfile } from '../db/db';
-import { getMessageApi } from '../utils/messageProvider';
 import { countQuestionTypes } from '../utils/questions';
 import { useActivitySummary } from '../utils/useActivitySummary';
 export type LibrarySelection = { kind: 'test' | 'document'; id: string } | null;
@@ -27,7 +26,6 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
   const documents = useLiveQuery(() => db.documents.orderBy('createdAt').reverse().toArray(), []) ?? [];
   const [tab, setTab] = useState<'tests' | 'documents'>(selection?.kind === 'document' ? 'documents' : 'tests');
   const [query, setQuery] = useState('');
-  const message = getMessageApi();
   const activity = useActivitySummary();
   const activityLabel = activity.running > 0
     ? `${activity.running} job${activity.running === 1 ? '' : 's'} active`
@@ -41,16 +39,6 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
     document.name.toLowerCase().includes(normalizedQuery) ||
     document.tags.some(tag => tag.toLowerCase().includes(normalizedQuery))
   );
-
-  const remove = async (kind: 'test' | 'document', id: string) => {
-    if (kind === 'test') await db.transaction('rw', db.tests, db.testDrafts, async () => {
-      await db.tests.delete(id);
-      await db.testDrafts.delete(id);
-    });
-    else await db.documents.delete(id);
-    if (selection?.kind === kind && selection.id === id) onSelect(null);
-    message.success(`${kind === 'test' ? 'Test' : 'Document'} deleted`);
-  };
 
   const content = (
     <div className="sidebar-content">
@@ -75,8 +63,7 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
           <List locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No tests yet" /> }} dataSource={visibleTests}
             renderItem={test => (
               <List.Item onClick={() => onSelect({ kind: 'test', id: test.id })}
-                style={{ cursor: 'pointer', padding: 10, borderRadius: 8, background: selection?.kind === 'test' && selection.id === test.id ? 'var(--selected)' : undefined }}
-                actions={[<Popconfirm title="Delete this test?" onConfirm={() => remove('test', test.id)}><Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={event => event.stopPropagation()} /></Popconfirm>]}>
+                style={{ cursor: 'pointer', padding: 10, borderRadius: 8, background: selection?.kind === 'test' && selection.id === test.id ? 'var(--selected)' : undefined }}>
                 <List.Item.Meta title={test.name} description={(() => {
                   const counts = countQuestionTypes(test.questions);
                   const types = [counts.multipleChoice && `${counts.multipleChoice} choice`, counts.fillBlank && `${counts.fillBlank} blank`, counts.reasoning && `${counts.reasoning} reasoning`, counts.coding && `${counts.coding} coding`].filter(Boolean).join(' · ');
@@ -88,8 +75,7 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
           <List locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No documents yet" /> }} dataSource={visibleDocuments}
             renderItem={document => (
               <List.Item onClick={() => onSelect({ kind: 'document', id: document.id })}
-                style={{ cursor: 'pointer', padding: 10, borderRadius: 8, background: selection?.kind === 'document' && selection.id === document.id ? 'var(--selected)' : undefined }}
-                actions={[<Popconfirm title="Delete this document? Existing quizzes will remain available." onConfirm={() => remove('document', document.id)}><Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={event => event.stopPropagation()} /></Popconfirm>]}>
+                style={{ cursor: 'pointer', padding: 10, borderRadius: 8, background: selection?.kind === 'document' && selection.id === document.id ? 'var(--selected)' : undefined }}>
                 <List.Item.Meta title={document.name} description={<Space size={[2, 2]} wrap>{document.tags.length ? document.tags.map(tag => <Tag key={tag}>{tag}</Tag>) : <Typography.Text type="secondary">No tags</Typography.Text>}</Space>} />
               </List.Item>
             )} />
