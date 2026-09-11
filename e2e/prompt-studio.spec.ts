@@ -22,12 +22,23 @@ test('Prompt Studio clone/edit/validate plus import/export', async ({ page }) =>
   await expect(studio.locator('.prompt-preview')).toContainText('OUTPUT SCHEMA FOR MULTIPLE-CHOICE QUESTIONS');
   await expect(studio.locator('.prompt-preview')).toContainText('"correct"');
 
+  await studio.getByRole('tab', { name: 'Type Instructions' }).click();
+  await expect(studio.getByLabel('multiple-choice type instruction')).toBeDisabled();
+  await expect(studio.getByLabel('fill-blank type instruction')).toBeDisabled();
+  await expect(studio.getByLabel('reasoning type instruction')).toBeDisabled();
+  await expect(studio.getByLabel('coding type instruction')).toBeDisabled();
+
   await expect(page.getByRole('button', { name: 'Save new version' })).toBeHidden();
   await page.getByRole('button', { name: 'Clone selected' }).click();
   await expect(page.getByText('Editable prompt profile created')).toBeVisible();
   await expect(studio.getByRole('button', { name: 'Quizzer balanced copy v1' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save new version' })).toBeVisible();
 
+  const multipleChoiceInstruction = studio.getByLabel('multiple-choice type instruction');
+  await expect(multipleChoiceInstruction).toBeEnabled();
+  await multipleChoiceInstruction.fill('Prefer scenario-based multiple-choice questions with credible near-miss distractors.');
+
+  await studio.getByRole('tab', { name: 'Generation' }).click();
   const profileName = page.getByLabel('Prompt profile name');
   await expect(profileName).toHaveValue('Quizzer balanced copy');
   await profileName.fill('My Custom Prompt');
@@ -55,6 +66,7 @@ test('Prompt Studio clone/edit/validate plus import/export', async ({ page }) =>
   const content = readFileSync(downloadPath!, 'utf8');
   expect(content).toContain('My Custom Prompt');
   expect(content).toContain('Emphasize concrete trade-offs.');
+  expect(content).toContain('Prefer scenario-based multiple-choice questions with credible near-miss distractors.');
 
   const deleteProfile = studio.getByRole('button', { name: 'Delete' });
   await expect(deleteProfile).toBeVisible();
@@ -69,4 +81,6 @@ test('Prompt Studio clone/edit/validate plus import/export', async ({ page }) =>
 
   await expect(page.getByText('My Custom Prompt imported')).toBeVisible();
   await expect(page.getByLabel('Prompt profile name')).toHaveValue('My Custom Prompt');
+  await studio.getByRole('tab', { name: 'Type Instructions' }).click();
+  await expect(studio.getByLabel('multiple-choice type instruction')).toHaveValue('Prefer scenario-based multiple-choice questions with credible near-miss distractors.');
 });
