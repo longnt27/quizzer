@@ -1,14 +1,16 @@
 .ant-modal-wrap {
   overflow: hidden;
+  padding-block: 24px;
 }
 
 .ant-modal {
-  max-height: calc(100dvh - 32px);
+  top: 0;
+  max-height: calc(100dvh - 48px);
   padding-bottom: 0;
 }
 
 .ant-modal-content {
-  max-height: calc(100dvh - 32px);
+  max-height: calc(100dvh - 48px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -18,9 +20,21 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .ant-modal-header,
 .ant-modal-footer {
   flex: 0 0 auto;
+}
+
+@media (max-height: 640px) {
+  .ant-modal-wrap {
+    padding-block: 16px;
+  }
+
+  .ant-modal,
+  .ant-modal-content {
+    max-height: calc(100dvh - 32px);
+  }
 }
