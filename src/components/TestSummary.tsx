@@ -338,6 +338,7 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
                         width: 280,
                         maxHeight: '100%',
                         overflowY: 'auto',
+                        paddingLeft: 16,
                         paddingRight: 8,
                     }}
                 >
