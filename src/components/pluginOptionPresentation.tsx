@@ -8,6 +8,7 @@ import {
 
 const normalized = (value: string) => value.toLowerCase();
 const syntheticStatusMessages = new Set(['Antigravity is connected.']);
+const completedJobMessage = /(installed|installation complete|download complete|downloaded|ready|connected|succeeded|successfully)/i;
 
 const nodeText = (node: ReactNode): string => {
   if (typeof node === 'string' || typeof node === 'number') return String(node);
@@ -39,7 +40,7 @@ export function PluginGlyph({ title, fallback }: { title: string; fallback: Reac
 
 export function PluginJobDetails({ children, working }: { children: ReactNode; working: boolean }) {
   const message = nodeText(children).trim();
-  if (!working && syntheticStatusMessages.has(message)) return null;
+  if (!working && (syntheticStatusMessages.has(message) || completedJobMessage.test(message))) return null;
   return (
     <Space direction="vertical" size="small" style={{ width: '100%' }}>
       {working ? <Space size="small"><Spin size="small" /><Typography.Text type="secondary">Working…</Typography.Text></Space> : null}
