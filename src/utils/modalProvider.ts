@@ -29,7 +29,7 @@ export const getModalApi = (): HookAPI => {
         if (!isInstallConfirmation(config)) return target.confirm(config);
         installConfirmationBypassUntil = 0;
         void Promise.resolve(config.onOk?.(() => undefined));
-        return { destroy: () => undefined, update: () => undefined } as ReturnType<HookAPI['confirm']>;
+        return { destroy: () => undefined, update: () => undefined } as unknown as ReturnType<HookAPI['confirm']>;
       };
     },
   });
