@@ -114,14 +114,6 @@ export default function HomePage({ profile, onAddDocument, onAddTest, onOpenGene
       </Space>
     </Card>
 
-    {advanced && <Card title="System health" extra={<Button size="small" icon={<ReloadOutlined spin={systemHealth.loading} />} onClick={() => void refreshHealth()}>Refresh</Button>}>
-      {systemHealth.error && <ErrorDisplay error={systemHealth.error} context="service" style={{ marginBottom: 12 }} />}
-      <List size="small" dataSource={healthRows} renderItem={item => <List.Item actions={item.label === 'AI routes' || item.label === 'Plugins'
-        ? [<Button type="link" size="small" key="manage" onClick={onOpenPlugins}>Manage</Button>] : undefined}>
-        <List.Item.Meta avatar={<span className="system-health-icon">{item.icon}</span>} title={<Space><Badge status={item.status} />{item.label}</Space>} description={item.detail} />
-      </List.Item>} />
-    </Card>}
-
     <Row gutter={[16, 16]}>
       <Col xs={24} lg={12}><Card title="Recent tests" style={{ height: '100%' }}>
         {!data?.tests.length ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Your completed tests will appear here" /> : <div className="home-recent-list">
@@ -142,5 +134,13 @@ export default function HomePage({ profile, onAddDocument, onAddTest, onOpenGene
         </div>}
       </Card></Col>
     </Row>
+
+    {advanced && <Card title="System health" extra={<Button size="small" icon={<ReloadOutlined spin={systemHealth.loading} />} onClick={() => void refreshHealth()}>Refresh</Button>}>
+      {systemHealth.error && <ErrorDisplay error={systemHealth.error} context="service" style={{ marginBottom: 12 }} />}
+      <List size="small" dataSource={healthRows} renderItem={item => <List.Item actions={item.label === 'AI routes' || item.label === 'Plugins'
+        ? [<Button type="link" size="small" key="manage" onClick={onOpenPlugins}>Manage</Button>] : undefined}>
+        <List.Item.Meta avatar={<span className="system-health-icon">{item.icon}</span>} title={<Space><Badge status={item.status} />{item.label}</Space>} description={item.detail} />
+      </List.Item>} />
+    </Card>}
   </div>;
 }
