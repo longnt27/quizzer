@@ -31,14 +31,14 @@ test('Prompt Studio clone/edit/validate plus import/export', async ({ page }) =>
   await expect(page.getByRole('button', { name: 'Save new version' })).toBeHidden();
   await page.getByRole('button', { name: 'Clone selected' }).click();
   await expect(page.getByText('Editable prompt profile created')).toBeVisible();
-  await expect(studio.getByRole('button', { name: 'Quizzer balanced copy v1' })).toBeVisible();
+  await expect(studio.locator('.prompt-profile-choice.is-selected')).toContainText('Quizzer balanced copy');
   await expect(page.getByRole('button', { name: 'Save new version' })).toBeVisible();
 
   const multipleChoiceInstruction = studio.getByLabel('multiple-choice type instruction');
   await expect(multipleChoiceInstruction).toBeEnabled();
   await multipleChoiceInstruction.fill('Prefer scenario-based multiple-choice questions with credible near-miss distractors.');
 
-  await studio.getByRole('tab', { name: 'Generation' }).click();
+  await studio.locator('.prompt-studio-editor').getByRole('tab', { name: 'Generation' }).click();
   const profileName = page.getByLabel('Prompt profile name');
   await expect(profileName).toHaveValue('Quizzer balanced copy');
   await profileName.fill('My Custom Prompt');
