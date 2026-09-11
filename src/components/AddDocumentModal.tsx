@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { Alert, Button, Input, List, Modal, Space, Spin, Tag, Upload, Typography } from 'antd';
 import { InboxOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { RcFile } from 'antd/es/upload';
@@ -9,20 +9,9 @@ import { getMessageApi } from '../utils/messageProvider';
 import { chunkDocumentContent, STRUCTURAL_CHUNKER_VERSION } from '../utils/documentChunks';
 import { getProviderSettings } from '../utils/providerSettings';
 import { serviceFetch } from '../utils/serviceApi';
+import { pendingDocumentImports, type PendingDocumentImport } from '../utils/pendingDocumentImports';
 import { ErrorDisplay } from './ErrorDisplay';
 import TagEditor from './TagEditor';
-
-interface PendingDocument {
-  id: string;
-  file: RcFile;
-  name: string;
-  tags: string[];
-  status: 'extracting' | 'ready' | 'error';
-  stage?: string;
-  error?: string;
-  extracted?: Pick<StoredDocument,
-    'content' | 'pageCount' | 'images' | 'parserVersion' | 'extractionSchemaVersion' | 'extractedAt' | 'extractionContentHash'>;
-}
 
 interface Props {
   onClose: () => void;
@@ -37,22 +26,21 @@ const hashText = (value: string) => hashBytes(new TextEncoder().encode(value));
 
 export default function AddDocumentModal({ onClose, onCreated }: Props) {
   const toolSettings = getProviderSettings().enabledTools;
-  const [files, setFiles] = useState<PendingDocument[]>([]);
+  const files = useSyncExternalStore(pendingDocumentImports.subscribe, pendingDocumentImports.getSnapshot, pendingDocumentImports.getSnapshot);
   const [bulkTags, setBulkTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const message = getMessageApi();
 
-  const update = (id: string, changes: Partial<PendingDocument>) =>
-    setFiles(current => current.map(item => item.id === id ? { ...item, ...changes } : item));
+  const update = (id: string, changes: Partial<PendingDocumentImport>) => pendingDocumentImports.update(id, changes);
 
   const applyBulkTags = (tags: string[]) => {
     const added = tags.filter(tag => !bulkTags.includes(tag));
     const removed = bulkTags.filter(tag => !tags.includes(tag));
     setBulkTags(tags);
-    setFiles(current => current.map(item => ({
-      ...item,
-      tags: [...item.tags.filter(tag => !removed.includes(tag)), ...added.filter(tag => !item.tags.includes(tag))],
-    })));
+    pendingDocumentImports.replaceTags(item => [
+      ...item.tags.filter(tag => !removed.includes(tag)),
+      ...added.filter(tag => !item.tags.includes(tag)),
+    ]);
   };
 
   const extract = async (id: string, file: RcFile) => {
@@ -94,15 +82,14 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
 
   const addFile = (file: RcFile) => {
     const id = uuidv4();
-    const pending: PendingDocument = {
+    pendingDocumentImports.add({
       id,
       file,
       name: file.name.replace(/\.[^/.]+$/, ''),
       tags: [...bulkTags],
       status: 'extracting',
       stage: 'Queued…',
-    };
-    setFiles(current => [...current, pending]);
+    });
     void extract(id, file);
     return false;
   };
@@ -134,6 +121,7 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
           chunks: chunkDocumentContent(item.extracted!.content),
         });
       }
+      pendingDocumentImports.removeMany(ready.map(item => item.id));
       message.success(`${ready.length} document(s) added`);
       await onCreated(ready[0].id);
     } finally {
@@ -166,13 +154,13 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
       ) : null}
       {extractingCount > 0 && <Alert style={{ marginTop: 16 }} type="info" showIcon icon={<Spin size="small" />}
         message={`Extracting ${extractingCount} document${extractingCount === 1 ? '' : 's'}`}
-        description="You can keep editing names and tags while extraction finishes." />}
+        description="Extraction continues if you close this modal. Reopen Add documents to review the completed files." />}
       <List style={{ marginTop: 16, maxHeight: 330, overflow: 'auto' }} dataSource={files}
         renderItem={item => (
           <List.Item actions={item.status === 'error' ? [
             <Button key="retry" size="small" icon={<ReloadOutlined />} onClick={() => void extract(item.id, item.file)}>Retry</Button>,
-            <Button key="remove" danger size="small" onClick={() => setFiles(all => all.filter(file => file.id !== item.id))}>Remove</Button>,
-          ] : [<Button key="remove" danger size="small" onClick={() => setFiles(all => all.filter(file => file.id !== item.id))}>Remove</Button>]}>
+            <Button key="remove" danger size="small" onClick={() => pendingDocumentImports.remove(item.id)}>Remove</Button>,
+          ] : [<Button key="remove" danger size="small" onClick={() => pendingDocumentImports.remove(item.id)}>Remove</Button>]}>
             <Space direction="vertical" style={{ width: '100%' }}>
               <Space><Input value={item.name} onChange={event => update(item.id, { name: event.target.value })} />
                 <Tag color={item.status === 'ready' ? 'success' : item.status === 'error' ? 'error' : 'processing'}>
