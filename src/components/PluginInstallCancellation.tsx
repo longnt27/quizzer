@@ -3,6 +3,7 @@ import { Button, Space, Typography } from 'antd';
 import { StopOutlined } from '@ant-design/icons';
 import { createPortal } from 'react-dom';
 import { cancelActivePluginInstall, isPluginInstallActive, subscribePluginInstallState } from '../utils/serviceApi';
+import { allowConfirmedInstallHandoff } from '../utils/modalProvider';
 import ImmediateSettingsPersistence from './ImmediateSettingsPersistence';
 
 interface PendingInstall {
@@ -92,6 +93,7 @@ export default function PluginInstallCancellation() {
     if (!pending) return;
     const { button } = pending;
     setPending(null);
+    allowConfirmedInstallHandoff();
     button.dataset.installConfirmationBypass = 'true';
     try { button.click(); }
     finally { delete button.dataset.installConfirmationBypass; }

@@ -42,9 +42,7 @@ test('confirmed bge-m3 download selects the model before starting installation',
   await expect(installConfirm).toContainText('1.2 GB');
   await installConfirm.getByRole('button', { name: 'Install' }).click();
 
-  const confirmation = page.locator('.ant-modal-confirm').filter({ hasText: 'Download bge-m3 for dense retrieval?' });
-  await expect(confirmation).toBeVisible();
-  await confirmation.getByRole('button', { name: 'Download bge-m3' }).click();
+  await expect(page.locator('.ant-modal-confirm').filter({ hasText: 'Download bge-m3 for dense retrieval?' })).toHaveCount(0);
   await expect.poll(() => requests.filter(value => value.startsWith('install:'))).toEqual(['install:bge-m3:true']);
   await expect.poll(() => requests.some(value => value === 'settings:bge-m3')).toBe(true);
 });
