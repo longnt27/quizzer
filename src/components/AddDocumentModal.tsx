@@ -38,11 +38,22 @@ const hashText = (value: string) => hashBytes(new TextEncoder().encode(value));
 export default function AddDocumentModal({ onClose, onCreated }: Props) {
   const toolSettings = getProviderSettings().enabledTools;
   const [files, setFiles] = useState<PendingDocument[]>([]);
+  const [bulkTags, setBulkTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const message = getMessageApi();
 
   const update = (id: string, changes: Partial<PendingDocument>) =>
     setFiles(current => current.map(item => item.id === id ? { ...item, ...changes } : item));
+
+  const applyBulkTags = (tags: string[]) => {
+    const added = tags.filter(tag => !bulkTags.includes(tag));
+    const removed = bulkTags.filter(tag => !tags.includes(tag));
+    setBulkTags(tags);
+    setFiles(current => current.map(item => ({
+      ...item,
+      tags: [...item.tags.filter(tag => !removed.includes(tag)), ...added.filter(tag => !item.tags.includes(tag))],
+    })));
+  };
 
   const extract = async (id: string, file: RcFile) => {
     update(id, { status: 'extracting', stage: 'Reading document…', error: undefined, extracted: undefined });
@@ -87,7 +98,7 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
       id,
       file,
       name: file.name.replace(/\.[^/.]+$/, ''),
-      tags: [],
+      tags: [...bulkTags],
       status: 'extracting',
       stage: 'Queued…',
     };
@@ -147,6 +158,12 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
         <p className="ant-upload-drag-icon"><InboxOutlined /></p>
         <p className="ant-upload-text">Drop PDF, text, or Markdown documents here</p>
       </Upload.Dragger>
+      {files.length > 0 ? (
+        <div style={{ marginTop: 16 }}>
+          <TagEditor tags={bulkTags} subject="all uploading documents" onChange={applyBulkTags} />
+          <Typography.Text type="secondary">Changes here are applied to every document currently in this upload, and to files added afterward.</Typography.Text>
+        </div>
+      ) : null}
       {extractingCount > 0 && <Alert style={{ marginTop: 16 }} type="info" showIcon icon={<Spin size="small" />}
         message={`Extracting ${extractingCount} document${extractingCount === 1 ? '' : 's'}`}
         description="You can keep editing names and tags while extraction finishes." />}
