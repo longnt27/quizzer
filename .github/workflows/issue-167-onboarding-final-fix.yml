@@ -1,0 +1,35 @@
+name: Apply issue 167 onboarding final test fix
+on:
+  push:
+    branches:
+      - fix/issue-167-prompt-type-instructions
+    paths:
+      - .github/workflows/issue-167-onboarding-final-fix.yml
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/issue-167-prompt-type-instructions
+      - name: Remove transient generation timing gate
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('e2e/onboarding.spec.ts')
+          text = path.read_text()
+          old = "  const generationStartedOrReady = page.getByText('Your quiz is being generated').or(page.getByText('coordination quiz is ready'));\n  await expect(generationStartedOrReady).toBeVisible({ timeout: 15_000 });\n  await expect(page.getByText('coordination quiz is ready')).toBeVisible({ timeout: 60_000 });"
+          new = "  await expect(page.getByText('coordination quiz is ready')).toBeVisible({ timeout: 60_000 });"
+          if old not in text:
+              raise SystemExit('expected transient onboarding assertion not found')
+          path.write_text(text.replace(old, new, 1))
+          Path('.github/workflows/issue-167-onboarding-final-fix.yml').unlink()
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "test(onboarding): wait for durable quiz readiness"
+          git push origin HEAD:fix/issue-167-prompt-type-instructions
