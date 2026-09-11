@@ -146,8 +146,25 @@ test('bounds prompt, route, instruction, and resolved-setting snapshots', () => 
       grading: 'Grade {{question}} against its reference answer.',
       rag: 'Retrieve direct evidence for this learning query.',
     },
+    typeInstructions: {
+      'multiple-choice': 'Use credible distractors and balanced answer choices.',
+      'fill-blank': 'Accept concise operational terminology and common equivalents.',
+      reasoning: 'Require explanation of the relevant tradeoffs and causal chain.',
+      coding: 'Require executable code with explicit cleanup and edge-case handling.',
+    },
   };
   assert.doesNotThrow(() => validateGenerationOptions({ ...value, promptProfileSnapshot: snapshot }));
+  assert.throws(() => validateGenerationOptions({
+    ...value, promptProfileSnapshot: { ...snapshot, typeInstructions: { ...snapshot.typeInstructions, essay: 'Unsupported type.' } },
+  }), /unsupported fields: essay/);
+  assert.throws(() => validateGenerationOptions({
+    ...value, promptProfileSnapshot: { ...snapshot, typeInstructions: { ...snapshot.typeInstructions, reasoning: '' } },
+  }), /reasoning type instruction/);
+  const incompleteTypeInstructions = { ...snapshot.typeInstructions };
+  delete incompleteTypeInstructions.coding;
+  assert.throws(() => validateGenerationOptions({
+    ...value, promptProfileSnapshot: { ...snapshot, typeInstructions: incompleteTypeInstructions },
+  }), /contain every question type/);
   assert.throws(() => validateGenerationOptions({
     ...value, promptProfileSnapshot: { ...snapshot, templates: { ...snapshot.templates, generation: 'A different generation template long enough.' } },
   }), /generation templates do not match/);

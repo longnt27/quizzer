@@ -58,7 +58,7 @@ const validateJsonValue = (value, path, depth = 0) => {
 
 const validatePromptSnapshot = input => {
   const snapshot = requireObject(input, 'Prompt profile snapshot must be an object');
-  rejectUnknown(snapshot, new Set(['id', 'version', 'name', 'template', 'templates']), 'Prompt profile snapshot');
+  rejectUnknown(snapshot, new Set(['id', 'version', 'name', 'template', 'templates', 'typeInstructions']), 'Prompt profile snapshot');
   if (!/^[a-z0-9][a-z0-9.-]{0,127}$/.test(snapshot.id ?? '')) throw new Error('Prompt profile snapshot id is invalid');
   boundedInteger(snapshot.version, 1, 1_000_000, 'Prompt profile snapshot version must be a positive integer');
   if (!boundedText(snapshot.name, 1, 100)) throw new Error('Prompt profile snapshot name is invalid');
@@ -70,6 +70,16 @@ const validatePromptSnapshot = input => {
       if (!boundedText(templates[kind], 20, 20_000)) throw new Error(`Prompt profile ${kind} template is invalid`);
     }
     if (templates.generation !== snapshot.template) throw new Error('Prompt profile generation templates do not match');
+  }
+  if (snapshot.typeInstructions !== undefined) {
+    const instructions = requireObject(snapshot.typeInstructions, 'Prompt profile type instructions must be an object');
+    rejectUnknown(instructions, questionTypes, 'Prompt profile type instructions');
+    if (Object.keys(instructions).length !== questionTypes.size) {
+      throw new Error('Prompt profile type instructions must contain every question type');
+    }
+    for (const [type, instruction] of Object.entries(instructions)) {
+      if (!boundedText(instruction, 1, 12_000)) throw new Error(`Prompt profile ${type} type instruction must contain 1-12000 characters`);
+    }
   }
 };
 
