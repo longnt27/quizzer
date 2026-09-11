@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Alert, Button, Checkbox, Collapse, Empty, Input, InputNumber, List, Modal, Popconfirm, Progress, Select, Space, Tabs, Tag, Typography } from 'antd';
 import { ErrorDisplay } from './ErrorDisplay';
 import { formatErrorMessage } from '../utils/errorFormatting';
@@ -15,6 +15,7 @@ import { useConfiguredProviders } from '../utils/useConfiguredProviders';
 import { serviceJson } from '../utils/serviceApi';
 import { applyServiceRecord } from '../db/serverSync';
 import { summarizeGenerationRejections } from '../utils/generationRejections';
+import { pendingDocumentImports } from '../utils/pendingDocumentImports';
 
 const terminalStatuses = new Set(['completed', 'cancelled']);
 const statusColor: Record<StoredGenerationJob['status'], string> = {
@@ -366,6 +367,7 @@ interface CenterProps { open: boolean; onClose: () => void; onOpenTest: (id: str
 export function GenerationCenter({ open, onClose, onOpenTest, onManagePlugins }: CenterProps) {
   const jobs = useLiveQuery(() => db.generationJobs.orderBy('createdAt').reverse().toArray(), []) ?? [];
   const indexJobs = useLiveQuery(() => db.indexJobs.orderBy('createdAt').reverse().toArray(), []) ?? [];
+  const extractionJobs = useSyncExternalStore(pendingDocumentImports.subscribe, pendingDocumentImports.getSnapshot, pendingDocumentImports.getSnapshot);
   const finishedGenerationIds = jobs.filter(job => terminalStatuses.has(job.status)).map(job => job.id);
   const finishedIndexIds = indexJobs.filter(job => terminalStatuses.has(job.status)).map(job => job.id);
   return <Modal open={open} width={780} title="Activity" footer={null} onCancel={onClose}>
@@ -384,7 +386,19 @@ export function GenerationCenter({ open, onClose, onOpenTest, onManagePlugins }:
         label: 'Document indexing',
         children: <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           {!!finishedIndexIds.length && <Button size="small" onClick={() => void db.indexJobs.bulkDelete(finishedIndexIds)}>Clear finished</Button>}
-          <List locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No indexing jobs" /> }} dataSource={indexJobs}
+          {!!extractionJobs.length && <List dataSource={extractionJobs} renderItem={job => <List.Item className="generation-job">
+            <Space direction="vertical" size="small" style={{ width: '100%' }}>
+              <div className="generation-job-heading">
+                <div><Typography.Text strong><DatabaseOutlined /> Extract {job.name || job.file.name}</Typography.Text><br />
+                  <Typography.Text type="secondary">Document extraction · survives closing Add documents</Typography.Text></div>
+                <Tag color={job.status === 'ready' ? 'success' : job.status === 'error' ? 'error' : 'processing'}>{job.status}</Tag>
+              </div>
+              {job.stage && <Typography.Text type="secondary">{job.stage}</Typography.Text>}
+              {job.error && <ErrorDisplay error={job.error} context="document" />}
+              {job.status === 'ready' && <Alert type="success" showIcon message="Extraction finished" description="Open Add documents to review metadata and add this document to the library." />}
+            </Space>
+          </List.Item>} />}
+          <List locale={{ emptyText: extractionJobs.length ? null : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No indexing jobs" /> }} dataSource={indexJobs}
             renderItem={job => <IndexJobItem job={job} />} />
         </Space>,
       },

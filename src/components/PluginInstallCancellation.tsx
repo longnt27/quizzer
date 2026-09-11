@@ -3,6 +3,7 @@ import { Button, Space, Typography } from 'antd';
 import { StopOutlined } from '@ant-design/icons';
 import { createPortal } from 'react-dom';
 import { cancelActivePluginInstall, isPluginInstallActive, subscribePluginInstallState } from '../utils/serviceApi';
+import { allowConfirmedInstallHandoff } from '../utils/modalProvider';
 import ImmediateSettingsPersistence from './ImmediateSettingsPersistence';
 
 interface PendingInstall {
@@ -12,6 +13,12 @@ interface PendingInstall {
   left: number;
   top: number;
 }
+
+const immutableBuiltInSwitchLabels = new Set([
+  'Use Quizzer document extraction',
+  'Use LanceDB vector index',
+  'Use Quizzer result reranker',
+]);
 
 const diskDetailFor = (button: HTMLButtonElement, name: string) => {
   const option = button.closest('.plugin-option');
@@ -46,6 +53,21 @@ export default function PluginInstallCancellation() {
   const [pending, setPending] = useState<PendingInstall | null>(null);
 
   useEffect(() => {
+    const disableImmutableBuiltIns = () => {
+      for (const label of immutableBuiltInSwitchLabels) {
+        const toggle = document.querySelector<HTMLButtonElement>(`[role="switch"][aria-label="${CSS.escape(label)}"]`);
+        if (!toggle) continue;
+        toggle.disabled = true;
+        toggle.setAttribute('aria-disabled', 'true');
+      }
+    };
+    disableImmutableBuiltIns();
+    const observer = new MutationObserver(disableImmutableBuiltIns);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
     const intercept = (event: MouseEvent) => {
       if (event.defaultPrevented) return;
       const target = event.target instanceof Element ? event.target.closest('button') : null;
@@ -71,6 +93,7 @@ export default function PluginInstallCancellation() {
     if (!pending) return;
     const { button } = pending;
     setPending(null);
+    allowConfirmedInstallHandoff();
     button.dataset.installConfirmationBypass = 'true';
     try { button.click(); }
     finally { delete button.dataset.installConfirmationBypass; }

@@ -39,3 +39,21 @@ test('document tags are individual items and technical details live in a popover
   await documentView.getByRole('textbox', { name: 'Add tag to study-guide' }).press('Enter');
   await expect(documentView.getByText('review', { exact: true })).toBeVisible();
 });
+
+test('bulk tags apply to every document in the upload', async ({ page }) => {
+  await dismissOnboarding(page);
+  await page.getByRole('button', { name: 'Add documents' }).last().click();
+
+  const dialog = page.getByRole('dialog', { name: 'Add documents' });
+  await dialog.locator('input[type="file"]').setInputFiles([
+    { name: 'alpha.txt', mimeType: 'text/plain', buffer: Buffer.from('Alpha notes') },
+    { name: 'beta.txt', mimeType: 'text/plain', buffer: Buffer.from('Beta notes') },
+  ]);
+  await expect(dialog.getByText('ready', { exact: true })).toHaveCount(2);
+
+  await dialog.getByRole('button', { name: 'Add tag to all uploading documents' }).click();
+  await dialog.getByRole('textbox', { name: 'Add tag to all uploading documents' }).fill('shared');
+  await dialog.getByRole('textbox', { name: 'Add tag to all uploading documents' }).press('Enter');
+
+  await expect(dialog.getByText('shared', { exact: true })).toHaveCount(3);
+});
