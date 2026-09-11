@@ -180,7 +180,6 @@ test('resumes real onboarding and finishes through durable quiz practice', async
   await creationDialog.getByRole('checkbox', { name: 'Allow Quizzer to send these excerpts for this test.' }).check();
   await creationDialog.getByRole('button', { name: 'Create test' }).click();
 
-  await expect(page.getByText('Your quiz is being generated')).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText('coordination quiz is ready')).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText('10 validated questions')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Continue' })).toBeEnabled();

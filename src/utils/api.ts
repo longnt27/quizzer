@@ -248,12 +248,12 @@ const acceptedQuestionSummary = (accepted: QuizQuestion[]) => {
   return lines.join('\n') || '(none)';
 };
 
-const buildPrompt = (content: string, type: QuestionType, count: number, accepted: QuizQuestion[], focus?: string, multipleChoiceMode?: GenerationOptions['multipleChoiceMode'], template?: string, difficulty?: GenerationDifficulty) => renderGenerationPrompt({
+const buildPrompt = (content: string, type: QuestionType, count: number, accepted: QuizQuestion[], focus?: string, multipleChoiceMode?: GenerationOptions['multipleChoiceMode'], template?: string, difficulty?: GenerationDifficulty, profileTypeInstructions?: Partial<Record<QuestionType, string>>) => renderGenerationPrompt({
   template,
   content,
   type,
   count,
-  typeInstructions: typeInstructions[type],
+  typeInstructions: profileTypeInstructions?.[type] ?? typeInstructions[type],
   multipleChoiceRule: type === 'multiple-choice' && multipleChoiceMode === 'single'
     ? 'Every question must have exactly one correct choice.'
     : type === 'multiple-choice' && multipleChoiceMode === 'multiple'
@@ -318,7 +318,7 @@ export async function generateQuiz(
       try {
         candidates = await requestCandidates(buildPrompt(source.content, type, requested, accepted, sourceFocus, activeOptions.multipleChoiceMode,
           activeOptions.promptProfileSnapshot?.templates?.generation ?? activeOptions.promptProfileSnapshot?.template,
-          activeOptions.generationProfile?.difficulty), generationQuestionSchemas[type], activeOptions, signal, source.images ?? images);
+          activeOptions.generationProfile?.difficulty, activeOptions.promptProfileSnapshot?.typeInstructions), generationQuestionSchemas[type], activeOptions, signal, source.images ?? images);
       } catch (error) {
         const code = error instanceof ProviderRequestError ? error.code : undefined;
         if (onProviderFailure && (code === 'provider_limit' || code === 'provider_auth' || code === 'provider_unavailable')) {

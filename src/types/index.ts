@@ -154,6 +154,7 @@ export interface PromptProfileSnapshot {
   name: string;
   template: string;
   templates?: PromptTemplates;
+  typeInstructions?: Partial<Record<QuestionType, string>>;
 }
 
 export type PromptTemplateKind = 'generation' | 'grading' | 'rag';
@@ -170,6 +171,7 @@ export interface PromptProfile {
   name: string;
   description?: string;
   templates: PromptTemplates;
+  typeInstructions?: Partial<Record<QuestionType, string>>;
   createdAt: number;
   updatedAt: number;
   builtIn?: boolean;

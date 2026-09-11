@@ -6,9 +6,9 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db, type StoredPromptProfile } from '../db/db';
 import { queueServerChange, syncNow } from '../db/serverSync';
-import type { PromptProfile, PromptTemplateKind } from '../types';
+import type { PromptProfile, PromptTemplateKind, QuestionType } from '../types';
 import {
-  BUILT_IN_PROMPT_PROFILE, promptTemplateErrors, renderGenerationPrompt, renderTemplate, validatePromptProfile,
+  BUILT_IN_PROMPT_PROFILE, DEFAULT_TYPE_INSTRUCTIONS, promptTemplateErrors, renderGenerationPrompt, renderTemplate, validatePromptProfile,
 } from '../utils/promptProfiles';
 import { getMessageApi } from '../utils/messageProvider';
 import { getModalApi } from '../utils/modalProvider';
@@ -44,6 +44,7 @@ const placeholderHelp: Record<PromptTemplateKind, { name: string; description: s
 const cloneProfile = (profile: PromptProfile): PromptProfile => ({
   ...profile,
   templates: { ...profile.templates },
+  typeInstructions: { ...DEFAULT_TYPE_INSTRUCTIONS, ...profile.typeInstructions },
 });
 
 const flushPromptProfileChange = async (id: string, deleted = false) => {
@@ -90,7 +91,7 @@ export default function PromptStudio() {
   const [selectedId, setSelectedId] = useState(BUILT_IN_PROMPT_PROFILE.id);
   const selected = profiles.find(profile => profile.id === selectedId) ?? BUILT_IN_PROMPT_PROFILE;
   const [draft, setDraft] = useState<PromptProfile>(() => cloneProfile(BUILT_IN_PROMPT_PROFILE));
-  const [activeTab, setActiveTab] = useState<PromptTemplateKind>('generation');
+  const [activeTab, setActiveTab] = useState<PromptTemplateKind | 'type-instructions'>('generation');
   const [showPreview, setShowPreview] = useState(true);
   const [saving, setSaving] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -183,6 +184,7 @@ export default function PromptStudio() {
         description: typeof parsed.description === 'string' ? parsed.description : undefined,
         version: Number.isSafeInteger(parsed.version) && Number(parsed.version) > 0 ? Number(parsed.version) : 1,
         templates: parsed.templates as PromptProfile['templates'],
+        typeInstructions: { ...DEFAULT_TYPE_INSTRUCTIONS, ...parsed.typeInstructions },
         builtIn: false,
         createdAt: now,
         updatedAt: now,
@@ -200,6 +202,10 @@ export default function PromptStudio() {
   const updateTemplate = (kind: PromptTemplateKind, value: string) => setDraft(current => ({
     ...current,
     templates: { ...current.templates, [kind]: value },
+  }));
+  const updateTypeInstruction = (kind: QuestionType, value: string) => setDraft(current => ({
+    ...current,
+    typeInstructions: { ...DEFAULT_TYPE_INSTRUCTIONS, ...current.typeInstructions, [kind]: value },
   }));
 
   return (
@@ -231,24 +237,40 @@ export default function PromptStudio() {
             {!selected.builtIn && <Button danger icon={<DeleteOutlined />} onClick={remove}>Delete</Button>}
           </Space>
         </div>
-        <Tabs activeKey={activeTab} onChange={key => setActiveTab(key as PromptTemplateKind)} items={(Object.keys(tabLabels) as PromptTemplateKind[]).map(kind => ({
-          key: kind,
-          label: tabLabels[kind],
-          children: <Space direction="vertical" size="small" style={{ width: '100%' }}>
-            <Space size={[4, 4]} wrap>
-              <Typography.Text type="secondary">Available placeholders:</Typography.Text>
-              {placeholderHelp[kind].map(({ name, description }) => <Popover key={name} title={`{{${name}}}`} content={description} trigger={['hover', 'focus', 'click']}>
-                <Tag tabIndex={0} aria-label={`${name} placeholder: ${description}`}>{`{{${name}}}`}</Tag>
-              </Popover>)}
-            </Space>
-            <Input.TextArea className="prompt-template-editor" aria-label={`${tabLabels[kind]} prompt template`} rows={14}
-              value={draft.templates[kind]} disabled={Boolean(selected.builtIn)} onChange={event => updateTemplate(kind, event.target.value)} />
-            {!!errors[kind]?.length && <Alert type="error" showIcon message={`${tabLabels[kind]} template needs attention`} description={errors[kind]!.join(' ')} />}
-          </Space>,
-        }))} />
+        <Tabs activeKey={activeTab} onChange={key => setActiveTab(key as PromptTemplateKind | 'type-instructions')} items={[
+          ...(Object.keys(tabLabels) as PromptTemplateKind[]).map(kind => ({
+            key: kind,
+            label: tabLabels[kind],
+            children: <Space direction="vertical" size="small" style={{ width: '100%' }}>
+              <Space size={[4, 4]} wrap>
+                <Typography.Text type="secondary">Available placeholders:</Typography.Text>
+                {placeholderHelp[kind].map(({ name, description }) => <Popover key={name} title={`{{${name}}}`} content={description} trigger={['hover', 'focus', 'click']}>
+                  <Tag tabIndex={0} aria-label={`${name} placeholder: ${description}`}>{`{{${name}}}`}</Tag>
+                </Popover>)}
+              </Space>
+              <Input.TextArea className="prompt-template-editor" aria-label={`${tabLabels[kind]} prompt template`} rows={14}
+                value={draft.templates[kind]} disabled={Boolean(selected.builtIn)} onChange={event => updateTemplate(kind, event.target.value)} />
+              {!!errors[kind]?.length && <Alert type="error" showIcon message={`${tabLabels[kind]} template needs attention`} description={errors[kind]!.join(' ')} />}
+            </Space>,
+          })),
+          {
+            key: 'type-instructions',
+            label: 'Type Instructions',
+            children: <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+              <Typography.Text type="secondary">These values are rendered into the generation template as {'{{typeInstructions}}'} for the matching question type.</Typography.Text>
+              {(['multiple-choice', 'fill-blank', 'reasoning', 'coding'] as QuestionType[]).map(kind => <div key={kind}>
+                <Typography.Text strong>{kind}</Typography.Text>
+                <Input.TextArea aria-label={`${kind} type instruction`} rows={5} maxLength={12000} showCount
+                  value={draft.typeInstructions?.[kind] ?? DEFAULT_TYPE_INSTRUCTIONS[kind]} disabled={Boolean(selected.builtIn)}
+                  onChange={event => updateTypeInstruction(kind, event.target.value)} />
+              </div>)}
+            </Space>,
+          },
+        ]} />
         <Divider orientation="left" plain>Preview</Divider>
         <Button type="link" onClick={() => setShowPreview(value => !value)}>{showPreview ? 'Hide rendered preview' : 'Show rendered preview'}</Button>
-        {showPreview && <pre className="prompt-preview">{previewFor(activeTab, draft)}</pre>}
+        {showPreview && activeTab !== 'type-instructions' && <pre className="prompt-preview">{previewFor(activeTab, draft)}</pre>}
+        {showPreview && activeTab === 'type-instructions' && <pre className="prompt-preview">{draft.typeInstructions?.['multiple-choice'] ?? DEFAULT_TYPE_INSTRUCTIONS['multiple-choice']}</pre>}
       </section>
     </div>
   );
