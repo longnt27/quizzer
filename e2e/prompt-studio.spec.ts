@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { dismissOnboarding, openPromptStudio, setInterfaceMode } from './helpers';
 import { readFileSync } from 'node:fs';
 
+// Keep selectors scoped to Prompt Studio because the surrounding Settings UI also has Generation controls.
 test('Prompt Studio clone/edit/validate plus import/export', async ({ page }) => {
   await dismissOnboarding(page);
 
