@@ -141,7 +141,12 @@ export default function DocumentView({ documentId, onBack }: Props) {
       await syncNow();
       const response = await serviceJson<{ status: IndexStatus }>('/api/v1/index', 'POST', { documentIds: [document.id], force: true });
       setIndexStatus(response.status);
-      message.success('Document indexed for retrieval');
+      if (response.status.dense?.enabled && response.status.dense.status === 'unavailable') {
+        const detail = response.status.dense.issue?.message || 'The configured embedding provider did not return a usable dense index.';
+        message.warning(`Sparse index rebuilt for ${document.name}; dense indexing failed: ${detail}`);
+      } else {
+        message.success(`Indexed ${document.name} for retrieval`);
+      }
     } catch (error) {
       message.error(formatErrorMessage(error, 'indexing'));
     } finally {
@@ -218,8 +223,10 @@ export default function DocumentView({ documentId, onBack }: Props) {
         type={indexStatus.dense.status === 'unavailable' ? 'warning' : 'info'}
         message={indexStatus.dense.status === 'ready'
           ? `Dense retrieval ready · ${indexStatus.dense.embeddingModel}`
-          : indexStatus.dense.status === 'unavailable' ? 'Dense retrieval is unavailable; sparse search remains ready' : 'Dense retrieval will be built during indexing'}
-        description={indexStatus.dense.status === 'unavailable' ? 'Quizzer will continue using keyword search for this document.' : undefined} />}
+          : indexStatus.dense.status === 'unavailable' ? `Dense retrieval unavailable · ${indexStatus.dense.embeddingModel}` : 'Dense retrieval will be built during indexing'}
+        description={indexStatus.dense.status === 'unavailable'
+          ? `${indexStatus.dense.issue?.message || 'The configured embedding provider failed.'} Sparse retrieval remains ready for ${document.name}. Reindex actions on this page affect only this document; dense provider health is shared across the library.`
+          : undefined} />}
       <Tabs defaultActiveKey="extracted" items={[
         { key: 'extracted', label: 'Extracted content', children: <Card>
           <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace, monospace' }}>{document.content}</Typography.Paragraph>
