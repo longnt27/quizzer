@@ -8,6 +8,7 @@ import {
     Divider,
     Timeline,
     Empty,
+    Popover,
 } from 'antd';
 import { StoredTest, type StoredDocument } from '../db/db';
 import { db } from '../db/db';
@@ -313,21 +314,21 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
                         <Divider style={{ marginTop: 'auto' }} />
 
                         <Space wrap style={{ justifyContent: 'center' }} size='large'>
-                            <Button size="large" onClick={handleRetake}>
-                                Retake
-                            </Button>
-                            <Button size="large" onClick={() => setSession({ testId: test.id, mode: 'reviewing' })}>
-                                Review
-                            </Button>
-                            <Button size="large" loading={isLoading} onClick={handleNewTestSameFile}>
-                                New Test (same file)
-                            </Button>
-                            <Button size="large" onClick={handleWrongOnlyTest}>
-                                Retry Mistakes
-                            </Button>
-                            <Button size="large" loading={isLoading} type="primary" onClick={handleFocusTest}>
-                                Generate Focus Test
-                            </Button>
+                            <Popover content="Start the same test again with the existing questions." trigger={['hover', 'focus']}>
+                                <Button size="large" onClick={handleRetake}>Retake</Button>
+                            </Popover>
+                            <Popover content="Review the questions and answers from this test." trigger={['hover', 'focus']}>
+                                <Button size="large" onClick={() => setSession({ testId: test.id, mode: 'reviewing' })}>Review</Button>
+                            </Popover>
+                            <Popover content="Create a test containing only questions you missed on the latest attempt." trigger={['hover', 'focus']}>
+                                <Button size="large" onClick={handleWrongOnlyTest}>Retry Mistakes</Button>
+                            </Popover>
+                            <Popover content="Generate a fresh test from the same source using the original generation settings." trigger={['hover', 'focus']}>
+                                <Button size="large" loading={isLoading} type="primary" onClick={handleNewTestSameFile}>Regenerate Test</Button>
+                            </Popover>
+                            <Popover content="Generate new questions focused on concepts missed in the latest attempt." trigger={['hover', 'focus']}>
+                                <Button size="large" loading={isLoading} type="primary" onClick={handleFocusTest}>Generate Focus Test</Button>
+                            </Popover>
                         </Space>
                     </Card>
                 </div>
