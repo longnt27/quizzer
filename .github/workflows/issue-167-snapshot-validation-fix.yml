@@ -1,10 +1,8 @@
-name: Apply issue 167 prompt snapshot validation fix
+name: Apply issue 167 validation patch
 on:
   push:
-    branches:
-      - fix/issue-167-prompt-type-instructions
-    paths:
-      - .github/workflows/issue-167-snapshot-validation-fix.yml
+    branches: [fix/issue-167-prompt-type-instructions]
+    paths: [.github/workflows/issue-167-snapshot-validation-fix.yml]
 permissions:
   contents: write
 jobs:
@@ -14,79 +12,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: fix/issue-167-prompt-type-instructions
-      - name: Allow bounded type instructions in prompt snapshots
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('server/generation-validation.mjs')
-          text = path.read_text()
-          old = "rejectUnknown(snapshot, new Set(['id', 'version', 'name', 'template', 'templates']), 'Prompt profile snapshot');"
-          new = "rejectUnknown(snapshot, new Set(['id', 'version', 'name', 'template', 'templates', 'typeInstructions']), 'Prompt profile snapshot');"
-          if old not in text:
-              raise SystemExit('prompt snapshot allow-list marker not found')
-          text = text.replace(old, new, 1)
-
-          marker = """    if (templates.generation !== snapshot.template) throw new Error('Prompt profile generation templates do not match');
-  }
-};"""
-          replacement = """    if (templates.generation !== snapshot.template) throw new Error('Prompt profile generation templates do not match');
-  }
-  if (snapshot.typeInstructions !== undefined) {
-    const instructions = requireObject(snapshot.typeInstructions, 'Prompt profile type instructions must be an object');
-    rejectUnknown(instructions, questionTypes, 'Prompt profile type instructions');
-    if (Object.keys(instructions).length !== questionTypes.size) {
-      throw new Error('Prompt profile type instructions must contain every question type');
-    }
-    for (const [type, instruction] of Object.entries(instructions)) {
-      if (!boundedText(instruction, 1, 12_000)) throw new Error(`Prompt profile ${type} type instruction must contain 1-12000 characters`);
-    }
-  }
-};"""
-          if marker not in text:
-              raise SystemExit('prompt snapshot validation marker not found')
-          path.write_text(text.replace(marker, replacement, 1))
-
-          path = Path('test/generation-validation.test.mjs')
-          text = path.read_text()
-          marker = """    templates: {
-      generation,
-      grading: 'Grade {{question}} against its reference answer.',
-      rag: 'Retrieve direct evidence for this learning query.',
-    },
-  };
-  assert.doesNotThrow(() => validateGenerationOptions({ ...value, promptProfileSnapshot: snapshot }));"""
-          replacement = """    templates: {
-      generation,
-      grading: 'Grade {{question}} against its reference answer.',
-      rag: 'Retrieve direct evidence for this learning query.',
-    },
-    typeInstructions: {
-      'multiple-choice': 'Use credible distractors and balanced answer choices.',
-      'fill-blank': 'Accept concise operational terminology and common equivalents.',
-      reasoning: 'Require explanation of the relevant tradeoffs and causal chain.',
-      coding: 'Require executable code with explicit cleanup and edge-case handling.',
-    },
-  };
-  assert.doesNotThrow(() => validateGenerationOptions({ ...value, promptProfileSnapshot: snapshot }));
-  assert.throws(() => validateGenerationOptions({
-    ...value, promptProfileSnapshot: { ...snapshot, typeInstructions: { ...snapshot.typeInstructions, essay: 'Unsupported type.' } },
-  }), /unsupported fields: essay/);
-  assert.throws(() => validateGenerationOptions({
-    ...value, promptProfileSnapshot: { ...snapshot, typeInstructions: { ...snapshot.typeInstructions, reasoning: '' } },
-  }), /reasoning type instruction/);
-  const incompleteTypeInstructions = { ...snapshot.typeInstructions };
-  delete incompleteTypeInstructions.coding;
-  assert.throws(() => validateGenerationOptions({
-    ...value, promptProfileSnapshot: { ...snapshot, typeInstructions: incompleteTypeInstructions },
-  }), /contain every question type/);"""
-          if marker not in text:
-              raise SystemExit('generation validation test snapshot marker not found')
-          path.write_text(text.replace(marker, replacement, 1))
-
-          Path('.github/workflows/issue-167-snapshot-validation-fix.yml').unlink()
-          PY
+      - run: python scripts/issue-167-snapshot-validation-fix.py
+      - run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
