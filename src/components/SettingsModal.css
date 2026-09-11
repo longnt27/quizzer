@@ -124,6 +124,8 @@
 .ant-modal-wrap:has(.settings-modal) .settings-modal {
   top: 0;
   display: inline-block;
+  width: min(960px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
   padding-bottom: 0;
   text-align: start;
   vertical-align: middle;
