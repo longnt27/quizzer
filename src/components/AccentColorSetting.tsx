@@ -1,5 +1,5 @@
 import { CheckOutlined } from '@ant-design/icons';
-import { Button, Popover, Space, Tag, Typography } from 'antd';
+import { Popover, Space, Tag, Typography } from 'antd';
 import { ACCENT_COLORS, type AccentColor } from '../utils/accentColor';
 import { changeAccentColor, useAccentColor } from '../utils/useAccentColor';
 import { getMessageApi } from '../utils/messageProvider';
@@ -21,10 +21,9 @@ export default function AccentColorSetting() {
       {ACCENT_COLORS.map(color => (
         <button key={color.id} type="button" role="option" aria-selected={accent === color.id}
           className={`accent-color-swatch${accent === color.id ? ' is-selected' : ''}`}
+          style={{ backgroundColor: color.light.primary }}
           aria-label={color.label} title={color.label} onClick={() => apply(color.id)}>
-          <span className="accent-color-dot" style={{ backgroundColor: color.light.primary }} aria-hidden="true">
-            {accent === color.id ? <CheckOutlined /> : null}
-          </span>
+          {accent === color.id ? <CheckOutlined /> : null}
         </button>
       ))}
     </div>
@@ -38,9 +37,9 @@ export default function AccentColorSetting() {
     </div>
     <div className="settings-control settings-control-single">
       <Popover content={palette} trigger="click" placement="bottomRight">
-        <Button className="accent-color-trigger" aria-label={`Accent color: ${selected.label}`} title={`Accent color: ${selected.label}`}>
-          <span className="accent-color-dot" style={{ backgroundColor: selected.light.primary }} aria-hidden="true" />
-        </Button>
+        <button type="button" className="accent-color-trigger"
+          style={{ backgroundColor: selected.light.primary }}
+          aria-label={`Accent color: ${selected.label}`} title={`Accent color: ${selected.label}`} />
       </Popover>
     </div>
   </div>;

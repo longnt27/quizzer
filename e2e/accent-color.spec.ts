@@ -48,6 +48,32 @@ test('applies accents immediately in both themes and preserves the choice after 
   await expect.poll(() => primaryColor(page)).toBe('#69b1ff');
 });
 
+test('renders the accent picker as flush circular color controls', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' });
+  await dismissOnboarding(page);
+  const dialog = await openSettings(page);
+  const trigger = dialog.getByRole('button', { name: 'Accent color: Blue' });
+
+  await expect(trigger.locator('.accent-color-dot')).toHaveCount(0);
+  await expect(trigger).toHaveCSS('border-radius', '50%');
+  await expect(trigger).toHaveCSS('background-color', 'rgb(0, 80, 179)');
+  const triggerSize = await trigger.evaluate(element => ({
+    width: (element as HTMLElement).offsetWidth,
+    height: (element as HTMLElement).offsetHeight,
+  }));
+  expect(triggerSize.width).toBe(triggerSize.height);
+
+  await trigger.click();
+  const palette = page.getByRole('listbox', { name: 'Accent colors' });
+  const blue = palette.getByRole('option', { name: 'Blue', exact: true });
+  await expect(blue).toHaveAttribute('aria-selected', 'true');
+  await expect(blue.locator('.accent-color-dot')).toHaveCount(0);
+  await expect(blue).toHaveCSS('padding-left', '0px');
+  await expect(blue).toHaveCSS('padding-right', '0px');
+  await expect(blue).toHaveCSS('background-color', 'rgb(0, 80, 179)');
+  await expect(blue).toHaveCSS('border-top-width', '2px');
+});
+
 test('finds the accent setting by name and supports keyboard selection', async ({ page }) => {
   await dismissOnboarding(page);
   const dialog = await openSettings(page);
