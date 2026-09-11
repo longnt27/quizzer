@@ -13,9 +13,20 @@ const expectCentered = async (locator: import('@playwright/test').Locator, viewp
   const box = await locator.boundingBox();
   expect(box).not.toBeNull();
   expect(box?.y ?? 0).toBeGreaterThanOrEqual(15);
+  expect(viewportHeight - ((box?.y ?? 0) + (box?.height ?? 0))).toBeGreaterThanOrEqual(15);
 };
 
-test('Settings and Plugins & models stay centered and scroll inside the modal', async ({ page }) => {
+const expectInternalScroll = async (dialog: import('@playwright/test').Locator) => {
+  const overflow = await dialog.locator('.ant-modal-body').evaluate(element => ({
+    overflowY: getComputedStyle(element).overflowY,
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }));
+  expect(overflow.overflowY).toBe('auto');
+  expect(overflow.scrollHeight).toBeGreaterThanOrEqual(overflow.clientHeight);
+};
+
+test('all primary dialogs stay inside a short viewport and scroll internally', async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 560 });
   await dismissOnboarding(page);
   await setInterfaceMode(page, 'advanced');
@@ -31,11 +42,18 @@ test('Settings and Plugins & models stay centered and scroll inside the modal', 
   await expect(plugins).toBeVisible();
   await plugins.getByRole('tab', { name: 'Models' }).click();
   await expectCentered(plugins, 560);
-  const overflow = await plugins.locator('.ant-modal-body').evaluate(element => ({
-    overflowY: getComputedStyle(element).overflowY,
-    clientHeight: element.clientHeight,
-    scrollHeight: element.scrollHeight,
-  }));
-  expect(overflow.overflowY).toBe('auto');
-  expect(overflow.scrollHeight).toBeGreaterThan(overflow.clientHeight);
+  await expectInternalScroll(plugins);
+  await plugins.getByRole('button', { name: 'Cancel' }).click();
+
+  await page.getByRole('button', { name: 'Add documents' }).last().click();
+  const documents = page.getByRole('dialog', { name: 'Add documents' });
+  await expect(documents).toBeVisible();
+  await expectCentered(documents, 560);
+  await documents.getByRole('button', { name: 'Cancel' }).click();
+
+  await page.getByRole('button', { name: 'Create test' }).last().click();
+  const createTest = page.getByRole('dialog', { name: /Create test/i });
+  await expect(createTest).toBeVisible();
+  await expectCentered(createTest, 560);
+  await expectInternalScroll(createTest);
 });
