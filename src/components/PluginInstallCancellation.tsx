@@ -13,6 +13,12 @@ interface PendingInstall {
   top: number;
 }
 
+const immutableBuiltInSwitchLabels = new Set([
+  'Use Quizzer document extraction',
+  'Use LanceDB vector index',
+  'Use Quizzer result reranker',
+]);
+
 const diskDetailFor = (button: HTMLButtonElement, name: string) => {
   const option = button.closest('.plugin-option');
   const text = option?.textContent ?? '';
@@ -44,6 +50,21 @@ const isInstallTrigger = (button: HTMLButtonElement) => {
 export default function PluginInstallCancellation() {
   const active = useSyncExternalStore(subscribePluginInstallState, isPluginInstallActive, () => false);
   const [pending, setPending] = useState<PendingInstall | null>(null);
+
+  useEffect(() => {
+    const disableImmutableBuiltIns = () => {
+      for (const label of immutableBuiltInSwitchLabels) {
+        const toggle = document.querySelector<HTMLButtonElement>(`[role="switch"][aria-label="${CSS.escape(label)}"]`);
+        if (!toggle) continue;
+        toggle.disabled = true;
+        toggle.setAttribute('aria-disabled', 'true');
+      }
+    };
+    disableImmutableBuiltIns();
+    const observer = new MutationObserver(disableImmutableBuiltIns);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const intercept = (event: MouseEvent) => {
