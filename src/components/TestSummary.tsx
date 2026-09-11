@@ -339,7 +339,6 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
                         maxHeight: '100%',
                         overflowY: 'auto',
                         paddingRight: 8,
-                        borderLeft: '1px solid var(--border)',
                     }}
                 >
 
@@ -347,7 +346,7 @@ const TestSummary: React.FC<Props> = ({ test, setSession, onNewTestCreated, setS
                     {test.attempts.length === 0 ? (
                         <Empty description="No attempts" />
                     ) : (
-                        <Timeline style={{ marginTop: 12 }} items={test.attempts
+                        <Timeline className="summary-timeline" style={{ marginTop: 12 }} items={test.attempts
                                 .slice()
                                 .reverse()
                                 .map((attempt) => ({

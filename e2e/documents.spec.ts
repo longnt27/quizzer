@@ -20,6 +20,10 @@ test('document tags are individual items and technical details live in a popover
 
   const documentView = page.locator('.document-view');
   await expect(documentView.getByRole('heading', { name: 'study-guide' })).toBeVisible();
+  const backButton = documentView.getByRole('button', { name: 'Back to home' });
+  await expect(backButton).toHaveCSS('position', 'absolute');
+  await expect(backButton).toHaveCSS('left', '16px');
+  await expect(backButton).toHaveCSS('top', '16px');
   await expect(documentView.getByText('exam', { exact: true })).toBeVisible();
   await expect(documentView.getByText('text/plain', { exact: true })).toHaveCount(0);
   await documentView.getByRole('button', { name: 'Document details' }).click();

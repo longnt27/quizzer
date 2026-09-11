@@ -200,7 +200,8 @@ export default function DocumentView({ documentId, onBack }: Props) {
 
   return (
     <div className="document-view">
-      <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack}>Back to home</Button>
+      <Button className="document-back-button" type="text" icon={<ArrowLeftOutlined />} onClick={onBack}>Back to home</Button>
+      <div className="document-view-content">
       <div className="document-heading">
         <Typography.Title level={2}>{document.name}</Typography.Title>
         <Popover trigger="click" title="Document details" content={<Descriptions size="small" column={1} items={details} />}>
@@ -271,6 +272,7 @@ export default function DocumentView({ documentId, onBack }: Props) {
                   : <Empty description="Preview is unavailable for this file type"><Button href={originalUrl} download={document.name} icon={<DownloadOutlined />}>Download original</Button></Empty>}
         </Card> },
       ]} />
+      </div>
       {askOpen && <DocumentAskModal document={document} onClose={() => setAskOpen(false)} />}
     </div>
   );

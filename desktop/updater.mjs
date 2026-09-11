@@ -10,6 +10,12 @@ import { prepareMacosDmgUpdate } from './macos-update.mjs';
 export const SUPPORTED_CHANNELS = Object.freeze(['stable', 'beta']);
 export const CANONICAL_REPOSITORY = 'longnt27/quizzer';
 export const MAX_METADATA_BYTES = 1024 * 1024; // 1 MiB
+export const MAX_RELEASE_NOTES_CHARS = 20_000;
+
+export const normalizeReleaseNotes = value => {
+  if (typeof value !== 'string') return '';
+  return value.replace(/\r\n?/g, '\n').trim().slice(0, MAX_RELEASE_NOTES_CHARS);
+};
 
 const writeAll = async (fileHandle, bytes) => {
   let offset = 0;
@@ -592,6 +598,29 @@ export class DesktopUpdater {
     return this.getStatus();
   }
 
+  async fetchReleaseNotesForTag(tag) {
+    const normalizedTag = typeof tag === 'string' && tag.startsWith('v') ? tag : `v${tag}`;
+    if (!isValidReleaseTag(normalizedTag)) return undefined;
+    const releaseUrl = `https://api.github.com/repos/${CANONICAL_REPOSITORY}/releases/tags/${encodeURIComponent(normalizedTag)}`;
+    if (!validateCanonicalReleaseUrl(releaseUrl, CANONICAL_REPOSITORY)) return undefined;
+    try {
+      const releaseText = await fetchBoundedText(
+        this.fetch,
+        releaseUrl,
+        { headers: { 'User-Agent': `Quizzer-Desktop-Updater/${this.currentVersion}`, Accept: 'application/vnd.github+json' } },
+        MAX_METADATA_BYTES,
+      );
+      const release = JSON.parse(releaseText);
+      if (!release || typeof release !== 'object' || Array.isArray(release) || release.draft === true) return undefined;
+      if (release.tag_name && release.tag_name !== normalizedTag) return undefined;
+      return normalizeReleaseNotes(release.body) || undefined;
+    } catch {
+      // Release notes are display-only metadata. Update trust continues to come
+      // exclusively from the signed release manifest.
+      return undefined;
+    }
+  }
+
   resolvePublicKey(publicKeyId) {
     return this.trustedKeys.get(publicKeyId) || null;
   }
@@ -1007,10 +1036,13 @@ export class DesktopUpdater {
       const repository = CANONICAL_REPOSITORY;
 
       let manifestUrl;
+      let releaseTag;
+      let releaseNotes;
       if (options.tag) {
         if (!isValidReleaseTag(options.tag)) {
           throw new Error(`Invalid release tag syntax: "${options.tag}"`);
         }
+        releaseTag = options.tag;
         manifestUrl = `https://github.com/${repository}/releases/download/${encodeURIComponent(options.tag)}/release-manifest.json`;
       } else if (channel === 'stable') {
         manifestUrl = `https://github.com/${repository}/releases/latest/download/release-manifest.json`;
@@ -1052,7 +1084,10 @@ export class DesktopUpdater {
         }
 
         prereleases.sort((a, b) => compareSemver(b.tag_name, a.tag_name));
-        const selectedTag = prereleases[0].tag_name;
+        const selectedRelease = prereleases[0];
+        const selectedTag = selectedRelease.tag_name;
+        releaseTag = selectedTag;
+        releaseNotes = normalizeReleaseNotes(selectedRelease.body) || undefined;
         manifestUrl = `https://github.com/${repository}/releases/download/${encodeURIComponent(selectedTag)}/release-manifest.json`;
       }
 
@@ -1102,11 +1137,16 @@ export class DesktopUpdater {
         return this.getStatus();
       }
 
+      if (!releaseNotes) {
+        releaseNotes = await this.fetchReleaseNotesForTag(releaseTag || `v${verifiedManifest.version}`);
+      }
+
       this.state = 'available';
       this.updateInfo = {
         version: verifiedManifest.version,
         channel: verifiedManifest.channel,
         publishedAt: verifiedManifest.publishedAt,
+        releaseNotes,
         publicKeyId: verifiedManifest.publicKeyId,
         artifact: targetArtifact,
       };
