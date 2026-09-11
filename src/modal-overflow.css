@@ -1,10 +1,14 @@
 .ant-modal-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
   padding-block: 24px;
 }
 
 .ant-modal {
-  top: 0;
+  top: auto;
+  margin: 0;
   max-height: calc(100dvh - 48px);
   padding-bottom: 0;
 }
