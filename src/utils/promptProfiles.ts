@@ -2,10 +2,30 @@ import type { PromptProfile, PromptProfileSnapshot, PromptTemplateKind, PromptTe
 import { generationQuestionSchemas } from './questionSchemas.ts';
 
 export const DEFAULT_TYPE_INSTRUCTIONS: Record<QuestionType, string> = Object.freeze({
-  'multiple-choice': 'Create multiple-choice questions with 3-6 credible choices, at least one correct and one incorrect choice, balanced wording, and a useful explanation for every choice.',
-  'fill-blank': 'Create fill-in-the-blank questions with exactly one _____ blank, useful accepted answer variants, and one explanation. Prefer meaningful concepts over incidental details.',
-  reasoning: 'Create reasoning questions that require explanation, comparison, inference, or application. Provide a clear reference answer and the essential points a good response should contain.',
-  coding: 'Create practical coding challenges with an explicit task, expected behavior, constraints, a correct reference solution, and a concise explanation of the approach and edge cases.',
+  'multiple-choice': `Create multiple-choice questions. Each needs 3-6 choices, at least one correct choice,
+at least one incorrect choice, and a useful explanation for every choice. Set type to "multiple-choice".
+Every incorrect choice must be a credible near miss: use a common misconception, a subtly wrong condition, a realistic
+implementation mistake, or a closely related concept from the same domain. Keep every choice in the same semantic category
+and at comparable specificity. Never use absurd, unrelated, vague, or generic filler merely to complete the choice list.
+A learner without the relevant knowledge must not be able to eliminate a choice just because it sounds noisy or malformed.
+Balance the choices' grammar, detail, and approximate length. Do not make the correct choice uniquely longer, more qualified,
+more precise, or better written than the distractors. Give each explanation enough detail to show why that exact choice is
+correct or incorrect; do not merely say that it is right, wrong, or unrelated.`,
+  'fill-blank': `Create fill-in-the-blank questions. Put exactly one five-underscore blank (_____) in each statement.
+Set type to "fill-blank". Before returning each question, actively brainstorm the ways a knowledgeable learner could express
+the same answer. Provide 3-16 genuinely useful acceptedAnswers covering, when applicable: canonical terminology; common
+abbreviations; omitted repeated qualifiers; symbol forms such as +, &, /, and underscores; conjunctions in the source language;
+and concise wording that preserves every required concept. Do not fill the list with superficial conjunction swaps while missing
+real shorthand, and do not invent alternatives that change the meaning. Prefer a less ambiguous statement when correct variants
+cannot be enumerated reliably. Provide one explanation for the answer. Test a meaningful
+concept, command, behavior, or constraint—not an arbitrary name, count, version, or item used only in the lesson's example.`,
+  reasoning: `Create reasoning questions that require explanation, comparison, inference, or application rather than recall.
+Set type to "reasoning". Provide a clear referenceAnswer the learner can compare against and an explanation describing
+the essential points a good response should contain. Do not turn these into multiple-choice questions.`,
+  coding: `Create practical coding challenges grounded in programming concepts from the source material.
+Set type to "coding". Each statement must specify the task, expected behavior, and any important constraints without relying
+on hidden context. Provide a correct example solution in referenceAnswer and a concise explanation of the essential approach,
+edge cases, and correctness criteria. Do not turn these into general reasoning or multiple-choice questions.`,
 });
 
 export const BUILT_IN_PROMPT_PROFILE: PromptProfile = Object.freeze({
