@@ -56,7 +56,7 @@ test('renders the accent picker as flush circular color controls', async ({ page
 
   await expect(trigger.locator('.accent-color-dot')).toHaveCount(0);
   await expect(trigger).toHaveCSS('border-radius', '50%');
-  await expect(trigger).toHaveCSS('background-color', 'rgb(22, 119, 255)');
+  await expect(trigger).toHaveCSS('background-color', 'rgb(0, 80, 179)');
   const triggerSize = await trigger.evaluate(element => ({
     width: (element as HTMLElement).offsetWidth,
     height: (element as HTMLElement).offsetHeight,
@@ -70,7 +70,7 @@ test('renders the accent picker as flush circular color controls', async ({ page
   await expect(blue.locator('.accent-color-dot')).toHaveCount(0);
   await expect(blue).toHaveCSS('padding-left', '0px');
   await expect(blue).toHaveCSS('padding-right', '0px');
-  await expect(blue).toHaveCSS('background-color', 'rgb(22, 119, 255)');
+  await expect(blue).toHaveCSS('background-color', 'rgb(0, 80, 179)');
   await expect(blue).toHaveCSS('border-top-width', '2px');
 });
 
