@@ -8,7 +8,7 @@ import {
 
 const normalized = (value: string) => value.toLowerCase();
 const syntheticStatusMessages = new Set(['Antigravity is connected.']);
-const completedJobMessage = /\b(installed successfully|successfully installed|installation complete|download complete|downloaded successfully|ready to use|install succeeded|installation succeeded)\b/i;
+const completedJobMessage = /\b(installed successfully|successfully installed|is installed and (?:ready|dense retrieval is ready)|installation complete|download complete|downloaded successfully|ready to use|install succeeded|installation succeeded)\b/i;
 
 const nodeText = (node: ReactNode): string => {
   if (typeof node === 'string' || typeof node === 'number') return String(node);
