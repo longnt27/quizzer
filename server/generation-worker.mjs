@@ -324,7 +324,7 @@ const generationPrompt = ({ source, type, count, accepted, options }) => {
   const instruction = [options.customInstruction, options.questionInstructions?.[type], source.instruction].filter(Boolean).join('\n\n');
   const editable = renderTemplate(options.promptProfileSnapshot?.templates?.generation
     ?? options.promptProfileSnapshot?.template ?? DEFAULT_TEMPLATE, {
-    count, questionType: type, typeInstructions: typeInstructions[type], multipleChoiceRule,
+    count, questionType: type, typeInstructions: options.promptProfileSnapshot?.typeInstructions?.[type] ?? typeInstructions[type], multipleChoiceRule,
     difficulty: options.generationProfile?.difficulty ?? 'intermediate',
     instruction: instruction ? `Additional learning instruction: ${instruction}` : '',
     acceptedQuestions: acceptedQuestionSummary(accepted),

@@ -1,6 +1,13 @@
 import type { PromptProfile, PromptProfileSnapshot, PromptTemplateKind, PromptTemplates, QuestionType } from '../types';
 import { generationQuestionSchemas } from './questionSchemas.ts';
 
+export const DEFAULT_TYPE_INSTRUCTIONS: Record<QuestionType, string> = Object.freeze({
+  'multiple-choice': 'Create multiple-choice questions with 3-6 credible choices, at least one correct and one incorrect choice, balanced wording, and a useful explanation for every choice.',
+  'fill-blank': 'Create fill-in-the-blank questions with exactly one _____ blank, useful accepted answer variants, and one explanation. Prefer meaningful concepts over incidental details.',
+  reasoning: 'Create reasoning questions that require explanation, comparison, inference, or application. Provide a clear reference answer and the essential points a good response should contain.',
+  coding: 'Create practical coding challenges with an explicit task, expected behavior, constraints, a correct reference solution, and a concise explanation of the approach and edge cases.',
+});
+
 export const BUILT_IN_PROMPT_PROFILE: PromptProfile = Object.freeze({
   id: 'quizzer-balanced',
   version: 1,
@@ -9,6 +16,7 @@ export const BUILT_IN_PROMPT_PROFILE: PromptProfile = Object.freeze({
   builtIn: true,
   createdAt: 0,
   updatedAt: 0,
+  typeInstructions: DEFAULT_TYPE_INSTRUCTIONS,
   templates: Object.freeze({
     generation: `Create exactly {{count}} new, challenging {{questionType}} quiz-question candidates.
 Use the language of the source.
@@ -76,6 +84,7 @@ export const snapshotPromptProfile = (profile: PromptProfile): PromptProfileSnap
   name: profile.name,
   template: profile.templates.generation,
   templates: { ...profile.templates },
+  typeInstructions: { ...DEFAULT_TYPE_INSTRUCTIONS, ...profile.typeInstructions },
 });
 
 export const renderTemplate = (template: string, values: Record<string, string | number>) => template.replace(
