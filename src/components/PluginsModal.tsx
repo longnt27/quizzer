@@ -233,6 +233,14 @@ export default function PluginsModal({ open, interfaceMode, onClose }: Props) {
       setExternalPlugins(collection.plugins);
       setRegistryPlugins(registry.plugins ?? []);
       setDeveloperMode(settings.values['plugins.developerMode'] === true);
+      const configuredDefault = settings.values['generation.defaultProvider'];
+      if (typeof configuredDefault === 'string' && PROVIDERS.some(provider => provider.id === configuredDefault)) {
+        setDefaultProvider(configuredDefault as GenerationProvider);
+        const stored = getProviderSettings();
+        if (stored.defaultProvider !== configuredDefault) {
+          setProviderSettings({ ...stored, defaultProvider: configuredDefault as GenerationProvider });
+        }
+      }
       setExtractorPlugin(typeof settings.values['extraction.extractorPlugin'] === 'string' ? settings.values['extraction.extractorPlugin'] : 'builtin');
       setOcrPlugin(typeof settings.values['extraction.ocrPlugin'] === 'string' ? settings.values['extraction.ocrPlugin'] : 'builtin');
       setEmbedderPlugin(typeof settings.values['embeddings.embedderPlugin'] === 'string' ? settings.values['embeddings.embedderPlugin'] : 'builtin');
@@ -260,6 +268,11 @@ export default function PluginsModal({ open, interfaceMode, onClose }: Props) {
   }, []);
 
   useEffect(() => { void refresh(); void refreshExternal(); }, [refresh, refreshExternal]);
+  useEffect(() => {
+    const synchronizeDefaultProvider = () => setDefaultProvider(getProviderSettings().defaultProvider);
+    window.addEventListener('quizzer:provider-settings', synchronizeDefaultProvider);
+    return () => window.removeEventListener('quizzer:provider-settings', synchronizeDefaultProvider);
+  }, []);
   useEffect(() => {
     const first = status?.ollama?.models?.[0]?.name;
     if (!first) return;
@@ -511,6 +524,20 @@ export default function PluginsModal({ open, interfaceMode, onClose }: Props) {
       return Boolean(models[provider.id]?.trim()) && (Boolean(apiKeys[provider.id]?.trim()) || isOpenAILoopbackEndpoint(openaiCompatibleEndpoint));
     }
     return Boolean(apiKeys[provider.id]?.trim());
+  };
+
+  const chooseDefaultProvider = async (provider: GenerationProvider) => {
+    const previous = defaultProvider;
+    setDefaultProvider(provider);
+    setProviderSettings({ ...getProviderSettings(), defaultProvider: provider });
+    try {
+      await serviceJson('/api/v1/settings', 'PATCH', { values: { 'generation.defaultProvider': provider } });
+      window.dispatchEvent(new Event('quizzer:settings-changed'));
+    } catch (error) {
+      setDefaultProvider(previous);
+      setProviderSettings({ ...getProviderSettings(), defaultProvider: previous });
+      message.error(formatErrorMessage(error, 'provider'));
+    }
   };
 
   const save = async () => {
@@ -799,7 +826,7 @@ export default function PluginsModal({ open, interfaceMode, onClose }: Props) {
               onClick={() => setModelSettingsTarget(provider.id)}>Settings</Button>
             {ready && enabledProviders[provider.id] ? (
               <Button size="small" type={defaultProvider === provider.id ? 'primary' : 'default'} disabled={defaultProvider === provider.id}
-                onClick={() => setDefaultProvider(provider.id)}>{defaultProvider === provider.id ? 'Default' : 'Make default'}</Button>
+                onClick={() => void chooseDefaultProvider(provider.id)}>{defaultProvider === provider.id ? 'Default' : 'Make default'}</Button>
             ) : null}
           </>
         );
@@ -818,7 +845,7 @@ export default function PluginsModal({ open, interfaceMode, onClose }: Props) {
         enabled => setEnabledProviders(current => ({ ...current, plugin: enabled })),
         plugin => models.plugin === plugin.id && enabledProviders.plugin ? (
           <Button size="small" type={defaultProvider === 'plugin' ? 'primary' : 'default'} disabled={defaultProvider === 'plugin'}
-            onClick={() => setDefaultProvider('plugin')}>{defaultProvider === 'plugin' ? 'Default' : 'Make default'}</Button>
+            onClick={() => void chooseDefaultProvider('plugin')}>{defaultProvider === 'plugin' ? 'Default' : 'Make default'}</Button>
         ) : null,
       )}
       {registryRows('generator', <RobotOutlined />)}

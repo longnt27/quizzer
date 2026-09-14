@@ -80,3 +80,66 @@ test('uninstalled plugin and provider options do not show enable switches', asyn
   await expect(dialog.getByRole('switch', { name: 'Enable Codex Agent' })).toHaveCount(0);
   await expect(dialog.getByRole('switch', { name: 'Enable Ollama Local' })).toHaveCount(0);
 });
+
+test('making Codex the default provider persists immediately and survives reload', async ({ page }) => {
+  const idleJob = { state: 'idle', message: '' };
+  let configuredDefault = 'antigravity-agent';
+  const defaultProviderPatches: string[] = [];
+
+  await page.addInitScript(() => {
+    localStorage.setItem('quizzer.providerSettings', JSON.stringify({ defaultProvider: 'antigravity-agent' }));
+  });
+  await page.route('**/api/integrations', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      marker: { installed: false, managed: false, job: idleJob },
+      ocr: { installed: false, managed: false, job: idleJob },
+      codex: { installed: true, connected: true, job: idleJob },
+      'claude-agent': { installed: false, connected: false, job: idleJob },
+      'antigravity-agent': { installed: true, connected: true, job: idleJob },
+      ollama: { installed: false, serverReady: false, models: [], job: idleJob },
+      'llama-cpp': { configured: false, serverReady: false, models: [], capabilities: [], runtime: { state: 'idle' } },
+      embeddings: { installed: false, runtimeInstalled: false, model: 'all-minilm', job: idleJob },
+    }),
+  }));
+  await page.route('**/api/v1/settings**', async route => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname !== '/api/v1/settings') return route.continue();
+    if (request.method() === 'PATCH') {
+      const body = request.postDataJSON() as { values?: Record<string, unknown> };
+      const requestedDefault = body.values?.['generation.defaultProvider'];
+      if (typeof requestedDefault === 'string') {
+        configuredDefault = requestedDefault;
+        defaultProviderPatches.push(requestedDefault);
+      }
+    }
+    const response = await route.fetch();
+    const payload = await response.json() as { values?: Record<string, unknown> };
+    await route.fulfill({
+      response,
+      json: { ...payload, values: { ...(payload.values ?? {}), 'generation.defaultProvider': configuredDefault } },
+    });
+  });
+
+  await dismissOnboarding(page);
+  await page.getByRole('button', { name: 'Configure AI' }).click();
+  let dialog = page.getByRole('dialog', { name: 'Plugins & models' });
+  await dialog.getByRole('tab', { name: 'Models', exact: true }).click();
+
+  const antigravity = dialog.locator('.plugin-option').filter({ hasText: 'Antigravity Agent' });
+  const codex = dialog.locator('.plugin-option').filter({ hasText: 'Codex Agent' });
+  await expect(antigravity.getByRole('button', { name: 'Default', exact: true })).toBeVisible();
+  await codex.getByRole('button', { name: 'Make default', exact: true }).click();
+  await expect(codex.getByRole('button', { name: 'Default', exact: true })).toBeVisible();
+  await expect.poll(() => defaultProviderPatches).toContain('codex');
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('quizzer.providerSettings') ?? '{}').defaultProvider)).toBe('codex');
+
+  await page.reload();
+  await dismissOnboarding(page, false);
+  await page.getByRole('button', { name: 'Configure AI' }).click();
+  dialog = page.getByRole('dialog', { name: 'Plugins & models' });
+  await dialog.getByRole('tab', { name: 'Models', exact: true }).click();
+  await expect(dialog.locator('.plugin-option').filter({ hasText: 'Codex Agent' })
+    .getByRole('button', { name: 'Default', exact: true })).toBeVisible();
+});
