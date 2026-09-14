@@ -14,7 +14,7 @@ const installUpdaterStub = async (
       version: '1.0.0-beta.6',
       channel: 'beta',
       publishedAt: '2026-09-08T00:00:00.000Z',
-      releaseNotes: 'Added proactive update checks and clearer release notes.',
+      releaseNotes: '## Easier studying\n\n- **See why** each answer is correct with source citations.\n- Keep unfinished quizzes after a restart.',
       publicKeyId: 'test-key',
       artifact: {
         name: 'Quizzer.dmg', platform: 'macos', architecture: 'arm64', format: 'dmg',
@@ -93,7 +93,9 @@ test('downloads an available update automatically and installs it with one resta
   await expect(notice.getByRole('status')).toBeVisible();
   await expect(notice.getByText("What's new in this update")).toBeVisible();
   await notice.getByText("What's new in this update").click();
-  await expect(notice.getByText('Added proactive update checks and clearer release notes.')).toBeVisible();
+  await expect(notice.getByRole('heading', { name: 'Easier studying' })).toBeVisible();
+  await expect(notice.getByText('See why', { exact: true })).toHaveCSS('font-weight', '700');
+  await expect(notice.getByText('each answer is correct with source citations.')).toBeVisible();
   await expect.poll(() => updaterCalls(page)).toMatchObject({ check: 1, status: 1, download: 1, apply: 0 });
 
   await notice.getByRole('button', { name: 'Install and restart' }).click();

@@ -13,6 +13,7 @@ import {
   SyncOutlined,
 } from '@ant-design/icons';
 import type { UpdateChannel, UpdaterStatus } from '../types/updater';
+import ReleaseNotes from './ReleaseNotes';
 import { getMessageApi } from '../utils/messageProvider';
 import { getModalApi } from '../utils/modalProvider';
 
@@ -271,9 +272,7 @@ export default function UpdaterStatusView() {
                 </Typography.Text>
                 {status.updateInfo.releaseNotes && <details className="update-release-notes">
                   <summary>What's new in this update</summary>
-                  <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', margin: '8px 0 0' }}>
-                    {status.updateInfo.releaseNotes}
-                  </Typography.Paragraph>
+                  <ReleaseNotes>{status.updateInfo.releaseNotes}</ReleaseNotes>
                 </details>}
                 <Button
                   type="primary"

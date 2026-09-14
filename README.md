@@ -12,7 +12,7 @@
 
 <p align="center">
   <a href="https://github.com/longnt27/quizzer/actions/workflows/ci.yml"><img alt="CI status" src="https://github.com/longnt27/quizzer/actions/workflows/ci.yml/badge.svg?branch=develop"></a>
-  <a href="https://github.com/longnt27/quizzer/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/longnt27/quizzer?include_prereleases&sort=semver"></a>
+  <a href="https://github.com/longnt27/quizzer/releases/latest"><img alt="Latest stable release" src="https://img.shields.io/github/v/release/longnt27/quizzer?sort=semver"></a>
   <a href="LICENSE"><img alt="Apache 2.0 license" src="https://img.shields.io/github/license/longnt27/quizzer"></a>
   <a href="SECURITY.md"><img alt="Security policy" src="https://img.shields.io/badge/security-policy-2ea44f"></a>
 </p>
@@ -30,7 +30,7 @@
 Quizzer builds quizzes from PDF, Markdown, and text without turning your library into an opaque chat history. It keeps documents, tests, progress, and generation checkpoints on your machine; sends only the retrieved excerpts you approve; and attaches stable source spans to every accepted question.
 
 > [!NOTE]
-> **Public beta available:** `v1.0.0-beta.5` is ready to install. Downloads are protected by a signed manifest and SHA-256 checksums. The app does not yet have paid Apple notarization or a Windows publisher certificate, so those systems may show an unidentified-developer or unknown-publisher warning.
+> **Quizzer 1.0 is the first stable release.** Downloads are protected by a signed manifest and SHA-256 checksums. The app does not yet have paid Apple notarization or a Windows publisher certificate, so those systems may show an unidentified-developer or unknown-publisher warning.
 
 ## Install
 
@@ -39,13 +39,13 @@ No Node.js, Python, Git, or package manager is required.
 **macOS and Linux**
 
 ```sh
-curl -fsSL https://github.com/longnt27/quizzer/releases/download/v1.0.0-beta.5/install.sh | sh
+curl -fsSL https://github.com/longnt27/quizzer/releases/latest/download/install.sh | sh
 ```
 
 **Windows PowerShell**
 
 ```powershell
-irm https://github.com/longnt27/quizzer/releases/download/v1.0.0-beta.5/install.ps1 | iex
+irm https://github.com/longnt27/quizzer/releases/latest/download/install.ps1 | iex
 ```
 
 The installer detects x64 or arm64, verifies the release before installing, adds `quizzer` to your user PATH, registers the desktop app, and opens the guided setup. The command installers are Quizzer's supported distribution path.
@@ -69,7 +69,7 @@ Lite is the CPU-only baseline. Local generation in Balanced or Max depends on th
 | --- | --- | --- |
 | Every accepted question retains the evidence used to create it. Open citations during practice instead of trusting a plausible answer. | Keep the library locally and choose Ollama, llama.cpp, an existing coding-agent sign-in, an API, or a plugin. | Mix multiple choice, fill-in-the-blank, reasoning, and coding. Add a learning goal such as “Terraform coding questions only.” |
 | **Durable work** | **Simple when you want it** | **Honest failure handling** |
-| Indexing, generation, attempts, and paused practice survive restarts. Completed slots are not regenerated. | Simple mode is a short source → goal → preset flow. Advanced mode reveals prompts, RAG, routes, cost ceilings, and validation controls. | Low-confidence retrieval gets one corrective pass, then refuses. Quota failures preserve accepted questions and resume only unfinished work. |
+| Indexing, generation, attempts, and paused practice survive restarts. Close an import or generation view and follow its progress later in Activity. | Simple mode is a short source → goal → preset flow. Advanced mode reveals prompts, per-question instructions, RAG, routes, cost ceilings, and validation controls. | Low-confidence retrieval gets one corrective pass, then refuses. Quota failures preserve accepted questions and resume only unfinished work. |
 
 ## From source to understanding
 
@@ -81,11 +81,11 @@ Lite is the CPU-only baseline. Local generation in Balanced or Max depends on th
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/home-current.jpg" alt="Quizzer Home dashboard with library and system health"></td>
+    <td width="50%"><img src="docs/screenshots/home-current.jpg" alt="Quizzer Home dashboard with recent tests, resumable activity, and system health"></td>
     <td width="50%"><img src="docs/screenshots/document-current.jpg" alt="Indexed document with extracted content and retrieval controls"></td>
   </tr>
   <tr>
-    <td align="center"><sub>One place for recent tests, resumable work, and system health</sub></td>
+    <td align="center"><sub>Recent learning comes first, with resumable work and system health close by</sub></td>
     <td align="center"><sub>Inspect extraction, indexing, tags, originals, and retrieval</sub></td>
   </tr>
 </table>
