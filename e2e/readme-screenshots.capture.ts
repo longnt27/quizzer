@@ -92,16 +92,18 @@ test('capture current product states for the README', async ({ page }) => {
   const advancedDialog = page.locator('.ant-modal-content').filter({ hasText: 'Create tests from documents' });
   await advancedDialog.locator('input.ant-input').first().fill('Distributed systems essentials');
   await advancedDialog.getByText('distributed-systems-field-guide', { exact: true }).click();
-  await advancedDialog.getByPlaceholder('For example: coding questions about Terraform only')
+  await advancedDialog.getByText('Custom test content', { exact: true }).click();
+  await advancedDialog.getByPlaceholder('For example: emphasize operational tradeoffs')
     .fill('Focus on failure-safe leases and conflicting writers.');
   await advancedDialog.getByRole('spinbutton', { name: 'Multiple choice' }).fill('8');
   await advancedDialog.getByRole('spinbutton', { name: 'Fill in the blank' }).fill('1');
   await advancedDialog.getByRole('spinbutton', { name: 'Reasoning' }).fill('1');
+  await advancedDialog.getByText('Custom provider settings', { exact: true }).click();
   await expect(advancedDialog.getByText('Advanced generation controls')).toBeVisible();
   // Keep the seeded quiz small so the remaining screenshots stay fast and deterministic.
   await advancedDialog.getByRole('spinbutton', { name: 'Multiple choice' }).fill('1');
   await advancedDialog.getByRole('spinbutton', { name: 'Fill in the blank' }).fill('0');
-  await advancedDialog.getByRole('checkbox', { name: /I approve sending selected excerpts/ }).check();
+  await advancedDialog.getByRole('checkbox', { name: /Approve sending selected excerpts/ }).check();
   await advancedDialog.getByRole('button', { name: 'Queue combined test' }).click();
   await expect(page.getByText('1 choice · 1 reasoning · 0 attempts')).toBeVisible({ timeout: 60_000 });
 
@@ -109,7 +111,7 @@ test('capture current product states for the README', async ({ page }) => {
   await page.getByRole('tab', { name: 'Documents' }).click();
   await page.getByRole('region', { name: 'Documents library' })
     .getByRole('heading', { name: 'distributed-systems-field-guide' }).click();
-  await expect(page.getByText(/^Indexed ·/)).toBeVisible();
+  await expect(page.getByText(/^Dense retrieval ready ·/)).toBeVisible();
   await screenshot(page, 'document-current.jpg');
 
   await page.getByRole('button', { name: 'Back to home' }).click();
