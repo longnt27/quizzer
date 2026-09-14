@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { App as AntdApp, Button, Space, Typography } from 'antd';
 import type { QuizzerDesktopUpdaterApi, UpdaterStatus } from '../types/updater';
+import ReleaseNotes from './ReleaseNotes';
 
 const UPDATE_NOTIFICATION_KEY = 'quizzer-update-available';
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
@@ -38,9 +39,7 @@ const UpdateDescription = ({ status, lead }: { status: UpdaterStatus; lead: stri
     <Typography.Text type="secondary">{lead}</Typography.Text>
     {status.updateInfo?.releaseNotes && <details className="update-release-notes">
       <summary>What's new in this update</summary>
-      <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', margin: '8px 0 0' }}>
-        {status.updateInfo.releaseNotes}
-      </Typography.Paragraph>
+      <ReleaseNotes>{status.updateInfo.releaseNotes}</ReleaseNotes>
     </details>}
   </Space>
 );

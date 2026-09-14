@@ -10,4 +10,5 @@ test('desktop notifier checks proactively and exposes expandable release notes',
   assert.match(source, /window\.setInterval\(refresh, UPDATE_CHECK_INTERVAL_MS\)/);
   assert.match(source, /<details className="update-release-notes">/);
   assert.match(source, /What's new in this update/);
+  assert.match(source, /<ReleaseNotes>\{status\.updateInfo\.releaseNotes\}<\/ReleaseNotes>/);
 });

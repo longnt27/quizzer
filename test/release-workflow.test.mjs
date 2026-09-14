@@ -91,6 +91,16 @@ test('release rejects malformed tags and channel/version mismatches before build
   ordered(workflow, 'Verify tag and package version', 'npm audit --omit=dev --audit-level=high');
 });
 
+test('release requires and publishes curated user-facing notes', async () => {
+  const workflow = await readFile(workflowPath, 'utf8');
+
+  assert.match(workflow, /name: Verify curated release notes/);
+  assert.match(workflow, /RELEASE_NOTES_PATH="release-notes\/\$\{RELEASE_TAG\}\.md"/);
+  assert.match(workflow, /Curated, user-facing release notes are required/);
+  assert.match(workflow, /--notes-file "\$RELEASE_NOTES_PATH"/);
+  assert.doesNotMatch(workflow, /--generate-notes/);
+});
+
 test('release signing and publication use the protected release environment', async () => {
   const workflow = await readFile(workflowPath, 'utf8');
   const desktopJob = workflow.slice(workflow.indexOf('\n  desktop:'), workflow.indexOf('\n  publish:'));

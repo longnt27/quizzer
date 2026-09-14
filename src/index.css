@@ -231,6 +231,15 @@ button, input, textarea, select { font: inherit; }
 .ai-chat-composer { position: relative; margin: 0 12px 12px; flex: 0 0 auto; }
 .ai-chat-composer textarea { min-height: 50px !important; padding: 13px 56px 13px 16px !important; border-radius: 14px !important; background: var(--surface-soft) !important; }
 .ai-chat-composer-action { position: absolute; top: 10px; right: 10px; z-index: 1; width: 30px; min-width: 30px; height: 30px; }
+.update-release-notes { width: 100%; }
+.update-release-notes summary { cursor: pointer; font-weight: 600; }
+.update-release-notes-content { max-height: 240px; margin-top: 8px; padding: 10px 12px; overflow: auto; border-radius: 8px; background: var(--surface-soft); overflow-wrap: anywhere; }
+.update-release-notes-content > :first-child { margin-top: 0; }
+.update-release-notes-content > :last-child { margin-bottom: 0; }
+.update-release-notes-content h1, .update-release-notes-content h2, .update-release-notes-content h3 { margin: 12px 0 6px; color: inherit; font-size: 14px; line-height: 1.4; }
+.update-release-notes-content p { margin: 6px 0; }
+.update-release-notes-content ul, .update-release-notes-content ol { margin: 6px 0; padding-left: 20px; }
+.update-release-notes-content li + li { margin-top: 4px; }
 .test-start { position: relative; width: 100%; height: 100%; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); background: var(--surface); overflow: hidden; }
 .test-summary { position: relative; }
 .test-back-button { position: absolute; top: 16px; left: 16px; z-index: 1; }
