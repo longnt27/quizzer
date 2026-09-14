@@ -1,6 +1,6 @@
 # Releasing Quizzer
 
-Quizzer beta releases are built for six operating-system and architecture targets, assembled into one Ed25519-signed manifest, and published only after an explicit maintainer approval. Native Apple notarization and Windows publisher signing are optional until the project can justify their cost. `develop` is the integration branch; `main` contains release commits only.
+Quizzer releases are built for six operating-system and architecture targets, assembled into one Ed25519-signed manifest, and published only after an explicit maintainer approval. Native Apple notarization and Windows publisher signing are optional until the project can justify their cost. `develop` is the integration branch; `main` contains release commits only.
 
 ## Required GitHub configuration
 
@@ -42,11 +42,12 @@ Leave `QUIZZER_MACOS_SIGNING_ENABLED` and `QUIZZER_WINDOWS_SIGNING_ENABLED` unse
 
 New publicly trusted Windows keys are normally HSM-backed and non-exportable. When native Windows signing is adopted, replace the legacy PKCS#12 import with the selected CA or managed signing service's cloud/HSM integration.
 
-## Prepare a beta
+## Prepare a release
 
 1. Start from a clean, up-to-date `develop` branch whose required checks pass. Issue branches merge into `develop`, never directly into `main`.
-2. Set the intended prerelease version, such as `1.0.0-beta.1`, in both `package.json` and `package-lock.json`. The new version must be greater than the version on `main`.
-3. Run the local release gates:
+2. Set the intended version, such as `1.0.0-beta.14` or `1.0.0`, in both `package.json` and `package-lock.json`. The new version must be greater than the version on `main`.
+3. Add concise, user-facing notes at `release-notes/v<version>.md`. Describe outcomes in plain language; omit merge mechanics, commit hashes, and maintainer-only details. The release workflow fails closed when this file is missing or empty.
+4. Run the local release gates:
 
    ```sh
    npm ci
@@ -61,8 +62,8 @@ New publicly trusted Windows keys are normally HSM-backed and non-exportable. Wh
    (cd landing && npm ci && npm run lint && npm run build && npm run test:e2e)
    ```
 
-4. Complete clean-machine install, update, rollback, and recovery checks for the release candidate. Record the results outside the repository together with the artifact checksums.
-5. Open a release pull request from `develop` to `main`, verify its required checks, and squash-merge it as one release commit. Never push a release commit or tag directly.
+5. Complete clean-machine install, update, rollback, and recovery checks for the release candidate. Record the results outside the repository together with the artifact checksums.
+6. Open a release pull request from `develop` to `main`, verify its required checks, and squash-merge it as one release commit. Never push a release commit or tag directly.
 
 The `Release from main` workflow validates the exact pushed commit, confirms the package and lockfile versions match and increased, and creates the immutable `v<version>` tag. Because GitHub does not recursively start workflows for tags pushed by `GITHUB_TOKEN`, the bridge explicitly dispatches `release.yml` with the matching beta or stable channel and `publish=true`. It reuses an existing tag only when it points to the exact commit, skips an already published release or an active run, and leaves failed runs safe to retry. The dispatched workflow verifies source, tests the application and landing page, builds all six desktop and CLI targets, verifies Electron fuses, generates SBOMs and provenance, signs the release manifest, and publishes only after approval of the protected `release` environment. Native signing and notarization run only when their explicit enable variables are set.
 
@@ -72,7 +73,7 @@ The `Release from main` workflow validates the exact pushed commit, confirms the
 2. Verify that the bundle contains the expected desktop and CLI targets, `install.sh`, `install.ps1`, both SBOMs, the canonical manifest, and its detached signature.
 3. Confirm that the main-branch bridge dispatched **Release** with the matching `beta` or `stable` channel and publishing enabled. After a failed run, rerun the bridge or manually dispatch **Release** for the existing tag.
 4. Approve the `release` environment deployment only after the rebuilt candidate passes.
-5. Confirm the GitHub Release is marked as a prerelease for beta versions and that both installer entrypoints resolve from the release page.
+5. Confirm the GitHub Release uses the curated notes, is marked as a prerelease only for beta versions, and that both installer entrypoints resolve from the release page.
 6. Install through the public command on at least one clean machine before announcing the release.
 
 The publish job uses `gh release create --verify-tag`; it cannot create a release for an unpushed tag. Beta and stable channels must match the version syntax.

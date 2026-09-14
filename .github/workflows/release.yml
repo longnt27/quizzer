@@ -59,6 +59,14 @@ jobs:
             echo "Release channel $RELEASE_CHANNEL does not match $PACKAGE_VERSION ($EXPECTED_CHANNEL)" >&2
             exit 1
           fi
+      - name: Verify curated release notes
+        shell: bash
+        run: |
+          RELEASE_NOTES_PATH="release-notes/${RELEASE_TAG}.md"
+          if [ ! -s "$RELEASE_NOTES_PATH" ]; then
+            echo "Curated, user-facing release notes are required at $RELEASE_NOTES_PATH" >&2
+            exit 1
+          fi
       - run: npm audit --omit=dev --audit-level=high
       - run: npm run license:check
       - run: npm run lint
@@ -446,6 +454,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          RELEASE_NOTES_PATH="release-notes/${RELEASE_TAG}.md"
           PRERELEASE=()
           if [ "$RELEASE_CHANNEL" = beta ]; then PRERELEASE=(--prerelease); fi
-          gh release create "$RELEASE_TAG" release-bundle/quizzer-* release-bundle/install.sh release-bundle/install.ps1 release-bundle/release-manifest.json release-bundle/release-manifest.canonical.json release-bundle/release-manifest.sig release-bundle/sbom.cdx.json release-bundle/landing-sbom.cdx.json --verify-tag --generate-notes --title "Quizzer ${RELEASE_TAG#v}" "${PRERELEASE[@]}"
+          gh release create "$RELEASE_TAG" release-bundle/quizzer-* release-bundle/install.sh release-bundle/install.ps1 release-bundle/release-manifest.json release-bundle/release-manifest.canonical.json release-bundle/release-manifest.sig release-bundle/sbom.cdx.json release-bundle/landing-sbom.cdx.json --verify-tag --notes-file "$RELEASE_NOTES_PATH" --title "Quizzer ${RELEASE_TAG#v}" "${PRERELEASE[@]}"
