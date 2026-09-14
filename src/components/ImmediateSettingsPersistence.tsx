@@ -132,7 +132,6 @@ export default function ImmediateSettingsPersistence() {
       const nextModels = { ...stored.models };
       const nextEnabledProviders = { ...stored.enabledProviders };
       const nextEnabledTools = { ...stored.enabledTools };
-      let nextDefault = stored.defaultProvider;
       const serviceValues: Record<string, unknown> = {};
       const credentials: Record<string, CredentialSnapshot> = {};
       let llamaEndpoint: string | undefined;
@@ -169,9 +168,6 @@ export default function ImmediateSettingsPersistence() {
             nextEnabledProviders.plugin = true;
           } else if (capabilitySetting[capability]) serviceValues[capabilitySetting[capability]] = pluginId;
         }
-
-        const defaultButton = [...row.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.trim() === 'Default');
-        if (defaultButton) nextDefault = provider?.id ?? (external?.[1].toLowerCase() === 'generator' ? 'plugin' : nextDefault);
       }
 
       const modelDialog = dialogs.find(element => / settings$/.test(element.querySelector('.ant-modal-title')?.textContent?.trim() ?? ''));
@@ -200,10 +196,8 @@ export default function ImmediateSettingsPersistence() {
         if (llamaModel !== undefined) serviceValues['providers.llama-cpp.model'] = llamaModel.trim() || 'local-model';
       }
 
-      nextDefault = nextDefault || stored.defaultProvider;
-      serviceValues['generation.defaultProvider'] = nextDefault;
       const nextProviderSettings = {
-        defaultProvider: nextDefault,
+        defaultProvider: stored.defaultProvider,
         models: nextModels,
         enabledProviders: nextEnabledProviders,
         enabledTools: nextEnabledTools,
