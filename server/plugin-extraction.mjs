@@ -1,3 +1,6 @@
+import { getActiveProviderCredential } from './provider-credentials.mjs';
+import { MISTRAL_OCR_MODEL, runMistralOcrExtraction } from './mistral-ocr-extraction.mjs';
+
 const pluginIdPattern = /^[a-z0-9](?:[a-z0-9.-]{0,126}[a-z0-9])?$/;
 const imageMimeTypes = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const MAX_DOCUMENT_BYTES = 250 * 1024 * 1024;
@@ -133,9 +136,25 @@ export const validatePluginOcr = result => {
   return boundedText(result.text, 'OCR plugin text', MAX_OCR_CHARACTERS, { optional: true }) ?? '';
 };
 
-export const resolveDocumentExtractor = async (settings, { loadManager, loadInvocationContext } = {}) => {
+export const resolveDocumentExtractor = async (settings, {
+  loadManager,
+  loadInvocationContext,
+  loadCredential = getActiveProviderCredential,
+  fetch = globalThis.fetch,
+} = {}) => {
   const component = settings?.values?.['extraction.extractorPlugin'] ?? 'builtin';
   if (component === 'builtin') return { component, identity: 'builtin', extract: undefined };
+  if (component === 'mistral-ocr') {
+    return {
+      component,
+      identity: `mistral-ocr:${MISTRAL_OCR_MODEL}`,
+      extract: (data, options = {}) => runMistralOcrExtraction(data, {
+        ...options,
+        apiKey: typeof loadCredential === 'function' ? loadCredential('mistral-ocr') : undefined,
+        fetch,
+      }),
+    };
+  }
   const { manager, plugin } = await readyPlugin(component, 'extractor', loadManager);
   return {
     component,
