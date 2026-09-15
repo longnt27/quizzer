@@ -22,13 +22,51 @@ const tesseractBundleFiles = [
   'licenses/tessdata_fast-LICENSE',
 ];
 
-const writeBundleFixture = async root => {
+const writeBundleFixture = async (root, { omit } = {}) => {
   for (const path of tesseractBundleFiles) {
+    if (path === omit) continue;
     const target = join(root, path);
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, `fixture:${path}\n`);
   }
 };
+
+const signingFixture = () => {
+  const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+  return {
+    publicKey,
+    privateKey,
+    keyId: 'ocr-test-key',
+    publicDer: publicKey.export({ format: 'der', type: 'spki' }).toString('base64'),
+  };
+};
+
+test('rejects registry builds without a complete Tesseract bundle', async t => {
+  const outputDirectory = await mkdtemp(join(tmpdir(), 'quizzer-ocr-registry-missing-'));
+  const incompleteBundle = await mkdtemp(join(tmpdir(), 'quizzer-tesseract-incomplete-'));
+  t.after(() => Promise.all([
+    rm(outputDirectory, { recursive: true, force: true }),
+    rm(incompleteBundle, { recursive: true, force: true }),
+  ]));
+  const { privateKey, keyId } = signingFixture();
+
+  await assert.rejects(
+    () => buildOcrPluginRegistry({ projectDirectory, outputDirectory, keyId, privateKey }),
+    /Tesseract bundle directory is required/,
+  );
+
+  await writeBundleFixture(incompleteBundle, { omit: 'tessdata/eng.traineddata' });
+  await assert.rejects(
+    () => buildOcrPluginRegistry({
+      projectDirectory,
+      outputDirectory,
+      tesseractBundleDirectory: incompleteBundle,
+      keyId,
+      privateKey,
+    }),
+    /Tesseract bundle file is missing or invalid: tessdata\/eng\.traineddata/,
+  );
+});
 
 test('builds a signed release catalog containing all first-party OCR plugins', async t => {
   const outputDirectory = await mkdtemp(join(tmpdir(), 'quizzer-ocr-registry-'));
@@ -39,9 +77,7 @@ test('builds a signed release catalog containing all first-party OCR plugins', a
   ]));
   await writeBundleFixture(tesseractBundleDirectory);
 
-  const { publicKey, privateKey } = generateKeyPairSync('ed25519');
-  const keyId = 'ocr-test-key';
-  const publicDer = publicKey.export({ format: 'der', type: 'spki' }).toString('base64');
+  const { privateKey, keyId, publicDer } = signingFixture();
   const { catalog } = await buildOcrPluginRegistry({
     projectDirectory,
     outputDirectory,
