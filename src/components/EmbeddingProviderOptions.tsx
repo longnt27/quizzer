@@ -86,10 +86,11 @@ const providerIsRemote = (provider: Exclude<EmbeddingProvider, 'plugin'>, values
 };
 
 const currentProvider = (values: Record<string, unknown>): EmbeddingProvider => {
-  const plugin = values['embeddings.embedderPlugin'];
-  if (typeof plugin === 'string' && plugin !== 'builtin') return 'plugin';
   const provider = values['embeddings.provider'];
-  return providerDefinitions.some(item => item.id === provider) ? provider as EmbeddingProvider : 'ollama';
+  if (provider === 'plugin') return 'plugin';
+  if (providerDefinitions.some(item => item.id === provider)) return provider as EmbeddingProvider;
+  const plugin = values['embeddings.embedderPlugin'];
+  return typeof plugin === 'string' && plugin !== 'builtin' ? 'plugin' : 'ollama';
 };
 
 export default function EmbeddingProviderOptions() {
