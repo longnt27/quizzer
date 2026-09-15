@@ -1,7 +1,10 @@
 import { spawn } from 'node:child_process';
-import { resolve, sep } from 'node:path';
+import { constants as fsConstants } from 'node:fs';
+import { access } from 'node:fs/promises';
+import { dirname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const pluginRoot = dirname(fileURLToPath(import.meta.url));
 const normalizeText = value => String(value ?? '').replace(/\r\n?/g, '\n').trim();
 
 const scopedPath = (context, relativePath) => {
@@ -11,8 +14,31 @@ const scopedPath = (context, relativePath) => {
   return target;
 };
 
+const executablePath = () => {
+  const file = process.platform === 'win32' ? 'tesseract.exe' : 'tesseract';
+  return resolve(pluginRoot, 'vendor', `${process.platform}-${process.arch}`, file);
+};
+
+const tessdataDirectory = resolve(pluginRoot, 'tessdata');
+const englishModel = resolve(tessdataDirectory, 'eng.traineddata');
+const runtimeEnvironment = () => ({ ...process.env, TESSDATA_PREFIX: tessdataDirectory });
+
+const assertBundledRuntime = async () => {
+  await access(executablePath(), fsConstants.X_OK).catch(() => {
+    throw new Error(`Bundled Tesseract runtime is missing for ${process.platform}/${process.arch}`);
+  });
+  await access(englishModel, fsConstants.R_OK).catch(() => {
+    throw new Error('Bundled Tesseract English language data is missing');
+  });
+};
+
 const run = (command, args, timeoutMs = 60_000) => new Promise((resolvePromise, reject) => {
-  const child = spawn(command, args, { shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(command, args, {
+    env: runtimeEnvironment(),
+    shell: false,
+    windowsHide: true,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
   let stdout = '';
   let stderr = '';
   const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs);
@@ -27,15 +53,22 @@ const run = (command, args, timeoutMs = 60_000) => new Promise((resolvePromise, 
 });
 
 export const handleRequest = async request => {
+  await assertBundledRuntime();
   if (request.method === 'plugin.health') {
-    const version = normalizeText(await run('tesseract', ['--version'], 5_000));
+    const version = normalizeText(await run(executablePath(), ['--version'], 5_000));
     return { engine: 'tesseract', version: version.split('\n')[0] || 'available' };
   }
   if (request.method !== 'document.ocr') throw new Error(`Unsupported method: ${request.method}`);
   const imagePath = scopedPath(request.context, request.params?.image?.path);
   const language = request.context?.configuration?.language || 'eng';
-  if (!/^[A-Za-z0-9_+.-]{1,80}$/.test(language)) throw new Error('Tesseract language is invalid');
-  const text = await run('tesseract', [imagePath, 'stdout', '-l', language, '--psm', '3']);
+  if (language !== 'eng') throw new Error('Bundled Tesseract currently supports English (eng) only');
+  const text = await run(executablePath(), [
+    imagePath,
+    'stdout',
+    '--tessdata-dir', tessdataDirectory,
+    '-l', language,
+    '--psm', '3',
+  ]);
   return { text: normalizeText(text) };
 };
 
