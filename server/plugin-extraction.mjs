@@ -1,3 +1,6 @@
+import { DOCLING_VERSION, runDoclingExtraction } from './docling-extraction.mjs';
+import { loadManagedDoclingRuntime } from './docling-runtime.mjs';
+import { MARKER_VERSION } from './managed-document-extractors.mjs';
 import { getActiveProviderCredential } from './provider-credentials.mjs';
 import { MISTRAL_OCR_MODEL, runMistralOcrExtraction } from './mistral-ocr-extraction.mjs';
 
@@ -154,13 +157,32 @@ export const validatePluginOcr = result => {
   return boundedText(result.text, 'OCR plugin text', MAX_OCR_CHARACTERS, { optional: true }) ?? '';
 };
 
+const markerAccepts = ({ name = '', mimeType = '' } = {}) => (
+  mimeType === 'application/pdf' || /\.pdf$/i.test(name)
+);
+
 export const resolveDocumentExtractor = async (settings, {
   loadManager,
   loadInvocationContext,
   loadCredential = getActiveProviderCredential,
+  loadDoclingRuntime = loadManagedDoclingRuntime,
+  runDocling = runDoclingExtraction,
+  runMarker,
   fetch = globalThis.fetch,
 } = {}) => {
+  const provider = settings?.values?.['extraction.provider'] ?? 'auto';
   const component = settings?.values?.['extraction.extractorPlugin'] ?? 'builtin';
+  const markerSelected = component === 'builtin'
+    && (provider === 'marker' || (provider === 'auto' && settings?.values?.['extraction.marker'] === true));
+  if (markerSelected) {
+    if (typeof runMarker !== 'function') throw unavailable('Marker runtime is not configured correctly');
+    return {
+      component: 'marker',
+      identity: `marker:${MARKER_VERSION}`,
+      accepts: markerAccepts,
+      extract: (data, options = {}) => runMarker(data, options),
+    };
+  }
   if (component === 'builtin') return { component, identity: 'builtin', extract: undefined };
   if (component === 'mistral-ocr') {
     return {
@@ -171,6 +193,29 @@ export const resolveDocumentExtractor = async (settings, {
         apiKey: typeof loadCredential === 'function' ? loadCredential('mistral-ocr') : undefined,
         fetch,
       }),
+    };
+  }
+  if (component === 'docling') {
+    if (typeof loadDoclingRuntime !== 'function' || typeof runDocling !== 'function') {
+      throw unavailable('Docling runtime is not configured correctly');
+    }
+    return {
+      component,
+      identity: `docling:${DOCLING_VERSION}`,
+      extract: async (data, options = {}) => {
+        let runtime;
+        try {
+          runtime = await loadDoclingRuntime();
+        } catch (error) {
+          if (error?.code === 'provider_unavailable') throw error;
+          throw unavailable(`Docling runtime is unavailable: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        if (!runtime || typeof runtime.python !== 'string' || !runtime.python.trim()
+          || typeof runtime.scriptPath !== 'string' || !runtime.scriptPath.trim()) {
+          throw unavailable('Docling runtime is incomplete. Install it from Document settings first.');
+        }
+        return runDocling(data, { ...options, python: runtime.python, scriptPath: runtime.scriptPath });
+      },
     };
   }
   const { manager, plugin } = await readyPlugin(component, 'extractor', loadManager);

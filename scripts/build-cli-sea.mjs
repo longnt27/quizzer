@@ -78,6 +78,7 @@ await writeFile(configPath, `${JSON.stringify({
     'openapi/quizzer-v1.yaml': join(projectDirectory, 'openapi', 'quizzer-v1.yaml'),
     'package.json': join(projectDirectory, 'package.json'),
     'plugin-sdk/quizzer.plugin.schema.json': join(projectDirectory, 'plugin-sdk', 'quizzer.plugin.schema.json'),
+    'scripts/docling_extract.py': join(projectDirectory, 'scripts', 'docling_extract.py'),
     'scripts/ocr_image.py': join(projectDirectory, 'scripts', 'ocr_image.py'),
   },
 }, null, 2)}\n`);
