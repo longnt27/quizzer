@@ -52,6 +52,50 @@ test('routes extraction through an installed plugin with a bounded scoped docume
   assert.deepEqual(invocation[3].files[0].data, Buffer.from('source PDF'));
 });
 
+test('forwards declared extractor configuration and secrets without widening plugin permissions', async () => {
+  let invocation;
+  const securedPlugin = {
+    ...extractorPlugin,
+    permissions: {
+      filesystem: ['scoped-temp', 'document-read'],
+      secrets: ['MISTRAL_API_KEY'],
+    },
+  };
+  const manager = {
+    list: async () => [securedPlugin],
+    invoke: async (...args) => {
+      invocation = args;
+      return { result: { content: 'configured extraction' } };
+    },
+  };
+  const route = await resolveDocumentExtractor(settings(), {
+    loadManager: async () => manager,
+    loadInvocationContext: async plugin => {
+      assert.equal(plugin.id, securedPlugin.id);
+      return {
+        configuration: { model: 'mistral-ocr-4-1' },
+        secrets: { MISTRAL_API_KEY: 'secret-value' },
+      };
+    },
+  });
+
+  await route.extract(Buffer.from('pdf'));
+  assert.deepEqual(invocation[3].configuration, { model: 'mistral-ocr-4-1' });
+  assert.deepEqual(invocation[3].secrets, { MISTRAL_API_KEY: 'secret-value' });
+});
+
+test('rejects invocation secrets that the extractor did not declare', async () => {
+  const manager = {
+    list: async () => [extractorPlugin],
+    invoke: async () => ({ result: { content: 'must not run' } }),
+  };
+  const route = await resolveDocumentExtractor(settings(), {
+    loadManager: async () => manager,
+    loadInvocationContext: async () => ({ secrets: { MISTRAL_API_KEY: 'secret-value' } }),
+  });
+  await assert.rejects(route.extract(Buffer.from('pdf')), /undeclared secret MISTRAL_API_KEY/);
+});
+
 test('routes OCR through an installed plugin and validates its text envelope', async () => {
   let invocation;
   const manager = {
@@ -158,4 +202,46 @@ test('bounds extractor and OCR inputs and output schemas', async () => {
     list: async () => [ocrPlugin], invoke: async () => { throw Object.assign(new Error('cancelled'), { name: 'AbortError' }); },
   }) });
   await assert.rejects(cancelledOcr.ocr(Buffer.from('x')), error => error.name === 'AbortError');
+});
+
+test('forwards only declared OCR secrets and manifest configuration defaults alongside invocation contexts', async () => {
+  const cloudPlugin = {
+    ...ocrPlugin,
+    id: 'dev.quizzer.cloud-ocr',
+    permissions: {
+      filesystem: ['scoped-temp', 'document-read'],
+      secrets: ['GOOGLE_CLOUD_VISION_API_KEY'],
+    },
+    configuration: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        feature: { type: 'string', default: 'DOCUMENT_TEXT_DETECTION' },
+        endpoint: { type: 'string', default: 'https://vision.googleapis.com/v1/images:annotate' },
+      },
+    },
+  };
+  let invocation;
+  const manager = {
+    list: async () => [cloudPlugin],
+    invoke: async (...args) => {
+      invocation = args;
+      return { result: { text: 'Cloud OCR text' } };
+    },
+  };
+  const route = await resolveOcrProvider(settings('builtin', cloudPlugin.id), {
+    loadManager: async () => manager,
+    loadInvocationContext: async () => ({}),
+    environment: {
+      GOOGLE_CLOUD_VISION_API_KEY: 'secret-key',
+      UNDECLARED_SECRET: 'must-not-leak',
+    },
+  });
+  assert.equal(await route.ocr(Buffer.from('png')), 'Cloud OCR text');
+  assert.deepEqual(invocation[3].configuration, {
+    feature: 'DOCUMENT_TEXT_DETECTION',
+    endpoint: 'https://vision.googleapis.com/v1/images:annotate',
+  });
+  assert.deepEqual(invocation[3].secrets, { GOOGLE_CLOUD_VISION_API_KEY: 'secret-key' });
+  assert.equal(JSON.stringify(invocation[3]).includes('must-not-leak'), false);
 });

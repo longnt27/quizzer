@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "quizzer.ocr.aws-textract",
+  "name": "AWS Textract OCR",
+  "description": "Remote OCR for low-resource machines. Sends selected document images to AWS Textract and may incur provider charges.",
+  "version": "1.0.0",
+  "protocolVersion": 1,
+  "entrypoint": "plugin.mjs",
+  "capabilities": ["ocr"],
+  "platforms": [
+    { "os": "darwin", "architectures": ["x64", "arm64"] },
+    { "os": "linux", "architectures": ["x64", "arm64"] },
+    { "os": "win32", "architectures": ["x64", "arm64"] }
+  ],
+  "resources": { "memoryMB": 64, "diskMB": 1, "accelerators": ["cpu"] },
+  "configuration": { "type": "object", "additionalProperties": false },
+  "permissions": {
+    "network": ["https://textract.*.amazonaws.com"],
+    "filesystem": ["scoped-temp", "document-read"],
+    "secrets": ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_REGION"],
+    "subprocess": false
+  },
+  "healthCheck": { "method": "plugin.health", "timeoutMs": 5000 },
+  "files": [{ "path": "plugin.mjs", "sha256": "1e3bd9ea9b6ed54d53f5546bf3292d5f5a6ad3cb0b147e4644e418886cd6bb04" }]
+}

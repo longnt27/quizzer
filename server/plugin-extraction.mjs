@@ -1,3 +1,9 @@
+import { DOCLING_VERSION, runDoclingExtraction } from './docling-extraction.mjs';
+import { loadManagedDoclingRuntime } from './docling-runtime.mjs';
+import { MARKER_VERSION } from './managed-document-extractors.mjs';
+import { getActiveProviderCredential } from './provider-credentials.mjs';
+import { MISTRAL_OCR_MODEL, runMistralOcrExtraction } from './mistral-ocr-extraction.mjs';
+
 const pluginIdPattern = /^[a-z0-9](?:[a-z0-9.-]{0,126}[a-z0-9])?$/;
 const imageMimeTypes = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const MAX_DOCUMENT_BYTES = 250 * 1024 * 1024;
@@ -36,6 +42,51 @@ const readyPlugin = async (component, capability, loadManager) => {
     throw unavailable(`${capability} plugin ${component} must declare scoped-temp and document-read permissions`);
   }
   return { manager, plugin };
+};
+
+const pluginConfigurationDefaults = plugin => {
+  const schema = plugin?.configuration;
+  if (!schema || schema.type !== 'object' || !schema.properties || typeof schema.properties !== 'object'
+    || Array.isArray(schema.properties)) return {};
+  return Object.fromEntries(Object.entries(schema.properties).flatMap(([key, property]) => (
+    property && typeof property === 'object' && Object.prototype.hasOwnProperty.call(property, 'default')
+      ? [[key, property.default]] : []
+  )));
+};
+
+const declaredPluginSecrets = (plugin, environment, supplied = {}) => Object.fromEntries(
+  (plugin?.permissions?.secrets ?? []).flatMap(key => {
+    const candidate = supplied?.[key] ?? environment?.[key];
+    if (typeof candidate !== 'string' || !candidate.trim() || candidate.length > 16_384) return [];
+    return [[key, candidate.trim()]];
+  }),
+);
+
+const loadPluginInvocationContext = async (plugin, loader) => {
+  if (loader === undefined) return {};
+  if (typeof loader !== 'function') throw unavailable(`Plugin ${plugin.id} invocation context loader is invalid`);
+  const context = await loader(plugin);
+  if (context === undefined) return {};
+  if (!context || typeof context !== 'object' || Array.isArray(context)) {
+    throw unavailable(`Plugin ${plugin.id} invocation context is invalid`);
+  }
+  const configuration = context.configuration ?? {};
+  const secrets = context.secrets ?? {};
+  if (!configuration || typeof configuration !== 'object' || Array.isArray(configuration)) {
+    throw unavailable(`Plugin ${plugin.id} configuration is invalid`);
+  }
+  if (!secrets || typeof secrets !== 'object' || Array.isArray(secrets)
+    || Object.entries(secrets).some(([name, value]) => typeof name !== 'string' || !name || typeof value !== 'string')) {
+    throw unavailable(`Plugin ${plugin.id} secrets are invalid`);
+  }
+  const declaredSecrets = new Set(plugin.permissions?.secrets ?? []);
+  for (const name of Object.keys(secrets)) {
+    if (!declaredSecrets.has(name)) throw unavailable(`Plugin ${plugin.id} received undeclared secret ${name}`);
+  }
+  return {
+    ...(Object.keys(configuration).length ? { configuration } : {}),
+    ...(Object.keys(secrets).length ? { secrets } : {}),
+  };
 };
 
 const validateImage = (image, index) => {
@@ -106,9 +157,67 @@ export const validatePluginOcr = result => {
   return boundedText(result.text, 'OCR plugin text', MAX_OCR_CHARACTERS, { optional: true }) ?? '';
 };
 
-export const resolveDocumentExtractor = async (settings, { loadManager } = {}) => {
+const markerAccepts = ({ name = '', mimeType = '' } = {}) => (
+  mimeType === 'application/pdf' || /\.pdf$/i.test(name)
+);
+
+export const resolveDocumentExtractor = async (settings, {
+  loadManager,
+  loadInvocationContext,
+  loadCredential = getActiveProviderCredential,
+  loadDoclingRuntime = loadManagedDoclingRuntime,
+  runDocling = runDoclingExtraction,
+  runMarker,
+  fetch = globalThis.fetch,
+} = {}) => {
+  const provider = settings?.values?.['extraction.provider'] ?? 'auto';
   const component = settings?.values?.['extraction.extractorPlugin'] ?? 'builtin';
+  const markerSelected = component === 'builtin'
+    && (provider === 'marker' || (provider === 'auto' && settings?.values?.['extraction.marker'] === true));
+  if (markerSelected) {
+    if (typeof runMarker !== 'function') throw unavailable('Marker runtime is not configured correctly');
+    return {
+      component: 'marker',
+      identity: `marker:${MARKER_VERSION}`,
+      accepts: markerAccepts,
+      extract: (data, options = {}) => runMarker(data, options),
+    };
+  }
   if (component === 'builtin') return { component, identity: 'builtin', extract: undefined };
+  if (component === 'mistral-ocr') {
+    return {
+      component,
+      identity: `mistral-ocr:${MISTRAL_OCR_MODEL}`,
+      extract: (data, options = {}) => runMistralOcrExtraction(data, {
+        ...options,
+        apiKey: typeof loadCredential === 'function' ? loadCredential('mistral-ocr') : undefined,
+        fetch,
+      }),
+    };
+  }
+  if (component === 'docling') {
+    if (typeof loadDoclingRuntime !== 'function' || typeof runDocling !== 'function') {
+      throw unavailable('Docling runtime is not configured correctly');
+    }
+    return {
+      component,
+      identity: `docling:${DOCLING_VERSION}`,
+      extract: async (data, options = {}) => {
+        let runtime;
+        try {
+          runtime = await loadDoclingRuntime();
+        } catch (error) {
+          if (error?.code === 'provider_unavailable') throw error;
+          throw unavailable(`Docling runtime is unavailable: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        if (!runtime || typeof runtime.python !== 'string' || !runtime.python.trim()
+          || typeof runtime.scriptPath !== 'string' || !runtime.scriptPath.trim()) {
+          throw unavailable('Docling runtime is incomplete. Install it from Document settings first.');
+        }
+        return runDocling(data, { ...options, python: runtime.python, scriptPath: runtime.scriptPath });
+      },
+    };
+  }
   const { manager, plugin } = await readyPlugin(component, 'extractor', loadManager);
   return {
     component,
@@ -120,11 +229,13 @@ export const resolveDocumentExtractor = async (settings, { loadManager } = {}) =
       boundedText(name, 'Extractor plugin document name', 1024);
       boundedText(mimeType, 'Extractor plugin document MIME type', 255);
       const path = scopedSourcePath(name, 'document');
+      const invocationContext = await loadPluginInvocationContext(plugin, loadInvocationContext);
       let invocation;
       try {
         invocation = await manager.invoke(component, 'document.extract', {
           document: { path, name, mimeType, size: source.length },
         }, {
+          ...invocationContext,
           signal,
           timeoutMs: 10 * 60_000,
           files: [{ path, data: source }],
@@ -143,7 +254,14 @@ export const resolveDocumentExtractor = async (settings, { loadManager } = {}) =
   };
 };
 
-export const resolveOcrProvider = async (settings, { loadManager, builtin } = {}) => {
+export const resolveOcrProvider = async (settings, {
+  loadManager,
+  builtin,
+  loadInvocationContext,
+  environment = process.env,
+  configuration = {},
+  secrets = {},
+} = {}) => {
   const component = settings?.values?.['extraction.ocrPlugin'] ?? 'builtin';
   if (component === 'builtin') return { component, identity: 'builtin', ocr: builtin };
   const { manager, plugin } = await readyPlugin(component, 'ocr', loadManager);
@@ -157,6 +275,16 @@ export const resolveOcrProvider = async (settings, { loadManager, builtin } = {}
       if (!imageMimeTypes.has(mimeType)) throw new Error('OCR plugin image has an unsupported MIME type');
       boundedText(name, 'OCR plugin image name', 1024);
       const path = scopedSourcePath(name, 'image');
+      const invocationContext = await loadPluginInvocationContext(plugin, loadInvocationContext);
+      const runtimeConfiguration = {
+        ...pluginConfigurationDefaults(plugin),
+        ...configuration,
+        ...(invocationContext.configuration ?? {}),
+      };
+      const runtimeSecrets = declaredPluginSecrets(plugin, environment, {
+        ...secrets,
+        ...(invocationContext.secrets ?? {}),
+      });
       let invocation;
       try {
         invocation = await manager.invoke(component, 'document.ocr', {
@@ -165,6 +293,8 @@ export const resolveOcrProvider = async (settings, { loadManager, builtin } = {}
           signal,
           timeoutMs: 90_000,
           files: [{ path, data: source }],
+          configuration: runtimeConfiguration,
+          secrets: runtimeSecrets,
         });
       } catch (error) {
         if (signal?.aborted || error?.name === 'AbortError') throw error;
