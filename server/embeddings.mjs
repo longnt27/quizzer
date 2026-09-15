@@ -1,10 +1,85 @@
+import { validateOpenAICompatibleEndpoint } from './openai-compatible-generation.mjs';
+
 const DEFAULT_OLLAMA_HOST = 'http://127.0.0.1:11434';
+const DEFAULT_OPENAI_EMBEDDINGS_ENDPOINT = 'https://api.openai.com/v1';
+const DEFAULT_GEMINI_EMBEDDINGS_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta';
+const MAX_TIMEOUT_MS = 30 * 60_000;
+const MAX_DIMENSIONS = 8_192;
 
 const validateTexts = texts => {
   if (!Array.isArray(texts) || !texts.length || texts.length > 250 || texts.some(text => typeof text !== 'string')) {
     throw new Error('texts must be an array of 1-250 strings');
   }
   return texts;
+};
+
+const validateModel = model => {
+  if (typeof model !== 'string' || !model.trim()) throw new Error('An embedding model is required');
+  return model.trim();
+};
+
+const validateTimeout = timeoutMs => {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_TIMEOUT_MS) {
+    throw new Error('Embedding timeout must be from 1 ms to 30 minutes');
+  }
+  return timeoutMs;
+};
+
+const validateFetch = fetchImplementation => {
+  if (typeof fetchImplementation !== 'function') throw new Error('An HTTP fetch implementation is required');
+  return fetchImplementation;
+};
+
+const validateVectors = (vectors, expected) => {
+  if (!Array.isArray(vectors) || vectors.length !== expected) {
+    throw new Error(`Embedding provider returned ${Array.isArray(vectors) ? vectors.length : 0} vectors for ${expected} texts`);
+  }
+  const dimensions = vectors[0]?.length;
+  if (!Number.isSafeInteger(dimensions) || dimensions < 1 || dimensions > MAX_DIMENSIONS
+    || vectors.some(vector => !Array.isArray(vector) || vector.length !== dimensions
+      || vector.some(value => typeof value !== 'number' || !Number.isFinite(value)))) {
+    throw new Error('Embedding provider returned invalid or inconsistent vectors');
+  }
+  return vectors;
+};
+
+const withRequestSignal = async (signal, timeoutMs, run) => {
+  const controller = new AbortController();
+  const abort = () => controller.abort(signal?.reason);
+  if (signal?.aborted) abort();
+  else signal?.addEventListener('abort', abort, { once: true });
+  const timer = setTimeout(() => controller.abort(new Error(`Embedding request timed out after ${timeoutMs} ms`)), timeoutMs);
+  timer.unref?.();
+  try { return await run(controller.signal); }
+  finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
+  }
+};
+
+const isLoopbackHost = hostname => {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (host === 'localhost' || host === '::1') return true;
+  const octets = host.split('.');
+  return octets.length === 4 && octets[0] === '127'
+    && octets.slice(1).every(value => /^\d{1,3}$/.test(value) && Number(value) <= 255);
+};
+
+export const isLoopbackEmbeddingEndpoint = endpoint => {
+  try {
+    const validated = validateOpenAICompatibleEndpoint(endpoint);
+    const url = new URL(validated);
+    return url.protocol === 'http:' && isLoopbackHost(url.hostname);
+  } catch { return false; }
+};
+
+export const validateOpenAIEmbeddingEndpoint = endpoint => validateOpenAICompatibleEndpoint(endpoint);
+
+export const resolveOpenAIEmbeddingsUrl = endpoint => {
+  const validated = validateOpenAIEmbeddingEndpoint(endpoint);
+  const url = new URL(validated);
+  const path = url.pathname.replace(/\/+$/, '');
+  return `${url.origin}${path.endsWith('/embeddings') ? path : `${path}/embeddings`}`;
 };
 
 const embeddingEndpoint = host => {
@@ -23,33 +98,99 @@ export const embedTextsWithOllama = async (texts, {
   fetchImplementation = globalThis.fetch,
 } = {}) => {
   validateTexts(texts);
-  if (typeof model !== 'string' || !model.trim()) throw new Error('An embedding model is required');
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30 * 60_000) {
-    throw new Error('Embedding timeout must be from 1 ms to 30 minutes');
-  }
-  if (typeof fetchImplementation !== 'function') throw new Error('An HTTP fetch implementation is required');
+  const resolvedModel = validateModel(model);
+  validateTimeout(timeoutMs);
+  validateFetch(fetchImplementation);
 
-  const controller = new AbortController();
-  const abort = () => controller.abort(signal?.reason);
-  if (signal?.aborted) abort();
-  else signal?.addEventListener('abort', abort, { once: true });
-  const timer = setTimeout(() => controller.abort(new Error(`Embedding request timed out after ${timeoutMs} ms`)), timeoutMs);
-  timer.unref?.();
-  try {
+  return withRequestSignal(signal, timeoutMs, async requestSignal => {
     const response = await fetchImplementation(embeddingEndpoint(host), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: controller.signal,
-      body: JSON.stringify({ model: model.trim(), input: texts }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: requestSignal,
+      body: JSON.stringify({ model: resolvedModel, input: texts }),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !Array.isArray(payload.embeddings) || payload.embeddings.length !== texts.length) {
-      throw new Error(`Local embedding model ${model.trim()} is unavailable`);
+      throw new Error(`Local embedding model ${resolvedModel} is unavailable`);
     }
-    return payload.embeddings;
-  } finally {
-    clearTimeout(timer);
-    signal?.removeEventListener('abort', abort);
-  }
+    return validateVectors(payload.embeddings, texts.length);
+  });
 };
 
+export const embedTextsWithOpenAICompatible = async (texts, {
+  model,
+  endpoint = DEFAULT_OPENAI_EMBEDDINGS_ENDPOINT,
+  apiKey,
+  timeoutMs = 30_000,
+  signal,
+  fetchImplementation = globalThis.fetch,
+} = {}) => {
+  validateTexts(texts);
+  const resolvedModel = validateModel(model);
+  validateTimeout(timeoutMs);
+  validateFetch(fetchImplementation);
+  const url = resolveOpenAIEmbeddingsUrl(endpoint);
+
+  return withRequestSignal(signal, timeoutMs, async requestSignal => {
+    const headers = { 'Content-Type': 'application/json' };
+    if (typeof apiKey === 'string' && apiKey.trim()) headers.Authorization = `Bearer ${apiKey.trim()}`;
+    const response = await fetchImplementation(url, {
+      method: 'POST', headers, signal: requestSignal,
+      body: JSON.stringify({ model: resolvedModel, input: texts }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(`Embedding provider rejected model ${resolvedModel}`);
+    const vectors = Array.isArray(payload.data) ? payload.data.map(item => item?.embedding) : undefined;
+    return validateVectors(vectors, texts.length);
+  });
+};
+
+export const embedTextsWithOpenAI = async (texts, options = {}) => {
+  if (typeof options.apiKey !== 'string' || !options.apiKey.trim()) throw new Error('OpenAI embedding API key is required');
+  return embedTextsWithOpenAICompatible(texts, { ...options, endpoint: DEFAULT_OPENAI_EMBEDDINGS_ENDPOINT });
+};
+
+const normalizeGeminiModel = model => validateModel(model).replace(/^models\//, '');
+const geminiText = (text, purpose) => purpose === 'query'
+  ? `task: search result | query: ${text}`
+  : `title: none | text: ${text}`;
+
+export const embedTextsWithGemini = async (texts, {
+  model = 'gemini-embedding-2',
+  apiKey,
+  outputDimensionality = 768,
+  purpose = 'document',
+  endpoint = DEFAULT_GEMINI_EMBEDDINGS_ENDPOINT,
+  timeoutMs = 30_000,
+  signal,
+  fetchImplementation = globalThis.fetch,
+} = {}) => {
+  validateTexts(texts);
+  if (typeof apiKey !== 'string' || !apiKey.trim()) throw new Error('Gemini embedding API key is required');
+  if (!['document', 'query'].includes(purpose)) throw new Error('Embedding purpose must be document or query');
+  if (!Number.isSafeInteger(outputDimensionality) || outputDimensionality < 128 || outputDimensionality > 3072) {
+    throw new Error('Gemini embedding dimensionality must be between 128 and 3072');
+  }
+  const resolvedModel = normalizeGeminiModel(model);
+  validateTimeout(timeoutMs);
+  validateFetch(fetchImplementation);
+  const base = validateOpenAIEmbeddingEndpoint(endpoint);
+  const url = `${base}/models/${encodeURIComponent(resolvedModel)}:batchEmbedContents`;
+  const modelResource = `models/${resolvedModel}`;
+  const requests = texts.map(text => ({
+    model: modelResource,
+    content: { parts: [{ text: geminiText(text, purpose) }] },
+    outputDimensionality,
+  }));
+
+  return withRequestSignal(signal, timeoutMs, async requestSignal => {
+    const response = await fetchImplementation(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey.trim() },
+      signal: requestSignal,
+      body: JSON.stringify({ requests }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(`Gemini embedding model ${resolvedModel} is unavailable`);
+    const vectors = Array.isArray(payload.embeddings) ? payload.embeddings.map(item => item?.values) : undefined;
+    return validateVectors(vectors, texts.length);
+  });
+};
