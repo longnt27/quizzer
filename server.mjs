@@ -28,9 +28,10 @@ import { ProviderCredentialStore } from './server/provider-credentials.mjs';
 import { GenerationJobWorker } from './server/generation-worker.mjs';
 import { runGeneratorPlugin } from './server/plugin-generation.mjs';
 import { resolveEmbeddingProvider } from './server/plugin-embeddings.mjs';
+import { describeEmbeddingIntegration } from './server/embedding-integration-status.mjs';
 import { resolveVectorIndexProvider } from './server/plugin-vector-index.mjs';
 import { resolveDocumentExtractor, resolveOcrProvider } from './server/plugin-extraction.mjs';
-import { listOllamaModels, ollamaModelMatches, runOllamaGeneration, runOllamaHyde, validateOllamaModelName } from './server/ollama-generation.mjs';
+import { listOllamaModels, runOllamaGeneration, runOllamaHyde, validateOllamaModelName } from './server/ollama-generation.mjs';
 import {
   getLlamaCppStatus, runLlamaCppGeneration, validateLlamaCppEndpoint, validateLlamaCppModel,
 } from './server/llama-cpp-generation.mjs';
@@ -479,7 +480,6 @@ const integrationStatus = async () => {
     hasSystemMarker(),
     managedOcrWorks(),
   ]);
-  const embeddingModel = settings.values['embeddings.model'];
   return {
     marker: { installed: managedMarker || systemMarker, managed: managedMarker, job: integrationJobs.marker },
     codex: { installed: codexInstalled, connected: codexConnected, job: integrationJobs.codex },
@@ -504,12 +504,13 @@ const integrationStatus = async () => {
       models: ollama.models,
       job: integrationJobs.ollama,
     },
-    embeddings: {
-      installed: ollama.models.some(model => ollamaModelMatches(model.name, embeddingModel)),
-      runtimeInstalled: ollamaInstalled || ollama.serverReady,
-      model: embeddingModel,
+    embeddings: describeEmbeddingIntegration({
+      settings,
+      ollama,
+      ollamaInstalled,
+      credentialProviders: providerCredentials.status().providers,
       job: integrationJobs.embeddings,
-    },
+    }),
     ocr: { installed: managedOcr, managed: managedOcr, job: integrationJobs.ocr },
   };
 };
