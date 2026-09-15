@@ -207,7 +207,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: tesseract-${{ matrix.target }}
-          path: bundle/vendor/${{ matrix.target }}/tesseract*
+          path: bundle/vendor
           if-no-files-found: error
           retention-days: 7
 
