@@ -153,3 +153,37 @@ test('persists validated user overrides and reads JSONC comments', async () => {
   assert.equal(resolved.values['retrieval.contextBudget'], 16384);
   assert.equal(resolved.values['extraction.ocr'], false);
 });
+
+test('persists a provider when legacy embedding settings are saved again', async () => {
+  const migrationDirectory = await mkdtemp(join(tmpdir(), 'quizzer-embedding-migration-test-'));
+  const path = join(migrationDirectory, 'config.jsonc');
+  try {
+    await writeFile(path, JSON.stringify({
+      'embeddings.embedderPlugin': 'dev.quizzer.embedder',
+      'extraction.ocr': false,
+    }));
+    const legacyPlugin = await readUserSettings(migrationDirectory);
+    assert.equal('embeddings.provider' in legacyPlugin, false);
+    await writeUserSettings(migrationDirectory, { ...legacyPlugin, 'extraction.ocr': true });
+    assert.deepEqual(await readUserSettings(migrationDirectory), {
+      'embeddings.embedderPlugin': 'dev.quizzer.embedder',
+      'embeddings.provider': 'plugin',
+      'extraction.ocr': true,
+    });
+
+    await writeFile(path, JSON.stringify({
+      'embeddings.embedderPlugin': 'builtin',
+      'extraction.ocr': false,
+    }));
+    const legacyBuiltin = await readUserSettings(migrationDirectory);
+    assert.equal('embeddings.provider' in legacyBuiltin, false);
+    await writeUserSettings(migrationDirectory, { ...legacyBuiltin, 'extraction.ocr': true });
+    assert.deepEqual(await readUserSettings(migrationDirectory), {
+      'embeddings.embedderPlugin': 'builtin',
+      'embeddings.provider': 'ollama',
+      'extraction.ocr': true,
+    });
+  } finally {
+    await rm(migrationDirectory, { recursive: true, force: true });
+  }
+});
