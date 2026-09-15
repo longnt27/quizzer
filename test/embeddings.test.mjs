@@ -86,6 +86,19 @@ test('rejects oversized embedding text before any provider request is sent', asy
   assert.equal(called, false);
 });
 
+test('rejects embedding responses that declare an oversized body before parsing', async () => {
+  let parsed = false;
+  await assert.rejects(embedTextsWithOpenAICompatible(['one'], {
+    model: 'embed-v1', endpoint: 'http://127.0.0.1:8080/v1',
+    fetchImplementation: async () => ({
+      ok: true,
+      headers: new Headers({ 'content-length': String(64 * 1024 * 1024 + 1) }),
+      json: async () => { parsed = true; return { data: [{ embedding: [1, 0] }] }; },
+    }),
+  }), /response.*too large|response.*limit|64.*MiB/i);
+  assert.equal(parsed, false);
+});
+
 test('rejects remote HTTP OpenAI-compatible endpoints and missing cloud credentials', async () => {
   await assert.rejects(embedTextsWithOpenAICompatible(['text'], {
     model: 'embed-v1', endpoint: 'http://example.com/v1', fetchImplementation: async () => {},
