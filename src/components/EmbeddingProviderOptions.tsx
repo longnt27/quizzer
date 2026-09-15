@@ -229,7 +229,7 @@ export default function EmbeddingProviderOptions() {
         ? <Button size="small" type="primary" icon={<CloudDownloadOutlined />} loading={busy === 'ollama-install'} onClick={installOllamaModel}>Install</Button>
         : null;
       return (
-        <section className="plugin-option" key={definition.id}>
+        <section className="plugin-option" key={definition.id} data-embedding-provider-state={activeProvider}>
           <div className="plugin-option-main">
             <span className="plugin-option-icon" aria-hidden="true">{definition.icon}</span>
             <div className="plugin-option-copy">
