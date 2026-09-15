@@ -80,8 +80,14 @@ const baseSettings = [
     environment: 'QUIZZER_VECTOR_INDEX_PLUGIN',
   },
   {
+    key: 'extraction.provider', type: 'string', enum: ['auto', 'basic', 'marker', 'mistral-ocr', 'plugin'], default: 'auto',
+    title: 'Document extractor provider', description: 'Choose Basic, Marker, Mistral OCR cloud extraction, or the installed extractor plugin. Auto preserves legacy profile and plugin choices.',
+    visibility: 'advanced', resourceEffect: 'high', restartRequired: false, reindexRequired: true,
+    environment: 'QUIZZER_EXTRACTION_PROVIDER',
+  },
+  {
     key: 'extraction.marker', type: 'boolean', default: false,
-    title: 'Visual PDF extraction', description: 'Uses Marker when available for structured and visual PDFs.',
+    title: 'Visual PDF extraction', description: 'Legacy Marker compatibility flag. Prefer Document extractor provider for new configurations.',
     visibility: 'advanced', resourceEffect: 'high', restartRequired: false, reindexRequired: true,
     environment: 'QUIZZER_MARKER',
   },
@@ -215,6 +221,7 @@ export const HARDWARE_PROFILE_SETTINGS = Object.freeze({
     'retrieval.rerank': false,
     'retrieval.rerankerPlugin': 'builtin',
     'retrieval.vectorIndexPlugin': 'builtin',
+    'extraction.provider': 'auto',
     'extraction.marker': false,
     'extraction.extractorPlugin': 'builtin',
     'extraction.ocr': false,
@@ -234,6 +241,7 @@ export const HARDWARE_PROFILE_SETTINGS = Object.freeze({
     'retrieval.rerank': true,
     'retrieval.rerankerPlugin': 'builtin',
     'retrieval.vectorIndexPlugin': 'builtin',
+    'extraction.provider': 'auto',
     'extraction.marker': false,
     'extraction.extractorPlugin': 'builtin',
     'extraction.ocr': true,
@@ -253,6 +261,7 @@ export const HARDWARE_PROFILE_SETTINGS = Object.freeze({
     'retrieval.rerank': true,
     'retrieval.rerankerPlugin': 'builtin',
     'retrieval.vectorIndexPlugin': 'builtin',
+    'extraction.provider': 'auto',
     'extraction.marker': true,
     'extraction.extractorPlugin': 'builtin',
     'extraction.ocr': true,
@@ -372,6 +381,16 @@ const applyLayer = (values, sources, layer, source) => {
   }
 };
 
+const normalizeExtractionProvider = (values, sources) => {
+  const provider = values['extraction.provider'];
+  if (provider === 'auto') return;
+  values['extraction.marker'] = provider === 'marker';
+  sources['extraction.marker'] = sources['extraction.provider'];
+  if (provider === 'plugin') return;
+  values['extraction.extractorPlugin'] = provider === 'mistral-ocr' ? 'mistral-ocr' : 'builtin';
+  sources['extraction.extractorPlugin'] = sources['extraction.provider'];
+};
+
 export const resolveSettings = ({
   profile = 'lite', user = {}, environment = process.env, cli = {}, job = {},
 } = {}) => {
@@ -393,6 +412,7 @@ export const resolveSettings = ({
   applyLayer(values, sources, environmentValues, 'environment');
   applyLayer(values, sources, cli, 'cli');
   applyLayer(values, sources, job, 'job');
+  normalizeExtractionProvider(values, sources);
   return { profile: values['hardware.profile'], values, sources };
 };
 
