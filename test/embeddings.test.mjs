@@ -22,6 +22,15 @@ test('calls the configured Ollama embedding model with bounded input', async () 
   assert.equal(request.options.signal.aborted, false);
 });
 
+test('refuses non-loopback Ollama hosts so local embedding privacy remains truthful', async () => {
+  let called = false;
+  await assert.rejects(embedTextsWithOllama(['private notes'], {
+    host: 'http://192.168.1.20:11434',
+    fetchImplementation: async () => { called = true; },
+  }), /loopback|local/i);
+  assert.equal(called, false);
+});
+
 test('calls OpenAI-compatible embeddings with an optional bearer key', async () => {
   let request;
   const embeddings = await embedTextsWithOpenAICompatible(['one', 'two'], {
