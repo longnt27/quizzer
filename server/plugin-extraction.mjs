@@ -38,6 +38,33 @@ const readyPlugin = async (component, capability, loadManager) => {
   return { manager, plugin };
 };
 
+const loadPluginInvocationContext = async (plugin, loader) => {
+  if (loader === undefined) return {};
+  if (typeof loader !== 'function') throw unavailable(`Plugin ${plugin.id} invocation context loader is invalid`);
+  const context = await loader(plugin);
+  if (context === undefined) return {};
+  if (!context || typeof context !== 'object' || Array.isArray(context)) {
+    throw unavailable(`Plugin ${plugin.id} invocation context is invalid`);
+  }
+  const configuration = context.configuration ?? {};
+  const secrets = context.secrets ?? {};
+  if (!configuration || typeof configuration !== 'object' || Array.isArray(configuration)) {
+    throw unavailable(`Plugin ${plugin.id} configuration is invalid`);
+  }
+  if (!secrets || typeof secrets !== 'object' || Array.isArray(secrets)
+    || Object.entries(secrets).some(([name, value]) => typeof name !== 'string' || !name || typeof value !== 'string')) {
+    throw unavailable(`Plugin ${plugin.id} secrets are invalid`);
+  }
+  const declaredSecrets = new Set(plugin.permissions?.secrets ?? []);
+  for (const name of Object.keys(secrets)) {
+    if (!declaredSecrets.has(name)) throw unavailable(`Plugin ${plugin.id} received undeclared secret ${name}`);
+  }
+  return {
+    ...(Object.keys(configuration).length ? { configuration } : {}),
+    ...(Object.keys(secrets).length ? { secrets } : {}),
+  };
+};
+
 const validateImage = (image, index) => {
   if (!image || typeof image !== 'object' || Array.isArray(image)) {
     throw new Error(`Extractor plugin image ${index + 1} is invalid`);
@@ -106,7 +133,7 @@ export const validatePluginOcr = result => {
   return boundedText(result.text, 'OCR plugin text', MAX_OCR_CHARACTERS, { optional: true }) ?? '';
 };
 
-export const resolveDocumentExtractor = async (settings, { loadManager } = {}) => {
+export const resolveDocumentExtractor = async (settings, { loadManager, loadInvocationContext } = {}) => {
   const component = settings?.values?.['extraction.extractorPlugin'] ?? 'builtin';
   if (component === 'builtin') return { component, identity: 'builtin', extract: undefined };
   const { manager, plugin } = await readyPlugin(component, 'extractor', loadManager);
@@ -120,11 +147,13 @@ export const resolveDocumentExtractor = async (settings, { loadManager } = {}) =
       boundedText(name, 'Extractor plugin document name', 1024);
       boundedText(mimeType, 'Extractor plugin document MIME type', 255);
       const path = scopedSourcePath(name, 'document');
+      const invocationContext = await loadPluginInvocationContext(plugin, loadInvocationContext);
       let invocation;
       try {
         invocation = await manager.invoke(component, 'document.extract', {
           document: { path, name, mimeType, size: source.length },
         }, {
+          ...invocationContext,
           signal,
           timeoutMs: 10 * 60_000,
           files: [{ path, data: source }],
@@ -143,7 +172,7 @@ export const resolveDocumentExtractor = async (settings, { loadManager } = {}) =
   };
 };
 
-export const resolveOcrProvider = async (settings, { loadManager, builtin } = {}) => {
+export const resolveOcrProvider = async (settings, { loadManager, builtin, loadInvocationContext } = {}) => {
   const component = settings?.values?.['extraction.ocrPlugin'] ?? 'builtin';
   if (component === 'builtin') return { component, identity: 'builtin', ocr: builtin };
   const { manager, plugin } = await readyPlugin(component, 'ocr', loadManager);
@@ -157,11 +186,13 @@ export const resolveOcrProvider = async (settings, { loadManager, builtin } = {}
       if (!imageMimeTypes.has(mimeType)) throw new Error('OCR plugin image has an unsupported MIME type');
       boundedText(name, 'OCR plugin image name', 1024);
       const path = scopedSourcePath(name, 'image');
+      const invocationContext = await loadPluginInvocationContext(plugin, loadInvocationContext);
       let invocation;
       try {
         invocation = await manager.invoke(component, 'document.ocr', {
           image: { path, name, mimeType, size: source.length },
         }, {
+          ...invocationContext,
           signal,
           timeoutMs: 90_000,
           files: [{ path, data: source }],
