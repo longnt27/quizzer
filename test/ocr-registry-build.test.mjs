@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
-import { mkdtemp, readFile, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,15 +10,42 @@ import { verifyRegistryCatalogSignature } from '../plugin-sdk/registry.mjs';
 import { buildOcrPluginRegistry } from '../scripts/build-ocr-plugin-registry.mjs';
 
 const projectDirectory = dirname(dirname(fileURLToPath(import.meta.url)));
+const tesseractBundleFiles = [
+  'vendor/darwin-arm64/tesseract',
+  'vendor/darwin-x64/tesseract',
+  'vendor/linux-arm64/tesseract',
+  'vendor/linux-x64/tesseract',
+  'vendor/win32-x64/tesseract.exe',
+  'tessdata/eng.traineddata',
+  'licenses/Tesseract-LICENSE',
+  'licenses/Leptonica-LICENSE',
+  'licenses/tessdata_fast-LICENSE',
+];
 
-test('builds a signed release catalog containing all first-party OCR plugins', async () => {
+const writeBundleFixture = async root => {
+  for (const path of tesseractBundleFiles) {
+    const target = join(root, path);
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, `fixture:${path}\n`);
+  }
+};
+
+test('builds a signed release catalog containing all first-party OCR plugins', async t => {
   const outputDirectory = await mkdtemp(join(tmpdir(), 'quizzer-ocr-registry-'));
+  const tesseractBundleDirectory = await mkdtemp(join(tmpdir(), 'quizzer-tesseract-bundle-'));
+  t.after(() => Promise.all([
+    rm(outputDirectory, { recursive: true, force: true }),
+    rm(tesseractBundleDirectory, { recursive: true, force: true }),
+  ]));
+  await writeBundleFixture(tesseractBundleDirectory);
+
   const { publicKey, privateKey } = generateKeyPairSync('ed25519');
   const keyId = 'ocr-test-key';
   const publicDer = publicKey.export({ format: 'der', type: 'spki' }).toString('base64');
   const { catalog } = await buildOcrPluginRegistry({
     projectDirectory,
     outputDirectory,
+    tesseractBundleDirectory,
     releaseTag: 'plugins-v1',
     keyId,
     privateKey,
@@ -44,4 +71,13 @@ test('builds a signed release catalog containing all first-party OCR plugins', a
       assert.equal((await stat(join(outputDirectory, assetName))).size, file.size);
     }
   }
+
+  const tesseractEntry = catalog.plugins.find(plugin => plugin.id === 'quizzer.ocr.tesseract');
+  const tesseractManifest = JSON.parse(await readFile(
+    join(outputDirectory, 'quizzer.ocr.tesseract.manifest.json'),
+    'utf8',
+  ));
+  const packagedPaths = tesseractManifest.files.map(file => file.path).sort();
+  assert.deepEqual(packagedPaths, ['plugin.mjs', ...tesseractBundleFiles].sort());
+  assert.deepEqual(tesseractEntry.files.map(file => file.path).sort(), packagedPaths);
 });
