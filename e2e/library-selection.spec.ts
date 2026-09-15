@@ -38,9 +38,10 @@ test('Ctrl-click seeds bulk selection with the test that is already open', async
   const sidebar = page.locator('.desktop-sidebar');
   const alpha = sidebar.locator('.ant-list-item').filter({ hasText: 'Alpha test' });
   const beta = sidebar.locator('.ant-list-item').filter({ hasText: 'Beta test' });
+  const activeHeading = page.locator('.app-main h2').filter({ hasText: 'Alpha test' });
 
   await alpha.click();
-  await expect(page.getByRole('heading', { name: 'Alpha test' })).toBeVisible();
+  await expect(activeHeading).toBeVisible();
   await expect(sidebar.locator('input[type="checkbox"]')).toHaveCount(0);
 
   await beta.click({ modifiers: ['Control'] });
@@ -51,7 +52,7 @@ test('Ctrl-click seeds bulk selection with the test that is already open', async
 
   await sidebar.getByRole('button', { name: 'Cancel selection' }).click();
   await expect(sidebar.locator('input[type="checkbox"]')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Alpha test' })).toBeVisible();
+  await expect(activeHeading).toBeVisible();
 });
 
 test('Shift-click from an open test selects the inclusive visible range', async ({ page }) => {
