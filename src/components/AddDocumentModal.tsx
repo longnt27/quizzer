@@ -51,6 +51,7 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
         ? { ...await extractPdf(file), parserVersion: 'pdfjs-5.3.31' }
         : { content: await file.text(), pageCount: undefined, parserVersion: 'utf8-1' };
       update(id, { stage: isPdf ? 'Running the configured document extractor…' : 'Checking the configured document extractor…' });
+      let extractorWarning = '';
       try {
         const dataUrl = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
@@ -63,7 +64,16 @@ export default function AddDocumentModal({ onClose, onCreated }: Props) {
           body: JSON.stringify({ name: file.name, data: dataUrl.split(',')[1], ocrEnabled: toolSettings.ocr }),
         });
         if (response.ok) extracted = await response.json() as typeof extracted;
-      } catch { /* The configured extractor is optional; retain the basic extraction. */ }
+        else {
+          const payload = await response.json().catch(() => ({})) as { error?: string };
+          extractorWarning = payload.error || `HTTP ${response.status}`;
+        }
+      } catch (error) {
+        extractorWarning = error instanceof Error ? error.message : 'configured extractor unavailable';
+      }
+      if (extractorWarning) {
+        message.warning(`${file.name}: configured extraction failed (${extractorWarning}). Imported using Quizzer Basic instead.`);
+      }
       if (!extracted.content.trim()) throw new Error('No readable text was found in this document.');
       update(id, {
         status: 'ready', stage: undefined,
