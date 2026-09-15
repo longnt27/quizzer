@@ -1,5 +1,6 @@
 import { DenseDocumentIndex } from './dense-index.mjs';
 import { embedTextsWithOllama } from './embeddings.mjs';
+import { embedDocumentTexts, embedQueryTexts } from './embedding-purpose.mjs';
 import { fuseHybridRankings, reciprocalRankFusion } from './hybrid-retrieval.mjs';
 import { SparseDocumentIndex } from './sparse-index.mjs';
 import { rerankRetrieval } from './reranking.mjs';
@@ -135,7 +136,7 @@ export class RetrievalIndex {
       const dense = await vectorIndex.indexDocument(record, {
         ...options,
         embeddingModel,
-        embed: texts => embedding.embed(texts, { signal: options?.signal }),
+        embed: texts => embedDocumentTexts(embedding, texts, options?.signal),
       });
       this.denseIssue = undefined;
       return { ...sparse, dense: { status: 'ready', component: vectorIndex.component, ...dense } };
@@ -263,7 +264,7 @@ export class RetrievalIndex {
     if (retrievalMode === 'hybrid' && embeddings) {
       try {
         this.denseUsed = true;
-        const vectors = await embedding.embed(queryVariants, { signal: options.signal });
+        const vectors = await embedQueryTexts(embedding, queryVariants, options.signal);
         throwIfAborted(options.signal);
         if (!Array.isArray(vectors) || vectors.length !== queryVariants.length) {
           throw new Error(`Embedding provider returned ${Array.isArray(vectors) ? vectors.length : 0} vectors for ${queryVariants.length} query variants`);
