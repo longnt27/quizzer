@@ -52,6 +52,50 @@ test('routes extraction through an installed plugin with a bounded scoped docume
   assert.deepEqual(invocation[3].files[0].data, Buffer.from('source PDF'));
 });
 
+test('forwards declared extractor configuration and secrets without widening plugin permissions', async () => {
+  let invocation;
+  const securedPlugin = {
+    ...extractorPlugin,
+    permissions: {
+      filesystem: ['scoped-temp', 'document-read'],
+      secrets: ['MISTRAL_API_KEY'],
+    },
+  };
+  const manager = {
+    list: async () => [securedPlugin],
+    invoke: async (...args) => {
+      invocation = args;
+      return { result: { content: 'configured extraction' } };
+    },
+  };
+  const route = await resolveDocumentExtractor(settings(), {
+    loadManager: async () => manager,
+    loadInvocationContext: async plugin => {
+      assert.equal(plugin.id, securedPlugin.id);
+      return {
+        configuration: { model: 'mistral-ocr-4-1' },
+        secrets: { MISTRAL_API_KEY: 'secret-value' },
+      };
+    },
+  });
+
+  await route.extract(Buffer.from('pdf'));
+  assert.deepEqual(invocation[3].configuration, { model: 'mistral-ocr-4-1' });
+  assert.deepEqual(invocation[3].secrets, { MISTRAL_API_KEY: 'secret-value' });
+});
+
+test('rejects invocation secrets that the extractor did not declare', async () => {
+  const manager = {
+    list: async () => [extractorPlugin],
+    invoke: async () => ({ result: { content: 'must not run' } }),
+  };
+  const route = await resolveDocumentExtractor(settings(), {
+    loadManager: async () => manager,
+    loadInvocationContext: async () => ({ secrets: { MISTRAL_API_KEY: 'secret-value' } }),
+  });
+  await assert.rejects(route.extract(Buffer.from('pdf')), /undeclared secret MISTRAL_API_KEY/);
+});
+
 test('routes OCR through an installed plugin and validates its text envelope', async () => {
   let invocation;
   const manager = {
