@@ -173,7 +173,7 @@ export const resolveOcrProvider = async (settings, {
     component,
     identity: `plugin:${component}@${plugin.version}`,
     ocr: async (data, { name = 'image.png', mimeType = 'image/png', signal } = {}) => {
-      if (!Buffer.isBuffer(data) && !(data instanceof UintArray)) throw new Error('OCR plugin image must be binary');
+      if (!Buffer.isBuffer(data) && !(data instanceof Uint8Array)) throw new Error('OCR plugin image must be binary');
       const source = Buffer.from(data);
       if (!source.length || source.length > MAX_IMAGE_BYTES) throw new Error('OCR plugin image exceeds the bounded image size');
       if (!imageMimeTypes.has(mimeType)) throw new Error('OCR plugin image has an unsupported MIME type');
