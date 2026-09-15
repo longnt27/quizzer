@@ -32,6 +32,12 @@ const capabilitySetting: Record<string, string> = {
   'vector-index': 'retrieval.vectorIndexPlugin',
   reranker: 'retrieval.rerankerPlugin',
 };
+const embeddingProviderByTitle: Record<string, string> = {
+  'Ollama embeddings': 'ollama',
+  'OpenAI-compatible embeddings': 'openai-compatible',
+  'OpenAI embeddings': 'openai',
+  'Gemini embeddings': 'gemini',
+};
 
 const readSettingControl = (row: Element, definition: SettingDefinition): string | number | boolean | undefined => {
   const switchControl = row.querySelector<HTMLElement>('[role="switch"]');
@@ -136,6 +142,8 @@ export default function ImmediateSettingsPersistence() {
       const credentials: Record<string, CredentialSnapshot> = {};
       let llamaEndpoint: string | undefined;
       let llamaModel: string | undefined;
+      let sawEmbeddingToggle = false;
+      let embeddingEnabled = false;
 
       for (const row of main.querySelectorAll<HTMLElement>('.plugin-option')) {
         const title = row.querySelector<HTMLElement>('.plugin-option-copy strong')?.textContent?.trim() ?? '';
@@ -153,21 +161,38 @@ export default function ImmediateSettingsPersistence() {
           serviceValues['extraction.ocr'] = checked;
           if (checked) serviceValues['extraction.ocrPlugin'] = 'builtin';
         }
-        if (/^Ollama embeddings/.test(title) && toggle) {
-          nextEnabledTools.embeddings = checked;
-          serviceValues['embeddings.enabled'] = checked;
-          if (checked) serviceValues['embeddings.embedderPlugin'] = 'builtin';
+        const embeddingProvider = embeddingProviderByTitle[title];
+        if (embeddingProvider && toggle) {
+          sawEmbeddingToggle = true;
+          if (checked) {
+            embeddingEnabled = true;
+            serviceValues['embeddings.provider'] = embeddingProvider;
+            serviceValues['embeddings.embedderPlugin'] = 'builtin';
+          }
         }
 
         const external = /External\s+(extractor|ocr|embedder|vector-index|reranker|generator)\s+plugin\s+·\s+([^\s]+)/i.exec(description);
-        if (external && toggle && checked) {
+        if (external && toggle) {
           const capability = external[1].toLowerCase();
           const pluginId = external[2];
-          if (capability === 'generator') {
-            nextModels.plugin = pluginId;
-            nextEnabledProviders.plugin = true;
-          } else if (capabilitySetting[capability]) serviceValues[capabilitySetting[capability]] = pluginId;
+          if (capability === 'embedder') sawEmbeddingToggle = true;
+          if (checked) {
+            if (capability === 'generator') {
+              nextModels.plugin = pluginId;
+              nextEnabledProviders.plugin = true;
+            } else if (capabilitySetting[capability]) {
+              serviceValues[capabilitySetting[capability]] = pluginId;
+              if (capability === 'embedder') {
+                embeddingEnabled = true;
+                serviceValues['embeddings.provider'] = 'plugin';
+              }
+            }
+          }
         }
+      }
+      if (sawEmbeddingToggle) {
+        nextEnabledTools.embeddings = embeddingEnabled;
+        serviceValues['embeddings.enabled'] = embeddingEnabled;
       }
 
       const modelDialog = dialogs.find(element => / settings$/.test(element.querySelector('.ant-modal-title')?.textContent?.trim() ?? ''));
