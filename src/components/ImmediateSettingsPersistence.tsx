@@ -32,12 +32,6 @@ const capabilitySetting: Record<string, string> = {
   'vector-index': 'retrieval.vectorIndexPlugin',
   reranker: 'retrieval.rerankerPlugin',
 };
-const embeddingProviderByTitle: Record<string, string> = {
-  'Ollama embeddings': 'ollama',
-  'OpenAI-compatible embeddings': 'openai-compatible',
-  'OpenAI embeddings': 'openai',
-  'Gemini embeddings': 'gemini',
-};
 
 const readSettingControl = (row: Element, definition: SettingDefinition): string | number | boolean | undefined => {
   const switchControl = row.querySelector<HTMLElement>('[role="switch"]');
@@ -160,15 +154,6 @@ export default function ImmediateSettingsPersistence() {
           nextEnabledTools.ocr = checked;
           serviceValues['extraction.ocr'] = checked;
           if (checked) serviceValues['extraction.ocrPlugin'] = 'builtin';
-        }
-        const embeddingProvider = embeddingProviderByTitle[title];
-        if (embeddingProvider && toggle) {
-          sawEmbeddingToggle = true;
-          if (checked) {
-            embeddingEnabled = true;
-            serviceValues['embeddings.provider'] = embeddingProvider;
-            serviceValues['embeddings.embedderPlugin'] = 'builtin';
-          }
         }
 
         const external = /External\s+(extractor|ocr|embedder|vector-index|reranker|generator)\s+plugin\s+·\s+([^\s]+)/i.exec(description);
