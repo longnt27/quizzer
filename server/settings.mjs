@@ -377,8 +377,16 @@ export const readUserSettings = async appDataDirectory => {
   }
 };
 
+const migrateLegacyEmbeddingProvider = values => {
+  if (Object.hasOwn(values, 'embeddings.provider') || !Object.hasOwn(values, 'embeddings.embedderPlugin')) return values;
+  return {
+    ...values,
+    'embeddings.provider': values['embeddings.embedderPlugin'] === 'builtin' ? 'ollama' : 'plugin',
+  };
+};
+
 export const writeUserSettings = async (appDataDirectory, values) => {
-  const validated = validateSettings(values);
+  const validated = migrateLegacyEmbeddingProvider(validateSettings(values));
   const path = settingsPath(appDataDirectory);
   await mkdir(dirname(path), { recursive: true });
   const temporaryPath = `${path}.${process.pid}.tmp`;
