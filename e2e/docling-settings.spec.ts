@@ -51,3 +51,34 @@ test('Docling stays unavailable until its managed local runtime is installed', a
   await option.click();
   await expect(extractorRow.locator('.ant-select-selection-item')).toHaveText('Docling (local)');
 });
+
+test('Marker install failures remain visible in Document settings', async ({ page }) => {
+  let installStarted = false;
+  const failure = 'Marker installation failed: compatible Python 3.10+ not found.';
+
+  await page.route('**/api/integrations', async route => {
+    if (route.request().method() !== 'GET') return route.continue();
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        marker: installStarted
+          ? { installed: false, managed: false, job: { state: 'error', message: failure } }
+          : { installed: false, managed: false, job: { state: 'idle', message: '' } },
+        docling: { installed: true, managed: true, job: { state: 'idle', message: '' } },
+      }),
+    });
+  });
+  await page.route('**/api/integrations/marker/install', async route => {
+    installStarted = true;
+    await route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+  });
+
+  await dismissOnboarding(page);
+  await setInterfaceMode(page, 'advanced');
+  await page.locator('.sidebar-footer:visible').getByRole('button', { name: 'Settings' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Settings' });
+  await dialog.getByRole('tab', { name: 'Documents' }).click();
+
+  await dialog.getByRole('button', { name: 'Install Marker' }).click();
+  await expect(dialog.getByText(failure)).toBeVisible();
+});
