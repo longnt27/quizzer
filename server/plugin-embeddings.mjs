@@ -7,7 +7,7 @@ import {
   isLoopbackEmbeddingEndpoint,
   validateOpenAIEmbeddingEndpoint,
 } from './embeddings.mjs';
-import { getProviderCredential } from './provider-credentials.mjs';
+import { getEnvironmentProviderCredential } from './provider-credentials.mjs';
 
 const pluginIdPattern = /^[a-z0-9](?:[a-z0-9.-]{0,126}[a-z0-9])?$/;
 const MAX_TEXT_LENGTH = 100_000;
@@ -68,7 +68,7 @@ export const effectiveEmbeddingModel = (settings, provider = effectiveEmbeddingP
 
 export const resolveEmbeddingProvider = async (settings, {
   loadManager,
-  getCredential = getProviderCredential,
+  getCredential = getEnvironmentProviderCredential,
   ollama = embedTextsWithOllama,
   openAICompatible = embedTextsWithOpenAICompatible,
   openai = embedTextsWithOpenAI,
