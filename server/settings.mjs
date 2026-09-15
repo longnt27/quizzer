@@ -116,15 +116,33 @@ const baseSettings = [
     environment: 'QUIZZER_EMBEDDINGS',
   },
   {
+    key: 'embeddings.provider', type: 'string', enum: ['ollama', 'openai-compatible', 'openai', 'gemini', 'plugin'], default: 'ollama',
+    title: 'Embedding provider', description: 'Chooses the embedding route used for dense retrieval. Changing providers rebuilds the dense index.',
+    visibility: 'advanced', resourceEffect: 'high', restartRequired: false, reindexRequired: true,
+    environment: 'QUIZZER_EMBEDDING_PROVIDER',
+  },
+  {
+    key: 'embeddings.allowRemote', type: 'boolean', default: false,
+    title: 'Allow remote embeddings', description: 'Allows document chunks and search queries to be sent to the selected remote embedding provider. Remote API usage may be billed.',
+    visibility: 'advanced', resourceEffect: 'high', restartRequired: false, reindexRequired: false,
+    environment: 'QUIZZER_EMBEDDINGS_ALLOW_REMOTE',
+  },
+  {
     key: 'embeddings.model', type: 'string', default: 'all-minilm',
     pattern: '^(?:[A-Za-z0-9][A-Za-z0-9._-]{0,63}/){0,4}[A-Za-z0-9][A-Za-z0-9._-]{0,127}(?::[A-Za-z0-9][A-Za-z0-9._-]{0,99})?$',
-    title: 'Embedding model', description: 'Model name supplied to the selected local embedding component. Profiles choose a hardware-appropriate baseline.',
+    title: 'Embedding model', description: 'Model name supplied to the selected embedding provider. Profiles choose a hardware-appropriate local baseline.',
     visibility: 'advanced', resourceEffect: 'high', restartRequired: false, reindexRequired: true,
     environment: 'QUIZZER_EMBEDDING_MODEL',
   },
   {
+    key: 'embeddings.openaiCompatible.endpoint', type: 'string', default: 'http://127.0.0.1:8080/v1',
+    title: 'Embedding OpenAI-compatible endpoint', description: 'Base URL for an OpenAI-compatible embeddings API. Remote endpoints require HTTPS; HTTP is allowed only on loopback.',
+    visibility: 'advanced', resourceEffect: 'high', restartRequired: false, reindexRequired: true,
+    environment: 'QUIZZER_EMBEDDING_OPENAI_COMPATIBLE_ENDPOINT',
+  },
+  {
     key: 'embeddings.embedderPlugin', type: 'string', default: 'builtin',
-    title: 'Embedding component', description: 'Uses built-in Ollama embeddings or an installed embedder plugin id.',
+    title: 'Embedding plugin', description: 'Installed embedder plugin id used when the embedding provider is plugin.',
     visibility: 'advanced', resourceEffect: 'high', restartRequired: false, reindexRequired: true,
     environment: 'QUIZZER_EMBEDDER_PLUGIN',
   },
@@ -227,6 +245,8 @@ export const HARDWARE_PROFILE_SETTINGS = Object.freeze({
     'extraction.ocr': false,
     'extraction.ocrPlugin': 'builtin',
     'embeddings.enabled': false,
+    'embeddings.provider': 'ollama',
+    'embeddings.allowRemote': false,
     'embeddings.model': 'all-minilm',
     'embeddings.embedderPlugin': 'builtin',
   }),
@@ -247,6 +267,8 @@ export const HARDWARE_PROFILE_SETTINGS = Object.freeze({
     'extraction.ocr': true,
     'extraction.ocrPlugin': 'builtin',
     'embeddings.enabled': true,
+    'embeddings.provider': 'ollama',
+    'embeddings.allowRemote': false,
     'embeddings.model': 'all-minilm',
     'embeddings.embedderPlugin': 'builtin',
   }),
@@ -267,6 +289,8 @@ export const HARDWARE_PROFILE_SETTINGS = Object.freeze({
     'extraction.ocr': true,
     'extraction.ocrPlugin': 'builtin',
     'embeddings.enabled': true,
+    'embeddings.provider': 'ollama',
+    'embeddings.allowRemote': false,
     'embeddings.model': 'bge-m3',
     'embeddings.embedderPlugin': 'builtin',
   }),
@@ -283,9 +307,7 @@ const validateValue = (definition, value) => {
     throw new Error(`${definition.key} has an invalid value`);
   }
   if (definition.enum && !definition.enum.includes(value)) throw new Error(`${definition.key} must be one of: ${definition.enum.join(', ')}`);
-  if (definition.key === 'providers.openai-compatible.endpoint') {
-    validateOpenAICompatibleEndpoint(value);
-  }
+  if (definition.key === 'providers.openai-compatible.endpoint' || definition.key === 'embeddings.openaiCompatible.endpoint') validateOpenAICompatibleEndpoint(value);
   if (definition.key === 'providers.llama-cpp.endpoint') validateLlamaCppEndpoint(value);
   if (definition.key === 'providers.llama-cpp.model') validateLlamaCppModel(value);
   return value;
@@ -364,8 +386,16 @@ export const readUserSettings = async appDataDirectory => {
   }
 };
 
+const migrateLegacyEmbeddingProvider = values => {
+  if (Object.hasOwn(values, 'embeddings.provider') || !Object.hasOwn(values, 'embeddings.embedderPlugin')) return values;
+  return {
+    ...values,
+    'embeddings.provider': values['embeddings.embedderPlugin'] === 'builtin' ? 'ollama' : 'plugin',
+  };
+};
+
 export const writeUserSettings = async (appDataDirectory, values) => {
-  const validated = validateSettings(values);
+  const validated = migrateLegacyEmbeddingProvider(validateSettings(values));
   const path = settingsPath(appDataDirectory);
   await mkdir(dirname(path), { recursive: true });
   const temporaryPath = `${path}.${process.pid}.tmp`;
@@ -413,6 +443,14 @@ export const resolveSettings = ({
   applyLayer(values, sources, cli, 'cli');
   applyLayer(values, sources, job, 'job');
   normalizeExtractionProvider(values, sources);
+  const providerSource = sources['embeddings.provider'];
+  const pluginSource = sources['embeddings.embedderPlugin'];
+  if ((providerSource === 'default' || providerSource.startsWith('profile:'))
+    && values['embeddings.embedderPlugin'] !== 'builtin'
+    && pluginSource !== 'default' && !pluginSource.startsWith('profile:')) {
+    values['embeddings.provider'] = 'plugin';
+    sources['embeddings.provider'] = pluginSource;
+  }
   return { profile: values['hardware.profile'], values, sources };
 };
 

@@ -134,8 +134,10 @@ export default function ImmediateSettingsPersistence() {
       const nextEnabledTools = { ...stored.enabledTools };
       const serviceValues: Record<string, unknown> = {};
       const credentials: Record<string, CredentialSnapshot> = {};
+      const embeddingProviderState = main.querySelector<HTMLElement>('[data-embedding-provider-state]')?.dataset.embeddingProviderState;
       let llamaEndpoint: string | undefined;
       let llamaModel: string | undefined;
+      let selectedExternalEmbedder = false;
 
       for (const row of main.querySelectorAll<HTMLElement>('.plugin-option')) {
         const title = row.querySelector<HTMLElement>('.plugin-option-copy strong')?.textContent?.trim() ?? '';
@@ -153,21 +155,30 @@ export default function ImmediateSettingsPersistence() {
           serviceValues['extraction.ocr'] = checked;
           if (checked) serviceValues['extraction.ocrPlugin'] = 'builtin';
         }
-        if (/^Ollama embeddings/.test(title) && toggle) {
-          nextEnabledTools.embeddings = checked;
-          serviceValues['embeddings.enabled'] = checked;
-          if (checked) serviceValues['embeddings.embedderPlugin'] = 'builtin';
-        }
 
         const external = /External\s+(extractor|ocr|embedder|vector-index|reranker|generator)\s+plugin\s+·\s+([^\s]+)/i.exec(description);
-        if (external && toggle && checked) {
+        if (external && toggle) {
           const capability = external[1].toLowerCase();
           const pluginId = external[2];
-          if (capability === 'generator') {
-            nextModels.plugin = pluginId;
-            nextEnabledProviders.plugin = true;
-          } else if (capabilitySetting[capability]) serviceValues[capabilitySetting[capability]] = pluginId;
+          if (checked) {
+            if (capability === 'generator') {
+              nextModels.plugin = pluginId;
+              nextEnabledProviders.plugin = true;
+            } else if (capabilitySetting[capability]) {
+              serviceValues[capabilitySetting[capability]] = pluginId;
+              if (capability === 'embedder') {
+                selectedExternalEmbedder = true;
+                nextEnabledTools.embeddings = true;
+                serviceValues['embeddings.provider'] = 'plugin';
+                serviceValues['embeddings.enabled'] = true;
+              }
+            }
+          }
         }
+      }
+      if (embeddingProviderState === 'plugin' && !selectedExternalEmbedder) {
+        nextEnabledTools.embeddings = false;
+        serviceValues['embeddings.enabled'] = false;
       }
 
       const modelDialog = dialogs.find(element => / settings$/.test(element.querySelector('.ant-modal-title')?.textContent?.trim() ?? ''));
