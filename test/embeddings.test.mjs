@@ -74,6 +74,18 @@ test('Gemini batches embeddings with query/document retrieval formatting', async
   assert.equal(documentBody.requests[0].content.parts[0].text, 'title: none | text: one');
 });
 
+test('rejects oversized embedding text before any provider request is sent', async () => {
+  let called = false;
+  const fetchImplementation = async () => {
+    called = true;
+    return { ok: true, json: async () => ({ data: [{ embedding: [1] }] }) };
+  };
+  await assert.rejects(embedTextsWithOpenAICompatible(['x'.repeat(100_001)], {
+    model: 'embed-v1', endpoint: 'http://127.0.0.1:8080/v1', fetchImplementation,
+  }), /bounded|too large|100000/i);
+  assert.equal(called, false);
+});
+
 test('rejects remote HTTP OpenAI-compatible endpoints and missing cloud credentials', async () => {
   await assert.rejects(embedTextsWithOpenAICompatible(['text'], {
     model: 'embed-v1', endpoint: 'http://example.com/v1', fetchImplementation: async () => {},
