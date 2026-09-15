@@ -31,6 +31,7 @@ interface Props {
 const countSuffix = (style: CountStyle, index: number) => ({
   paren: `(${index})`, bracket: `[${index}]`, angle: `<${index}>`, brace: `{${index}}`,
 }[style]);
+const selectionCheckboxStyle = { flex: '0 0 auto', marginInlineEnd: 10 };
 
 export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument, onOpenPlugins, onOpenSettings, onOpenGeneration, onOpenTutorial, profile, dark, embedded = false }: Props) {
   const tests = useLiveQuery(() => db.tests.orderBy('createdAt').reverse().toArray(), []) ?? [];
@@ -56,6 +57,7 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
     document.name.toLowerCase().includes(normalizedQuery) || document.tags.some(tag => tag.toLowerCase().includes(normalizedQuery))
   );
   const visibleIds = (tab === 'tests' ? visibleTests : visibleDocuments).map(item => item.id);
+  const activeVisibleId = selection?.kind === kind && visibleIds.includes(selection.id) ? selection.id : null;
 
   const clearSelection = () => {
     setSelectedIds(new Set());
@@ -80,18 +82,26 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
 
   const handleItemClick = (event: React.MouseEvent, id: string) => {
     const modifier = event.metaKey || event.ctrlKey;
-    if (event.shiftKey && anchorId) {
-      const from = visibleIds.indexOf(anchorId);
+    const rangeAnchor = anchorId ?? activeVisibleId;
+    if (event.shiftKey && rangeAnchor) {
+      const from = visibleIds.indexOf(rangeAnchor);
       const to = visibleIds.indexOf(id);
       if (from >= 0 && to >= 0) {
         const [start, end] = from < to ? [from, to] : [to, from];
-        setSelectedIds(current => new Set([...current, ...visibleIds.slice(start, end + 1)]));
+        setSelectedIds(current => {
+          const next = new Set(current);
+          if (!selectionMode && activeVisibleId) next.add(activeVisibleId);
+          visibleIds.slice(start, end + 1).forEach(itemId => next.add(itemId));
+          return next;
+        });
+        if (!anchorId) setAnchorId(rangeAnchor);
         return;
       }
     }
     if (modifier || selectionMode) {
       setSelectedIds(current => {
         const next = new Set(current);
+        if (!selectionMode && activeVisibleId) next.add(activeVisibleId);
         if (next.has(id)) next.delete(id); else next.add(id);
         return next;
       });
@@ -222,7 +232,7 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
           renderItem={test => <Dropdown trigger={['contextMenu']} menu={{ items: menuFor('test', test.id) }}>
             <List.Item onClick={event => handleItemClick(event, test.id)} onPointerDown={() => startLongPress(test.id)} onPointerUp={cancelLongPress} onPointerLeave={cancelLongPress}
               style={{ cursor: 'pointer', padding: 10, borderRadius: 8, background: selectedIds.has(test.id) || (selection?.kind === 'test' && selection.id === test.id) ? 'var(--selected)' : undefined }}>
-              {selectionMode && <Checkbox checked={selectedIds.has(test.id)} tabIndex={-1} />}
+              {selectionMode && <Checkbox className="sidebar-selection-checkbox" style={selectionCheckboxStyle} checked={selectedIds.has(test.id)} tabIndex={-1} />}
               <List.Item.Meta title={test.name} description={(() => {
                 const counts = countQuestionTypes(test.questions);
                 const types = [counts.multipleChoice && `${counts.multipleChoice} choice`, counts.fillBlank && `${counts.fillBlank} blank`, counts.reasoning && `${counts.reasoning} reasoning`, counts.coding && `${counts.coding} coding`].filter(Boolean).join(' · ');
@@ -233,7 +243,7 @@ export default function Sidebar({ selection, onSelect, onAddTest, onAddDocument,
           renderItem={document => <Dropdown trigger={['contextMenu']} menu={{ items: menuFor('document', document.id) }}>
             <List.Item onClick={event => handleItemClick(event, document.id)} onPointerDown={() => startLongPress(document.id)} onPointerUp={cancelLongPress} onPointerLeave={cancelLongPress}
               style={{ cursor: 'pointer', padding: 10, borderRadius: 8, background: selectedIds.has(document.id) || (selection?.kind === 'document' && selection.id === document.id) ? 'var(--selected)' : undefined }}>
-              {selectionMode && <Checkbox checked={selectedIds.has(document.id)} tabIndex={-1} />}
+              {selectionMode && <Checkbox className="sidebar-selection-checkbox" style={selectionCheckboxStyle} checked={selectedIds.has(document.id)} tabIndex={-1} />}
               <List.Item.Meta title={document.name} description={<Space size={[2, 2]} wrap>{document.tags.length ? document.tags.map(tag => <Tag key={tag}>{tag}</Tag>) : <Typography.Text type="secondary">No tags</Typography.Text>}</Space>} />
             </List.Item>
           </Dropdown>} />}
