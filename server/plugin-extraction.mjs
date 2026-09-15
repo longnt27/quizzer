@@ -38,6 +38,24 @@ const readyPlugin = async (component, capability, loadManager) => {
   return { manager, plugin };
 };
 
+const pluginConfigurationDefaults = plugin => {
+  const schema = plugin?.configuration;
+  if (!schema || schema.type !== 'object' || !schema.properties || typeof schema.properties !== 'object'
+    || Array.isArray(schema.properties)) return {};
+  return Object.fromEntries(Object.entries(schema.properties).flatMap(([key, property]) => (
+    property && typeof property === 'object' && Object.prototype.hasOwnProperty.call(property, 'default')
+      ? [[key, property.default]] : []
+  )));
+};
+
+const declaredPluginSecrets = (plugin, environment, supplied = {}) => Object.fromEntries(
+  (plugin?.permissions?.secrets ?? []).flatMap(key => {
+    const candidate = supplied?.[key] ?? environment?.[key];
+    if (typeof candidate !== 'string' || !candidate.trim() || candidate.length > 16_384) return [];
+    return [[key, candidate.trim()]];
+  }),
+);
+
 const validateImage = (image, index) => {
   if (!image || typeof image !== 'object' || Array.isArray(image)) {
     throw new Error(`Extractor plugin image ${index + 1} is invalid`);
@@ -123,7 +141,7 @@ export const resolveDocumentExtractor = async (settings, { loadManager } = {}) =
       let invocation;
       try {
         invocation = await manager.invoke(component, 'document.extract', {
-          document: { path, name, mimeType, size: source.length },
+          document: { path, name, mimeType: source.mimeType, size: source.length },
         }, {
           signal,
           timeoutMs: 10 * 60_000,
@@ -143,10 +161,14 @@ export const resolveDocumentExtractor = async (settings, { loadManager } = {}) =
   };
 };
 
-export const resolveOcrProvider = async (settings, { loadManager, builtin } = {}) => {
+export const resolveOcrProvider = async (settings, {
+  loadManager, builtin, environment = process.env, configuration = {}, secrets = {},
+} = {}) => {
   const component = settings?.values?.['extraction.ocrPlugin'] ?? 'builtin';
   if (component === 'builtin') return { component, identity: 'builtin', ocr: builtin };
   const { manager, plugin } = await readyPlugin(component, 'ocr', loadManager);
+  const runtimeConfiguration = { ...pluginConfigurationDefaults(plugin), ...configuration };
+  const runtimeSecrets = declaredPluginSecrets(plugin, environment, secrets);
   return {
     component,
     identity: `plugin:${component}@${plugin.version}`,
@@ -165,6 +187,8 @@ export const resolveOcrProvider = async (settings, { loadManager, builtin } = {}
           signal,
           timeoutMs: 90_000,
           files: [{ path, data: source }],
+          configuration: runtimeConfiguration,
+          secrets: runtimeSecrets,
         });
       } catch (error) {
         if (signal?.aborted || error?.name === 'AbortError') throw error;
