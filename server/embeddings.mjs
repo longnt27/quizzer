@@ -140,6 +140,9 @@ const embeddingEndpoint = host => {
   try { url = new URL('/api/embed', host); }
   catch { throw new Error('OLLAMA_HOST must be a valid HTTP or HTTPS URL'); }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('OLLAMA_HOST must use HTTP or HTTPS');
+  if (url.protocol !== 'http:' || !isLoopbackHost(url.hostname) || url.username || url.password) {
+    throw new Error('OLLAMA_HOST must use an unauthenticated HTTP loopback URL');
+  }
   return url;
 };
 
