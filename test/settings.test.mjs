@@ -47,27 +47,6 @@ test('resolves profile, user, environment, CLI, and job settings in order', () =
   });
 });
 
-test('resolves legacy external embedders to the plugin provider unless provider is explicit', () => {
-  const legacy = resolveSettings({
-    profile: 'lite',
-    user: { 'embeddings.embedderPlugin': 'dev.quizzer.embedder' },
-    environment: {},
-  });
-  assert.equal(legacy.values['embeddings.provider'], 'plugin');
-  assert.equal(legacy.sources['embeddings.provider'], 'user');
-
-  const explicit = resolveSettings({
-    profile: 'lite',
-    user: {
-      'embeddings.provider': 'openai',
-      'embeddings.embedderPlugin': 'dev.quizzer.embedder',
-    },
-    environment: {},
-  });
-  assert.equal(explicit.values['embeddings.provider'], 'openai');
-  assert.equal(explicit.sources['embeddings.provider'], 'user');
-});
-
 test('resolves openai-compatible endpoint with JSONC, env, CLI, and job precedence', () => {
   // Default fallback
   const fallback = resolveSettings({ environment: {} });
@@ -175,36 +154,28 @@ test('persists validated user overrides and reads JSONC comments', async () => {
   assert.equal(resolved.values['extraction.ocr'], false);
 });
 
-test('persists a provider when legacy embedding settings are saved again', async () => {
-  const migrationDirectory = await mkdtemp(join(tmpdir(), 'quizzer-embedding-migration-test-'));
-  const path = join(migrationDirectory, 'config.jsonc');
-  try {
-    await writeFile(path, JSON.stringify({
-      'embeddings.embedderPlugin': 'dev.quizzer.embedder',
-      'extraction.ocr': false,
-    }));
-    const legacyPlugin = await readUserSettings(migrationDirectory);
-    assert.equal('embeddings.provider' in legacyPlugin, false);
-    await writeUserSettings(migrationDirectory, { ...legacyPlugin, 'extraction.ocr': true });
-    assert.deepEqual(await readUserSettings(migrationDirectory), {
-      'embeddings.embedderPlugin': 'dev.quizzer.embedder',
-      'embeddings.provider': 'plugin',
-      'extraction.ocr': true,
-    });
+test('normalizes explicit extractor providers while preserving legacy auto behavior', () => {
+  const legacyMax = resolveSettings({ profile: 'max', environment: {} });
+  assert.equal(legacyMax.values['extraction.provider'], 'auto');
+  assert.equal(legacyMax.values['extraction.marker'], true);
+  assert.equal(legacyMax.values['extraction.extractorPlugin'], 'builtin');
 
-    await writeFile(path, JSON.stringify({
-      'embeddings.embedderPlugin': 'builtin',
-      'extraction.ocr': false,
-    }));
-    const legacyBuiltin = await readUserSettings(migrationDirectory);
-    assert.equal('embeddings.provider' in legacyBuiltin, false);
-    await writeUserSettings(migrationDirectory, { ...legacyBuiltin, 'extraction.ocr': true });
-    assert.deepEqual(await readUserSettings(migrationDirectory), {
-      'embeddings.embedderPlugin': 'builtin',
-      'embeddings.provider': 'ollama',
-      'extraction.ocr': true,
-    });
-  } finally {
-    await rm(migrationDirectory, { recursive: true, force: true });
-  }
+  const basic = resolveSettings({ user: { 'extraction.provider': 'basic', 'extraction.marker': true }, environment: {} });
+  assert.equal(basic.values['extraction.marker'], false);
+  assert.equal(basic.values['extraction.extractorPlugin'], 'builtin');
+
+  const mistral = resolveSettings({ user: { 'extraction.provider': 'mistral-ocr' }, environment: {} });
+  assert.equal(mistral.values['extraction.marker'], false);
+  assert.equal(mistral.values['extraction.extractorPlugin'], 'mistral-ocr');
+
+  const plugin = resolveSettings({ user: {
+    'extraction.provider': 'plugin',
+    'extraction.marker': true,
+    'extraction.extractorPlugin': 'dev.quizzer.extractor',
+  }, environment: {} });
+  assert.equal(plugin.values['extraction.marker'], false);
+  assert.equal(plugin.values['extraction.extractorPlugin'], 'dev.quizzer.extractor');
+
+  assert.deepEqual(SETTINGS_SCHEMA.properties['extraction.provider'].enum, ['auto', 'basic', 'marker', 'docling', 'mistral-ocr', 'plugin']);
+  assert.throws(() => validateSettings({ 'extraction.provider': 'surprise-cloud' }), /must be one of/);
 });
