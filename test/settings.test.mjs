@@ -47,6 +47,27 @@ test('resolves profile, user, environment, CLI, and job settings in order', () =
   });
 });
 
+test('resolves legacy external embedders to the plugin provider unless provider is explicit', () => {
+  const legacy = resolveSettings({
+    profile: 'lite',
+    user: { 'embeddings.embedderPlugin': 'dev.quizzer.embedder' },
+    environment: {},
+  });
+  assert.equal(legacy.values['embeddings.provider'], 'plugin');
+  assert.equal(legacy.sources['embeddings.provider'], 'user');
+
+  const explicit = resolveSettings({
+    profile: 'lite',
+    user: {
+      'embeddings.provider': 'openai',
+      'embeddings.embedderPlugin': 'dev.quizzer.embedder',
+    },
+    environment: {},
+  });
+  assert.equal(explicit.values['embeddings.provider'], 'openai');
+  assert.equal(explicit.sources['embeddings.provider'], 'user');
+});
+
 test('resolves openai-compatible endpoint with JSONC, env, CLI, and job precedence', () => {
   // Default fallback
   const fallback = resolveSettings({ environment: {} });
