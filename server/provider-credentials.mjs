@@ -4,7 +4,6 @@ const API_PROVIDERS = Object.freeze(Object.entries(PROVIDER_POLICIES)
   .filter(([, policy]) => policy.billing === 'usage-based')
   .map(([provider]) => provider));
 const API_PROVIDER_SET = new Set(API_PROVIDERS);
-let activeStore;
 
 const ENVIRONMENT_KEYS = Object.freeze(Object.fromEntries(API_PROVIDERS.map(provider => [
   provider,
@@ -23,11 +22,18 @@ const validateCredential = value => {
   return value.trim();
 };
 
+export const providerCredentialEnvironmentKey = provider => ENVIRONMENT_KEYS[validateProvider(provider)];
+
+export const getEnvironmentProviderCredential = (provider, environment = process.env) => {
+  const key = providerCredentialEnvironmentKey(provider);
+  const value = environment?.[key];
+  return typeof value === 'string' && value.trim() ? validateCredential(value) : undefined;
+};
+
 export class ProviderCredentialStore {
   constructor(environment = process.env) {
     this.environment = environment;
     this.values = new Map();
-    activeStore = this;
   }
 
   replace(values) {
@@ -53,8 +59,7 @@ export class ProviderCredentialStore {
 
   get(provider) {
     validateProvider(provider);
-    const environmentValue = this.environment[ENVIRONMENT_KEYS[provider]];
-    return this.values.get(provider) || (typeof environmentValue === 'string' ? environmentValue.trim() : '') || undefined;
+    return this.values.get(provider) || getEnvironmentProviderCredential(provider, this.environment);
   }
 
   status() {
@@ -63,12 +68,3 @@ export class ProviderCredentialStore {
     };
   }
 }
-
-export const providerCredentialEnvironmentKey = provider => ENVIRONMENT_KEYS[validateProvider(provider)];
-
-export const getProviderCredential = provider => {
-  validateProvider(provider);
-  if (activeStore) return activeStore.get(provider);
-  const environmentValue = process.env[ENVIRONMENT_KEYS[provider]];
-  return typeof environmentValue === 'string' && environmentValue.trim() ? environmentValue.trim() : undefined;
-};
