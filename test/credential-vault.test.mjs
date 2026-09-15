@@ -21,12 +21,17 @@ test('encrypts, updates, lists, and deletes remembered credentials without plain
     await Promise.all([
       vault.set('openai', 'secret-openai-key'),
       vault.set('anthropic', 'secret-anthropic-key'),
+      vault.set('mistral-ocr', 'secret-mistral-key'),
     ]);
-    assert.deepEqual(await vault.list(), { openai: 'secret-openai-key', anthropic: 'secret-anthropic-key' });
+    assert.deepEqual(await vault.list(), {
+      openai: 'secret-openai-key', anthropic: 'secret-anthropic-key', 'mistral-ocr': 'secret-mistral-key',
+    });
     const stored = await readFile(path, 'utf8');
-    assert.doesNotMatch(stored, /secret-(?:openai|anthropic)-key/);
+    assert.doesNotMatch(stored, /secret-(?:openai|anthropic|mistral)-key/);
     await vault.delete('openai');
-    assert.deepEqual(await vault.list(), { anthropic: 'secret-anthropic-key' });
+    assert.deepEqual(await vault.list(), {
+      anthropic: 'secret-anthropic-key', 'mistral-ocr': 'secret-mistral-key',
+    });
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

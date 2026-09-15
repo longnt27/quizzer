@@ -1,3 +1,6 @@
+import { getActiveProviderCredential } from './provider-credentials.mjs';
+import { MISTRAL_OCR_MODEL, runMistralOcrExtraction } from './mistral-ocr-extraction.mjs';
+
 const pluginIdPattern = /^[a-z0-9](?:[a-z0-9.-]{0,126}[a-z0-9])?$/;
 const imageMimeTypes = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const MAX_DOCUMENT_BYTES = 250 * 1024 * 1024;
@@ -55,6 +58,33 @@ const declaredPluginSecrets = (plugin, environment, supplied = {}) => Object.fro
     return [[key, candidate.trim()]];
   }),
 );
+
+const loadPluginInvocationContext = async (plugin, loader) => {
+  if (loader === undefined) return {};
+  if (typeof loader !== 'function') throw unavailable(`Plugin ${plugin.id} invocation context loader is invalid`);
+  const context = await loader(plugin);
+  if (context === undefined) return {};
+  if (!context || typeof context !== 'object' || Array.isArray(context)) {
+    throw unavailable(`Plugin ${plugin.id} invocation context is invalid`);
+  }
+  const configuration = context.configuration ?? {};
+  const secrets = context.secrets ?? {};
+  if (!configuration || typeof configuration !== 'object' || Array.isArray(configuration)) {
+    throw unavailable(`Plugin ${plugin.id} configuration is invalid`);
+  }
+  if (!secrets || typeof secrets !== 'object' || Array.isArray(secrets)
+    || Object.entries(secrets).some(([name, value]) => typeof name !== 'string' || !name || typeof value !== 'string')) {
+    throw unavailable(`Plugin ${plugin.id} secrets are invalid`);
+  }
+  const declaredSecrets = new Set(plugin.permissions?.secrets ?? []);
+  for (const name of Object.keys(secrets)) {
+    if (!declaredSecrets.has(name)) throw unavailable(`Plugin ${plugin.id} received undeclared secret ${name}`);
+  }
+  return {
+    ...(Object.keys(configuration).length ? { configuration } : {}),
+    ...(Object.keys(secrets).length ? { secrets } : {}),
+  };
+};
 
 const validateImage = (image, index) => {
   if (!image || typeof image !== 'object' || Array.isArray(image)) {
@@ -124,9 +154,25 @@ export const validatePluginOcr = result => {
   return boundedText(result.text, 'OCR plugin text', MAX_OCR_CHARACTERS, { optional: true }) ?? '';
 };
 
-export const resolveDocumentExtractor = async (settings, { loadManager } = {}) => {
+export const resolveDocumentExtractor = async (settings, {
+  loadManager,
+  loadInvocationContext,
+  loadCredential = getActiveProviderCredential,
+  fetch = globalThis.fetch,
+} = {}) => {
   const component = settings?.values?.['extraction.extractorPlugin'] ?? 'builtin';
   if (component === 'builtin') return { component, identity: 'builtin', extract: undefined };
+  if (component === 'mistral-ocr') {
+    return {
+      component,
+      identity: `mistral-ocr:${MISTRAL_OCR_MODEL}`,
+      extract: (data, options = {}) => runMistralOcrExtraction(data, {
+        ...options,
+        apiKey: typeof loadCredential === 'function' ? loadCredential('mistral-ocr') : undefined,
+        fetch,
+      }),
+    };
+  }
   const { manager, plugin } = await readyPlugin(component, 'extractor', loadManager);
   return {
     component,
@@ -138,11 +184,13 @@ export const resolveDocumentExtractor = async (settings, { loadManager } = {}) =
       boundedText(name, 'Extractor plugin document name', 1024);
       boundedText(mimeType, 'Extractor plugin document MIME type', 255);
       const path = scopedSourcePath(name, 'document');
+      const invocationContext = await loadPluginInvocationContext(plugin, loadInvocationContext);
       let invocation;
       try {
         invocation = await manager.invoke(component, 'document.extract', {
           document: { path, name, mimeType, size: source.length },
         }, {
+          ...invocationContext,
           signal,
           timeoutMs: 10 * 60_000,
           files: [{ path, data: source }],
@@ -162,13 +210,16 @@ export const resolveDocumentExtractor = async (settings, { loadManager } = {}) =
 };
 
 export const resolveOcrProvider = async (settings, {
-  loadManager, builtin, environment = process.env, configuration = {}, secrets = {},
+  loadManager,
+  builtin,
+  loadInvocationContext,
+  environment = process.env,
+  configuration = {},
+  secrets = {},
 } = {}) => {
   const component = settings?.values?.['extraction.ocrPlugin'] ?? 'builtin';
   if (component === 'builtin') return { component, identity: 'builtin', ocr: builtin };
   const { manager, plugin } = await readyPlugin(component, 'ocr', loadManager);
-  const runtimeConfiguration = { ...pluginConfigurationDefaults(plugin), ...configuration };
-  const runtimeSecrets = declaredPluginSecrets(plugin, environment, secrets);
   return {
     component,
     identity: `plugin:${component}@${plugin.version}`,
@@ -179,6 +230,16 @@ export const resolveOcrProvider = async (settings, {
       if (!imageMimeTypes.has(mimeType)) throw new Error('OCR plugin image has an unsupported MIME type');
       boundedText(name, 'OCR plugin image name', 1024);
       const path = scopedSourcePath(name, 'image');
+      const invocationContext = await loadPluginInvocationContext(plugin, loadInvocationContext);
+      const runtimeConfiguration = {
+        ...pluginConfigurationDefaults(plugin),
+        ...configuration,
+        ...(invocationContext.configuration ?? {}),
+      };
+      const runtimeSecrets = declaredPluginSecrets(plugin, environment, {
+        ...secrets,
+        ...(invocationContext.secrets ?? {}),
+      });
       let invocation;
       try {
         invocation = await manager.invoke(component, 'document.ocr', {

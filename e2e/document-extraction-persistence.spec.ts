@@ -40,3 +40,24 @@ test('document extraction survives modal close and appears in Activity', async (
   await expect(dialog.getByText('ready', { exact: true })).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Add to library' })).toBeVisible();
 });
+
+test('failed configured extraction visibly falls back to Quizzer Basic', async ({ page }) => {
+  await page.route('**/api/extract', route => route.fulfill({
+    status: 429,
+    contentType: 'application/json',
+    body: JSON.stringify({ error: 'Mistral OCR rate limit reached.' }),
+  }));
+
+  await dismissOnboarding(page);
+  await page.getByRole('button', { name: 'Add documents' }).last().click();
+  const dialog = page.getByRole('dialog', { name: 'Add documents' });
+  await dialog.locator('input[type="file"]').setInputFiles({
+    name: 'fallback.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('Basic fallback content'),
+  });
+
+  await expect(dialog.getByText('ready', { exact: true })).toBeVisible();
+  await expect(page.getByText(/fallback\.txt: configured extraction failed.*Quizzer Basic/i)).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Add to library' })).toBeVisible();
+});
