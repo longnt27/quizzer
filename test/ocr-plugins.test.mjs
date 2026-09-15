@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { chmod, copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadPluginManifest } from '../plugin-sdk/manifest.mjs';
 import { extractGoogleVisionText } from '../plugins/ocr/google-cloud-vision/plugin.mjs';
 import { extractTextractText, signTextractRequest } from '../plugins/ocr/aws-textract/plugin.mjs';
@@ -23,6 +25,51 @@ test('local OCR plugins do not request network or secret access', async () => {
     const manifest = await loadPluginManifest(pluginDirectory(name), { verifyFiles: true });
     assert.deepEqual(manifest.permissions.network, []);
     assert.deepEqual(manifest.permissions.secrets, []);
+  }
+});
+
+test('Tesseract OCR runs from its bundled executable and bundled English data without PATH', async t => {
+  if (process.platform === 'win32') {
+    t.skip('The executable fixture uses a POSIX shell script; Windows is covered by release bundle CI.');
+    return;
+  }
+
+  const temporaryRoot = await mkdtemp(join(tmpdir(), 'quizzer-tesseract-plugin-'));
+  t.after(() => rm(temporaryRoot, { recursive: true, force: true }));
+  const pluginRoot = join(temporaryRoot, 'plugin');
+  await mkdir(pluginRoot, { recursive: true });
+  await copyFile(join(pluginDirectory('tesseract'), 'plugin.mjs'), join(pluginRoot, 'plugin.mjs'));
+
+  const vendorDirectory = join(pluginRoot, 'vendor', `${process.platform}-${process.arch}`);
+  const tessdataDirectory = join(pluginRoot, 'tessdata');
+  await mkdir(vendorDirectory, { recursive: true });
+  await mkdir(tessdataDirectory, { recursive: true });
+  const executable = join(vendorDirectory, 'tesseract');
+  await writeFile(executable, `#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then\n  echo \"tesseract 5.5.3\"\n  exit 0\nfi\nif [ ! -f \"$TESSDATA_PREFIX/eng.traineddata\" ]; then\n  echo \"bundled tessdata missing\" >&2\n  exit 13\nfi\necho \"bundled OCR\"\n`);
+  await chmod(executable, 0o700);
+  await writeFile(join(tessdataDirectory, 'eng.traineddata'), 'fixture-data');
+
+  const documentRoot = join(temporaryRoot, 'document');
+  await mkdir(join(documentRoot, 'input'), { recursive: true });
+  await writeFile(join(documentRoot, 'input', 'image.png'), 'fixture-image');
+
+  const moduleUrl = `${pathToFileURL(join(pluginRoot, 'plugin.mjs')).href}?test=${Date.now()}`;
+  const { handleRequest } = await import(moduleUrl);
+  const originalPath = process.env.PATH;
+  process.env.PATH = '';
+  try {
+    const health = await handleRequest({ method: 'plugin.health', context: {} });
+    assert.equal(health.engine, 'tesseract');
+    assert.match(health.version, /^tesseract 5\.5\.3/);
+    const result = await handleRequest({
+      method: 'document.ocr',
+      context: { temporaryDirectory: documentRoot, configuration: { language: 'eng' } },
+      params: { image: { path: 'input/image.png' } },
+    });
+    assert.deepEqual(result, { text: 'bundled OCR' });
+  } finally {
+    if (originalPath === undefined) delete process.env.PATH;
+    else process.env.PATH = originalPath;
   }
 });
 
