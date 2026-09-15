@@ -84,8 +84,8 @@ test('Mistral OCR selection discloses remote processing before credentials are e
   const dialog = page.getByRole('dialog', { name: 'Settings' });
   await dialog.getByRole('tab', { name: 'Documents' }).click();
 
-  const extractor = dialog.getByRole('combobox', { name: 'Document extractor provider' });
-  await extractor.click();
+  const extractorRow = dialog.locator('.settings-row').filter({ hasText: 'Document extractor provider' });
+  await extractorRow.locator('.ant-select').click();
   await page.getByRole('option', { name: 'Mistral-ocr' }).click();
 
   await expect(dialog.getByText('Cloud extraction sends the selected document to Mistral')).toBeVisible();
