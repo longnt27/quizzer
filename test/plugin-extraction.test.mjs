@@ -159,3 +159,44 @@ test('bounds extractor and OCR inputs and output schemas', async () => {
   }) });
   await assert.rejects(cancelledOcr.ocr(Buffer.from('x')), error => error.name === 'AbortError');
 });
+
+test('forwards only declared OCR secrets and manifest configuration defaults', async () => {
+  const cloudPlugin = {
+    ...ocrPlugin,
+    id: 'dev.quizzer.cloud-ocr',
+    permissions: {
+      filesystem: ['scoped-temp', 'document-read'],
+      secrets: ['GOOGLE_CLOUD_VISION_API_KEY'],
+    },
+    configuration: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        feature: { type: 'string', default: 'DOCUMENT_TEXT_DETECTION' },
+        endpoint: { type: 'string', default: 'https://vision.googleapis.com/v1/images:annotate' },
+      },
+    },
+  };
+  let invocation;
+  const manager = {
+    list: async () => [cloudPlugin],
+    invoke: async (...args) => {
+      invocation = args;
+      return { result: { text: 'Cloud OCR text' } };
+    },
+  };
+  const route = await resolveOcrProvider(settings('builtin', cloudPlugin.id), {
+    loadManager: async () => manager,
+    environment: {
+      GOOGLE_CLOUD_VISION_API_KEY: 'secret-key',
+      UNDECLARED_SECRET: 'must-not-leak',
+    },
+  });
+  assert.equal(await route.ocr(Buffer.from('png')), 'Cloud OCR text');
+  assert.deepEqual(invocation[3].configuration, {
+    feature: 'DOCUMENT_TEXT_DETECTION',
+    endpoint: 'https://vision.googleapis.com/v1/images:annotate',
+  });
+  assert.deepEqual(invocation[3].secrets, { GOOGLE_CLOUD_VISION_API_KEY: 'secret-key' });
+  assert.equal(JSON.stringify(invocation[3]).includes('must-not-leak'), false);
+});

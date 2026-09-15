@@ -1,0 +1,348 @@
+name: OCR Plugin Registry
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/ocr-plugin-registry.yml'
+      - 'plugins/ocr/tesseract/**'
+      - 'scripts/build-ocr-plugin-registry.mjs'
+      - 'test/ocr-plugins.test.mjs'
+      - 'test/ocr-registry-build.test.mjs'
+      - 'test/ocr-plugin-release-workflow.test.mjs'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the signed plugin registry to the plugins-v1 GitHub Release
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  build-tesseract:
+    name: Tesseract ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: linux-x64
+            triplet: x64-linux
+          - runner: ubuntu-24.04-arm
+            target: linux-arm64
+            triplet: arm64-linux
+          - runner: macos-15-intel
+            target: darwin-x64
+            triplet: x64-osx
+          - runner: macos-15
+            target: darwin-arm64
+            triplet: arm64-osx
+          - runner: windows-2022
+            target: win32-x64
+            triplet: x64-windows-static
+    steps:
+      - name: Checkout Quizzer
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned Tesseract 5.5.3 source
+        uses: actions/checkout@v4
+        with:
+          repository: tesseract-ocr/tesseract
+          ref: db0ec62f81b0737fbbe184d8fea40af5738f8eef
+          path: upstream/tesseract
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Checkout pinned vcpkg
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          ref: 9e44ec0e9f247d77c230ced0ee66c76296837807
+          path: upstream/vcpkg
+          fetch-depth: 1
+
+      - name: Checkout pinned English tessdata_fast
+        uses: actions/checkout@v4
+        with:
+          repository: tesseract-ocr/tessdata_fast
+          ref: 87416418657359cb625c412a48b6e1d6d41c29bd
+          path: upstream/tessdata-fast
+          sparse-checkout: |
+            eng.traineddata
+            LICENSE
+          sparse-checkout-cone-mode: false
+          fetch-depth: 1
+
+      - name: Bootstrap vcpkg on Unix
+        if: runner.os != 'Windows'
+        shell: bash
+        run: ./upstream/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+
+      - name: Bootstrap vcpkg on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\upstream\vcpkg\bootstrap-vcpkg.bat -disableMetrics
+
+      - name: Build static Leptonica dependencies on Unix
+        if: runner.os != 'Windows'
+        shell: bash
+        run: ./upstream/vcpkg/vcpkg install "leptonica:${{ matrix.triplet }}" --clean-after-build
+
+      - name: Build static Leptonica dependencies on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\upstream\vcpkg\vcpkg.exe install "leptonica:${{ matrix.triplet }}" --clean-after-build
+
+      - name: Configure Tesseract on Unix
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          cmake -S upstream/tesseract -B build/tesseract \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$GITHUB_WORKSPACE/upstream/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DBUILD_TRAINING_TOOLS=OFF \
+            -DBUILD_TESTS=OFF \
+            -DGRAPHICS_DISABLED=ON \
+            -DOPENMP_BUILD=OFF \
+            -DDISABLE_ARCHIVE=ON \
+            -DDISABLE_CURL=ON \
+            -DSW_BUILD=OFF
+
+      - name: Configure Tesseract on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cmake -S upstream/tesseract -B build/tesseract -A x64 `
+            "-DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/upstream/vcpkg/scripts/buildsystems/vcpkg.cmake" `
+            "-DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}" `
+            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
+            -DBUILD_SHARED_LIBS=OFF `
+            -DBUILD_TRAINING_TOOLS=OFF `
+            -DBUILD_TESTS=OFF `
+            -DGRAPHICS_DISABLED=ON `
+            -DOPENMP_BUILD=OFF `
+            -DDISABLE_ARCHIVE=ON `
+            -DDISABLE_CURL=ON `
+            -DSW_BUILD=OFF
+
+      - name: Build Tesseract
+        run: cmake --build build/tesseract --config Release --target tesseract --parallel 2
+
+      - name: Stage and smoke-test Tesseract on Unix
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          BINARY="$GITHUB_WORKSPACE/build/tesseract/bin/tesseract"
+          TARGET="$GITHUB_WORKSPACE/bundle/vendor/${{ matrix.target }}/tesseract"
+          test -x "$BINARY"
+          mkdir -p "$(dirname "$TARGET")"
+          cp "$BINARY" "$TARGET"
+          chmod 0755 "$TARGET"
+          "$TARGET" --version
+          OCR_OUTPUT="$($TARGET "$GITHUB_WORKSPACE/upstream/tesseract/test/testing/phototest.tif" stdout --oem 1 --tessdata-dir "$GITHUB_WORKSPACE/upstream/tessdata-fast" 2>/dev/null)"
+          test -n "${OCR_OUTPUT//[[:space:]]/}"
+
+      - name: Stage and smoke-test Tesseract on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $binary = Join-Path $env:GITHUB_WORKSPACE 'build\tesseract\bin\Release\tesseract.exe'
+          $target = Join-Path $env:GITHUB_WORKSPACE 'bundle\vendor\${{ matrix.target }}\tesseract.exe'
+          if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) { throw "Tesseract executable was not produced: $binary" }
+          New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
+          Copy-Item -LiteralPath $binary -Destination $target
+          & $target --version
+          $image = Join-Path $env:GITHUB_WORKSPACE 'upstream\tesseract\test\testing\phototest.tif'
+          $tessdata = Join-Path $env:GITHUB_WORKSPACE 'upstream\tessdata-fast'
+          $ocr = (& $target $image stdout --oem 1 --tessdata-dir $tessdata 2>$null) -join "`n"
+          if ([string]::IsNullOrWhiteSpace($ocr)) { throw 'Bundled Tesseract produced no OCR text for phototest.tif' }
+
+      - name: Audit Linux dynamic dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          BINARY="bundle/vendor/${{ matrix.target }}/tesseract"
+          ldd "bundle/vendor/${{ matrix.target }}/tesseract" | tee tesseract-dependencies.txt
+          if grep -Eiq 'liblept|libjpeg|libpng|libtiff|libwebp|libopenjp|libgif|libz\.so' tesseract-dependencies.txt; then
+            echo 'Tesseract unexpectedly depends on a non-system image-processing shared library.' >&2
+            exit 1
+          fi
+
+      - name: Audit macOS dynamic dependencies
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          BINARY="bundle/vendor/${{ matrix.target }}/tesseract"
+          otool -L "bundle/vendor/${{ matrix.target }}/tesseract" | tee tesseract-dependencies.txt
+          if grep -Eiq '/opt/homebrew|/usr/local|vcpkg_installed|liblept|libjpeg|libpng|libtiff|libwebp|libopenjp|libgif' tesseract-dependencies.txt; then
+            echo 'Tesseract unexpectedly depends on a non-system image-processing dylib.' >&2
+            exit 1
+          fi
+
+      - name: Audit Windows dynamic dependencies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $binary = Join-Path $env:GITHUB_WORKSPACE 'bundle\vendor\${{ matrix.target }}\tesseract.exe'
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $dumpbinPath = Get-ChildItem -Path (Join-Path $install 'VC\Tools\MSVC') -Filter dumpbin.exe -Recurse | Select-Object -First 1
+          if (-not $dumpbinPath) { throw 'dumpbin.exe was not found' }
+          $env:PATH = "$($dumpbinPath.DirectoryName);$env:PATH"
+          dumpbin /DEPENDENTS "$binary" | Tee-Object -FilePath tesseract-dependencies.txt
+          if (Select-String -Path tesseract-dependencies.txt -Pattern 'lept.*\.dll|jpeg.*\.dll|png.*\.dll|tiff.*\.dll|webp.*\.dll|openjp.*\.dll|gif.*\.dll|zlib.*\.dll') {
+            throw 'Tesseract unexpectedly depends on a bundled image-processing DLL that is not present.'
+          }
+
+      - name: Upload portable Tesseract runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: tesseract-${{ matrix.target }}
+          path: bundle/vendor
+          if-no-files-found: error
+          retention-days: 7
+
+  assemble:
+    name: Assemble signed OCR plugin registry
+    needs: build-tesseract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout Quizzer
+        uses: actions/checkout@v4
+
+      - name: Download native Tesseract runtimes
+        uses: actions/download-artifact@v4
+        with:
+          pattern: tesseract-*
+          path: dist/tesseract-bundle/vendor
+          merge-multiple: true
+
+      - name: Restore Unix Tesseract executable permissions
+        shell: bash
+        run: chmod 0755 dist/tesseract-bundle/vendor/{linux-x64,linux-arm64,darwin-x64,darwin-arm64}/tesseract
+
+      - name: Checkout pinned Tesseract license
+        uses: actions/checkout@v4
+        with:
+          repository: tesseract-ocr/tesseract
+          ref: db0ec62f81b0737fbbe184d8fea40af5738f8eef
+          path: upstream/tesseract-license
+          sparse-checkout: LICENSE
+          sparse-checkout-cone-mode: false
+          fetch-depth: 1
+
+      - name: Checkout pinned Leptonica license
+        uses: actions/checkout@v4
+        with:
+          repository: DanBloomberg/leptonica
+          ref: 13275a278eb55b5746e33f95fbf5a2c8f604b3ab
+          path: upstream/leptonica-license
+          sparse-checkout: leptonica-license.txt
+          sparse-checkout-cone-mode: false
+          fetch-depth: 1
+
+      - name: Checkout pinned English model and license
+        uses: actions/checkout@v4
+        with:
+          repository: tesseract-ocr/tessdata_fast
+          ref: 87416418657359cb625c412a48b6e1d6d41c29bd
+          path: upstream/tessdata-fast
+          sparse-checkout: |
+            eng.traineddata
+            LICENSE
+          sparse-checkout-cone-mode: false
+          fetch-depth: 1
+
+      - name: Assemble Tesseract plugin payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/tesseract-bundle/tessdata dist/tesseract-bundle/licenses
+          cp upstream/tessdata-fast/eng.traineddata dist/tesseract-bundle/tessdata/eng.traineddata
+          cp upstream/tesseract-license/LICENSE dist/tesseract-bundle/licenses/Tesseract-LICENSE
+          cp upstream/leptonica-license/leptonica-license.txt dist/tesseract-bundle/licenses/Leptonica-LICENSE
+          cp upstream/tessdata-fast/LICENSE dist/tesseract-bundle/licenses/tessdata_fast-LICENSE
+          test -x dist/tesseract-bundle/vendor/linux-x64/tesseract
+          test -x dist/tesseract-bundle/vendor/linux-arm64/tesseract
+          test -x dist/tesseract-bundle/vendor/darwin-x64/tesseract
+          test -x dist/tesseract-bundle/vendor/darwin-arm64/tesseract
+          test -f dist/tesseract-bundle/vendor/win32-x64/tesseract.exe
+
+      - name: Generate ephemeral validation signing key
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { generateKeyPairSync } from 'node:crypto';
+          import { appendFileSync } from 'node:fs';
+          const { privateKey } = generateKeyPairSync('ed25519');
+          const encoded = privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64');
+          appendFileSync(process.env.GITHUB_ENV, `OCR_VALIDATION_PRIVATE_KEY=${encoded}\n`);
+          NODE
+
+      - name: Build signed validation registry
+        env:
+          QUIZZER_PLUGIN_REGISTRY_PRIVATE_KEY: ${{ env.OCR_VALIDATION_PRIVATE_KEY }}
+          QUIZZER_PLUGIN_REGISTRY_PUBLIC_KEY_ID: ci-ephemeral
+          QUIZZER_TESSERACT_BUNDLE_DIRECTORY: ${{ github.workspace }}/dist/tesseract-bundle
+          QUIZZER_PLUGIN_REGISTRY_TAG: plugins-v1
+        run: node scripts/build-ocr-plugin-registry.mjs
+
+      - name: Upload complete Tesseract bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: tesseract-runtime-bundle
+          path: dist/tesseract-bundle/**
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish signed OCR plugin registry
+    if: github.event_name == 'workflow_dispatch' && inputs.publish == true
+    needs: assemble
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Quizzer
+        uses: actions/checkout@v4
+
+      - name: Download complete Tesseract bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: tesseract-runtime-bundle
+          path: dist/tesseract-bundle
+
+      - name: Build production-signed plugin registry
+        env:
+          QUIZZER_PLUGIN_REGISTRY_PRIVATE_KEY: ${{ secrets.QUIZZER_PLUGIN_REGISTRY_PRIVATE_KEY }}
+          QUIZZER_PLUGIN_REGISTRY_PUBLIC_KEY_ID: ${{ vars.QUIZZER_PLUGIN_REGISTRY_PUBLIC_KEY_ID }}
+          QUIZZER_TESSERACT_BUNDLE_DIRECTORY: ${{ github.workspace }}/dist/tesseract-bundle
+          QUIZZER_PLUGIN_REGISTRY_TAG: plugins-v1
+        run: node scripts/build-ocr-plugin-registry.mjs
+
+      - name: Publish plugins-v1 release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG=plugins-v1
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/plugin-registry/* --clobber
+          else
+            gh release create "$TAG" dist/plugin-registry/* \
+              --title 'Quizzer Plugin Registry v1' \
+              --notes 'Signed first-party Quizzer plugin registry assets.'
+          fi

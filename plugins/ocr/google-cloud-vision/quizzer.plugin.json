@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "quizzer.ocr.google-cloud-vision",
+  "name": "Google Cloud Vision OCR",
+  "description": "Remote document OCR for low-resource machines. Sends selected document images to Google Cloud Vision and may incur provider charges.",
+  "version": "1.0.0",
+  "protocolVersion": 1,
+  "entrypoint": "plugin.mjs",
+  "capabilities": ["ocr"],
+  "platforms": [
+    { "os": "darwin", "architectures": ["x64", "arm64"] },
+    { "os": "linux", "architectures": ["x64", "arm64"] },
+    { "os": "win32", "architectures": ["x64", "arm64"] }
+  ],
+  "resources": { "memoryMB": 64, "diskMB": 1, "accelerators": ["cpu"] },
+  "configuration": { "type": "object", "additionalProperties": false },
+  "permissions": {
+    "network": ["https://vision.googleapis.com"],
+    "filesystem": ["scoped-temp", "document-read"],
+    "secrets": ["GOOGLE_CLOUD_VISION_API_KEY"],
+    "subprocess": false
+  },
+  "healthCheck": { "method": "plugin.health", "timeoutMs": 5000 },
+  "files": [{ "path": "plugin.mjs", "sha256": "bdd98f476a0eba9525c527c33cb52034c79530acb0b998712c09a1bdbd73ec5b" }]
+}
