@@ -77,6 +77,24 @@ test('Settings changes persist immediately without a Save action', async ({ page
   await expect(dialog.getByRole('spinbutton', { name: 'Generation concurrency' })).toHaveValue('7');
 });
 
+test('Mistral OCR selection discloses remote processing before credentials are entered', async ({ page }) => {
+  await dismissOnboarding(page);
+  await setInterfaceMode(page, 'advanced');
+  await page.locator('.sidebar-footer:visible').getByRole('button', { name: 'Settings' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Settings' });
+  await dialog.getByRole('tab', { name: 'Documents' }).click();
+
+  const extractorRow = dialog.locator('.settings-row').filter({ hasText: 'Document extractor provider' });
+  await extractorRow.locator('.ant-select-selector').click();
+  const dropdown = page.locator('.ant-select-dropdown:visible');
+  await expect(dropdown).toBeVisible();
+  await dropdown.locator('.ant-select-item-option').filter({ hasText: 'Mistral-ocr' }).click();
+
+  await expect(dialog.getByText('Cloud extraction sends the selected document to Mistral')).toBeVisible();
+  await expect(dialog.getByText(/never selects this remote extractor automatically/i)).toBeVisible();
+  await expect(dialog.getByLabel('Mistral OCR API key')).toBeVisible();
+});
+
 test('sidebar stays focused while command shortcuts are configurable and persistent', async ({ page }) => {
   await dismissOnboarding(page);
   const sidebar = page.locator('.sidebar-footer');

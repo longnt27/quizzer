@@ -22,6 +22,7 @@ import {
 import UpdaterStatusView from './UpdaterStatus';
 import PromptStudio from './PromptStudio';
 import AccentColorSetting from './AccentColorSetting';
+import MistralOcrCredentialSetting from './MistralOcrCredentialSetting';
 import { ACCENT_COLORS } from '../utils/accentColor';
 
 type SettingValue = string | number | boolean;
@@ -418,6 +419,11 @@ export default function SettingsModal({
     {!showUpdates && <Typography.Text type="secondary">No software update settings match this search.</Typography.Text>}
   </Space>;
 
+  const documentSettings = <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+    {definitionRows('documents')}
+    <MistralOcrCredentialSetting active={draft['extraction.provider'] === 'mistral-ocr'} />
+  </Space>;
+
   const applyShortcut = (actionId: ShortcutActionId, shortcut: string) => {
     const changed = changeKeyboardShortcut(keyboardShortcuts, actionId, shortcut);
     if (!changed.ok) {
@@ -483,7 +489,11 @@ export default function SettingsModal({
     key: tab.key,
     label: tab.label,
     children: tab.key === 'prompts' ? <PromptStudio />
-      : tab.key === 'overall' ? overall : tab.key === 'shortcuts' ? shortcutSettings : tab.key === 'updates' ? updatesSettings : definitionRows(tab.key),
+      : tab.key === 'overall' ? overall
+        : tab.key === 'shortcuts' ? shortcutSettings
+          : tab.key === 'updates' ? updatesSettings
+            : tab.key === 'documents' ? documentSettings
+              : definitionRows(tab.key),
   }));
 
   const moveTabFocus = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {

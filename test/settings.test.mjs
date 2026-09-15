@@ -153,3 +153,29 @@ test('persists validated user overrides and reads JSONC comments', async () => {
   assert.equal(resolved.values['retrieval.contextBudget'], 16384);
   assert.equal(resolved.values['extraction.ocr'], false);
 });
+
+test('normalizes explicit extractor providers while preserving legacy auto behavior', () => {
+  const legacyMax = resolveSettings({ profile: 'max', environment: {} });
+  assert.equal(legacyMax.values['extraction.provider'], 'auto');
+  assert.equal(legacyMax.values['extraction.marker'], true);
+  assert.equal(legacyMax.values['extraction.extractorPlugin'], 'builtin');
+
+  const basic = resolveSettings({ user: { 'extraction.provider': 'basic', 'extraction.marker': true }, environment: {} });
+  assert.equal(basic.values['extraction.marker'], false);
+  assert.equal(basic.values['extraction.extractorPlugin'], 'builtin');
+
+  const mistral = resolveSettings({ user: { 'extraction.provider': 'mistral-ocr' }, environment: {} });
+  assert.equal(mistral.values['extraction.marker'], false);
+  assert.equal(mistral.values['extraction.extractorPlugin'], 'mistral-ocr');
+
+  const plugin = resolveSettings({ user: {
+    'extraction.provider': 'plugin',
+    'extraction.marker': true,
+    'extraction.extractorPlugin': 'dev.quizzer.extractor',
+  }, environment: {} });
+  assert.equal(plugin.values['extraction.marker'], false);
+  assert.equal(plugin.values['extraction.extractorPlugin'], 'dev.quizzer.extractor');
+
+  assert.deepEqual(SETTINGS_SCHEMA.properties['extraction.provider'].enum, ['auto', 'basic', 'marker', 'mistral-ocr', 'plugin']);
+  assert.throws(() => validateSettings({ 'extraction.provider': 'surprise-cloud' }), /must be one of/);
+});

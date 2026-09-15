@@ -3,14 +3,17 @@ import { PROVIDER_POLICIES } from './provider-policy.mjs';
 const API_PROVIDERS = Object.freeze(Object.entries(PROVIDER_POLICIES)
   .filter(([, policy]) => policy.billing === 'usage-based')
   .map(([provider]) => provider));
-const API_PROVIDER_SET = new Set(API_PROVIDERS);
-const ENVIRONMENT_KEYS = Object.freeze(Object.fromEntries(API_PROVIDERS.map(provider => [
+const TOOL_CREDENTIAL_PROVIDERS = Object.freeze(['mistral-ocr']);
+const CREDENTIAL_PROVIDERS = Object.freeze([...API_PROVIDERS, ...TOOL_CREDENTIAL_PROVIDERS]);
+const CREDENTIAL_PROVIDER_SET = new Set(CREDENTIAL_PROVIDERS);
+const ENVIRONMENT_KEYS = Object.freeze(Object.fromEntries(CREDENTIAL_PROVIDERS.map(provider => [
   provider,
   `QUIZZER_${provider.replaceAll('-', '_').toUpperCase()}_API_KEY`,
 ])));
+let activeServiceStore;
 
 const validateProvider = provider => {
-  if (!API_PROVIDER_SET.has(provider)) throw new Error('Unsupported credential provider');
+  if (!CREDENTIAL_PROVIDER_SET.has(provider)) throw new Error('Unsupported credential provider');
   return provider;
 };
 
@@ -25,6 +28,7 @@ export class ProviderCredentialStore {
   constructor(environment = process.env) {
     this.environment = environment;
     this.values = new Map();
+    if (environment === process.env) activeServiceStore = this;
   }
 
   replace(values) {
@@ -56,9 +60,15 @@ export class ProviderCredentialStore {
 
   status() {
     return {
-      providers: API_PROVIDERS.filter(provider => Boolean(this.get(provider))),
+      providers: CREDENTIAL_PROVIDERS.filter(provider => Boolean(this.get(provider))),
     };
   }
 }
 
 export const providerCredentialEnvironmentKey = provider => ENVIRONMENT_KEYS[validateProvider(provider)];
+export const getActiveProviderCredential = provider => {
+  const id = validateProvider(provider);
+  if (activeServiceStore) return activeServiceStore.get(id);
+  const environmentValue = process.env[ENVIRONMENT_KEYS[id]];
+  return typeof environmentValue === 'string' ? environmentValue.trim() || undefined : undefined;
+};
