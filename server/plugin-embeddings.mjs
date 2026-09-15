@@ -16,6 +16,10 @@ const MAX_DIMENSIONS = 8_192;
 const DEFAULT_OPENAI_COMPATIBLE_ENDPOINT = 'http://127.0.0.1:8080/v1';
 const DEFAULT_GEMINI_DIMENSIONS = 768;
 const supportedProviders = new Set(['ollama', 'openai-compatible', 'openai', 'gemini', 'plugin']);
+const defaultCloudModels = Object.freeze({
+  openai: 'text-embedding-3-small',
+  gemini: 'gemini-embedding-2',
+});
 
 const validateTexts = texts => {
   if (!Array.isArray(texts) || !texts.length || texts.length > 250
@@ -41,7 +45,6 @@ export const validatePluginEmbeddings = (embeddings, expectedCount) => {
 
 const unavailable = message => Object.assign(new Error(message), { code: 'provider_unavailable' });
 const endpointHash = endpoint => createHash('sha256').update(endpoint).digest('hex').slice(0, 12);
-
 export const effectiveEmbeddingProvider = settings => {
   const values = settings?.values ?? {};
   const configured = values['embeddings.provider'];
@@ -62,7 +65,11 @@ export const resolveEmbeddingProvider = async (settings, {
 } = {}) => {
   const values = settings?.values ?? {};
   const provider = effectiveEmbeddingProvider(settings);
-  const model = values['embeddings.model'];
+  const modelSource = settings?.sources?.['embeddings.model'];
+  const modelIsProfileDefault = modelSource === 'default' || modelSource?.startsWith('profile:');
+  const model = modelIsProfileDefault && defaultCloudModels[provider]
+    ? defaultCloudModels[provider]
+    : values['embeddings.model'];
   const allowRemote = values['embeddings.allowRemote'] === true;
 
   if (provider === 'ollama') return {
