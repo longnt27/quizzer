@@ -220,16 +220,6 @@ export const resolveOcrProvider = async (settings, {
   const component = settings?.values?.['extraction.ocrPlugin'] ?? 'builtin';
   if (component === 'builtin') return { component, identity: 'builtin', ocr: builtin };
   const { manager, plugin } = await readyPlugin(component, 'ocr', loadManager);
-  const suppliedContext = await loadPluginInvocationContext(plugin, loadInvocationContext);
-  const runtimeConfiguration = {
-    ...pluginConfigurationDefaults(plugin),
-    ...configuration,
-    ...(suppliedContext.configuration ?? {}),
-  };
-  const runtimeSecrets = {
-    ...declaredPluginSecrets(plugin, environment, secrets),
-    ...(suppliedContext.secrets ?? {}),
-  };
   return {
     component,
     identity: `plugin:${component}@${plugin.version}`,
@@ -240,6 +230,16 @@ export const resolveOcrProvider = async (settings, {
       if (!imageMimeTypes.has(mimeType)) throw new Error('OCR plugin image has an unsupported MIME type');
       boundedText(name, 'OCR plugin image name', 1024);
       const path = scopedSourcePath(name, 'image');
+      const invocationContext = await loadPluginInvocationContext(plugin, loadInvocationContext);
+      const runtimeConfiguration = {
+        ...pluginConfigurationDefaults(plugin),
+        ...configuration,
+        ...(invocationContext.configuration ?? {}),
+      };
+      const runtimeSecrets = declaredPluginSecrets(plugin, environment, {
+        ...secrets,
+        ...(invocationContext.secrets ?? {}),
+      });
       let invocation;
       try {
         invocation = await manager.invoke(component, 'document.ocr', {

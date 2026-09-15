@@ -204,7 +204,7 @@ test('bounds extractor and OCR inputs and output schemas', async () => {
   await assert.rejects(cancelledOcr.ocr(Buffer.from('x')), error => error.name === 'AbortError');
 });
 
-test('forwards only declared OCR secrets and manifest configuration defaults', async () => {
+test('forwards only declared OCR secrets and manifest configuration defaults alongside invocation contexts', async () => {
   const cloudPlugin = {
     ...ocrPlugin,
     id: 'dev.quizzer.cloud-ocr',
@@ -231,6 +231,7 @@ test('forwards only declared OCR secrets and manifest configuration defaults', a
   };
   const route = await resolveOcrProvider(settings('builtin', cloudPlugin.id), {
     loadManager: async () => manager,
+    loadInvocationContext: async () => ({}),
     environment: {
       GOOGLE_CLOUD_VISION_API_KEY: 'secret-key',
       UNDECLARED_SECRET: 'must-not-leak',
