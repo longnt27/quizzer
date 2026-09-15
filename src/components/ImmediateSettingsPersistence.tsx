@@ -134,10 +134,10 @@ export default function ImmediateSettingsPersistence() {
       const nextEnabledTools = { ...stored.enabledTools };
       const serviceValues: Record<string, unknown> = {};
       const credentials: Record<string, CredentialSnapshot> = {};
+      const embeddingProviderState = main.querySelector<HTMLElement>('[data-embedding-provider-state]')?.dataset.embeddingProviderState;
       let llamaEndpoint: string | undefined;
       let llamaModel: string | undefined;
-      let sawEmbeddingToggle = false;
-      let embeddingEnabled = false;
+      let selectedExternalEmbedder = false;
 
       for (const row of main.querySelectorAll<HTMLElement>('.plugin-option')) {
         const title = row.querySelector<HTMLElement>('.plugin-option-copy strong')?.textContent?.trim() ?? '';
@@ -160,7 +160,6 @@ export default function ImmediateSettingsPersistence() {
         if (external && toggle) {
           const capability = external[1].toLowerCase();
           const pluginId = external[2];
-          if (capability === 'embedder') sawEmbeddingToggle = true;
           if (checked) {
             if (capability === 'generator') {
               nextModels.plugin = pluginId;
@@ -168,16 +167,18 @@ export default function ImmediateSettingsPersistence() {
             } else if (capabilitySetting[capability]) {
               serviceValues[capabilitySetting[capability]] = pluginId;
               if (capability === 'embedder') {
-                embeddingEnabled = true;
+                selectedExternalEmbedder = true;
+                nextEnabledTools.embeddings = true;
                 serviceValues['embeddings.provider'] = 'plugin';
+                serviceValues['embeddings.enabled'] = true;
               }
             }
           }
         }
       }
-      if (sawEmbeddingToggle) {
-        nextEnabledTools.embeddings = embeddingEnabled;
-        serviceValues['embeddings.enabled'] = embeddingEnabled;
+      if (embeddingProviderState === 'plugin' && !selectedExternalEmbedder) {
+        nextEnabledTools.embeddings = false;
+        serviceValues['embeddings.enabled'] = false;
       }
 
       const modelDialog = dialogs.find(element => / settings$/.test(element.querySelector('.ant-modal-title')?.textContent?.trim() ?? ''));
