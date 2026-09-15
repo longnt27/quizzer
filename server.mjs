@@ -59,6 +59,7 @@ const managedOcrDirectory = join(appDataDirectory, '.quizzer-tools', 'ocr');
 const managedOcrPython = join(managedOcrDirectory, process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'python.exe' : 'python');
 const serviceToken = await ensureServiceToken(appDataDirectory);
 const providerCredentials = new ProviderCredentialStore();
+const getEmbeddingCredential = provider => providerCredentials.get(provider);
 process.parentPort?.on?.('message', event => {
   const message = event?.data ?? event;
   if (message?.type !== 'quizzer-provider-credentials') return;
@@ -106,7 +107,9 @@ const retrievalIndex = new RetrievalIndex({
   sparsePath: process.env.QUIZZER_SPARSE_INDEX_PATH || sparseIndexPathFor(appDataDirectory),
   densePath: process.env.QUIZZER_DENSE_INDEX_PATH || denseIndexPathFor(appDataDirectory),
   loadSettings: () => loadResolvedSettings(appDataDirectory),
-  resolveEmbedding: settings => resolveEmbeddingProvider(settings, { loadManager: getPluginManager }),
+  resolveEmbedding: settings => resolveEmbeddingProvider(settings, {
+    loadManager: getPluginManager, getCredential: getEmbeddingCredential,
+  }),
   resolveVectorIndex: (settings, { builtin }) => resolveVectorIndexProvider(settings, {
     loadManager: getPluginManager, builtin,
   }),
@@ -894,7 +897,9 @@ const generationWorker = process.env.QUIZZER_DISABLE_SERVICE_GENERATION === '1' 
   retrieve: options => retrievalIndex.retrieve(options),
   embed: async (texts, signal) => {
     const settings = await loadResolvedSettings(appDataDirectory);
-    const embedding = await resolveEmbeddingProvider(settings, { loadManager: getPluginManager });
+    const embedding = await resolveEmbeddingProvider(settings, {
+      loadManager: getPluginManager, getCredential: getEmbeddingCredential,
+    });
     return embedding.embed(texts, { signal });
   },
   loadImage: async image => {
@@ -1757,7 +1762,9 @@ const serviceServer = createServer(async (request, response) => {
     try {
       const { texts } = await readJson(request);
       const settings = await loadResolvedSettings(appDataDirectory);
-      const embedding = await resolveEmbeddingProvider(settings, { loadManager: getPluginManager });
+      const embedding = await resolveEmbeddingProvider(settings, {
+        loadManager: getPluginManager, getCredential: getEmbeddingCredential,
+      });
       const embeddings = await embedding.embed(texts, { signal: lifetime.signal });
       if (!response.destroyed) return send(response, 200, { embeddings });
     } catch (error) {
