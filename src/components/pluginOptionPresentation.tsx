@@ -1,10 +1,11 @@
-import { isValidElement, type ReactNode } from 'react';
+import { Children, cloneElement, isValidElement, type ReactElement, type ReactNode } from 'react';
 import { Collapse, Space, Spin, Typography } from 'antd';
 import {
   ApiOutlined, CodeOutlined, DatabaseOutlined, DesktopOutlined, FileSearchOutlined, GlobalOutlined,
   GoogleOutlined, MessageOutlined, OpenAIOutlined, RocketOutlined, RobotOutlined, ScanOutlined,
   SearchOutlined, SortAscendingOutlined, ApartmentOutlined,
 } from '@ant-design/icons';
+import EmbeddingProviderOptions from './EmbeddingProviderOptions';
 
 const normalized = (value: string) => value.toLowerCase();
 const syntheticStatusMessages = new Set(['Antigravity is connected.']);
@@ -49,11 +50,43 @@ export function PluginJobDetails({ children, working }: { children: ReactNode; w
   );
 }
 
+interface TabItemLike {
+  key?: string;
+  children?: ReactNode;
+  [key: string]: unknown;
+}
+
+interface TabsLikeProps {
+  items?: TabItemLike[];
+}
+
+const embeddingTabWithProviders = (tab: ReactNode) => {
+  if (!isValidElement<{ children?: ReactNode }>(tab)) return tab;
+  const existing = Children.toArray(tab.props.children).filter(child => {
+    if (!isValidElement<{ title?: unknown }>(child)) return true;
+    return !(typeof child.props.title === 'string' && /^Ollama embeddings(?: ·|$)/.test(child.props.title));
+  });
+  return cloneElement(
+    tab as ReactElement<{ children?: ReactNode }>,
+    undefined,
+    <EmbeddingProviderOptions key="first-party-embedding-providers" />,
+    ...existing,
+  );
+};
+
+const tabsWithEmbeddingProviders = (children: ReactNode) => {
+  if (!isValidElement<TabsLikeProps>(children) || !Array.isArray(children.props.items)) return children;
+  const items = children.props.items.map(item => item.key === 'embeddings'
+    ? { ...item, children: embeddingTabWithProviders(item.children) }
+    : item);
+  return cloneElement(children as ReactElement<TabsLikeProps>, { items });
+};
+
 export function IntegrationStatusGate({ loading, children }: { loading: boolean; children: ReactNode }) {
   return (
     <Space direction="vertical" size="small" style={{ width: '100%' }}>
       {loading ? <Space size="small" className="plugin-detection-status"><Spin size="small" /><Typography.Text type="secondary">Detecting installed tools and models…</Typography.Text></Space> : null}
-      {children}
+      {tabsWithEmbeddingProviders(children)}
     </Space>
   );
 }
