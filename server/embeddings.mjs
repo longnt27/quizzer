@@ -7,6 +7,7 @@ const MAX_TIMEOUT_MS = 30 * 60_000;
 const MAX_DIMENSIONS = 8_192;
 const MAX_TEXT_LENGTH = 100_000;
 const MAX_TOTAL_TEXT_LENGTH = 2_000_000;
+const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
 
 const validateTexts = texts => {
   if (!Array.isArray(texts) || !texts.length || texts.length > 250 || texts.some(text => typeof text !== 'string')) {
@@ -65,6 +66,50 @@ const withRequestSignal = async (signal, timeoutMs, run) => {
   }
 };
 
+const responseTooLarge = () => new Error(`Embedding provider response is too large; limit is ${MAX_RESPONSE_BYTES} bytes`);
+
+const ensureRequestActive = signal => {
+  if (!signal?.aborted) return;
+  throw signal.reason instanceof Error ? signal.reason : new Error('Embedding request cancelled');
+};
+
+const readBoundedJson = async (response, signal) => {
+  const contentLength = response?.headers?.get?.('content-length');
+  if (contentLength !== null && contentLength !== undefined) {
+    const declared = Number(contentLength);
+    if (!Number.isSafeInteger(declared) || declared < 0 || declared > MAX_RESPONSE_BYTES) throw responseTooLarge();
+  }
+
+  if (response?.body?.getReader) {
+    const reader = response.body.getReader();
+    const chunks = [];
+    let size = 0;
+    try {
+      while (true) {
+        ensureRequestActive(signal);
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!(value instanceof Uint8Array)) throw new Error('Embedding provider returned an invalid response body');
+        size += value.byteLength;
+        if (size > MAX_RESPONSE_BYTES) {
+          await reader.cancel().catch(() => {});
+          throw responseTooLarge();
+        }
+        chunks.push(value);
+      }
+      ensureRequestActive(signal);
+      try { return JSON.parse(Buffer.concat(chunks.map(chunk => Buffer.from(chunk)), size).toString('utf8')); }
+      catch { return {}; }
+    } finally {
+      if (signal?.aborted) await reader.cancel(signal.reason).catch(() => {});
+    }
+  }
+
+  // Lightweight injected fetch implementations used by callers/tests may expose only json().
+  if (typeof response?.json === 'function') return response.json().catch(() => ({}));
+  return {};
+};
+
 const isLoopbackHost = hostname => {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
   if (host === 'localhost' || host === '::1') return true;
@@ -115,7 +160,7 @@ export const embedTextsWithOllama = async (texts, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: requestSignal,
       body: JSON.stringify({ model: resolvedModel, input: texts }),
     });
-    const payload = await response.json().catch(() => ({}));
+    const payload = await readBoundedJson(response, requestSignal);
     if (!response.ok || !Array.isArray(payload.embeddings) || payload.embeddings.length !== texts.length) {
       throw new Error(`Local embedding model ${resolvedModel} is unavailable`);
     }
@@ -144,7 +189,7 @@ export const embedTextsWithOpenAICompatible = async (texts, {
       method: 'POST', headers, signal: requestSignal,
       body: JSON.stringify({ model: resolvedModel, input: texts }),
     });
-    const payload = await response.json().catch(() => ({}));
+    const payload = await readBoundedJson(response, requestSignal);
     if (!response.ok) throw new Error(`Embedding provider rejected model ${resolvedModel}`);
     const vectors = Array.isArray(payload.data) ? payload.data.map(item => item?.embedding) : undefined;
     return validateVectors(vectors, texts.length);
@@ -196,7 +241,7 @@ export const embedTextsWithGemini = async (texts, {
       signal: requestSignal,
       body: JSON.stringify({ requests }),
     });
-    const payload = await response.json().catch(() => ({}));
+    const payload = await readBoundedJson(response, requestSignal);
     if (!response.ok) throw new Error(`Gemini embedding model ${resolvedModel} is unavailable`);
     const vectors = Array.isArray(payload.embeddings) ? payload.embeddings.map(item => item?.values) : undefined;
     return validateVectors(vectors, texts.length);
