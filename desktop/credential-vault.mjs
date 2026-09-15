@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
-export const CREDENTIAL_PROVIDERS = Object.freeze(['gemini', 'anthropic', 'openai', 'openrouter', 'deepseek']);
+export const CREDENTIAL_PROVIDERS = Object.freeze(['gemini', 'anthropic', 'openai', 'openrouter', 'deepseek', 'openai-compatible']);
 
 export class CredentialVault {
   constructor(filePath, encryption) {
