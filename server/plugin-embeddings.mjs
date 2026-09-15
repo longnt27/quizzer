@@ -55,6 +55,17 @@ export const effectiveEmbeddingProvider = settings => {
   return values['embeddings.embedderPlugin'] && values['embeddings.embedderPlugin'] !== 'builtin' ? 'plugin' : 'ollama';
 };
 
+export const effectiveEmbeddingModel = (settings, provider = effectiveEmbeddingProvider(settings)) => {
+  const values = settings?.values ?? {};
+  const configuredModel = values['embeddings.model'];
+  if (typeof configuredModel !== 'string' || !configuredModel.trim()) throw unavailable('Embedding model is not configured');
+  const modelSource = settings?.sources?.['embeddings.model'];
+  const modelIsProfileDefault = modelSource === 'default' || modelSource?.startsWith('profile:');
+  return modelIsProfileDefault && defaultCloudModels[provider]
+    ? defaultCloudModels[provider]
+    : configuredModel.trim();
+};
+
 export const resolveEmbeddingProvider = async (settings, {
   loadManager,
   getCredential = getProviderCredential,
@@ -65,11 +76,7 @@ export const resolveEmbeddingProvider = async (settings, {
 } = {}) => {
   const values = settings?.values ?? {};
   const provider = effectiveEmbeddingProvider(settings);
-  const modelSource = settings?.sources?.['embeddings.model'];
-  const modelIsProfileDefault = modelSource === 'default' || modelSource?.startsWith('profile:');
-  const model = modelIsProfileDefault && defaultCloudModels[provider]
-    ? defaultCloudModels[provider]
-    : values['embeddings.model'];
+  const model = effectiveEmbeddingModel(settings, provider);
   const allowRemote = values['embeddings.allowRemote'] === true;
 
   if (provider === 'ollama') return {
