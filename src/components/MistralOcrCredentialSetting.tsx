@@ -28,7 +28,7 @@ export default function MistralOcrCredentialSetting({ active }: Props) {
   useEffect(() => {
     let mounted = true;
     void Promise.all([
-      serviceRequest<{ providers: string[] }>('/api/v1/provider-credentials').catch(() => ({ providers: [] })),
+      serviceRequest<{ providers: string[] }>('/api/v1/provider-credentials').catch(() => ({ providers: [] as string[] })),
       window.quizzerDesktop
         ? Promise.all([window.quizzerDesktop.credentials.status(), window.quizzerDesktop.credentials.list()])
         : Promise.resolve(undefined),
