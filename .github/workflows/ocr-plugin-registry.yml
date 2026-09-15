@@ -227,6 +227,10 @@ jobs:
           path: dist/tesseract-bundle/vendor
           merge-multiple: true
 
+      - name: Restore Unix Tesseract executable permissions
+        shell: bash
+        run: chmod 0755 dist/tesseract-bundle/vendor/{linux-x64,linux-arm64,darwin-x64,darwin-arm64}/tesseract
+
       - name: Checkout pinned Tesseract license
         uses: actions/checkout@v4
         with:
