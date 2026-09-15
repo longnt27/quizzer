@@ -5,10 +5,18 @@ const DEFAULT_OPENAI_EMBEDDINGS_ENDPOINT = 'https://api.openai.com/v1';
 const DEFAULT_GEMINI_EMBEDDINGS_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta';
 const MAX_TIMEOUT_MS = 30 * 60_000;
 const MAX_DIMENSIONS = 8_192;
+const MAX_TEXT_LENGTH = 100_000;
+const MAX_TOTAL_TEXT_LENGTH = 2_000_000;
 
 const validateTexts = texts => {
   if (!Array.isArray(texts) || !texts.length || texts.length > 250 || texts.some(text => typeof text !== 'string')) {
     throw new Error('texts must be an array of 1-250 strings');
+  }
+  if (texts.some(text => text.length > MAX_TEXT_LENGTH)) {
+    throw new Error(`Embedding text is too large; maximum is ${MAX_TEXT_LENGTH} characters per text`);
+  }
+  if (texts.reduce((total, text) => total + text.length, 0) > MAX_TOTAL_TEXT_LENGTH) {
+    throw new Error(`Embedding input is too large; maximum total size is ${MAX_TOTAL_TEXT_LENGTH} characters`);
   }
   return texts;
 };
