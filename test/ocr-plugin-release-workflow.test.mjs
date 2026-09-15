@@ -44,6 +44,11 @@ test('OCR plugin workflow builds pinned self-contained Tesseract runtimes on eve
     /name: Upload portable Tesseract runtime[\s\S]*?path: bundle\/vendor\n/,
     'native artifacts must retain their target directory so merge-multiple can assemble vendor/<target>/...',
   );
+  assert.match(
+    workflow,
+    /chmod 0755 dist\/tesseract-bundle\/vendor\/\{linux-x64,linux-arm64,darwin-x64,darwin-arm64\}\/tesseract/,
+    'artifact download must restore executable bits stripped by GitHub artifact archives',
+  );
 });
 
 test('OCR plugin workflow assembles the exact bundle, signs it, and gates publication', async () => {
