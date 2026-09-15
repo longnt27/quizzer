@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "quizzer.ocr.apple-vision",
+  "name": "Apple Vision OCR",
+  "description": "Native macOS OCR using Apple's Vision framework with no model download or remote data transfer.",
+  "version": "1.0.0",
+  "protocolVersion": 1,
+  "entrypoint": "plugin.mjs",
+  "capabilities": ["ocr"],
+  "platforms": [{ "os": "darwin", "architectures": ["x64", "arm64"] }],
+  "resources": { "memoryMB": 128, "diskMB": 1, "accelerators": ["cpu", "metal"] },
+  "configuration": { "type": "object", "additionalProperties": false },
+  "permissions": {
+    "network": [],
+    "filesystem": ["scoped-temp", "document-read"],
+    "secrets": [],
+    "subprocess": true
+  },
+  "healthCheck": { "method": "plugin.health", "timeoutMs": 5000 },
+  "files": [{ "path": "plugin.mjs", "sha256": "68633ca6564179890f405263f60f57eaeeacf0d12e1205268a8c1ae3cea4e86b" }]
+}

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "quizzer.ocr.tesseract",
+  "name": "Tesseract OCR",
+  "description": "Low-resource local OCR using a Tesseract 5 executable already available on PATH.",
+  "version": "1.0.0",
+  "protocolVersion": 1,
+  "entrypoint": "plugin.mjs",
+  "capabilities": ["ocr"],
+  "platforms": [
+    { "os": "darwin", "architectures": ["x64", "arm64"] },
+    { "os": "linux", "architectures": ["x64", "arm64"] },
+    { "os": "win32", "architectures": ["x64", "arm64"] }
+  ],
+  "resources": { "memoryMB": 128, "diskMB": 2, "accelerators": ["cpu"] },
+  "configuration": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": { "language": { "type": "string", "default": "eng" } }
+  },
+  "permissions": {
+    "network": [],
+    "filesystem": ["scoped-temp", "document-read"],
+    "secrets": [],
+    "subprocess": true
+  },
+  "healthCheck": { "method": "plugin.health", "timeoutMs": 5000 },
+  "files": [{ "path": "plugin.mjs", "sha256": "4331d26cb11d67e2a162dd5c06b4f707242734b1e3296e502fc9d1beaa25da78" }]
+}
