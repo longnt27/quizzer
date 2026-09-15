@@ -10,6 +10,7 @@ const ENVIRONMENT_KEYS = Object.freeze(Object.fromEntries(CREDENTIAL_PROVIDERS.m
   provider,
   `QUIZZER_${provider.replaceAll('-', '_').toUpperCase()}_API_KEY`,
 ])));
+let activeServiceStore;
 
 const validateProvider = provider => {
   if (!CREDENTIAL_PROVIDER_SET.has(provider)) throw new Error('Unsupported credential provider');
@@ -27,6 +28,7 @@ export class ProviderCredentialStore {
   constructor(environment = process.env) {
     this.environment = environment;
     this.values = new Map();
+    if (environment === process.env) activeServiceStore = this;
   }
 
   replace(values) {
@@ -64,3 +66,9 @@ export class ProviderCredentialStore {
 }
 
 export const providerCredentialEnvironmentKey = provider => ENVIRONMENT_KEYS[validateProvider(provider)];
+export const getActiveProviderCredential = provider => {
+  const id = validateProvider(provider);
+  if (activeServiceStore) return activeServiceStore.get(id);
+  const environmentValue = process.env[ENVIRONMENT_KEYS[id]];
+  return typeof environmentValue === 'string' ? environmentValue.trim() || undefined : undefined;
+};
