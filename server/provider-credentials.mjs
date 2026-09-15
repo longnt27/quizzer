@@ -4,6 +4,8 @@ const API_PROVIDERS = Object.freeze(Object.entries(PROVIDER_POLICIES)
   .filter(([, policy]) => policy.billing === 'usage-based')
   .map(([provider]) => provider));
 const API_PROVIDER_SET = new Set(API_PROVIDERS);
+let activeStore;
+
 const ENVIRONMENT_KEYS = Object.freeze(Object.fromEntries(API_PROVIDERS.map(provider => [
   provider,
   `QUIZZER_${provider.replaceAll('-', '_').toUpperCase()}_API_KEY`,
@@ -25,6 +27,7 @@ export class ProviderCredentialStore {
   constructor(environment = process.env) {
     this.environment = environment;
     this.values = new Map();
+    activeStore = this;
   }
 
   replace(values) {
@@ -62,3 +65,10 @@ export class ProviderCredentialStore {
 }
 
 export const providerCredentialEnvironmentKey = provider => ENVIRONMENT_KEYS[validateProvider(provider)];
+
+export const getProviderCredential = provider => {
+  validateProvider(provider);
+  if (activeStore) return activeStore.get(provider);
+  const environmentValue = process.env[ENVIRONMENT_KEYS[provider]];
+  return typeof environmentValue === 'string' && environmentValue.trim() ? environmentValue.trim() : undefined;
+};
