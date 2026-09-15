@@ -23,6 +23,7 @@ import UpdaterStatusView from './UpdaterStatus';
 import PromptStudio from './PromptStudio';
 import AccentColorSetting from './AccentColorSetting';
 import MistralOcrCredentialSetting from './MistralOcrCredentialSetting';
+import DocumentExtractorProviderSelect from './DocumentExtractorProviderSelect';
 import { ACCENT_COLORS } from '../utils/accentColor';
 
 type SettingValue = string | number | boolean;
@@ -327,6 +328,10 @@ export default function SettingsModal({
     if (definition.key === 'generation.defaultProvider') return (
       <Select aria-label={definition.title} value={String(value)} onChange={next => setValue(definition.key, next)}
         options={PROVIDERS.map(provider => ({ value: provider.id, label: provider.label }))} />
+    );
+    if (definition.key === 'extraction.provider') return (
+      <DocumentExtractorProviderSelect value={String(value)} options={definition.enum ?? []}
+        onChange={next => setValue(definition.key, next)} />
     );
     if (definition.enum) return (
       <Select aria-label={definition.title} value={String(value)} onChange={next => setValue(definition.key, next)}

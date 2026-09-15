@@ -176,6 +176,6 @@ test('normalizes explicit extractor providers while preserving legacy auto behav
   assert.equal(plugin.values['extraction.marker'], false);
   assert.equal(plugin.values['extraction.extractorPlugin'], 'dev.quizzer.extractor');
 
-  assert.deepEqual(SETTINGS_SCHEMA.properties['extraction.provider'].enum, ['auto', 'basic', 'marker', 'mistral-ocr', 'plugin']);
+  assert.deepEqual(SETTINGS_SCHEMA.properties['extraction.provider'].enum, ['auto', 'basic', 'marker', 'docling', 'mistral-ocr', 'plugin']);
   assert.throws(() => validateSettings({ 'extraction.provider': 'surprise-cloud' }), /must be one of/);
 });

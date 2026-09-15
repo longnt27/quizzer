@@ -80,8 +80,8 @@ const baseSettings = [
     environment: 'QUIZZER_VECTOR_INDEX_PLUGIN',
   },
   {
-    key: 'extraction.provider', type: 'string', enum: ['auto', 'basic', 'marker', 'mistral-ocr', 'plugin'], default: 'auto',
-    title: 'Document extractor provider', description: 'Choose Basic, Marker, Mistral OCR cloud extraction, or the installed extractor plugin. Auto preserves legacy profile and plugin choices.',
+    key: 'extraction.provider', type: 'string', enum: ['auto', 'basic', 'marker', 'docling', 'mistral-ocr', 'plugin'], default: 'auto',
+    title: 'Document extractor provider', description: 'Choose Basic, Marker, Docling local extraction, Mistral OCR cloud extraction, or the installed extractor plugin. Auto preserves legacy profile and plugin choices.',
     visibility: 'advanced', resourceEffect: 'high', restartRequired: false, reindexRequired: true,
     environment: 'QUIZZER_EXTRACTION_PROVIDER',
   },
@@ -387,7 +387,7 @@ const normalizeExtractionProvider = (values, sources) => {
   values['extraction.marker'] = provider === 'marker';
   sources['extraction.marker'] = sources['extraction.provider'];
   if (provider === 'plugin') return;
-  values['extraction.extractorPlugin'] = provider === 'mistral-ocr' ? 'mistral-ocr' : 'builtin';
+  values['extraction.extractorPlugin'] = provider === 'mistral-ocr' || provider === 'docling' ? provider : 'builtin';
   sources['extraction.extractorPlugin'] = sources['extraction.provider'];
 };
 
