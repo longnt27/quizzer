@@ -24,6 +24,17 @@ test('keeps provider credentials in memory and exposes names only', () => {
   assert.equal(JSON.stringify(compatStore.status()).includes('custom-key'), false);
 });
 
+test('supports the Mistral OCR tool credential without exposing its value', () => {
+  const store = new ProviderCredentialStore({ QUIZZER_MISTRAL_OCR_API_KEY: ' env-mistral-key ' });
+  assert.deepEqual(store.status(), { providers: ['mistral-ocr'] });
+  assert.equal(store.get('mistral-ocr'), 'env-mistral-key');
+  assert.equal(providerCredentialEnvironmentKey('mistral-ocr'), 'QUIZZER_MISTRAL_OCR_API_KEY');
+
+  store.set('mistral-ocr', 'session-mistral-key');
+  assert.equal(store.get('mistral-ocr'), 'session-mistral-key');
+  assert.equal(JSON.stringify(store.status()).includes('session-mistral-key'), false);
+});
+
 test('rejects unknown providers and malformed credential collections', () => {
   const store = new ProviderCredentialStore({});
   assert.throws(() => store.replace(null), /must be an object/);
