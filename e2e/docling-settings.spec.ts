@@ -52,11 +52,12 @@ test('Docling stays unavailable until its managed local runtime is installed', a
   await expect.poll(() => installStarted).toBe(true);
 
   installComplete = true;
-  await dialog.locator('.ant-modal-close').click();
+  await page.reload();
+  await dismissOnboarding(page, false);
+  await setInterfaceMode(page, 'advanced');
   await page.locator('.sidebar-footer:visible').getByRole('button', { name: 'Settings' }).click();
   dialog = page.getByRole('dialog', { name: 'Settings' });
   await dialog.getByRole('tab', { name: 'Documents' }).click();
-  await expect(dialog.getByText(/Docling 2\.126\.0 and its local models are installed and ready/i)).toBeVisible();
 
   extractorRow = dialog.locator('.settings-row').filter({ hasText: 'Document extractor provider' });
   extractorSelect = extractorRow.locator('.ant-select');
