@@ -13,9 +13,11 @@ test('Plugins & models exposes capability tabs without inline settings dropdowns
   await expect(dialog.getByRole('tab')).toHaveCount(expectedTabs.length);
   for (const name of expectedTabs) await expect(dialog.getByRole('tab', { name, exact: true })).toBeVisible();
 
-  await expect(dialog.locator('.ant-alert-info')).toHaveCount(0);
+  await expect(dialog.getByText('Choose the active extractor in Settings → Documents', { exact: true })).toBeVisible();
   await expect(dialog.locator('.ant-select')).toHaveCount(0);
-  await expect(dialog.getByRole('switch', { name: 'Use Quizzer document extraction' })).toBeChecked();
+  const basic = dialog.locator('.plugin-option').filter({ hasText: 'Quizzer Basic extraction' });
+  await expect(basic.getByText('Quizzer Basic extraction', { exact: true })).toBeVisible();
+  await expect(basic.getByRole('switch')).toHaveCount(0);
 
   await dialog.getByRole('tab', { name: 'Image OCR', exact: true }).click();
   await expect(dialog.getByText('RapidOCR', { exact: true })).toBeVisible();
