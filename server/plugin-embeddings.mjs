@@ -1,9 +1,25 @@
-import { embedTextsWithOllama } from './embeddings.mjs';
+import { createHash } from 'node:crypto';
+import {
+  embedTextsWithGemini,
+  embedTextsWithOllama,
+  embedTextsWithOpenAI,
+  embedTextsWithOpenAICompatible,
+  isLoopbackEmbeddingEndpoint,
+  validateOpenAIEmbeddingEndpoint,
+} from './embeddings.mjs';
+import { getEnvironmentProviderCredential } from './provider-credentials.mjs';
 
 const pluginIdPattern = /^[a-z0-9](?:[a-z0-9.-]{0,126}[a-z0-9])?$/;
 const MAX_TEXT_LENGTH = 100_000;
 const MAX_TOTAL_TEXT_LENGTH = 2_000_000;
 const MAX_DIMENSIONS = 8_192;
+const DEFAULT_OPENAI_COMPATIBLE_ENDPOINT = 'http://127.0.0.1:8080/v1';
+const DEFAULT_GEMINI_DIMENSIONS = 768;
+const supportedProviders = new Set(['ollama', 'openai-compatible', 'openai', 'gemini', 'plugin']);
+const defaultCloudModels = Object.freeze({
+  openai: 'text-embedding-3-small',
+  gemini: 'gemini-embedding-2',
+});
 
 const validateTexts = texts => {
   if (!Array.isArray(texts) || !texts.length || texts.length > 250
@@ -28,19 +44,96 @@ export const validatePluginEmbeddings = (embeddings, expectedCount) => {
 };
 
 const unavailable = message => Object.assign(new Error(message), { code: 'provider_unavailable' });
+const endpointHash = endpoint => createHash('sha256').update(endpoint).digest('hex').slice(0, 12);
+export const effectiveEmbeddingProvider = settings => {
+  const values = settings?.values ?? {};
+  const configured = values['embeddings.provider'];
+  if (configured !== undefined) {
+    if (!supportedProviders.has(configured)) throw unavailable(`Embedding provider ${configured} is not supported`);
+    return configured;
+  }
+  return values['embeddings.embedderPlugin'] && values['embeddings.embedderPlugin'] !== 'builtin' ? 'plugin' : 'ollama';
+};
+
+export const effectiveEmbeddingModel = (settings, provider = effectiveEmbeddingProvider(settings)) => {
+  const values = settings?.values ?? {};
+  const configuredModel = values['embeddings.model'];
+  if (typeof configuredModel !== 'string' || !configuredModel.trim()) throw unavailable('Embedding model is not configured');
+  const modelSource = settings?.sources?.['embeddings.model'];
+  const modelIsProfileDefault = modelSource === 'default' || modelSource?.startsWith('profile:');
+  return modelIsProfileDefault && defaultCloudModels[provider]
+    ? defaultCloudModels[provider]
+    : configuredModel.trim();
+};
 
 export const resolveEmbeddingProvider = async (settings, {
   loadManager,
-  builtin = embedTextsWithOllama,
+  getCredential = getEnvironmentProviderCredential,
+  ollama = embedTextsWithOllama,
+  openAICompatible = embedTextsWithOpenAICompatible,
+  openai = embedTextsWithOpenAI,
+  gemini = embedTextsWithGemini,
 } = {}) => {
-  const component = settings?.values?.['embeddings.embedderPlugin'] ?? 'builtin';
-  const model = settings?.values?.['embeddings.model'];
-  if (component === 'builtin') return {
-    component,
-    identity: model,
-    embed: (texts, { signal } = {}) => builtin(texts, { model, signal }),
+  const values = settings?.values ?? {};
+  const provider = effectiveEmbeddingProvider(settings);
+  const model = effectiveEmbeddingModel(settings, provider);
+  const allowRemote = values['embeddings.allowRemote'] === true;
+
+  if (provider === 'ollama') return {
+    component: 'ollama',
+    identity: `ollama:${model}`,
+    privacy: 'local',
+    embed: (texts, { signal } = {}) => ollama(texts, { model, signal }),
   };
-  if (!pluginIdPattern.test(component) || typeof loadManager !== 'function') {
+
+  if (provider === 'openai') {
+    return {
+      component: 'openai',
+      identity: `openai:${model}`,
+      privacy: 'remote-api',
+      embed: async (texts, { signal } = {}) => {
+        if (!allowRemote) throw unavailable('Remote embeddings are disabled; enable remote embeddings explicitly before sending content');
+        const apiKey = getCredential?.('openai');
+        if (!apiKey) throw unavailable('OpenAI embedding credential is not configured');
+        return openai(texts, { model, apiKey, signal });
+      },
+    };
+  }
+
+  if (provider === 'gemini') {
+    return {
+      component: 'gemini',
+      identity: `gemini:${model}:${DEFAULT_GEMINI_DIMENSIONS}:retrieval-v1`,
+      privacy: 'remote-api',
+      embed: async (texts, { purpose = 'document', signal } = {}) => {
+        if (!allowRemote) throw unavailable('Remote embeddings are disabled; enable remote embeddings explicitly before sending content');
+        const apiKey = getCredential?.('gemini');
+        if (!apiKey) throw unavailable('Gemini embedding credential is not configured');
+        return gemini(texts, {
+          model, apiKey, outputDimensionality: DEFAULT_GEMINI_DIMENSIONS, purpose, signal,
+        });
+      },
+    };
+  }
+
+  if (provider === 'openai-compatible') {
+    const endpoint = validateOpenAIEmbeddingEndpoint(values['embeddings.openaiCompatible.endpoint'] || DEFAULT_OPENAI_COMPATIBLE_ENDPOINT);
+    const local = isLoopbackEmbeddingEndpoint(endpoint);
+    return {
+      component: 'openai-compatible',
+      identity: `openai-compatible:${endpointHash(endpoint)}:${model}`,
+      privacy: local ? 'local' : 'remote-api',
+      embed: async (texts, { signal } = {}) => {
+        if (!local && !allowRemote) throw unavailable('Remote embeddings are disabled; enable remote embeddings explicitly before sending content');
+        const apiKey = getCredential?.('openai-compatible');
+        if (!local && !apiKey) throw unavailable('OpenAI-compatible embedding credential is not configured for this remote endpoint');
+        return openAICompatible(texts, { model, endpoint, apiKey, signal });
+      },
+    };
+  }
+
+  const component = values['embeddings.embedderPlugin'] ?? 'builtin';
+  if (!pluginIdPattern.test(component) || component === 'builtin' || typeof loadManager !== 'function') {
     throw unavailable(`Embedder plugin ${component} is not configured correctly`);
   }
   const manager = await loadManager();
@@ -49,8 +142,9 @@ export const resolveEmbeddingProvider = async (settings, {
     && plugin.capabilities?.includes('embedder'));
   const identity = `plugin:${component}@${plugin?.version ?? 'unavailable'}:${model}`;
   return {
-    component,
+    component: 'plugin',
     identity,
+    privacy: 'local',
     embed: async (texts, { signal } = {}) => {
       validateTexts(texts);
       if (!ready) throw unavailable(`Embedder plugin ${component} is not installed, enabled, and compatible`);
