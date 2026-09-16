@@ -3,11 +3,11 @@ import { dismissOnboarding, setInterfaceMode } from './helpers';
 
 test('Docling stays unavailable until its managed local runtime is installed', async ({ page }) => {
   let installStarted = false;
-  let statusReadsAfterInstall = 0;
+  let installComplete = false;
 
   await page.route('**/api/integrations', async route => {
     if (route.request().method() !== 'GET') return route.continue();
-    const installed = installStarted && statusReadsAfterInstall++ >= 1;
+    const installed = installStarted && installComplete;
     await route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({
@@ -49,7 +49,10 @@ test('Docling stays unavailable until its managed local runtime is installed', a
   await expect(confirmation).toContainText('additional disk space on this device');
   expect(installStarted).toBe(false);
   await confirmation.getByRole('button', { name: 'Install' }).click();
+  await expect.poll(() => installStarted).toBe(true);
   await expect(dialog.getByText(/Downloading Docling models/i)).toBeVisible();
+
+  installComplete = true;
   await expect(dialog.getByText(/Docling 2\.126\.0 and its local models are installed and ready/i)).toBeVisible();
 
   await extractorSelect.click();
