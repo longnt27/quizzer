@@ -43,7 +43,7 @@ const installNameFor = (button: HTMLButtonElement) => {
 
 const isInstallTrigger = (button: HTMLButtonElement) => {
   const label = button.textContent?.trim() ?? '';
-  if (!/^(Install(?:\s+.+)?|Download model|Download [^?]+)$/i.test(label)) return false;
+  if (!/^(Install|Install Marker|Install Docling|Download model|Download [^?]+)$/i.test(label)) return false;
   if (button.dataset.installConfirmationBypass === 'true') return false;
   const dialog = button.closest('[role="dialog"]');
   const dialogText = dialog?.querySelector<HTMLElement>('.ant-modal-title')?.textContent ?? '';
