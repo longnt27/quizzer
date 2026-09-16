@@ -1,0 +1,17 @@
+name: Focused provider E2E
+
+on: push
+
+jobs:
+  focused-e2e:
+    if: github.ref_name == 'fix/issue-197-embedding-options'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test e2e/builtin-plugin-switch.spec.ts e2e/docling-settings.spec.ts e2e/plugin-install-confirmation.spec.ts e2e/plugins-modal.spec.ts e2e/embedding-providers.spec.ts e2e/embedding-install.spec.ts --project=chromium
