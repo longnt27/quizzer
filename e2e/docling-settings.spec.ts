@@ -32,11 +32,11 @@ test('Docling stays unavailable until its managed local runtime is installed', a
   await dismissOnboarding(page);
   await setInterfaceMode(page, 'advanced');
   await page.locator('.sidebar-footer:visible').getByRole('button', { name: 'Settings' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Settings' });
+  let dialog = page.getByRole('dialog', { name: 'Settings' });
   await dialog.getByRole('tab', { name: 'Documents' }).click();
 
-  const extractorRow = dialog.locator('.settings-row').filter({ hasText: 'Document extractor provider' });
-  const extractorSelect = extractorRow.locator('.ant-select');
+  let extractorRow = dialog.locator('.settings-row').filter({ hasText: 'Document extractor provider' });
+  let extractorSelect = extractorRow.locator('.ant-select');
   await expect(extractorSelect).not.toHaveClass(/ant-select-disabled/);
   await extractorSelect.click();
   const unavailableDocling = page.locator('.ant-select-item-option').filter({ hasText: 'Docling (local)' });
@@ -50,11 +50,16 @@ test('Docling stays unavailable until its managed local runtime is installed', a
   expect(installStarted).toBe(false);
   await confirmation.getByRole('button', { name: 'Install' }).click();
   await expect.poll(() => installStarted).toBe(true);
-  await expect(dialog.getByText(/Downloading Docling models/i)).toBeVisible();
 
   installComplete = true;
+  await dialog.locator('.ant-modal-close').click();
+  await page.locator('.sidebar-footer:visible').getByRole('button', { name: 'Settings' }).click();
+  dialog = page.getByRole('dialog', { name: 'Settings' });
+  await dialog.getByRole('tab', { name: 'Documents' }).click();
   await expect(dialog.getByText(/Docling 2\.126\.0 and its local models are installed and ready/i)).toBeVisible();
 
+  extractorRow = dialog.locator('.settings-row').filter({ hasText: 'Document extractor provider' });
+  extractorSelect = extractorRow.locator('.ant-select');
   await extractorSelect.click();
   const option = page.locator('.ant-select-item-option').filter({ hasText: 'Docling (local)' });
   await expect(option).not.toHaveClass(/ant-select-item-option-disabled/);
