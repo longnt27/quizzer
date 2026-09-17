@@ -1,0 +1,63 @@
+name: Prepare v1.0.1 metadata
+
+on:
+  push:
+    branches: [release/v1.0.1-prep]
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/v1.0.1-prep
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Update release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm version 1.0.1 --no-git-tag-version
+          mkdir -p release-notes
+          cat > release-notes/v1.0.1.md <<'EOF'
+          # Quizzer 1.0.1
+
+          This release makes Quizzer much better at getting useful structure and retrieval out of the documents you already have, while fixing several rough edges from 1.0.
+
+          ## More ways to understand documents
+
+          - Choose between Quizzer Basic, managed local Docling or Marker extraction, Mistral OCR, and compatible extractor plugins.
+          - Use selectable OCR providers including bundled Tesseract, Apple Vision on macOS, Google Cloud Vision, and AWS Textract.
+          - Keep local extraction local, while remote providers clearly require their own credentials and network access.
+
+          ## Better embeddings and retrieval
+
+          - Use Ollama, OpenAI-compatible endpoints, OpenAI, Gemini, or embedding plugins for dense retrieval.
+          - Keep vector indexes isolated by provider, model, and configuration so incompatible embeddings are never mixed silently.
+          - Automatically index newly synced or changed documents, including configured dense embeddings such as BGE-M3.
+          - Backfill existing libraries on startup so documents that previously showed misleading retrieval status repair themselves automatically.
+
+          ## Fixes and polish
+
+          - Only show “Dense retrieval ready” when the current document actually has a matching dense index.
+          - Repair Cmd/Ctrl and Shift multi-selection behavior in the sidebar for documents and tests.
+          - Improve provider settings, credential handling, installation flows, and regression coverage across the desktop app.
+
+          Quizzer 1.0.1 includes the full signed desktop release pipeline for macOS, Windows, and Linux.
+          EOF
+          sed -i 's/^          //' release-notes/v1.0.1.md
+      - name: Commit prepared release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/prepare-v1.0.1.yml
+          git add package.json package-lock.json release-notes/v1.0.1.md
+          git commit -m "chore: prepare v1.0.1"
+          git push origin HEAD:release/v1.0.1-prep
