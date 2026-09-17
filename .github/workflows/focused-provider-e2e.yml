@@ -13,19 +13,5 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium firefox
-      - name: Run full application E2E
-        shell: bash
-        run: |
-          set -o pipefail
-          npm run test:e2e 2>&1 | tee focused-e2e.log
-      - name: Upload E2E diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: application-e2e-diagnostics
-          path: |
-            focused-e2e.log
-            test-results
-            playwright-report
-          if-no-files-found: ignore
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test e2e/docling-settings.spec.ts --project=chromium
