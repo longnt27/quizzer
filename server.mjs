@@ -28,9 +28,12 @@ import { ProviderCredentialStore } from './server/provider-credentials.mjs';
 import { GenerationJobWorker } from './server/generation-worker.mjs';
 import { runGeneratorPlugin } from './server/plugin-generation.mjs';
 import { resolveEmbeddingProvider } from './server/plugin-embeddings.mjs';
+import { describeEmbeddingIntegration } from './server/embedding-integration-status.mjs';
 import { resolveVectorIndexProvider } from './server/plugin-vector-index.mjs';
 import { resolveDocumentExtractor, resolveOcrProvider } from './server/plugin-extraction.mjs';
-import { listOllamaModels, ollamaModelMatches, runOllamaGeneration, runOllamaHyde, validateOllamaModelName } from './server/ollama-generation.mjs';
+import { installManagedDocling, installManagedMarker } from './server/managed-document-extractors.mjs';
+import { managedDoclingRuntimePaths } from './server/docling-runtime.mjs';
+import { listOllamaModels, runOllamaGeneration, runOllamaHyde, validateOllamaModelName } from './server/ollama-generation.mjs';
 import {
   getLlamaCppStatus, runLlamaCppGeneration, validateLlamaCppEndpoint, validateLlamaCppModel,
 } from './server/llama-cpp-generation.mjs';
@@ -54,10 +57,12 @@ const appDataDirectory = defaultAppDataDirectory();
 const resourceDirectory = process.env.QUIZZER_RESOURCE_DIR || process.cwd();
 const managedMarkerDirectory = join(appDataDirectory, '.quizzer-tools', 'marker');
 const managedMarkerExecutable = join(managedMarkerDirectory, process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'marker_single.exe' : 'marker_single');
+const managedDoclingPaths = managedDoclingRuntimePaths(appDataDirectory);
 const managedOcrDirectory = join(appDataDirectory, '.quizzer-tools', 'ocr');
 const managedOcrPython = join(managedOcrDirectory, process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'python.exe' : 'python');
 const serviceToken = await ensureServiceToken(appDataDirectory);
 const providerCredentials = new ProviderCredentialStore();
+const getProviderCredential = provider => providerCredentials.get(provider);
 process.parentPort?.on?.('message', event => {
   const message = event?.data ?? event;
   if (message?.type !== 'quizzer-provider-credentials') return;
@@ -74,6 +79,7 @@ const pluginManifestSchema = JSON.parse(await readRuntimeText('plugin-sdk/quizze
 const builtInPlugins = Object.freeze([
   { id: 'quizzer.extract.basic', name: 'Basic PDF.js and text extraction', capabilities: ['extractor'], builtIn: true },
   { id: 'quizzer.extract.marker', name: 'Marker visual extraction', capabilities: ['extractor'], builtIn: true },
+  { id: 'quizzer.extract.docling', name: 'Docling local extraction', capabilities: ['extractor'], builtIn: true },
   { id: 'quizzer.ocr.rapidocr', name: 'RapidOCR', capabilities: ['ocr'], builtIn: true },
   { id: 'quizzer.index.fts5', name: 'SQLite FTS5 and BM25', capabilities: ['sparse-search'], builtIn: true },
   { id: 'quizzer.index.lancedb', name: 'LanceDB vector index', capabilities: ['vector-index'], builtIn: true },
@@ -105,7 +111,9 @@ const retrievalIndex = new RetrievalIndex({
   sparsePath: process.env.QUIZZER_SPARSE_INDEX_PATH || sparseIndexPathFor(appDataDirectory),
   densePath: process.env.QUIZZER_DENSE_INDEX_PATH || denseIndexPathFor(appDataDirectory),
   loadSettings: () => loadResolvedSettings(appDataDirectory),
-  resolveEmbedding: settings => resolveEmbeddingProvider(settings, { loadManager: getPluginManager }),
+  resolveEmbedding: settings => resolveEmbeddingProvider(settings, {
+    loadManager: getPluginManager, getCredential: getProviderCredential,
+  }),
   resolveVectorIndex: (settings, { builtin }) => resolveVectorIndexProvider(settings, {
     loadManager: getPluginManager, builtin,
   }),
@@ -199,6 +207,37 @@ const retrievalDocumentFingerprint = record => createHash('sha256').update(JSON.
   length: record.data.content.length,
 })).digest('hex');
 
+const automaticIndexFingerprint = record => createHash('sha256').update(JSON.stringify({
+  document: retrievalDocumentFingerprint(record),
+  tags: Array.isArray(record.data.tags) ? record.data.tags : [],
+  chunkingVersion: record.data.chunkingVersion,
+})).digest('hex');
+const pendingAutomaticIndexDocumentIds = new Set();
+let automaticIndexTimer;
+const queueAutomaticIndexing = documentIds => {
+  for (const id of documentIds ?? []) if (typeof id === 'string' && id) pendingAutomaticIndexDocumentIds.add(id);
+  if (!pendingAutomaticIndexDocumentIds.size || automaticIndexTimer) return;
+  automaticIndexTimer = setTimeout(() => {
+    automaticIndexTimer = undefined;
+    const ids = [...pendingAutomaticIndexDocumentIds].sort();
+    pendingAutomaticIndexDocumentIds.clear();
+    void (async () => {
+      const records = ids.map(id => getRecord('documents', id)).filter(Boolean).sort((left, right) => left.id.localeCompare(right.id));
+      if (!records.length) return;
+      const configuration = await retrievalIndex.configuration();
+      const indexConfiguration = JSON.stringify({
+        embeddings: configuration.embeddings,
+        embeddingModel: configuration.embeddingModel,
+        vectorIndex: configuration.vectorIndex.identity,
+      });
+      const idempotencyKey = 'automatic.' + createHash('sha256')
+        .update(records.map(automaticIndexFingerprint).join('|') + '|' + indexConfiguration).digest('hex');
+      const job = prepareIndexJob({ records, idempotencyKey });
+      if (job.data.status !== 'completed') await executeIndexJob(job.id);
+    })().catch(error => reportIndexFailure('automatic', error));
+  }, 0);
+};
+
 setImmediate(() => {
   for (const record of listRecords('indexJobs')) {
     if (record.data.status !== 'queued' && record.data.status !== 'running') continue;
@@ -210,12 +249,14 @@ setImmediate(() => {
       reportIndexFailure(record.id, error);
     }
   }
+  queueAutomaticIndexing(listRecords('documents').map(record => record.id));
 });
 const windowsOllamaExecutable = process.env.LOCALAPPDATA
   ? join(process.env.LOCALAPPDATA, 'Programs', 'Ollama', 'ollama.exe')
   : 'ollama.exe';
 const integrationJobs = {
   marker: { state: 'idle', message: '' },
+  docling: { state: 'idle', message: '' },
   codex: { state: 'idle', message: '' },
   'claude-agent': { state: 'idle', message: '' },
   'antigravity-agent': { state: 'idle', message: '' },
@@ -226,6 +267,7 @@ const integrationJobs = {
 };
 let systemMarkerDetected;
 let managedMarkerDetected;
+let managedDoclingDetected;
 let managedOcrDetected;
 
 const send = (response, status, body) => {
@@ -428,6 +470,18 @@ const managedMarkerWorks = async () => {
   return managedMarkerDetected;
 };
 
+const managedDoclingWorks = async () => {
+  if (managedDoclingDetected === undefined) {
+    const [executableReady, pythonReady, artifactsReady] = await Promise.all([
+      commandWorks(managedDoclingPaths.executable, ['--version'], 30_000),
+      access(managedDoclingPaths.python).then(() => true).catch(() => false),
+      access(managedDoclingPaths.artifactsPath).then(() => true).catch(() => false),
+    ]);
+    managedDoclingDetected = executableReady && pythonReady && artifactsReady;
+  }
+  return managedDoclingDetected;
+};
+
 const markerCommand = async () => await managedMarkerWorks() ? managedMarkerExecutable : 'marker_single';
 
 const ollamaCommand = async () => {
@@ -465,7 +519,7 @@ const integrationStatus = async () => {
   const settings = await loadResolvedSettings(appDataDirectory);
   const runtime = await llamaCppRuntime.getStatus();
   const llamaEndpoint = runtime.state === 'running' ? llamaCppRuntime.endpointFor({ host: '127.0.0.1', port: runtime.port }) : settings.values['providers.llama-cpp.endpoint'];
-  const [codexInstalled, codexConnected, claudeInstalled, claudeConnected, antigravityInstalled, antigravityConnected, ollamaInstalled, ollama, llamaCpp, managedMarker, systemMarker, managedOcr] = await Promise.all([
+  const [codexInstalled, codexConnected, claudeInstalled, claudeConnected, antigravityInstalled, antigravityConnected, ollamaInstalled, ollama, llamaCpp, managedMarker, systemMarker, managedDocling, managedOcr] = await Promise.all([
     commandWorks('codex', ['--version']),
     commandWorks('codex', ['login', 'status']),
     commandWorks('claude', ['--version']),
@@ -477,11 +531,12 @@ const integrationStatus = async () => {
     getLlamaCppStatus({ endpoint: llamaEndpoint }, globalThis.fetch, AbortSignal.timeout(3_500)),
     managedMarkerWorks(),
     hasSystemMarker(),
+    managedDoclingWorks(),
     managedOcrWorks(),
   ]);
-  const embeddingModel = settings.values['embeddings.model'];
   return {
     marker: { installed: managedMarker || systemMarker, managed: managedMarker, job: integrationJobs.marker },
+    docling: { installed: managedDocling, managed: managedDocling, job: integrationJobs.docling },
     codex: { installed: codexInstalled, connected: codexConnected, job: integrationJobs.codex },
     'claude-agent': { installed: claudeInstalled, connected: claudeConnected, job: integrationJobs['claude-agent'] },
     'antigravity-agent': {
@@ -504,12 +559,13 @@ const integrationStatus = async () => {
       models: ollama.models,
       job: integrationJobs.ollama,
     },
-    embeddings: {
-      installed: ollama.models.some(model => ollamaModelMatches(model.name, embeddingModel)),
-      runtimeInstalled: ollamaInstalled || ollama.serverReady,
-      model: embeddingModel,
+    embeddings: describeEmbeddingIntegration({
+      settings,
+      ollama,
+      ollamaInstalled,
+      credentialProviders: providerCredentials.status().providers,
       job: integrationJobs.embeddings,
-    },
+    }),
     ocr: { installed: managedOcr, managed: managedOcr, job: integrationJobs.ocr },
   };
 };
@@ -519,24 +575,44 @@ const installMarker = () => {
   integrationJobs.marker = { state: 'working', message: 'Creating Quizzer’s private Python environment…' };
   void (async () => {
     try {
-      const python = await compatiblePython();
       await rm(managedMarkerDirectory, { recursive: true, force: true });
       managedMarkerDetected = undefined;
-      await runCommand(python.command, [...python.prefix, '-m', 'venv', managedMarkerDirectory], {
-        timeout: 120_000,
-        onOutput: output => { if (output) integrationJobs.marker.message = output; },
+      await installManagedMarker({
+        directory: managedMarkerDirectory,
+        resolvePython: compatiblePython,
+        runCommand,
+        commandWorks,
+        onProgress: message => { if (message) integrationJobs.marker.message = message; },
       });
-      const pip = join(managedMarkerDirectory, process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'pip.exe' : 'pip');
-      integrationJobs.marker.message = 'Downloading and installing Marker. This can take several minutes…';
-      await runCommand(pip, ['install', '--upgrade', 'marker-pdf'], {
-        timeout: 30 * 60_000,
-        onOutput: output => { integrationJobs.marker.message = output || integrationJobs.marker.message; },
-      });
-      managedMarkerDetected = await commandWorks(managedMarkerExecutable, ['--help'], 60_000);
-      if (!managedMarkerDetected) throw new Error('Marker installed but failed its startup check.');
-      integrationJobs.marker = { state: 'complete', message: 'Marker is installed and ready.' };
+      managedMarkerDetected = true;
+      integrationJobs.marker = { state: 'complete', message: 'Marker 2.0.0 is installed and ready.' };
     } catch (error) {
+      managedMarkerDetected = false;
       integrationJobs.marker = { state: 'error', message: error instanceof Error ? error.message : 'Marker installation failed' };
+    }
+  })();
+};
+
+const installDocling = () => {
+  if (integrationJobs.docling.state === 'working') return;
+  integrationJobs.docling = { state: 'working', message: 'Creating Quizzer’s private Docling environment…' };
+  void (async () => {
+    try {
+      await rm(managedDoclingPaths.directory, { recursive: true, force: true });
+      managedDoclingDetected = undefined;
+      await installManagedDocling({
+        directory: managedDoclingPaths.directory,
+        resolvePython: compatiblePython,
+        runCommand,
+        commandWorks,
+        onProgress: message => { if (message) integrationJobs.docling.message = message; },
+      });
+      managedDoclingDetected = await managedDoclingWorks();
+      if (!managedDoclingDetected) throw new Error('Docling installed but its local runtime is incomplete.');
+      integrationJobs.docling = { state: 'complete', message: 'Docling 2.126.0 and its local models are installed and ready.' };
+    } catch (error) {
+      managedDoclingDetected = false;
+      integrationJobs.docling = { state: 'error', message: error instanceof Error ? error.message : 'Docling installation failed' };
     }
   })();
 };
@@ -719,6 +795,7 @@ const installEmbeddings = model => {
     integrationJobs.embeddings.message = `Downloading ${modelName}…`;
     await runCommand(executable, ['pull', modelName], { timeout: 60 * 60_000, onOutput: update });
     integrationJobs.embeddings = { state: 'complete', message: `${modelName} is installed and dense retrieval is ready.` };
+    queueAutomaticIndexing(listRecords('documents').map(record => record.id));
   })().catch(error => {
     integrationJobs.embeddings = { state: 'error', message: error instanceof Error ? error.message : 'Embedding installation failed' };
   });
@@ -893,7 +970,9 @@ const generationWorker = process.env.QUIZZER_DISABLE_SERVICE_GENERATION === '1' 
   retrieve: options => retrievalIndex.retrieve(options),
   embed: async (texts, signal) => {
     const settings = await loadResolvedSettings(appDataDirectory);
-    const embedding = await resolveEmbeddingProvider(settings, { loadManager: getPluginManager });
+    const embedding = await resolveEmbeddingProvider(settings, {
+      loadManager: getPluginManager, getCredential: getProviderCredential,
+    });
     return embedding.embed(texts, { signal });
   },
   loadImage: async image => {
@@ -1023,7 +1102,7 @@ const runMarker = async ({ name, data, ocrEnabled = false }, signal, { ocr } = {
         ocrText: cleanMarkdownContext(ocrText) || undefined,
       };
     });
-    return { content: markdown, images, parserVersion: 'marker-managed-1' };
+    return { content: markdown, images, parserVersion: 'marker-2.0.0', extractor: 'marker' };
   } finally {
     await rm(work, { recursive: true, force: true });
   }
@@ -1031,12 +1110,24 @@ const runMarker = async ({ name, data, ocrEnabled = false }, signal, { ocr } = {
 
 const configuredExtractionRoutes = async ({ ocrRequested = true } = {}) => {
   const settings = await loadResolvedSettings(appDataDirectory);
-  const extractorRoute = await resolveDocumentExtractor(settings, { loadManager: getPluginManager });
   const ocrRoute = settings.values['extraction.ocr'] && ocrRequested
     ? await resolveOcrProvider(settings, { loadManager: getPluginManager, builtin: runManagedOcrBuffer })
     : { component: 'disabled', identity: 'disabled', ocr: undefined };
-  return { settings, extractorRoute, ocrRoute };
+  const extractorRoute = await resolveDocumentExtractor(settings, {
+    loadManager: getPluginManager,
+    loadCredential: getProviderCredential,
+    runMarker: (data, { name = 'document.pdf', signal } = {}) => runMarker({
+      name,
+      data: Buffer.from(data).toString('base64'),
+      ocrEnabled: Boolean(ocrRoute.ocr),
+    }, signal, { ocr: ocrRoute.ocr }),
+  });
+  return { extractorRoute, ocrRoute };
 };
+
+const selectedExtractor = (route, source) => (
+  typeof route?.extract === 'function' && route.accepts?.(source) !== false ? route.extract : undefined
+);
 
 const decodeDocumentPayload = data => {
   if (typeof data !== 'string' || !data || data.length % 4 === 1 || !/^[A-Za-z0-9+/]*={0,2}$/.test(data)) {
@@ -1055,23 +1146,14 @@ const runConfiguredExtraction = async (body, signal) => {
     ? body.mimeType
     : name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : undefined;
   const routes = await configuredExtractionRoutes({ ocrRequested: body.ocrEnabled === true });
-
-  if (routes.extractorRoute.extract) {
-    return extractDocumentBuffer(data, {
-      name,
-      mimeType,
-      extractor: routes.extractorRoute.extract,
-      ocr: routes.ocrRoute.ocr,
-      signal,
-    });
-  }
-  if ((mimeType === 'application/pdf' || name.toLowerCase().endsWith('.pdf'))
-    && routes.settings.values['extraction.marker']) {
-    return runMarker({ name, data: body.data, ocrEnabled: Boolean(routes.ocrRoute.ocr) }, signal, {
-      ocr: routes.ocrRoute.ocr,
-    });
-  }
-  return extractDocumentBuffer(data, { name, mimeType, signal });
+  const extractor = selectedExtractor(routes.extractorRoute, { name, mimeType });
+  return extractDocumentBuffer(data, {
+    name,
+    mimeType,
+    extractor,
+    ocr: extractor ? routes.ocrRoute.ocr : undefined,
+    signal,
+  });
 };
 
 const handleVersionedApi = async (request, response, url) => {
@@ -1199,7 +1281,9 @@ const handleVersionedApi = async (request, response, url) => {
     }
     if (request.method === 'PATCH' && url.pathname === '/api/v1/settings') {
       await updateUserSettings(await readJson(request));
-      send(response, 200, await loadResolvedSettings(appDataDirectory));
+      const settings = await loadResolvedSettings(appDataDirectory);
+      queueAutomaticIndexing(listRecords('documents').map(record => record.id));
+      send(response, 200, settings);
       return true;
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/provider-credentials') {
@@ -1461,10 +1545,14 @@ const handleVersionedApi = async (request, response, url) => {
         return true;
       }
       const routes = await configuredExtractionRoutes();
+      const extractor = selectedExtractor(routes.extractorRoute, {
+        name: existing.data.name,
+        mimeType: existing.data.mimeType,
+      });
       const extracted = await reextractDocument(existing.data, {
         objectStore,
-        extractor: routes.extractorRoute.extract,
-        ocr: routes.ocrRoute.ocr,
+        extractor,
+        ocr: extractor ? routes.ocrRoute.ocr : undefined,
       });
       const saved = putRecord('documents', id, extracted);
       await retrievalIndex.removeDocument(id);
@@ -1644,9 +1732,12 @@ const serviceServer = createServer(async (request, response) => {
       if (body?.bootstrap && body.migration?.complete === true) {
         result.migration = finalizeLegacyMigration(body.migration.id);
       }
-      for (const change of body?.changes ?? []) {
+      for (const change of changes) {
         if (change.collection === 'documents' && change.deleted === true && typeof change.id === 'string') await retrievalIndex.removeDocument(change.id);
       }
+      queueAutomaticIndexing(changes
+        .filter(change => change.collection === 'documents' && change.deleted !== true)
+        .map(change => change.id));
       return send(response, 200, result);
     }
     catch (error) { return send(response, 400, { error: error instanceof Error ? error.message : 'Storage sync failed' }); }
@@ -1665,6 +1756,11 @@ const serviceServer = createServer(async (request, response) => {
   if (request.method === 'POST' && request.url === '/api/integrations/marker/install') {
     if (!request.headers['content-type']?.startsWith('application/json')) return send(response, 415, { error: 'JSON request required' });
     installMarker();
+    return send(response, 202, { ok: true });
+  }
+  if (request.method === 'POST' && request.url === '/api/integrations/docling/install') {
+    if (!request.headers['content-type']?.startsWith('application/json')) return send(response, 415, { error: 'JSON request required' });
+    installDocling();
     return send(response, 202, { ok: true });
   }
   if (request.method === 'POST' && request.url === '/api/integrations/ocr/install') {
@@ -1729,6 +1825,9 @@ const serviceServer = createServer(async (request, response) => {
       }
       if (body.confirmed !== true) throw new Error('Explicit confirmation is required before downloading an embedding model');
       const settings = await loadResolvedSettings(appDataDirectory);
+      if (settings.values['embeddings.provider'] !== 'ollama') {
+        throw new Error('Embedding model installation is available only when Ollama is the active embedding provider');
+      }
       const configuredModel = validateOllamaModelName(settings.values['embeddings.model']);
       if (body.model !== configuredModel) throw new Error('Embedding model changed; review the current profile and confirm again');
       const started = installEmbeddings(configuredModel);
@@ -1756,7 +1855,9 @@ const serviceServer = createServer(async (request, response) => {
     try {
       const { texts } = await readJson(request);
       const settings = await loadResolvedSettings(appDataDirectory);
-      const embedding = await resolveEmbeddingProvider(settings, { loadManager: getPluginManager });
+      const embedding = await resolveEmbeddingProvider(settings, {
+      loadManager: getPluginManager, getCredential: getProviderCredential,
+    });
       const embeddings = await embedding.embed(texts, { signal: lifetime.signal });
       if (!response.destroyed) return send(response, 200, { embeddings });
     } catch (error) {

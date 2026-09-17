@@ -487,7 +487,7 @@ test('provides onboarding, document, job, and event operations', async () => {
   assert.equal(indexResult.status.documentCount, 1);
   assert.match(indexResult.status.databasePath, /indexes[/\\]sparse\.sqlite$/);
   assert.equal(indexResult.status.dense.status, 'ready');
-  assert.equal(indexResult.status.dense.embeddingModel, 'all-minilm');
+  assert.equal(indexResult.status.dense.embeddingModel, 'ollama:all-minilm');
   assert.equal(indexResult.status.dense.chunkCount, 1);
   const repeatedIndex = await authorized('/api/v1/index', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },

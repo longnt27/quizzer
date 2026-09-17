@@ -32,6 +32,7 @@ interface OllamaModel {
 
 interface IntegrationStatus {
   marker: { installed: boolean; managed: boolean; job: { state: JobState; message: string } };
+  docling: { installed: boolean; managed: boolean; job: { state: JobState; message: string } };
   ocr: { installed: boolean; managed: boolean; job: { state: JobState; message: string } };
   codex: AgentStatus;
   'claude-agent': AgentStatus;
@@ -293,7 +294,7 @@ export default function PluginsModal({ open, interfaceMode, onClose }: Props) {
   }, []);
   useEffect(() => {
     if (!status) return;
-    const jobs = [status.marker?.job, status.ocr?.job, status.embeddings?.job, status.ollama?.job,
+    const jobs = [status.marker?.job, status.docling?.job, status.ocr?.job, status.embeddings?.job, status.ollama?.job,
       ...AGENT_PROVIDERS.map(provider => status[provider.id]?.job)].filter(Boolean);
     const runtimeBusy = ['starting', 'stopping'].includes(status['llama-cpp']?.runtime?.state ?? 'idle');
     if (!jobs.some(job => job?.state === 'working') && !runtimeBusy) return;
@@ -741,20 +742,27 @@ export default function PluginsModal({ open, interfaceMode, onClose }: Props) {
 
   const documentTab = (
     <div className="plugin-option-list">
-      <IntegrationOption icon={<FileSearchOutlined />} title="Quizzer document extraction"
-        description="Built-in PDF.js and text extraction. This safe fallback remains installed with Quizzer."
-        state={extractorPlugin === 'builtin' ? 'Built in · active' : 'Built in · ready'} checked={extractorPlugin === 'builtin'}
-        switchLabel="Use Quizzer document extraction" onToggle={checked => { if (checked) setExtractorPlugin('builtin'); }} />
+      <Alert type="info" showIcon message="Choose the active extractor in Settings → Documents"
+        description="This tab manages installed extractor components. Basic, Marker, Docling, Mistral OCR, and plugin routing are selected from the single Document extractor provider control." />
+      <IntegrationOption icon={<FileSearchOutlined />} title="Quizzer Basic extraction"
+        description="Built-in PDF.js and text extraction. This safe fallback is always available."
+        state="Built in · ready" showSwitch={false} />
       <IntegrationOption icon={<FileSearchOutlined />} title="Marker visual extraction"
-        description="Optional richer local extraction for PDFs with complex layouts and images."
+        description="Managed local extraction for PDFs with complex layouts and images. Select Marker from Settings → Documents after installation."
         state={status?.marker?.job?.state === 'working' ? 'Installing…' : status?.marker?.installed ? 'Detected · installed' : 'Not installed'}
-        checked={Boolean(status?.marker?.installed && enabledTools.marker)} switchLabel="Use Marker for automatic PDF extraction"
-        showSwitch={Boolean(status?.marker?.installed)}
-        switchDisabled={!status?.marker?.installed || status?.marker?.job?.state === 'working'}
-        onToggle={checked => setEnabledTools(current => ({ ...current, marker: checked }))}
+        showSwitch={false}
         actions={!status?.marker?.installed && status?.marker?.job?.state !== 'working'
-          ? <Button size="small" type="primary" icon={<CloudDownloadOutlined />} onClick={() => void runAction('/api/integrations/marker/install')}>Install</Button> : undefined}
+          ? <Button size="small" type="primary" icon={<CloudDownloadOutlined />} onClick={() => void runAction('/api/integrations/marker/install')}>Install Marker</Button> : undefined}
         details={status?.marker?.job?.message ? <pre className="plugin-output">{status.marker.job.message}</pre> : undefined} />
+      <IntegrationOption icon={<FileSearchOutlined />} title="Docling local extraction"
+        description="Managed local structured extraction. Installation downloads the pinned Docling runtime and model artifacts once; document extraction stays on this device."
+        state={status?.docling?.job?.state === 'working' ? 'Installing…' : status?.docling?.installed ? 'Detected · installed' : 'Not installed'}
+        showSwitch={false}
+        actions={!status?.docling?.installed && status?.docling?.job?.state !== 'working'
+          ? <Button size="small" type="primary" icon={<CloudDownloadOutlined />} onClick={() => void runAction('/api/integrations/docling/install')}>Install Docling</Button> : undefined}
+        details={status?.docling?.job?.message ? <pre className="plugin-output">{status.docling.job.message}</pre> : undefined} />
+      <Divider orientation="left" plain>External extractor component</Divider>
+      <Typography.Text type="secondary">Choose which installed extractor plugin should be used when the Document extractor provider is set to Plugin.</Typography.Text>
       {pluginRows('extractor', extractorPlugin, setExtractorPlugin, <FileSearchOutlined />)}
       {registryRows('extractor', <FileSearchOutlined />)}
     </div>

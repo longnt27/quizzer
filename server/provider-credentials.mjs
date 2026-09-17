@@ -3,14 +3,17 @@ import { PROVIDER_POLICIES } from './provider-policy.mjs';
 const API_PROVIDERS = Object.freeze(Object.entries(PROVIDER_POLICIES)
   .filter(([, policy]) => policy.billing === 'usage-based')
   .map(([provider]) => provider));
-const API_PROVIDER_SET = new Set(API_PROVIDERS);
-const ENVIRONMENT_KEYS = Object.freeze(Object.fromEntries(API_PROVIDERS.map(provider => [
+const TOOL_CREDENTIAL_PROVIDERS = Object.freeze(['mistral-ocr']);
+const CREDENTIAL_PROVIDERS = Object.freeze([...API_PROVIDERS, ...TOOL_CREDENTIAL_PROVIDERS]);
+const CREDENTIAL_PROVIDER_SET = new Set(CREDENTIAL_PROVIDERS);
+
+const ENVIRONMENT_KEYS = Object.freeze(Object.fromEntries(CREDENTIAL_PROVIDERS.map(provider => [
   provider,
   `QUIZZER_${provider.replaceAll('-', '_').toUpperCase()}_API_KEY`,
 ])));
 
 const validateProvider = provider => {
-  if (!API_PROVIDER_SET.has(provider)) throw new Error('Unsupported credential provider');
+  if (!CREDENTIAL_PROVIDER_SET.has(provider)) throw new Error('Unsupported credential provider');
   return provider;
 };
 
@@ -20,6 +23,18 @@ const validateCredential = value => {
   }
   return value.trim();
 };
+
+export const providerCredentialEnvironmentKey = provider => ENVIRONMENT_KEYS[validateProvider(provider)];
+
+export const getEnvironmentProviderCredential = (provider, environment = process.env) => {
+  const key = providerCredentialEnvironmentKey(provider);
+  const value = environment?.[key];
+  return typeof value === 'string' && value.trim() ? validateCredential(value) : undefined;
+};
+
+// Backward-compatible name for extraction code. This intentionally reads only process.env;
+// service-owned volatile credentials must be injected explicitly instead of using global store state.
+export const getActiveProviderCredential = provider => getEnvironmentProviderCredential(provider);
 
 export class ProviderCredentialStore {
   constructor(environment = process.env) {
@@ -50,15 +65,12 @@ export class ProviderCredentialStore {
 
   get(provider) {
     validateProvider(provider);
-    const environmentValue = this.environment[ENVIRONMENT_KEYS[provider]];
-    return this.values.get(provider) || (typeof environmentValue === 'string' ? environmentValue.trim() : '') || undefined;
+    return this.values.get(provider) || getEnvironmentProviderCredential(provider, this.environment);
   }
 
   status() {
     return {
-      providers: API_PROVIDERS.filter(provider => Boolean(this.get(provider))),
+      providers: CREDENTIAL_PROVIDERS.filter(provider => Boolean(this.get(provider))),
     };
   }
 }
-
-export const providerCredentialEnvironmentKey = provider => ENVIRONMENT_KEYS[validateProvider(provider)];

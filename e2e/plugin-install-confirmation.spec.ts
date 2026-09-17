@@ -34,6 +34,20 @@ test('plugin installation asks for disk-space confirmation before starting', asy
 
 test('bge-m3 uses the popover as its only install confirmation', async ({ page }) => {
   let installs = 0;
+  await page.route(/\/api\/v1\/settings$/, async route => {
+    if (route.request().method() !== 'GET') return route.continue();
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ values: {
+        'hardware.profile': 'max',
+        'embeddings.provider': 'ollama',
+        'embeddings.model': 'bge-m3',
+        'embeddings.enabled': true,
+        'embeddings.embedderPlugin': 'builtin',
+        'embeddings.allowRemote': false,
+      } }),
+    });
+  });
   await page.route('**/api/integrations', route => route.fulfill({
     contentType: 'application/json', body: JSON.stringify(integrationStatus({ installed: false, model: 'bge-m3' })),
   }));
@@ -47,14 +61,16 @@ test('bge-m3 uses the popover as its only install confirmation', async ({ page }
 
   const plugins = page.getByRole('dialog', { name: 'Plugins & models' });
   await plugins.getByRole('tab', { name: 'Embeddings' }).click();
-  const embeddings = plugins.locator('.plugin-option').filter({ hasText: 'Ollama embeddings · bge-m3' });
+  const embeddings = plugins.locator('.plugin-option').filter({ hasText: 'Ollama embeddings' });
+  await expect(embeddings.getByText('Ollama embeddings', { exact: true })).toBeVisible();
+  await expect(embeddings).toContainText('bge-m3');
   await embeddings.getByRole('button', { name: 'Install' }).click();
 
-  const confirmation = page.getByRole('dialog', { name: 'Confirm installation of Ollama embeddings · bge-m3' });
+  const confirmation = page.getByRole('dialog', { name: 'Confirm installation of Ollama embeddings' });
   await expect(confirmation).toBeVisible();
   await expect(confirmation).toContainText('1.2 GB');
   await confirmation.getByRole('button', { name: 'Install' }).click();
 
   await expect.poll(() => installs).toBe(1);
-  await expect(page.getByRole('dialog', { name: /Download bge-m3 for dense retrieval/i })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: /Download bge-m3/i })).toHaveCount(0);
 });
