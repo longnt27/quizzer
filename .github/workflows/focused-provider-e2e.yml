@@ -14,4 +14,21 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npx playwright test e2e/docling-settings.spec.ts --project=chromium
+      - name: Run focused embedding E2E
+        shell: bash
+        run: |
+          set -o pipefail
+          npx playwright test \
+            e2e/embedding-providers.spec.ts \
+            e2e/embedding-install.spec.ts \
+            e2e/plugins-modal.spec.ts \
+            --project=chromium --reporter=line 2>&1 | tee focused-e2e.log
+      - name: Upload focused E2E diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: focused-provider-e2e-diagnostics
+          path: |
+            focused-e2e.log
+            test-results
+          if-no-files-found: ignore
