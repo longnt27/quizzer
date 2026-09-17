@@ -143,6 +143,7 @@ test('syncing a document automatically builds sparse and configured dense indexe
   const jobs = await (await authorized('/api/v1/index/jobs')).json();
   const job = jobs.jobs.find(candidate => candidate.documentIds?.includes('auto-index-doc'));
   assert.ok(job, 'document sync should create a resumable index job');
+  assert.match(job.idempotencyKey, /^automatic\.[a-f0-9]{64}$/);
   assert.equal(job.status, 'completed');
   assert.deepEqual(job.completedDocumentIds, ['auto-index-doc']);
 });
