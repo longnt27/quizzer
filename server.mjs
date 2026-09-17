@@ -207,6 +207,37 @@ const retrievalDocumentFingerprint = record => createHash('sha256').update(JSON.
   length: record.data.content.length,
 })).digest('hex');
 
+const automaticIndexFingerprint = record => createHash('sha256').update(JSON.stringify({
+  document: retrievalDocumentFingerprint(record),
+  tags: Array.isArray(record.data.tags) ? record.data.tags : [],
+  chunkingVersion: record.data.chunkingVersion,
+})).digest('hex');
+const pendingAutomaticIndexDocumentIds = new Set();
+let automaticIndexTimer;
+const queueAutomaticIndexing = documentIds => {
+  for (const id of documentIds ?? []) if (typeof id === 'string' && id) pendingAutomaticIndexDocumentIds.add(id);
+  if (!pendingAutomaticIndexDocumentIds.size || automaticIndexTimer) return;
+  automaticIndexTimer = setTimeout(() => {
+    automaticIndexTimer = undefined;
+    const ids = [...pendingAutomaticIndexDocumentIds].sort();
+    pendingAutomaticIndexDocumentIds.clear();
+    void (async () => {
+      const records = ids.map(id => getRecord('documents', id)).filter(Boolean).sort((left, right) => left.id.localeCompare(right.id));
+      if (!records.length) return;
+      const configuration = await retrievalIndex.configuration();
+      const indexConfiguration = JSON.stringify({
+        embeddings: configuration.embeddings,
+        embeddingModel: configuration.embeddingModel,
+        vectorIndex: configuration.vectorIndex.identity,
+      });
+      const idempotencyKey = 'automatic.' + createHash('sha256')
+        .update(records.map(automaticIndexFingerprint).join('|') + '|' + indexConfiguration).digest('hex');
+      const job = prepareIndexJob({ records, idempotencyKey });
+      if (job.data.status !== 'completed') await executeIndexJob(job.id);
+    })().catch(error => reportIndexFailure('automatic', error));
+  }, 0);
+};
+
 setImmediate(() => {
   for (const record of listRecords('indexJobs')) {
     if (record.data.status !== 'queued' && record.data.status !== 'running') continue;
@@ -218,6 +249,7 @@ setImmediate(() => {
       reportIndexFailure(record.id, error);
     }
   }
+  queueAutomaticIndexing(listRecords('documents').map(record => record.id));
 });
 const windowsOllamaExecutable = process.env.LOCALAPPDATA
   ? join(process.env.LOCALAPPDATA, 'Programs', 'Ollama', 'ollama.exe')
@@ -763,6 +795,7 @@ const installEmbeddings = model => {
     integrationJobs.embeddings.message = `Downloading ${modelName}…`;
     await runCommand(executable, ['pull', modelName], { timeout: 60 * 60_000, onOutput: update });
     integrationJobs.embeddings = { state: 'complete', message: `${modelName} is installed and dense retrieval is ready.` };
+    queueAutomaticIndexing(listRecords('documents').map(record => record.id));
   })().catch(error => {
     integrationJobs.embeddings = { state: 'error', message: error instanceof Error ? error.message : 'Embedding installation failed' };
   });
@@ -1248,7 +1281,9 @@ const handleVersionedApi = async (request, response, url) => {
     }
     if (request.method === 'PATCH' && url.pathname === '/api/v1/settings') {
       await updateUserSettings(await readJson(request));
-      send(response, 200, await loadResolvedSettings(appDataDirectory));
+      const settings = await loadResolvedSettings(appDataDirectory);
+      queueAutomaticIndexing(listRecords('documents').map(record => record.id));
+      send(response, 200, settings);
       return true;
     }
     if (request.method === 'GET' && url.pathname === '/api/v1/provider-credentials') {
@@ -1697,9 +1732,12 @@ const serviceServer = createServer(async (request, response) => {
       if (body?.bootstrap && body.migration?.complete === true) {
         result.migration = finalizeLegacyMigration(body.migration.id);
       }
-      for (const change of body?.changes ?? []) {
+      for (const change of changes) {
         if (change.collection === 'documents' && change.deleted === true && typeof change.id === 'string') await retrievalIndex.removeDocument(change.id);
       }
+      queueAutomaticIndexing(changes
+        .filter(change => change.collection === 'documents' && change.deleted !== true)
+        .map(change => change.id));
       return send(response, 200, result);
     }
     catch (error) { return send(response, 400, { error: error instanceof Error ? error.message : 'Storage sync failed' }); }
