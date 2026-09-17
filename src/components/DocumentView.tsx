@@ -221,9 +221,10 @@ export default function DocumentView({ documentId, onBack }: Props) {
       </Space>
       {indexStatus?.dense?.enabled && <Alert style={{ marginBottom: 16 }} showIcon
         type={indexStatus.dense.status === 'unavailable' ? 'warning' : 'info'}
-        message={indexStatus.dense.status === 'ready'
+        message={indexStatus.dense.status === 'ready' && indexed && document.denseIndex?.model === indexStatus.dense.embeddingModel
           ? `Dense retrieval ready · ${indexStatus.dense.embeddingModel}`
-          : indexStatus.dense.status === 'unavailable' ? `Dense retrieval unavailable · ${indexStatus.dense.embeddingModel}` : 'Dense retrieval will be built during indexing'}
+          : indexStatus.dense.status === 'unavailable' ? `Dense retrieval unavailable · ${indexStatus.dense.embeddingModel}`
+            : indexed ? 'Dense retrieval is being built for this document' : 'Dense retrieval will be built during indexing'}
         description={indexStatus.dense.status === 'unavailable'
           ? `${indexStatus.dense.issue?.message || 'The configured embedding provider failed.'} Sparse retrieval remains ready for ${document.name}. Reindex actions on this page affect only this document; dense provider health is shared across the library.`
           : undefined} />}
