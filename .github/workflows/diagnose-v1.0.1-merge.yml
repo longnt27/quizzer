@@ -1,0 +1,36 @@
+name: Diagnose v1.0.1 release merge
+
+on:
+  push:
+    branches: [release/v1.0.1-reconcile]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/v1.0.1-reconcile
+          fetch-depth: 0
+      - name: Reproduce develop-main merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "release-diagnostics"
+          git config user.email "release-diagnostics@users.noreply.github.com"
+          git fetch origin main
+          set +e
+          git merge --no-commit --no-ff origin/main
+          status=$?
+          set -e
+          echo "merge_status=$status"
+          echo "conflicts:"
+          git diff --name-only --diff-filter=U || true
+          if [ "$status" -eq 0 ]; then
+            git merge --abort
+          fi
+          exit 0
