@@ -1,0 +1,44 @@
+name: Diagnose v1.0.1 release merge
+
+on:
+  push:
+    branches: [release/v1.0.1-reconcile]
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/v1.0.1-reconcile
+          fetch-depth: 0
+      - name: Reproduce merge and record conflicts
+        shell: bash
+        run: |
+          set -u
+          git fetch origin main
+          set +e
+          git merge --no-commit --no-ff origin/main
+          merge_status=$?
+          set -e
+          mkdir -p release-diagnostics
+          git diff --name-only --diff-filter=U > release-diagnostics/v1.0.1-conflicts.txt
+          if [ ! -s release-diagnostics/v1.0.1-conflicts.txt ]; then
+            printf 'NO_CONFLICTS\n' > release-diagnostics/v1.0.1-conflicts.txt
+          fi
+          printf '\nmerge_status=%s\n' "$merge_status" >> release-diagnostics/v1.0.1-conflicts.txt
+          git merge --abort || true
+      - name: Commit diagnostic result
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/diagnose-v1.0.1-merge.yml
+          git add release-diagnostics/v1.0.1-conflicts.txt
+          git commit -m "chore: record v1.0.1 merge conflicts"
+          git push origin HEAD:release/v1.0.1-reconcile
