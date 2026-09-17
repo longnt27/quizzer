@@ -3,7 +3,7 @@ import { Button, Select, Space, Spin, Typography } from 'antd';
 import { CloudDownloadOutlined } from '@ant-design/icons';
 import { formatErrorMessage } from '../utils/errorFormatting';
 import { getMessageApi } from '../utils/messageProvider';
-import { serviceJson, serviceRequest } from '../utils/serviceApi';
+import { serviceFetch, serviceJson } from '../utils/serviceApi';
 
 interface ToolStatus {
   installed: boolean;
@@ -41,7 +41,10 @@ export default function DocumentExtractorProviderSelect({ value, options, onChan
 
   const refresh = useCallback(async () => {
     try {
-      setStatus(await serviceRequest<IntegrationStatus>('/api/integrations'));
+      const response = await serviceFetch('/api/integrations');
+      const payload = await response.json() as IntegrationStatus & { error?: string };
+      if (!response.ok) throw new Error(payload.error || 'Could not load integration status');
+      setStatus(payload);
     } catch (error) {
       message.error(formatErrorMessage(error, 'plugin'));
     } finally {

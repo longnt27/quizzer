@@ -34,6 +34,8 @@ const installNameFor = (button: HTMLButtonElement) => {
   const option = button.closest('.plugin-option');
   const optionName = option?.querySelector<HTMLElement>('.plugin-option-copy strong')?.textContent?.trim();
   if (optionName) return optionName;
+  const labelName = /^Install\s+(.+)$/i.exec(button.textContent?.trim() ?? '')?.[1]?.trim();
+  if (labelName) return labelName;
   const dialog = button.closest('[role="dialog"]');
   const title = dialog?.querySelector<HTMLElement>('.ant-modal-title')?.textContent?.replace(/settings$/i, '').trim();
   return title || 'this component';
@@ -41,7 +43,7 @@ const installNameFor = (button: HTMLButtonElement) => {
 
 const isInstallTrigger = (button: HTMLButtonElement) => {
   const label = button.textContent?.trim() ?? '';
-  if (!/^(Install|Download model|Download [^?]+)$/i.test(label)) return false;
+  if (!/^(Install|Install Marker|Install Docling|Download model|Download [^?]+)$/i.test(label)) return false;
   if (button.dataset.installConfirmationBypass === 'true') return false;
   const dialog = button.closest('[role="dialog"]');
   const dialogText = dialog?.querySelector<HTMLElement>('.ant-modal-title')?.textContent ?? '';

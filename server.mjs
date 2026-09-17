@@ -28,11 +28,12 @@ import { ProviderCredentialStore } from './server/provider-credentials.mjs';
 import { GenerationJobWorker } from './server/generation-worker.mjs';
 import { runGeneratorPlugin } from './server/plugin-generation.mjs';
 import { resolveEmbeddingProvider } from './server/plugin-embeddings.mjs';
+import { describeEmbeddingIntegration } from './server/embedding-integration-status.mjs';
 import { resolveVectorIndexProvider } from './server/plugin-vector-index.mjs';
 import { resolveDocumentExtractor, resolveOcrProvider } from './server/plugin-extraction.mjs';
 import { installManagedDocling, installManagedMarker } from './server/managed-document-extractors.mjs';
 import { managedDoclingRuntimePaths } from './server/docling-runtime.mjs';
-import { listOllamaModels, ollamaModelMatches, runOllamaGeneration, runOllamaHyde, validateOllamaModelName } from './server/ollama-generation.mjs';
+import { listOllamaModels, runOllamaGeneration, runOllamaHyde, validateOllamaModelName } from './server/ollama-generation.mjs';
 import {
   getLlamaCppStatus, runLlamaCppGeneration, validateLlamaCppEndpoint, validateLlamaCppModel,
 } from './server/llama-cpp-generation.mjs';
@@ -61,6 +62,7 @@ const managedOcrDirectory = join(appDataDirectory, '.quizzer-tools', 'ocr');
 const managedOcrPython = join(managedOcrDirectory, process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'python.exe' : 'python');
 const serviceToken = await ensureServiceToken(appDataDirectory);
 const providerCredentials = new ProviderCredentialStore();
+const getProviderCredential = provider => providerCredentials.get(provider);
 process.parentPort?.on?.('message', event => {
   const message = event?.data ?? event;
   if (message?.type !== 'quizzer-provider-credentials') return;
@@ -109,7 +111,9 @@ const retrievalIndex = new RetrievalIndex({
   sparsePath: process.env.QUIZZER_SPARSE_INDEX_PATH || sparseIndexPathFor(appDataDirectory),
   densePath: process.env.QUIZZER_DENSE_INDEX_PATH || denseIndexPathFor(appDataDirectory),
   loadSettings: () => loadResolvedSettings(appDataDirectory),
-  resolveEmbedding: settings => resolveEmbeddingProvider(settings, { loadManager: getPluginManager }),
+  resolveEmbedding: settings => resolveEmbeddingProvider(settings, {
+    loadManager: getPluginManager, getCredential: getProviderCredential,
+  }),
   resolveVectorIndex: (settings, { builtin }) => resolveVectorIndexProvider(settings, {
     loadManager: getPluginManager, builtin,
   }),
@@ -498,7 +502,6 @@ const integrationStatus = async () => {
     managedDoclingWorks(),
     managedOcrWorks(),
   ]);
-  const embeddingModel = settings.values['embeddings.model'];
   return {
     marker: { installed: managedMarker || systemMarker, managed: managedMarker, job: integrationJobs.marker },
     docling: { installed: managedDocling, managed: managedDocling, job: integrationJobs.docling },
@@ -524,12 +527,13 @@ const integrationStatus = async () => {
       models: ollama.models,
       job: integrationJobs.ollama,
     },
-    embeddings: {
-      installed: ollama.models.some(model => ollamaModelMatches(model.name, embeddingModel)),
-      runtimeInstalled: ollamaInstalled || ollama.serverReady,
-      model: embeddingModel,
+    embeddings: describeEmbeddingIntegration({
+      settings,
+      ollama,
+      ollamaInstalled,
+      credentialProviders: providerCredentials.status().providers,
       job: integrationJobs.embeddings,
-    },
+    }),
     ocr: { installed: managedOcr, managed: managedOcr, job: integrationJobs.ocr },
   };
 };
@@ -933,7 +937,9 @@ const generationWorker = process.env.QUIZZER_DISABLE_SERVICE_GENERATION === '1' 
   retrieve: options => retrievalIndex.retrieve(options),
   embed: async (texts, signal) => {
     const settings = await loadResolvedSettings(appDataDirectory);
-    const embedding = await resolveEmbeddingProvider(settings, { loadManager: getPluginManager });
+    const embedding = await resolveEmbeddingProvider(settings, {
+      loadManager: getPluginManager, getCredential: getProviderCredential,
+    });
     return embedding.embed(texts, { signal });
   },
   loadImage: async image => {
@@ -1076,6 +1082,7 @@ const configuredExtractionRoutes = async ({ ocrRequested = true } = {}) => {
     : { component: 'disabled', identity: 'disabled', ocr: undefined };
   const extractorRoute = await resolveDocumentExtractor(settings, {
     loadManager: getPluginManager,
+    loadCredential: getProviderCredential,
     runMarker: (data, { name = 'document.pdf', signal } = {}) => runMarker({
       name,
       data: Buffer.from(data).toString('base64'),
@@ -1780,6 +1787,9 @@ const serviceServer = createServer(async (request, response) => {
       }
       if (body.confirmed !== true) throw new Error('Explicit confirmation is required before downloading an embedding model');
       const settings = await loadResolvedSettings(appDataDirectory);
+      if (settings.values['embeddings.provider'] !== 'ollama') {
+        throw new Error('Embedding model installation is available only when Ollama is the active embedding provider');
+      }
       const configuredModel = validateOllamaModelName(settings.values['embeddings.model']);
       if (body.model !== configuredModel) throw new Error('Embedding model changed; review the current profile and confirm again');
       const started = installEmbeddings(configuredModel);
@@ -1807,7 +1817,9 @@ const serviceServer = createServer(async (request, response) => {
     try {
       const { texts } = await readJson(request);
       const settings = await loadResolvedSettings(appDataDirectory);
-      const embedding = await resolveEmbeddingProvider(settings, { loadManager: getPluginManager });
+      const embedding = await resolveEmbeddingProvider(settings, {
+      loadManager: getPluginManager, getCredential: getProviderCredential,
+    });
       const embeddings = await embedding.embed(texts, { signal: lifetime.signal });
       if (!response.destroyed) return send(response, 200, { embeddings });
     } catch (error) {
