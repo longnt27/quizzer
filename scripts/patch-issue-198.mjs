@@ -58,7 +58,8 @@ const queueAutomaticIndexing = documentIds => {
         embeddingModel: configuration.embeddingModel,
         vectorIndex: configuration.vectorIndex.identity,
       });
-      const idempotencyKey = `automatic.${createHash('sha256').update(`${records.map(automaticIndexFingerprint).join('|')}|${indexConfiguration}`).digest('hex')}`;
+      const idempotencyKey = 'automatic.' + createHash('sha256')
+        .update(records.map(automaticIndexFingerprint).join('|') + '|' + indexConfiguration).digest('hex');
       const job = prepareIndexJob({ records, idempotencyKey });
       if (job.data.status !== 'completed') await executeIndexJob(job.id);
     })().catch(error => reportIndexFailure('automatic', error));
