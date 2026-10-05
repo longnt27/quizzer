@@ -35,7 +35,8 @@
     "build:cli": "npm run build && node scripts/build-cli-sea.mjs",
     "release:manifest": "node scripts/generate-release-manifest.mjs",
     "release:trust": "node scripts/verify-release-trust.mjs",
-    "release:installers": "node scripts/prepare-release-installers.mjs"
+    "release:installers": "node scripts/prepare-release-installers.mjs",
+    "test:e2e:production": "npm run build && playwright test --config=playwright.production.config.ts"
   },
   "dependencies": {
     "@lancedb/lancedb": "^0.22.3",
