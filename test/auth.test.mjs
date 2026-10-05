@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { ensureServiceToken, isAuthorizedRequest } from '../server/auth.mjs';
+import { ensureServiceToken, isAuthorizedRequest, serviceSessionCookie } from '../server/auth.mjs';
 
 const directory = await mkdtemp(join(tmpdir(), 'quizzer-auth-test-'));
 test.after(async () => rm(directory, { recursive: true, force: true }));
@@ -23,6 +23,17 @@ test('accepts bearer and explicit token headers without exposing the token', asy
   assert.equal(isAuthorizedRequest({ headers: { authorization: 'Bearer incorrect' } }, token), false);
   assert.equal(isAuthorizedRequest({ headers: {} }, token), false);
   assert.equal(isAuthorizedRequest({ headers: { authorization: 'Basic credentials', 'x-quizzer-token': 42 } }, token), false);
+});
+
+test('accepts the HttpOnly same-site browser session cookie', async () => {
+  const token = await ensureServiceToken(directory, {});
+  const cookie = serviceSessionCookie(token);
+  assert.match(cookie, /^quizzer_session=/);
+  assert.match(cookie, /HttpOnly/);
+  assert.match(cookie, /SameSite=Strict/);
+  assert.equal(isAuthorizedRequest({ headers: { cookie } }, token), true);
+  assert.equal(isAuthorizedRequest({ headers: { cookie: 'quizzer_session=incorrect' } }, token), false);
+  assert.match(serviceSessionCookie(token, { secure: true }), /; Secure$/);
 });
 
 test('prefers an explicit environment token and rejects corrupt stored credentials', async () => {
