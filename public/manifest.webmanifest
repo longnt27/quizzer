@@ -9,16 +9,10 @@
   "theme_color": "#0c172b",
   "icons": [
     {
-      "src": "/quizzer.png",
-      "sizes": "1024x1024",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
       "src": "/quizzer.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any"
+      "purpose": "any maskable"
     }
   ]
 }
