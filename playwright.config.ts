@@ -20,8 +20,8 @@ export default defineConfig({
   projects: [
     { name: 'chromium', testMatch: /.*\.spec\.ts/, use: { ...devices['Desktop Chrome'] } },
     { name: 'firefox', testMatch: /cross-browser-smoke\.spec\.ts/, use: { ...devices['Desktop Firefox'] } },
-    // WebKit coverage for the Vite-served app is deferred pending an
-    // unresolved boot incompatibility; Electron itself remains Chromium.
+    // WebKit coverage for the development server remains deferred pending an
+    // unresolved boot incompatibility. The production daemon path has its own Chromium smoke test.
   ],
   webServer: {
     command: 'node scripts/e2e-dev.mjs',
