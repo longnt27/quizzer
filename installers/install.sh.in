@@ -135,57 +135,63 @@ grep -F "$path_line" "$profile_path" >/dev/null 2>&1 || printf '\n%s\n' "$path_l
 PATH="$bin_directory:$PATH"
 export PATH
 
-desktop_name="quizzer-$version-$platform-$architecture.zip"
-desktop_download="$temporary_directory/$desktop_name"
-download_artifact "$desktop_name" "$desktop_download"
-extract_directory="$temporary_directory/desktop"
-mkdir -p "$extract_directory"
-if command -v unzip >/dev/null 2>&1; then
-  unzip -q "$desktop_download" -d "$extract_directory"
-elif command -v bsdtar >/dev/null 2>&1; then
-  bsdtar -xf "$desktop_download" -C "$extract_directory"
-else
-  fail 'unzip or bsdtar is required to install the desktop application'
-fi
+service_url='http://127.0.0.1:8787'
 
-timestamp=$(date +%Y%m%d%H%M%S)
 if [ "$platform" = macos ]; then
-  desktop_source=$(find "$extract_directory" -type d -name 'Quizzer.app' -prune -print | head -n 1)
-  [ -n "$desktop_source" ] || fail 'desktop archive does not contain Quizzer.app'
-  if [ -n "$expected_apple_team_id" ]; then
-    codesign --verify --deep --strict "$desktop_source" >/dev/null 2>&1 || fail 'Quizzer.app code signature is invalid'
-    app_team_id=$(codesign -dv --verbose=4 "$desktop_source" 2>&1 | sed -n 's/^TeamIdentifier=//p')
-    [ "$app_team_id" = "$expected_apple_team_id" ] || fail 'Quizzer.app was not signed by the expected Apple team'
-    spctl --assess --type execute "$desktop_source" >/dev/null 2>&1 || fail 'Quizzer.app is not trusted or notarized by macOS'
-  fi
-  applications_directory="$HOME/Applications"
-  desktop_target="$applications_directory/Quizzer.app"
-  mkdir -p "$applications_directory"
-  [ ! -e "$desktop_target" ] || mv "$desktop_target" "$desktop_target.previous-$timestamp"
-  mv "$desktop_source" "$desktop_target"
-  open "$desktop_target"
+  launch_agents="$HOME/Library/LaunchAgents"
+  service_plist="$launch_agents/dev.quizzer.service.plist"
+  mkdir -p "$launch_agents" "$HOME/Library/Logs"
+  cat > "$service_plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>dev.quizzer.service</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$bin_directory/quizzer</string>
+    <string>serve</string>
+    <string>--port</string>
+    <string>8787</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>$HOME/Library/Logs/Quizzer.log</string>
+  <key>StandardErrorPath</key><string>$HOME/Library/Logs/Quizzer.error.log</string>
+</dict>
+</plist>
+EOF
+  launchctl bootout "gui/$(id -u)" "$service_plist" >/dev/null 2>&1 || true
+  launchctl bootstrap "gui/$(id -u)" "$service_plist"
+  launchctl kickstart -k "gui/$(id -u)/dev.quizzer.service"
+  open "$service_url"
 else
-  desktop_executable=$(find "$extract_directory" -type f -name quizzer -perm -u+x -print | head -n 1)
-  [ -n "$desktop_executable" ] || fail 'desktop archive does not contain the Quizzer executable'
-  desktop_source=$(dirname "$desktop_executable")
-  desktop_target="$HOME/.local/share/quizzer/app"
-  mkdir -p "$HOME/.local/share/quizzer" "$HOME/.local/share/applications"
-  [ ! -e "$desktop_target" ] || mv "$desktop_target" "$desktop_target.previous-$timestamp"
-  mv "$desktop_source" "$desktop_target"
-  installed_executable="$desktop_target/quizzer"
-  desktop_file="$HOME/.local/share/applications/dev.quizzer.app.desktop"
-  {
-    printf '%s\n' '[Desktop Entry]'
-    printf '%s\n' 'Type=Application'
-    printf '%s\n' 'Name=Quizzer'
-    printf 'Exec="%s"\n' "$installed_executable"
-    printf '%s\n' 'Terminal=false'
-    printf '%s\n' 'Categories=Education;'
-    printf '%s\n' 'StartupNotify=true'
-  } > "$desktop_file"
-  chmod 644 "$desktop_file"
-  nohup "$installed_executable" >/dev/null 2>&1 &
+  user_units="$HOME/.config/systemd/user"
+  service_unit="$user_units/quizzer.service"
+  mkdir -p "$user_units"
+  cat > "$service_unit" <<EOF
+[Unit]
+Description=Quizzer local service
+After=network-online.target
+
+[Service]
+ExecStart=$bin_directory/quizzer serve --port 8787
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
+EOF
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl --user daemon-reload
+    systemctl --user enable --now quizzer.service
+  else
+    nohup "$bin_directory/quizzer" serve --port 8787 >"$HOME/.local/share/quizzer.log" 2>&1 &
+  fi
+  if command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$service_url" >/dev/null 2>&1 || true
+  fi
 fi
 
-printf '\nQuizzer %s is installed. Run `quizzer help` or open Quizzer from your applications.\n' "$version"
+printf '\nQuizzer %s is installed. The local service runs at %s. Run `quizzer help` for CLI commands.\n' "$version" "$service_url"
 printf 'Restart your shell if `quizzer` is not yet on PATH.\n'

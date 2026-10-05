@@ -95,16 +95,10 @@ __QUIZZER_RELEASE_PUBLIC_KEY_PEM__
   & $CliDownload release verify --metadata $MetadataPath --signature $SignaturePath --public-key $PublicKeyPath --json | Out-Null
   if ($LASTEXITCODE -ne 0) { Fail 'Quizzer CLI rejected the release signature' }
 
-  $DesktopName = "quizzer-$($Metadata.version)-windows-$Architecture.exe"
-  $DesktopArtifact = @($Metadata.artifacts | Where-Object { $_.name -eq $DesktopName -and $_.format -eq 'exe' -and $_.cli -ne $true })
-  if ($DesktopArtifact.Count -ne 1) { Fail "Release metadata must contain exactly one $DesktopName artifact" }
-  $DesktopDownload = Join-Path $TemporaryDirectory $DesktopName
-  Assert-Artifact $DesktopArtifact[0] $DesktopName $DesktopDownload
-  if ($ExpectedCertificateSha256) { Assert-Authenticode $DesktopDownload }
-
   $BinDirectory = Join-Path $env:LOCALAPPDATA 'Quizzer\bin'
   New-Item -ItemType Directory -Force -Path $BinDirectory | Out-Null
-  Copy-Item -Force $CliDownload (Join-Path $BinDirectory 'quizzer.exe')
+  $InstalledCli = Join-Path $BinDirectory 'quizzer.exe'
+  Copy-Item -Force $CliDownload $InstalledCli
   $UserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
   $PathEntries = @($UserPath -split ';' | Where-Object { $_ })
   if ($PathEntries -notcontains $BinDirectory) {
@@ -112,16 +106,22 @@ __QUIZZER_RELEASE_PUBLIC_KEY_PEM__
   }
   if (($env:Path -split ';') -notcontains $BinDirectory) { $env:Path = "$BinDirectory;$env:Path" }
 
-  $Process = Start-Process -FilePath $DesktopDownload -ArgumentList '--silent' -PassThru -Wait
-  if ($Process.ExitCode -ne 0) { Fail "Desktop installer exited with code $($Process.ExitCode)" }
-  $LaunchCandidates = @(
-    (Join-Path $env:LOCALAPPDATA 'quizzer\quizzer.exe'),
-    (Join-Path $env:LOCALAPPDATA 'quizzer\Quizzer.exe')
-  )
-  $InstalledApplication = $LaunchCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-  if ($InstalledApplication) { Start-Process -FilePath $InstalledApplication | Out-Null }
+  $TaskName = 'Quizzer Local Service'
+  $EscapedCli = $InstalledCli.Replace("'", "''")
+  $TaskCommand = "& '$EscapedCli' serve --port 8787"
+  $Action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -Command `"$TaskCommand`""
+  $Trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+  $Settings = New-ScheduledTaskSettingsSet -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero)
+  Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Description 'Runs the Quizzer local service for the current user.' -Force | Out-Null
 
-  Write-Host "`nQuizzer $($Metadata.version) is installed. Run 'quizzer help' or open Quizzer from the Start menu."
+  Get-Process -Name quizzer -ErrorAction SilentlyContinue |
+    Where-Object { $_.Path -eq $InstalledCli } |
+    Stop-Process -Force -ErrorAction SilentlyContinue
+  Start-Process -FilePath $InstalledCli -ArgumentList 'serve', '--port', '8787' -WindowStyle Hidden
+  Start-Sleep -Milliseconds 500
+  Start-Process 'http://127.0.0.1:8787' | Out-Null
+
+  Write-Host "`nQuizzer $($Metadata.version) is installed. The local service runs at http://127.0.0.1:8787."
   Write-Host 'Open a new terminal if quizzer is not yet on PATH.'
 } finally {
   Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $TemporaryDirectory

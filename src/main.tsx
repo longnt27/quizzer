@@ -8,6 +8,14 @@ import { initializeServerSync } from './db/serverSync.ts';
 import { ensureAppProfile } from './utils/appProfile.ts';
 import { loadRememberedApiKeys } from './utils/providerSettings.ts';
 
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker.register('/sw.js').catch(error => {
+      console.warn('Quizzer service worker registration failed.', error);
+    });
+  }, { once: true });
+}
+
 // Classify a profile as new or upgraded only after the first server merge. This
 // prevents a fresh browser connected to an existing library from being sent
 // through first-run onboarding before its records arrive.

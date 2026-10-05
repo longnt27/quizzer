@@ -7,6 +7,10 @@ export const runningAsSingleExecutable = isSea();
 
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 
+export const readRuntimeAsset = async (key, sourceUrl) => runningAsSingleExecutable
+  ? Buffer.from(getAsset(key))
+  : readFile(sourceUrl);
+
 export const readRuntimeText = async (key, sourceUrl) => runningAsSingleExecutable
   ? getAsset(key, 'utf8')
   : readFile(sourceUrl, 'utf8');

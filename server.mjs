@@ -3,19 +3,19 @@ import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, extname, join } from 'node:path';
 import {
   approveGenerationCostRecovery, backupDatabase, beginLegacyMigration, claimGenerationJob, completeGenerationJob, controlGenerationJob, createGenerationJobs, deleteRecord, finalizeGenerationAttempt, finalizeLegacyMigration, getGenerationAccounting, getRecord, listLegacyMigrations,
   listRecords, putRecord, raiseGenerationCostCeiling, renewGenerationJobLease, reserveGenerationAttempt, storageInfo, subscribeStorageChanges, syncStorage, updateGenerationJobWithLease,
 } from './server/storage.mjs';
 import { detectHardwareCapabilities } from './server/hardware-profile.mjs';
-import { ensureServiceToken, isAuthorizedRequest } from './server/auth.mjs';
+import { ensureServiceToken, isAuthorizedRequest, serviceSessionCookie } from './server/auth.mjs';
 import {
   HARDWARE_PROFILE_SETTINGS, loadResolvedSettings, readUserSettings, SETTINGS_REGISTRY, SETTINGS_SCHEMA, settingsPath, validateSettings, writeUserSettings,
 } from './server/settings.mjs';
 import { validateOnboardingState } from './server/onboarding.mjs';
 import { PluginManager } from './plugin-sdk/manager.mjs';
-import { materializeRuntimeAsset, readRuntimeText, runningAsSingleExecutable } from './server/runtime-assets.mjs';
+import { materializeRuntimeAsset, readRuntimeAsset, readRuntimeText, runningAsSingleExecutable } from './server/runtime-assets.mjs';
 import { collectStoredObjectReferences, materializeDocumentImages, materializeSerializedObjects, ObjectStore } from './server/object-store.mjs';
 import { defaultAppDataDirectory, denseIndexPathFor, sparseIndexPathFor } from './server/paths.mjs';
 import { createBackup, listBackups, verifyBackup } from './server/backup.mjs';
@@ -55,6 +55,76 @@ const maxBodyBytes = 25 * 1024 * 1024;
 const maxStorageBodyBytes = 250 * 1024 * 1024;
 const appDataDirectory = defaultAppDataDirectory();
 const resourceDirectory = process.env.QUIZZER_RESOURCE_DIR || process.cwd();
+const webRootDirectory = process.env.QUIZZER_WEB_ROOT || join(resourceDirectory, 'dist');
+const webContentTypes = Object.freeze({
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.txt': 'text/plain; charset=utf-8',
+});
+
+const normalizeWebPath = pathname => {
+  let decoded;
+  try { decoded = decodeURIComponent(pathname); }
+  catch { return undefined; }
+  if (!decoded.startsWith('/') || decoded.includes('\\') || decoded.includes('\0')) return undefined;
+  const relative = decoded === '/' ? 'index.html' : decoded.replace(/^\/+/, '');
+  const segments = relative.split('/');
+  if (!relative || segments.some(segment => !segment || segment === '.' || segment === '..')) return undefined;
+  return relative;
+};
+
+const readWebAsset = async relativePath => {
+  try {
+    return await readRuntimeAsset(`web/${relativePath}`, join(webRootDirectory, relativePath));
+  } catch (error) {
+    if (runningAsSingleExecutable || error?.code === 'ENOENT') return undefined;
+    throw error;
+  }
+};
+
+const sendWebApp = async (request, response, url) => {
+  if (request.method !== 'GET' && request.method !== 'HEAD') return false;
+  let relativePath = normalizeWebPath(url.pathname);
+  if (!relativePath) {
+    response.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8', 'X-Content-Type-Options': 'nosniff' });
+    response.end('Invalid path');
+    return true;
+  }
+
+  let asset = await readWebAsset(relativePath);
+  if (!asset && !extname(relativePath)) {
+    relativePath = 'index.html';
+    asset = await readWebAsset(relativePath);
+  }
+  if (!asset) return false;
+
+  const extension = extname(relativePath).toLowerCase();
+  const secure = request.socket?.encrypted === true || request.headers['x-forwarded-proto'] === 'https';
+  const headers = {
+    'Content-Type': webContentTypes[extension] || 'application/octet-stream',
+    'Content-Length': String(asset.length),
+    'Cache-Control': relativePath.startsWith('assets/') ? 'public, max-age=31536000, immutable' : 'no-cache',
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer',
+  };
+  if (relativePath === 'index.html') headers['Set-Cookie'] = serviceSessionCookie(serviceToken, { secure });
+  if (relativePath === 'sw.js') headers['Service-Worker-Allowed'] = '/';
+  response.writeHead(200, headers);
+  if (request.method === 'HEAD') response.end();
+  else response.end(asset);
+  return true;
+};
 const managedMarkerDirectory = join(appDataDirectory, '.quizzer-tools', 'marker');
 const managedMarkerExecutable = join(managedMarkerDirectory, process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'marker_single.exe' : 'marker_single');
 const managedDoclingPaths = managedDoclingRuntimePaths(appDataDirectory);
@@ -1867,6 +1937,7 @@ const serviceServer = createServer(async (request, response) => {
     }
     return undefined;
   }
+  if (!url.pathname.startsWith('/api/') && await sendWebApp(request, response, url)) return;
   if (request.method !== 'POST' || request.url !== '/api/generate') return send(response, 404, { error: 'Not found' });
 
   const lifetime = bindRequestCancellation(request, response, 'Generation request disconnected');

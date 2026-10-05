@@ -1,10 +1,10 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const port = 4174;
+const port = 4175;
 
 export default defineConfig({
   testDir: './e2e',
-  testIgnore: /cost-continuation\.spec\.ts/,
+  testMatch: /production-path\.spec\.ts/,
   timeout: 120_000,
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
@@ -18,16 +18,13 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
   projects: [
-    { name: 'chromium', testMatch: /.*\.spec\.ts/, use: { ...devices['Desktop Chrome'] } },
-    { name: 'firefox', testMatch: /cross-browser-smoke\.spec\.ts/, use: { ...devices['Desktop Firefox'] } },
-    // WebKit coverage for the development server remains deferred pending an
-    // unresolved boot incompatibility. The production daemon path has its own Chromium smoke test.
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
   ],
   webServer: {
-    command: 'node scripts/e2e-dev.mjs',
+    command: 'node scripts/e2e-production.mjs',
     url: `http://127.0.0.1:${port}`,
     reuseExistingServer: false,
     timeout: 120_000,
-    env: { ...process.env, QUIZZER_E2E_WEB_PORT: String(port) },
+    env: { ...process.env, QUIZZER_E2E_PRODUCTION_PORT: String(port) },
   },
 });
