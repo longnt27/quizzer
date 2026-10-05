@@ -1,7 +1,7 @@
 {
   "name": "quizzer",
   "productName": "Quizzer",
-  "description": "Local-first document-to-quiz desktop application and CLI.",
+  "description": "Local-first document-to-quiz app with a local daemon and CLI.",
   "author": "Quizzer contributors",
   "license": "Apache-2.0",
   "private": true,
