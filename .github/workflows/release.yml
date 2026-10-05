@@ -75,6 +75,7 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium firefox
       - run: npm run test:e2e
+      - run: npm run test:e2e:production
       - run: npm run test:e2e:cost
       - name: Generate CycloneDX SBOM
         run: npm sbom --sbom-format cyclonedx > sbom.cdx.json
@@ -154,48 +155,31 @@ jobs:
           node-version: 26
           cache: npm
       - run: npm ci
-      - name: Install Linux packaging tools
-        if: matrix.platform == 'linux'
-        shell: bash
-        run: sudo apt-get update && sudo apt-get install --yes fakeroot rpm squashfs-tools
-      - name: Cache verified AppImage runtime
-        if: matrix.platform == 'linux'
-        shell: bash
-        run: node scripts/prepare-appimage-runtime.mjs --arch "${{ matrix.architecture }}"
       - name: Import Apple signing identity
         if: matrix.platform == 'macos' && vars.QUIZZER_MACOS_SIGNING_ENABLED == 'true'
         shell: bash
         env:
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-          MACOS_INSTALLER_CERTIFICATE: ${{ secrets.MACOS_INSTALLER_CERTIFICATE }}
-          MACOS_INSTALLER_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_INSTALLER_CERTIFICATE_PASSWORD }}
           APPLE_IDENTITY_SECRET: ${{ secrets.APPLE_IDENTITY }}
-          APPLE_INSTALLER_IDENTITY_SECRET: ${{ secrets.APPLE_INSTALLER_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           : "${MACOS_CERTIFICATE:?MACOS_CERTIFICATE is required}"
           : "${MACOS_CERTIFICATE_PASSWORD:?MACOS_CERTIFICATE_PASSWORD is required}"
-          : "${MACOS_INSTALLER_CERTIFICATE:?MACOS_INSTALLER_CERTIFICATE is required}"
-          : "${MACOS_INSTALLER_CERTIFICATE_PASSWORD:?MACOS_INSTALLER_CERTIFICATE_PASSWORD is required}"
           : "${APPLE_IDENTITY_SECRET:?APPLE_IDENTITY is required}"
-          : "${APPLE_INSTALLER_IDENTITY_SECRET:?APPLE_INSTALLER_IDENTITY is required}"
           : "${APPLE_ID:?APPLE_ID is required}"
           : "${APPLE_APP_SPECIFIC_PASSWORD:?APPLE_APP_SPECIFIC_PASSWORD is required}"
           : "${APPLE_TEAM_ID:?APPLE_TEAM_ID is required}"
           node -e "require('node:fs').writeFileSync('certificate.p12', Buffer.from(process.env.MACOS_CERTIFICATE, 'base64'))"
-          node -e "require('node:fs').writeFileSync('installer-certificate.p12', Buffer.from(process.env.MACOS_INSTALLER_CERTIFICATE, 'base64'))"
           security create-keychain -p actions build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p actions build.keychain
           security import certificate.p12 -k build.keychain -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security import installer-certificate.p12 -k build.keychain -P "$MACOS_INSTALLER_CERTIFICATE_PASSWORD" -T /usr/bin/productbuild -T /usr/bin/productsign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions build.keychain
-          rm certificate.p12 installer-certificate.p12
+          rm certificate.p12
           echo "APPLE_IDENTITY=$APPLE_IDENTITY_SECRET" >> "$GITHUB_ENV"
-          echo "APPLE_INSTALLER_IDENTITY=$APPLE_INSTALLER_IDENTITY_SECRET" >> "$GITHUB_ENV"
           echo "APPLE_ID=$APPLE_ID" >> "$GITHUB_ENV"
           echo "APPLE_APP_SPECIFIC_PASSWORD=$APPLE_APP_SPECIFIC_PASSWORD" >> "$GITHUB_ENV"
           echo "APPLE_TEAM_ID=$APPLE_TEAM_ID" >> "$GITHUB_ENV"
