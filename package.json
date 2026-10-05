@@ -32,7 +32,7 @@
     "package:desktop": "npm run build && node scripts/forge.mjs package",
     "make:desktop": "npm run build && node scripts/forge.mjs make",
     "verify:desktop-fuses": "node scripts/verify-electron-fuses.mjs",
-    "build:cli": "node scripts/build-cli-sea.mjs",
+    "build:cli": "npm run build && node scripts/build-cli-sea.mjs",
     "release:manifest": "node scripts/generate-release-manifest.mjs",
     "release:trust": "node scripts/verify-release-trust.mjs",
     "release:installers": "node scripts/prepare-release-installers.mjs"
