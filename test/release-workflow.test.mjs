@@ -14,50 +14,30 @@ const ordered = (source, first, second) => {
   assert.ok(firstIndex < secondIndex, `${first} must run before ${second}`);
 };
 
-test('release validates packages and gates optional native signing explicitly', async () => {
+test('release builds daemon-only targets and gates optional native signing explicitly', async () => {
   const workflow = await readFile(workflowPath, 'utf8');
 
-  ordered(workflow, 'Install Linux packaging tools', 'Cache verified AppImage runtime');
-  ordered(workflow, 'Cache verified AppImage runtime', 'Build desktop distributables');
-  ordered(workflow, 'Build standalone CLI', 'Use supported Node.js for Electron packaging');
-  ordered(workflow, 'Use supported Node.js for Electron packaging', 'Rebuild macOS packaging helpers for Node.js 22');
-  ordered(workflow, 'Rebuild macOS packaging helpers for Node.js 22', 'Build desktop distributables');
-  ordered(workflow, 'Build desktop distributables', 'Verify Apple signatures and notarization');
-  ordered(workflow, 'Build desktop distributables', 'Notarize macOS distributables');
-  ordered(workflow, 'Notarize macOS distributables', 'Verify Apple signatures and notarization');
-  ordered(workflow, 'Build desktop distributables', 'Verify Windows signatures');
-  ordered(workflow, 'Build desktop distributables', 'Verify Linux packages and AppImage');
-  ordered(workflow, 'Verify Apple signatures and notarization', 'Normalize release artifacts');
-  ordered(workflow, 'Verify Windows signatures', 'Normalize release artifacts');
-  ordered(workflow, 'Verify Linux packages and AppImage', 'Normalize release artifacts');
-  assert.match(workflow, /sudo apt-get install --yes fakeroot rpm squashfs-tools/);
-  assert.match(workflow, /node scripts\/prepare-appimage-runtime\.mjs --arch "\$\{\{\s*matrix\.architecture\s*\}\}"/);
-  assert.match(workflow, /name: Use supported Node\.js for Electron packaging\n\s+uses: actions\/setup-node@v4\n\s+with:\n\s+node-version: 22/);
-  assert.match(workflow, /name: Rebuild macOS packaging helpers for Node\.js 22\n\s+if: matrix\.platform == 'macos'\n\s+run: npm rebuild macos-alias fs-xattr/);
-  assert.match(workflow, /APPIMAGE_PATH="\$\(require_single_artifact '\*\.appimage'\)"/);
-  assert.match(workflow, /AI_MAGIC="\$\(dd if="\$APPIMAGE_PATH" bs=1 skip=8 count=3 2>\/dev\/null\)"/);
-  assert.match(workflow, /codesign --verify --strict --verbose=2 out\/cli\/quizzer/);
-  assert.match(workflow, /spctl --assess --type execute --verbose=4/);
-  assert.match(workflow, /TeamIdentifier=\$APPLE_TEAM_ID/);
-  assert.match(workflow, /MACOS_INSTALLER_CERTIFICATE: \$\{\{ secrets\.MACOS_INSTALLER_CERTIFICATE \}\}/);
-  assert.match(workflow, /APPLE_INSTALLER_IDENTITY=\$APPLE_INSTALLER_IDENTITY_SECRET/);
-  assert.match(workflow, /notarytool submit "\$DMG_PATH"/);
-  assert.match(workflow, /notarytool submit "\$PKG_PATH"/);
-  assert.match(workflow, /stapler validate "\$DMG_PATH"/);
-  assert.match(workflow, /stapler validate "\$PKG_PATH"/);
-  assert.match(workflow, /pkgutil --check-signature "\$PKG_PATH"/);
-  assert.match(workflow, /grep -F "\$APPLE_INSTALLER_IDENTITY"/);
-  assert.match(workflow, /Expected exactly one \$\{extension\} artifact/);
-  assert.match(workflow, /Get-AuthenticodeSignature -FilePath \$Target/);
-  assert.match(workflow, /EXPECTED_WINDOWS_CERTIFICATE_SHA256\.ToUpperInvariant\(\)/);
+  ordered(workflow, 'Build standalone CLI', 'Notarize standalone CLI');
+  ordered(workflow, 'Notarize standalone CLI', 'Normalize release artifacts');
+  assert.match(workflow, /node-version: 26/);
+  assert.match(workflow, /collect-release-artifacts\.mjs --cli-only/);
+  assert.match(workflow, /name: runtime-\$\{\{ matrix\.platform \}\}-\$\{\{ matrix\.architecture \}\}/);
+  assert.doesNotMatch(workflow, /Build desktop distributables/);
+  assert.doesNotMatch(workflow, /Electron fuses/);
+  assert.doesNotMatch(workflow, /AppImage runtime/);
+  assert.doesNotMatch(workflow, /MACOS_INSTALLER_CERTIFICATE/);
+  assert.doesNotMatch(workflow, /APPLE_INSTALLER_IDENTITY/);
+  assert.match(workflow, /MACOS_CERTIFICATE: \$\{\{ secrets\.MACOS_CERTIFICATE \}\}/);
+  assert.match(workflow, /WINDOWS_CERTIFICATE: \$\{\{ secrets\.WINDOWS_CERTIFICATE \}\}/);
   assert.match(workflow, /matrix\.platform == 'macos' && vars\.QUIZZER_MACOS_SIGNING_ENABLED == 'true'/);
   assert.match(workflow, /matrix\.platform == 'windows' && vars\.QUIZZER_WINDOWS_SIGNING_ENABLED == 'true'/);
+  assert.match(workflow, /npm run test:e2e:production/);
 });
 
 test('release publishes separate application and landing SBOMs', async () => {
   const workflow = await readFile(workflowPath, 'utf8');
   const verifyJob = workflow.slice(workflow.indexOf('\n  verify:'), workflow.indexOf('\n  landing:'));
-  const landingJob = workflow.slice(workflow.indexOf('\n  landing:'), workflow.indexOf('\n  desktop:'));
+  const landingJob = workflow.slice(workflow.indexOf('\n  landing:'), workflow.indexOf('\n  runtime:'));
 
   assert.match(workflow, /name: Generate CycloneDX SBOM/);
   assert.doesNotMatch(verifyJob, /Generate landing CycloneDX SBOM/);
@@ -103,10 +83,10 @@ test('release requires and publishes curated user-facing notes', async () => {
 
 test('release signing and publication use the protected release environment', async () => {
   const workflow = await readFile(workflowPath, 'utf8');
-  const desktopJob = workflow.slice(workflow.indexOf('\n  desktop:'), workflow.indexOf('\n  publish:'));
+  const runtimeJob = workflow.slice(workflow.indexOf('\n  runtime:'), workflow.indexOf('\n  publish:'));
   const publishJob = workflow.slice(workflow.indexOf('\n  publish:'));
 
-  assert.match(desktopJob, /\n    environment: release\n/);
+  assert.match(runtimeJob, /\n    environment: release\n/);
   assert.match(publishJob, /\n    environment: release\n/);
 });
 
