@@ -1,0 +1,19 @@
+{
+  "sourceId": "ocw-operating-systems-d03641618a3c",
+  "sourceSha256": "dbe743f0c14aeb1cbc88d9590a5d9938b513871174d74c2f421f88e1863114ed",
+  "method": "pypdf-5.9.0 independent source inspection; NOT extraction ground truth",
+  "pages": [
+    {
+      "page": 1,
+      "text": " \n# -*- mode: org -*­\n#+STARTUP: indent \nhow to run connect to qemu from gdb \nhow to pass a break point multiple times (c n) \n* <2011-10-03 Mon>: processes, threads, and scheduling \n* Plan:\n process\n threads\n scheduling \n* Process: \n** abstract virtual machine \nprovides the illusion to application of a dedicated computer, but an abstract one \nconvenient for application developer \none process cannot effect another accidentally \n** API: \nfork \nexec \nexit \nwait \nkill \nsbrk \ngetpid \n* Problem: more processes than processors \n** xv6 picture: \n1 user thread and 1 kernel thread per process \n1 scheduler thread per processor \nn processors \n** terms \n*** a process: address space plus one or more threads \n*** a thread: thread of execution \nkernel thread: thread running in kernel mode \nuser thread: thread running in user mode \n*** thread of execution: \nan abstraction that contains enough state of a running program that it can be \nstopped and resumed \nxv6 API: yield, swtch \n* Goals for solution: \n- Switching transparent to user threads \n- User thread cannot hog a processor\t  (kernel thread assumed to be correct, so\n  not a goal) \n* Overview of switch between two user threads \n** user threads \n- User -> kernel transition \n- kernel -> kernel switch \n- kernel -> User transition \n** guaranteed U->K transitions \n1"
+    },
+    {
+      "page": 2,
+      "text": "  \n \n- timing interrupt every 100 ms \n- switches to different kernel thread on yield \n- the different kernel thread returns to a different user thread \n* Challenges in implementing:\n \n** Opaque code (\"You are not supposed to understand this\")\n \n** Concurrency  (several processors switching between threads)\n \n** Terminating a thread, always need a valid stack\n \n* Xv6 design\n \nOne scheduler thread per processor\n \nScheduling organized as co-routines\n \nScheduler thread performs cleanup\n \n* Code\n \n** Forced switching:\n \n*** demo of two processes who don't invoke system calls\n \n**** look at process states\n \n*** clock interrupt\n \nlapic.c for SMP\n \ntimer.c for uniprocessor\n \n*** walk through what xv6 does to guarantee switching\n \nbreakpoint in trap\n \nget hog running (c 100)\n \nlook at tf, in particular tf->eip\n \nlook at tf->trapno (timer interrupt), gets to yield\n \nget to swtch, look at contexts (p /x *cpus[0]->scheduler)\n \nlook at eip before return from swtch  (we switched to scheduler thread)\n \nscheduler: switches to selected thread (set b proc.c:278)\n \nwill return user space\n \nwhat is the scheduling policy?\n \nwill the thread that called yield run immediately again?\n \n** Concurrency\n - plock held across swtch; why?\n   yield: p is set runnable, p must complete switch before another scheduler choses p\n - hard to reason about; coroutine style helps\n - can two schedulers select the same runnable process?\n - why does scheduler release after loop, and re-acquire it immediately? (run with interrupts!)\n \n** Thread clean up\n  - let's look at kill: can we clean up killed process?  (no: it might be running,\n  holding locks etc.)\n    before returning to user space: process kills itself by calling exit\n  - let's look at exit; can thread delete its stack?\t   (no: it has to switch off\n it!)\n  - wait() does the cleanup \n2"
+    },
+    {
+      "page": 3,
+      "text": " \nMIT OpenCourseWare\nhttp://ocw.mit.edu \n6.828 Operating System Engineering \nFall 2012 \nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms. "
+    }
+  ]
+}

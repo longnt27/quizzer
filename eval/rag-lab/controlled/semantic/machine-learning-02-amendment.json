@@ -1,0 +1,22 @@
+{
+  "id": "machine-learning-02-amendment",
+  "scenarioId": "machine-learning-02",
+  "family": "machine-learning",
+  "split": "validation",
+  "language": "vi",
+  "title": "Machine-Learning Lab 43020 / Signed amendment",
+  "pages": [
+    [
+      {
+        "id": "title",
+        "type": "heading",
+        "text": "Machine-Learning Lab 43020 / Signed amendment"
+      },
+      {
+        "id": "revision",
+        "type": "paragraph",
+        "text": "Phụ lục có chữ ký, hiệu lực từ 2026-01-01: copies đổi thành 7. Các thiết lập và giới hạn khác của bản 2025 giữ nguyên."
+      }
+    ]
+  ]
+}

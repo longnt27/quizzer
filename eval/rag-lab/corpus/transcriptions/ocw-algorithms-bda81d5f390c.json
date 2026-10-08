@@ -1,0 +1,35 @@
+{
+  "sourceId": "ocw-algorithms-bda81d5f390c",
+  "sourceSha256": "531c70ff75c9c892ea79b204021032d8a8310bd5444ce927d504bab07d42b3f3",
+  "method": "pypdf-5.9.0 independent source inspection; NOT extraction ground truth",
+  "pages": [
+    {
+      "page": 1,
+      "text": "Lecture 14 Graphs II: DFS 6.006 Fall 2011\nLecture 14: Graphs II: Depth-First Search\nLecture Overview\n• Depth-First Search\n• Edge Classiﬁcation\n• Cycle Testing\n• Topological Sort\nRecall:\n• graph search: explore a graph\ne.g., ﬁnd a path from start vertex s to a desired vertex\n• adjacency lists: array Adj of |V |linked lists\n– for each vertex u ∈V , Adj[u] stores u’s neighbors, i.e., {v ∈V |(u, v) ∈E}\n(just outgoing edges if directed)\nFor example:\na\nb c\na\nb\nc\nc\nc\nb\na\nAdj\nFigure 1: Adjacency Lists\nBreadth-ﬁrst Search (BFS):\nExplore level-by-level from s — ﬁnd shortest paths\n1"
+    },
+    {
+      "page": 2,
+      "text": "Lecture 14 Graphs II: DFS 6.006 Fall 2011\nDepth-First Search (DFS)\nThis is like exploring a maze.\ns\nFigure 2: Depth-First Search Frontier\nDepth First Search Algorithm\n• follow path until you get stuck\n• backtrack along breadcrumbs until reach unexplored neighbor\n• recursively explore\n• careful not to repeat a vertex\nparent  = {s: None}\nDFS-visit (V, Adj, s):\n for v in Adj [s]:\n  if v not in parent: \n   parent [v] = s\n   DFS-visit (V, Adj, v) \nDFS (V, Adj)\n parent = { }\n for s in V:\n  if s not in parent: \n   parent [s] = None \n   DFS-visit (V, Adj, s)\n}}\nsearch from \nstart vertex s\n(only see \nstuff reachable \nfrom s)\nexplore \nentire graph\n(could do same \nto extend BFS)\nstart \nv\n/f_inish\n v\nFigure 3: Depth-First Search Algorithm\n2"
+    },
+    {
+      "page": 3,
+      "text": "Lecture 14 Graphs II: DFS 6.006 Fall 2011\nExample\n1\n3\n2 6\nback edge\n7\n5\n4\n8\nback \nedge\nforward \nedge\ncross edge\na b c\nd e f\nS1 S2\nFigure 4: Depth-First Traversal\nEdge Classiﬁcation\nback edge: to ancestor\nforward edge: to descendant\ncross edge (to another subtree)\ntree edges (formed by parent)\nnontree edges\nFigure 5: Edge Classiﬁcation\n• to compute this classiﬁcation (back or not), mark nodes for duration they are “on the\nstack”\n• only tree and back edges in undirected graph\nAnalysis\n• DFS-visit gets called with\n=⇒ time in DFS-visit =\ns\n∑a vertex s only once (because then parent[s] set)\n|Adj[s]|= O(E)\n∈V\n• DFS outer loop adds just O(V )\n=⇒ O(V + E) time (linear time)\n3"
+    },
+    {
+      "page": 4,
+      "text": "Lecture 14 Graphs II: DFS 6.006 Fall 2011\nCycle Detection\nGraph G has a cycle ⇔DFS has a back edge\nProof\ntree edges\nis a cycle\nback edge: to tree ancestor\n(<=)\n(=>)\n consider /f_irst visit to cycle:\nFIRST!\nv2\nv3\nvk\nv1 v0\n• before visit to vi ﬁnishes,\nwill visit vi+1 (& ﬁnish):\nwill consider edge (v i, vi+1)\n=⇒ visit vi+1 now or already did\n• =⇒ before visit to v0 ﬁnishes,\nwill visit vk (& didn’t before)\n• =⇒ before visit to vk (or v0) ﬁnishes,\nwill see (vk, v0) as back edge\nJob scheduling\nGiven Directed Acylic Graph (DAG), where vertices represent tasks & edges represent\ndependencies, order tasks without violating dependencies\n4"
+    },
+    {
+      "page": 5,
+      "text": "Lecture 14 Graphs II: DFS 6.006 Fall 2011\nG\nA\nH\nB C F\nD E\n I\n1234\n78 9\n56\nFigure 6: Dependence Graph: DFS Finishing Times\nSource:\nSource = vertex with no incoming edges\n= schedulable at beginning (A,G,I)\nAttempt:\nBFS from each source:\n• from A ﬁnds A, BH, C, F\n• from D ﬁnds D, BE, CF ←slow . . . and wrong!\n• from G ﬁnds G, H\n• from I ﬁnds I\nTopological Sort\nDFS-Visit(v)\n. . .Reverse of DFSﬁnishing times (time at which DFS-Visit(v) ﬁnishes)\n\n\n\n\n\n\n\n\n\norder.append(v)\n\n order.reverse()\n5"
+    },
+    {
+      "page": 6,
+      "text": "Lecture 14 Graphs II: DFS 6.006 Fall 2011\nCorrectness\nFor any edge (u, v) — u ordered before v, i.e., v ﬁnished before u\nu v\n• if u visited before v:\n– before visit to u ﬁnishes, will visit v (via (u, v) or otherwise)\n– =⇒ v ﬁnishes before u\n• if v visited before u:\n– graph is acyclic\n– =⇒ u cannot be reached from v\n– =⇒ visit to v ﬁnishes before visiting u\n6"
+    },
+    {
+      "page": 7,
+      "text": "MIT OpenCourseWare\nhttp://ocw.mit.edu\n6.006 Introduction to Algorithms \nFall  2011\n \n \n \nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms."
+    }
+  ]
+}

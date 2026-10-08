@@ -1,0 +1,119 @@
+{
+  "sourceId": "ocw-algorithms-11c82375d3fd",
+  "sourceSha256": "b4ae7535c7ae40f3d0aef2da684218213d44ee30103e3c3de28bc6e288339de0",
+  "method": "pypdf-5.9.0 independent source inspection; NOT extraction ground truth",
+  "pages": [
+    {
+      "page": 1,
+      "text": "6.006- Introduction to \nAlgorithms \nLecture 4 \n1\nCourtesy of MIT Press. Used with permission."
+    },
+    {
+      "page": 2,
+      "text": "Menu \n• Priority Queues \n• Heaps \n• Heapsort \n \n \n2"
+    },
+    {
+      "page": 3,
+      "text": "Priority Queue \nA data structure implementing a set S of elements, each \nassociated with a key, supporting the following operations: \nincrease_key(S, x, k) : \ninsert element x into set S  \nreturn element of  S with largest key \nreturn element of  S  with largest key and \nremove it from S \nincrease the value of element x’ s key to \nnew value k \n(assumed to be as large as current value) \ninsert(S, x) : \nmax(S) : \nextract_max(S) :  \n3"
+    },
+    {
+      "page": 4,
+      "text": "Heap \n• Implementation of a priority queue \n• An array, visualized as a nearly complete binary tree \n• Max Heap Property: The key of a node is  ≥  than the keys of \nits children \n  (Min Heap defined analogously) \n \nAll my arrays start at index 1 \n16 \n14 10 \n8 7 9 3 \n2 4 1 \n16 \n14 \n10 \n 8 \n 7 \n 9 \n 3 \n 2 \n 4 \n 1 \n1 2 3 4 5 6 7 8 9 10 \n1 \n2 3 \n4 5 6 7 \n8 9 10 \n4"
+    },
+    {
+      "page": 5,
+      "text": "Heap as a Tree \nroot of tree:    first element in the array, corresponding to i = 1 \nparent(i) =i/2: returns index of node's parent \nleft(i)=2i:        returns index of node's left child \nright(i)=2i+1: returns index of node's right child \n16 \n14 10 \n8 7 9 3 \n2 4 1 \n16 \n14 \n10 \n 8 \n 7 \n 9 \n 3 \n 2 \n 4 \n 1 \n1 2 3 4 5 6 7 8 9 10 \n1 \n2 3 \n4 5 6 7 \n8 9 10 \nNo pointers required!  Height of a binary heap is O(lg n) \n5"
+    },
+    {
+      "page": 6,
+      "text": "Operations with Heaps \ninsert, extract_max, heapsort  \nproduce a max-heap from an unordered \narray \ncorrect a single violation of the heap \nproperty in a subtree at its root \nbuild_max_heap : \nmax_heapify : \nHeap Operations \n6"
+    },
+    {
+      "page": 7,
+      "text": "Max_heapify \n• Assume that the trees rooted at left(i) and right(i) \nare max-heaps \n• If element A[i] violates the max-heap property, correct \nviolation by “trickling” element A[i] down the tree, \nmaking the subtree rooted at index i a max-heap \n7"
+    },
+    {
+      "page": 8,
+      "text": "Max_heapify (Example) \nNode 10 is the left child of node 5 but is drawn to the right for convenience \n8"
+    },
+    {
+      "page": 9,
+      "text": "Max_heapify (Example) \n9"
+    },
+    {
+      "page": 10,
+      "text": "Max_heapify (Example) \nTime=? O(log n) \n10"
+    },
+    {
+      "page": 11,
+      "text": "Max_Heapify Pseudocode \nl = left(i) \nr = right(i) \nif (l <= heap-size(A) and A[l] > A[i]) \n     then largest = l     else largest = i \nif (r <= heap-size(A) and A[r] > A[largest]) \n     then largest = r \nif largest = i \n     then exchange A[i] and A[largest] \n             Max_Heapify(A, largest) \n11"
+    },
+    {
+      "page": 12,
+      "text": "Build_Max_Heap(A) \nConverts  A[1…n] to a max heap \nBuild_Max_Heap(A):  \n for i=n/2 downto 1 \n  do Max_Heapify(A, i) \nTime=? O(n log n) via simple analysis \nWhy start at n/2?   \n \nBecause elements A[n/2 + 1 … n] are all leaves of the tree \n2i > n, for i > n/2 + 1 \n12"
+    },
+    {
+      "page": 13,
+      "text": "Build_Max_Heap(A) Analysis \nConverts  A[1…n] to a max heap \nBuild_Max_Heap(A):  \n for i=n/2 downto 1 \n  do Max_Heapify(A, i) \nObserve however that Max_Heapify takes O(1) for \ntime for nodes that are one level above the leaves, and \nin general, O(l) for the nodes that are l levels above the \nleaves.  We have n/4 nodes with level 1, n/8 with level 2, \nand so on till we have one root node that is lg n levels \nabove the leaves. \n13"
+    },
+    {
+      "page": 14,
+      "text": "Build_Max_Heap(A) Analysis \nConverts  A[1…n] to a max heap \nBuild_Max_Heap(A):  \n for i=n/2 downto 1 \n  do Max_Heapify(A, i) \nTotal amount of work in the for loop can be summed as: \n      n/4 (1 c) + n/8 (2 c) + n/16 (3 c) + … + 1 (lg n c) \nSetting n/4 = 2k and simplifying we get: \n      c 2k( 1/20 + 2/21 + 3/22 + … (k+1)/2k ) \nThe term is brackets is bounded by a constant! \n \nThis means that Build_Max_Heap is O(n) \n14"
+    },
+    {
+      "page": 15,
+      "text": "Build-Max-Heap Demo \n15"
+    },
+    {
+      "page": 16,
+      "text": "Build-Max-Heap Demo \n16"
+    },
+    {
+      "page": 17,
+      "text": "Build-Max-Heap \n17"
+    },
+    {
+      "page": 18,
+      "text": "Heap-Sort \nSorting Strategy: \n1. Build Max Heap from unordered array; \n18"
+    },
+    {
+      "page": 19,
+      "text": "Heap-Sort \nSorting Strategy: \n1. Build Max Heap from unordered array; \n2. Find maximum element A[1]; \n3. Swap elements A[n] and A[1]:  \n  now max element is at \nthe end of the array! \n \n19"
+    },
+    {
+      "page": 20,
+      "text": "Heap-Sort \nSorting Strategy: \n1. Build Max Heap from unordered array; \n2. Find maximum element A[1]; \n3. Swap elements A[n] and A[1]:  \n  now max element is at \nthe end of the array! \n 4. Discard  node n from heap  \n   (by decrementing heap-size variable) \n20"
+    },
+    {
+      "page": 21,
+      "text": "Heap-Sort \nSorting Strategy: \n1. Build Max Heap from unordered array; \n2. Find maximum element A[1]; \n3. Swap elements A[n] and A[1]:  \n  now max element is at \nthe end of the array! \n 4. Discard  node n from heap  \n   (by decrementing heap-size variable) \n5. New root may violate max heap property, but its \nchildren are max heaps. Run max_heapify to fix this. \n21"
+    },
+    {
+      "page": 22,
+      "text": "Heap-Sort \nSorting Strategy: \n1. Build Max Heap from unordered array; \n2. Find maximum element A[1]; \n3. Swap elements A[n] and A[1]:  \n  now max element is at \nthe end of the array! \n 4. Discard  node n from heap  \n   (by decrementing heap-size variable) \n5. New root may violate max heap property, but its \nchildren are max heaps. Run max_heapify to fix this. \n6. Go to Step 2 unless heap is empty. \n22"
+    },
+    {
+      "page": 23,
+      "text": "Heap-Sort Demo \nSwap A[10] and A[1] \nMax_heapify(A,1) \n23"
+    },
+    {
+      "page": 24,
+      "text": "Heap-Sort Demo \nSwap A[9] and A[1] \n24"
+    },
+    {
+      "page": 25,
+      "text": "Heap-Sort Demo \n25"
+    },
+    {
+      "page": 26,
+      "text": "Heap-Sort Demo \nSwap A[8] and A[1] \n26"
+    },
+    {
+      "page": 27,
+      "text": "Heap-Sort \nRunning time: \nafter n iterations the Heap is empty \nevery iteration involves a swap and a max_heapify \noperation; hence it takes O(log n) time \nOverall O(n log n) \n27"
+    },
+    {
+      "page": 28,
+      "text": "MIT OpenCourseWare\nhttp://ocw.mit.edu\n6.006  Introduction to Algorithms\nFall  2011\n \n \n \nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms."
+    }
+  ]
+}

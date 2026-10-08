@@ -1,0 +1,22 @@
+{
+  "id": "databases-03-amendment",
+  "scenarioId": "databases-03",
+  "family": "databases",
+  "split": "dev",
+  "language": "en",
+  "title": "Databases Lab 74271 / Signed amendment",
+  "pages": [
+    [
+      {
+        "id": "title",
+        "type": "heading",
+        "text": "Databases Lab 74271 / Signed amendment"
+      },
+      {
+        "id": "revision",
+        "type": "paragraph",
+        "text": "Signed amendment effective 2026-01-01: copies becomes 8 replicas. All other settings and regional limits of the 2025 baseline remain unchanged."
+      }
+    ]
+  ]
+}

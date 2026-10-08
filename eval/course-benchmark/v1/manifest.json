@@ -1,0 +1,14 @@
+{
+  "version": "0.1.0",
+  "name": "Quizzer course benchmark candidate pilot",
+  "status": "candidate",
+  "createdAt": "2026-10-08",
+  "pageNumbering": "one-based physical PDF pages, not printed slide numbers",
+  "evidenceResolution": "page",
+  "sourceLanguage": "vi",
+  "splitting": "whole instructor/course family; IT3080 development, IT4015 held-out test",
+  "claimLimit": "Ten lecture PDFs from two course families. Not human-validated. One held-out family cannot support a population-level cluster confidence interval. No model-quality result is included.",
+  "annotationLicense": "Apache-2.0 applies only to original annotations and code, not source documents.",
+  "catalogPolicyUrl": "https://tailieuhust.com/policy/",
+  "annotationMethod": "Original AI-authored questions and short paraphrased answers based on extracted PDF text. Human review, especially negative-case and alternate-evidence auditing, is outstanding. PDF renders and binary hashes were unavailable during authoring."
+}
