@@ -1,0 +1,19 @@
+{
+  "sourceId": "ocw-probability-f9d2b08ea655",
+  "sourceSha256": "8d2353acbee4fe0aebe8e62e70659fa96e4656838c2b120525a16009284ac97b",
+  "method": "pypdf-5.9.0 independent source inspection; NOT extraction ground truth",
+  "pages": [
+    {
+      "page": 1,
+      "text": "LECTURE 4 Discrete uniform law\n• Readings: Section mir • Let all sample points be equally likely\n• Theng\nLecture outline number of elements ofA APcAdy y | |\ntotal number of sample points Ω• Principles of counting | |\n• Just count...• Many examples\n– permutations\n– khpermutations\n– combinations\n– partitions\n• Binomial probabilities\nBasic counting principle Example\n• r stages • Probability that six rolls of a sixhsided die\n• ni choices at stagei all give diﬀerent numbers?\n– Number of outcomes that\nmake the event happenv\n– Number of elements\nin the sample spacev\n• Number of choices isv n\nmnn ···n r\n– Answerv\n• Number of license plates\nwith o letters and p digits y\n• ... if repetition is prohibited y\n• Permutations: Number of ways\nof ordering n elements isv\n• Number of subsets of{m,...,n } y\n1"
+    },
+    {
+      "page": 2,
+      "text": "Combinations Binomial probabilities\n•\n￿n￿\nv number ofkhelement subsetsk • n independent coin tosses\nof a givennhelement set – PcHdyp\n• Two ways of constructing an ordered\nsequence of k distinct itemsv\nPcHTTHHHdy\n– Choose the k items one at a timev\n•\nnOncn−md ···cn −kfmd y choicesc − dO • csequenced y S headscm − dSt a i l sn k P p p\n– Choose k itemsg then order them\nckO possible ordersd\nPck headsd y\n￿\nPcseq.d\n• Hencev\n￿\nk− ad seq.\nn￿\nhe\nnO· kOyk cn − kdO y cS ofk−head seqs d kp cm − kpdn. · −\n￿n\nk\n￿ nOy y kcm dn−kpkOcn − kdO\n￿n\nk\n￿\np −\nk\n￿n\ny\nyl\n￿n\nk\n￿\nCoin tossing problem Partitions\n• event Bv o out of ml tosses were “heads”i • qnhcard deckg dealt to p players\n– Given that B occurredg • Find Pceach gets an aced\nwhat is the cconditionald probability\n• Outcomev a partition of the qn cardsthat the ﬁrst n tosses were heads?\n– number of outcomesv\n• All outcomes in setB are equally likelyv qnOprobability op cm − pds\nmoO moO moO moO\n– Conditional probability law is uniform • Count number of ways of distributing the\nfour acesv p o n\n• Number of outcomes inBv\n· ·\n• Count number of ways of dealing the\n• Out of the outcomes inBg remaining pt cards\nhow many start with HH? ptO\nmnO mnO mnO mnO\n• Answerv\nptOp · o · nmnO mnO mnO mnO\nqnO\nmoO moO moO moO\n2"
+    },
+    {
+      "page": 3,
+      "text": "MIT OpenCourseWare\nhttp://ocw.mit.edu\n6.041 / 6.431 Probabilistic Systems Analysis and Applied Probability\nFall 2010\nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms."
+    }
+  ]
+}

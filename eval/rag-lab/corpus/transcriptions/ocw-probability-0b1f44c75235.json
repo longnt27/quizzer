@@ -1,0 +1,19 @@
+{
+  "sourceId": "ocw-probability-0b1f44c75235",
+  "sourceSha256": "850b89d0f64e1a1d3be2d1daab202efa9b270a0ad64085fd96c8af836e95b9da",
+  "method": "pypdf-5.9.0 independent source inspection; NOT extraction ground truth",
+  "pages": [
+    {
+      "page": 1,
+      "text": "LECTURE 11 A general formula\nDerived distributions; convolution; • Let Y = gnXo\ncovariance and correlation g strictly monotonicu\ndg\n• Readings:\nslope (x)y dx \nFinish Section 4ux;\nSection 4uy\ng(x)\n[y, y+?]\nExample\ny x\nf (y,x)=1X,Y [x, x+d]\n1\n• Event x ≤X ≤x r δ is the same as\ngnxo ≤Y ≤gnx r δo\nor napproximatelyo\n1 x gnxo ≤Y ≤gnxor δ|ndg/dxonxo|\nFind the PDF ofZ = gnX, Yo= Y/X • Hences\ndgδfXnxo = δfY nyo\nnz z ≤x\n⏐⏐\n⏐\nnxo\nF o= dxZ\n⏐\n⏐⏐\n⏐\nwhere y = gnxo\n⏐\nFZnzo= z ≥x\nThe distribution ofX r Y The continuous case\n• W = X r Y ; X, Y independent • W = X r Y ; X, Y independent\n.\ny \ny\n.\n \n(0,3)\n.(1,2) w \n.(2,1)\n.(3,0)\n.\nx w x  \npW nwo = PnX r Y = wo\n∑ x + y = w\n= PnX = xoPnY = w −xo\n=\n∑x\np nxop nw −xo • fW Xnw | xo= fY nw −xoX Y\nx\n|\n• fW,Xnw, xo=f Xnxof• Mechanics: W|Xnw | xo\n= fXnxofY nw xo– Put the pmf’s on top of each other −\n– Flip the pmf ofY f nwo=\n∫ ∞\n• W fXnxofY nw −xo dx\n– Shift the ﬂipped pmf byw\n−∞\nnto the right ifw> wo\n– Crosstmultiply and add\n1"
+    },
+    {
+      "page": 2,
+      "text": "Two independent normal r.v.s The sum of independent normal r.v.’s\n• X ∼Nn yµx, σxos yY ∼Nn yµy, σy os • X ∼Nnw, σxos yY ∼Nnw, σy os\nindependent independent\nfX,Y nx, yo=f XnxofY nyo Let\nx\n{ W = X r Y\nn − oy n − oy\n•\nx µ= exp − x y µ y\ny − y\n}\nfW nwo=\n∫ ∞\nfXnxofY nw −xo dxyπσ xσy yσx yσy −∞\nx − yx /y y\n=\n∞ y yσ −xox −nw /yσe e y dx\n• PDF is constant on the ellipse where yπσ xσy\ny\n∫\n−∞\nnx − yµxo n nalgebrao = ceyryσy\n−µyoy −γw\nx yσyy\nConclusion:is constant • W is normal\n– mean=ws variance= yσx r yσy\n• Ellipse is a circle whenσx = σy\n– same argument for nonzero mean case\nCovariance Correlation coeﬃcient\n• covnX, Yo= E\n[\nnX −E[X]o · nY −E[Y ]o\n]\n• Dimensionless version of covariance:\n[\nnX E[X]o nY E[Y ]o• Zerotmean case: covnX, Yo= E[XY ] ρ = E − −\nσX\n· σY\n]\nx \n. covnx X, Yo\n. =\n.\n.\n... σXσY\n..\n.\n.\n.\n. .. .\n.. . .\n.\n. . .\n.\n.. . . . .. . . .. .\n.\n.\n.. . .\n... . . .\n..\n.\n. x ρ x. . .. . .. . . . . .\n.. . .\n.\n. .. . . .\n.\n... .\n..\n.\n.. . .\n..\n• −\n.\n.\n..\n≤\n.. . . .\n.\n.\n. .\n.\n≤\n..\n.\n. . . .\n.. . .\n.\n.\n.\n.. . . y \n.\n.\n.\n..\n.\n. y \n.\n.\n...\n..\n.\n. •| ρ =x nX E[X]o = cnY E[Y ]o.. .\n.\n...\n.\n.\n.\n..\n.\n| ⇔ − −\n..\n.\n..\n.\n. nlinearly relatedo\n..\n.\n..\n.\n.\n. • Independent ⇒ ρ =w\n• covnX, Yo= E[XY ] −E[X]E[Y ] nconverse is not trueo\n n\n• var\n n\n X o\ni\n∑\ni\n=x\n = varn Xiory covnXi,X j\ni\n∑\n=x ni,j\n∑\no:i=j\n• independent ⇒ covnX, Yo=w\nnconverse is not trueo\n̸\n2"
+    },
+    {
+      "page": 3,
+      "text": "MIT OpenCourseWare\nhttp://ocw.mit.edu\n6.041 / 6.431 Probabilistic Systems Analysis and Applied Probability\nFall 2010\nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms."
+    }
+  ]
+}

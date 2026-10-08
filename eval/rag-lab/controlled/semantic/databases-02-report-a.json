@@ -1,0 +1,22 @@
+{
+  "id": "databases-02-report-a",
+  "scenarioId": "databases-02",
+  "family": "databases",
+  "split": "dev",
+  "language": "en",
+  "title": "Databases Lab 70787 / Report A",
+  "pages": [
+    [
+      {
+        "id": "title",
+        "type": "heading",
+        "text": "Databases Lab 70787 / Report A"
+      },
+      {
+        "id": "measurement",
+        "type": "paragraph",
+        "text": "Unsigned report A: project Databases Lab 70787; event E17; measured at 2026-02-02 10:00 UTC; latency = 55 ms. Neither report has priority over the other. These are conflicting observations of the same event, not two independent runs."
+      }
+    ]
+  ]
+}

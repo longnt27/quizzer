@@ -1,0 +1,22 @@
+{
+  "id": "machine-learning-01-report-a",
+  "scenarioId": "machine-learning-01",
+  "family": "machine-learning",
+  "split": "validation",
+  "language": "en",
+  "title": "Machine-Learning Lab 20746 / Report A",
+  "pages": [
+    [
+      {
+        "id": "title",
+        "type": "heading",
+        "text": "Machine-Learning Lab 20746 / Report A"
+      },
+      {
+        "id": "measurement",
+        "type": "paragraph",
+        "text": "Unsigned report A: project Machine-Learning Lab 20746; event E17; measured at 2026-02-02 10:00 UTC; latency = 63 ms. Neither report has priority over the other. These are conflicting observations of the same event, not two independent runs."
+      }
+    ]
+  ]
+}

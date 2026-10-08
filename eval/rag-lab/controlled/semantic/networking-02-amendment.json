@@ -1,0 +1,22 @@
+{
+  "id": "networking-02-amendment",
+  "scenarioId": "networking-02",
+  "family": "networking",
+  "split": "dev",
+  "language": "vi",
+  "title": "Networking Lab 21367 / Signed amendment",
+  "pages": [
+    [
+      {
+        "id": "title",
+        "type": "heading",
+        "text": "Networking Lab 21367 / Signed amendment"
+      },
+      {
+        "id": "revision",
+        "type": "paragraph",
+        "text": "Phụ lục có chữ ký, hiệu lực từ 2026-01-01: copies đổi thành 7. Các thiết lập và giới hạn khác của bản 2025 giữ nguyên."
+      }
+    ]
+  ]
+}

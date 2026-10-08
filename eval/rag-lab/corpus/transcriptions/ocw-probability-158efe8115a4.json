@@ -1,0 +1,19 @@
+{
+  "sourceId": "ocw-probability-158efe8115a4",
+  "sourceSha256": "f689f2d772b3ffd6b62834514163a74f00e80cf4bb4ac52f4c6eb547001edafd",
+  "method": "pypdf-5.9.0 independent source inspection; NOT extraction ground truth",
+  "pages": [
+    {
+      "page": 1,
+      "text": "LECTURE 18 Review\nAssume a single class of recurrentMarkov Processes – III • statesn\naperiodic;\nplus transient statesp Thenn\nlim r inReadings: Section ypv ij k= πjn→∞\nwhere πj does not depend on the initial\nconditions:\nLecture outline lim PiXn = j | Xr = ik=π jn→∞\n• Review of steadyostate behavior\nπs, . . . ,πm can be found as the unique\n• Probability of blocked phone calls\n•\nsolution to the balance equations\n• Calculating absorption probabilities πj =\n• Calculating expected time to absorption\n∑\nπkpkj,j =s , . . . , m,\nk\ntogether with\n∑\nπj =s\nj\nExample The phone company problem\n0.5 0.8 • Calls originate as a Poisson processn\nrate λ\n0.5\n– Each call duration is exponentially21 distributed iparameter µk\n0.2 – B lines available\nπs =t /yn πt =w /y • Discrete time intervals\nof ismallk lengthδ\n• Assume process starts at state sp\n\"#\n• PiXs =s , and Xsrr = sk= 0 1 i!1 i B-1 B\niµ#\n• PiXsrr = s andXsrs = tk • Balance equations: λπi−s = iµπi\nλi B λi\n• πi = πr πr =s /µiib i\n∑\nµiib=r\n  \nLECTURE 20\nMarkov Processes – III\nReadings: Section 6.4\nLecture outline\n• Review of steady-state behavior\n• Probability of blocked phone calls\n• Calculating absorption probabilities\n• Calculating expected time to absorption\n     \nReview\n• Assume a single class of recurrent states,\naperiodic. Then,\nlim\nn→∞rij(n) =πj\nwhere πj does not depend on the initial\nconditions\nlimn→∞P(Xn = j | X0) =πj\n• π1, . . . ,πm can be found as the unique\nsolution of the balance equations\nπj =\n∑\nk\nπkpkj\ntogether with\n∑\nj\nπj = 1\n     \nExample\n21\n0.5\n0.5 0.8\n0.2\nπ1 = 2/7,π2 = 5/7\n• Assume process starts at state 1.\n• P(X1 = 1, and X100 = 1)=\n• P(X100 = 1 andX101 = 2)\n       \nThe phone company problem\n• Calls originate as a Poisson process,\nrate λ\n– Each call duration is exponentially\ndistributed (parameter µ)\n– B lines available\n• Discrete time intervals\nof (small) lengthδ\n• Balance equations: λπi−1 = iµπi\n• πi = π0\nλi\nµii! π0 = 1/\nB∑\ni=0\nλi\nµii!\n1"
+    },
+    {
+      "page": 2,
+      "text": "Calculating absorption probabilities Expected time to absorption\n• What is the probabilityai that:\nprocess eventually settles in state vn 1\ngiven that the initial state isi? 3 0.5\n440.50.41 54\n0.6 0.2\n0.2 1 21\n3 0.3 0.8\n440.50.4\n• Find expected number of transitionsµ\n0.6 in\n0.2 until reaching the absorbing staten\n1 2\ngiven that the initial state isi?\n0.8\nFor i = vnai =\nFor i = wna = µi = r fori =i\n∑ For all otheri: µ= for all other i = s m pijµjai pijaj, i\nj\n∑\nj\n– unique solution\n– unique solution\nMean ﬁrst passage and recurrence\ntimes\n• Chain with one recurrent class;\nﬁx s recurrent\n• Mean ﬁrst passage time fromi to s:\nti = E[min{n ≥ r such thatXn = s}| Xr = i]\n• ts,t t, . . . , tm are the unique solution to\nts =r ,\nti = s m\n∑\npij tj, for all i = s\nj\n• Mean recurrence time ofs:\nt∗s = E[min{n ≥ s such thatXn = s}| Xr = s]\n• t∗s = s m∑\nj psj tj\n̸\n2"
+    },
+    {
+      "page": 3,
+      "text": "MIT OpenCourseWare\nhttp://ocw.mit.edu\n6.041 / 6.431 Probabilistic Systems Analysis and Applied Probability\nFall 2010\nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms.\n3"
+    }
+  ]
+}

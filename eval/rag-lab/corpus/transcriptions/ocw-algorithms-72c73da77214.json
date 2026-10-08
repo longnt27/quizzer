@@ -1,0 +1,35 @@
+{
+  "sourceId": "ocw-algorithms-72c73da77214",
+  "sourceSha256": "e751e7181dd778d39439d83528b0ebe74b79de8a63d3cc76e98f5ed6a8aaf974",
+  "method": "pypdf-5.9.0 independent source inspection; NOT extraction ground truth",
+  "pages": [
+    {
+      "page": 1,
+      "text": "Lecture 8 Hashing I 6.006 Fall 2011\nLecture 8: Hashing I\nLecture Overview\n• Dictionaries and Python\n• Motivation\n• Prehashing\n• Hashing\n• Chaining\n• Simple uniform hashing\n• “Good” hash functions\nDictionary Problem\nAbstract Data Type (ADT) — maintain a set of items, each with a key, subject to\n• insert(item): add item to set\n• delete(item): remove item from set\n• search(key): return item with key if it exists\nWe assume items have distinct keys (or that inserting new one clobbers old).\nBalanced BSTs solve in O(lg n) time per op. (in addition to inexact searches like next-\nlargest).\nGoal: O(1) time per operation.\nPython Dictionaries:\nItems are (key, value) pairs e.g. d= {‘algorithms’: 5, ‘cool’: 42}\nd.items() → [(‘algorithms’, 5),(‘cool’,5)]\nd[‘cool’] → 42\nd[42] → KeyError\n‘cool’ in d → True\n42 in d → False\nPython set is really dict where items are keys (no values)\n1"
+    },
+    {
+      "page": 2,
+      "text": "Lecture 8 Hashing I 6.006 Fall 2011\nMotivation\nDictionaries are perhaps the most popular data structure in CS\n• built into most modern programming languages (Python, Perl, Ruby, JavaScript,\nJava, C++, C#, . . . )\n• e.g. best docdist code: word counts & inner product\n• implement databases: (DB HASH in Berkeley DB)\n– English word →deﬁnition (literal dict.)\n– English words: for spelling correction\n– word →all webpages containing that word\n– username →account object\n• compilers & interpreters: names →variables\n• network routers: IP address →wire\n• network server: port number →socket/app.\n• virtual memory: virtual address →physical\nLess obvious, using hashing techniques:\n• substring search (grep, Google) [L9]\n• string commonalities (DNA) [PS4]\n• ﬁle or directory synchronization (rsync)\n• cryptography: ﬁle transfer & identiﬁcation [L10]\nHow do we solve the dictionary problem?\nSimple Approach: Direct Access Table\nThis means items would need to be stored in an array, indexed by key (random access)\n2"
+    },
+    {
+      "page": 3,
+      "text": "Lecture 8 Hashing I 6.006 Fall 2011\n0\n1\n2\nkey\nkey\nkey\nitem\nitem\nitem\n.\n.\n.\nFigure 1: Direct-access table\nProblems:\n1. keys must be nonnegative integers (or using two arrays, integers)\n2. large key range = ⇒ large space — e.g. one key of 2 256 is bad news.\n2 Solutions:\nSolution to 1: “prehash” keys to integers.\n• In theory, possible because keys are ﬁnite = ⇒ set of keys is countable\n• In Python: hash(object) (actually hash is misnomer should be “prehash”) where\nobject is a number, string, tuple, etc. or object implementing hash (default = id\n= memory address)\n• In theory, x= y⇔hash(x) = hash(y)\n• Python applies some heuristics for practicality: for example, hash(‘ \\0B ’) = 64 =\nhash(‘\\0\\0C’)\n• Object’s key should not change while in table (else cannot ﬁnd it anymore)\n• No mutable objects like lists\nSolution to 2: hashing (verb from French ‘hache’ = hatchet, & Old High German ‘happja’\n= scythe)\n• Reduce universe Uof all keys (say, integers) down to reasonable size m for table\n• idea: m≈n= # keys stored in dictionary\n• hash function h: U →{0,1,...,m −1}\n3"
+    },
+    {
+      "page": 4,
+      "text": "Lecture 8 Hashing I 6.006 Fall 2011\n0\n1\nm-1\nk2\n3k\nk1\nT\nh(k1)  = 1\n. ..\n.\n..\n. . .\n.\n. ..\n.\nU\nk\nk\nk k\nk\n1\n2\n3\n4\nFigure 2: Mapping keys to a table\n• two keys ki,kj ∈K collide if h(ki) = h(kj)\nHow do we deal with collisions?\nWe will see two ways\n1. Chaining: TODAY\n2. Open addressing: L10\nChaining\nLinked list of colliding elements in each slot of table\n1\n. ..\n.\nU k\nk\nk k\nk\n1\n2\n3\n4\nk\n.\n.\n.\n4k\n.\nk2\nk3\nh(k1)  =\nh(k2)  =\nh(k4) \nFigure 3: Chaining in a Hash Table\n• Search must go through whole list T[h(key)]\n• Worst case: all n keys hash to same slot = ⇒ Θ(n) per operation\n4"
+    },
+    {
+      "page": 5,
+      "text": "Lecture 8 Hashing I 6.006 Fall 2011\nSimple Uniform Hashing:\nAn assumption (cheating): Each key is equally likely to be hashed to any slot of table,\nindependent of where other keys are hashed.\nlet n = # keys stored in table\nm = # slots in table\nload factor α = n/m= expected # keys per slot = expected length of a chain\nPerformance\nThis implies that expected running time for search is Θ(1+α) — the 1 comes from applying\nthe hash function and random access to the slot whereas the α comes from searching the\nlist. This is equal to O(1) if α= O(1), i.e., m= Ω(n).\nHash\nFunctions\nWe cover three methods to achieve the above performance:\nDivision Method:\nh(k) = kmod m\nThis is practical when mis prime but not too close to power of 2 or 10 (then just depending\non low bits/digits).\nBut it\nis inconvenient to ﬁnd a prime number, and division is slow.\nMultiplication Method:\nh(k) = [(a·k) mod 2w] ≫(w−r)\nwhere a is random, k is w bits, and m= 2r.\nThis is practical when a is odd & 2 w−1 <a< 2w & a not too close to 2 w−1 or 2w.\nMultiplication and bit extraction are faster than division.\n5"
+    },
+    {
+      "page": 6,
+      "text": "Lecture 8 Hashing I 6.006 Fall 2011\nw\nk\nax\nr\n}\nk\nk\nk\n1 1 1\nFigure 4: Multiplication Method\nUniversal Hashing\n[6.046; CLRS 11.3.3]\nFor example: h(k) = [(ak+b) mod p] mod mwhere aand bare random ∈{0,1,...p −1},\nand p is a large prime (> |U|).\nThis implies that for worst case keys k1 = k2, (and for a,b choice of h):\n1Pra,b{event Xk1k2 }= Pra,b{h(k1) = h(k2)}= m\nThis lemma not proved here\nThis implies that:\nEa,b[# collisions with k1] = E[\n∑\nXk1k2 ]\n=\n∑\nk2\nE[Xk1k2 ]\nk2\n=\n∑\nPr{Xk1k2 = 1}\nk2 1\nm\nn= = αm\n\nThis is just as good as above!\n̸\n6"
+    },
+    {
+      "page": 7,
+      "text": " \n \n \n \n \nMIT OpenCourseWare\nhttp://ocw.mit.edu\n6.006 Introduction to Algorithms\nFall 2011\nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms."
+    }
+  ]
+}
