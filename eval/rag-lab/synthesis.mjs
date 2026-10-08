@@ -17,6 +17,16 @@ export function localEndpoint(value) {
   return url.origin;
 }
 
+export function requireLocalModel(name, listed, details) {
+  if (/(?:[:/-]|^)cloud(?:$|[:/-])/i.test(name) || /-cloud$/i.test(name)
+    || listed?.remote_host || listed?.remote_model || details?.remote_host || details?.remote_model) {
+    throw Error('Cloud or remote-backed models are not permitted');
+  }
+  if (!listed?.digest || details?.details?.format !== 'gguf' || !details?.model_info?.['general.architecture']) {
+    throw Error('Verifiable local GGUF model metadata is required');
+  }
+}
+
 export function nearDuplicate(query, previous) {
   const tokens = value => new Set(normalized(value).toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []);
   const left = tokens(query);
@@ -112,6 +122,8 @@ export async function synthesizeCandidates({
   const tags = await jsonRequest(endpoint, '/api/tags', undefined, fetcher);
   const installed = tags.models?.find(m => m.name === model || m.model === model);
   if (!installed?.digest) throw Error('Requested model is not installed with a verifiable digest');
+  const modelDetails = await jsonRequest(endpoint, '/api/show', {model}, fetcher);
+  requireLocalModel(model, installed, modelDetails);
   const version = await jsonRequest(endpoint, '/api/version', undefined, fetcher);
   const outputFile = await import('node:fs/promises').then(fs => fs.open(resolve(output), 'wx'));
   const candidates = [], rejected = [], prompts = [];
@@ -126,6 +138,7 @@ export async function synthesizeCandidates({
       if (transcript.sourceSha256 !== source.sha256) throw Error('Transcript is not bound to the selected source bytes');
       const pages = transcript.pages.filter(p => typeof p.text === 'string' && p.text.trim().length >= 80);
       if (!pages.length) { rejected.push({source: source.id, attempt, reason: 'no-usable-transcription'}); continue; }
+      // Rotate windows across calls. The final retrieval corpus is still the complete source PDF.
       const start = Math.floor(attempt / sources.length) % pages.length;
       const selected = Array.from({length: Math.min(4, pages.length)}, (_, j) => pages[(start + j) % pages.length])
         .map(p => ({page: p.page, text: p.text.slice(0, 4500)}));
