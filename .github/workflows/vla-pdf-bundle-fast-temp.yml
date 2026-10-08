@@ -1,0 +1,94 @@
+name: Temporary VLA PDF Bundle Fast
+
+on:
+  pull_request:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+jobs:
+  bundle-fast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download papers
+        shell: bash
+        run: |
+          set -u
+          mkdir -p "VLA_Kinh_dien" "VLA_HEAD_2026"
+
+          dl () {
+            folder="$1"; name="$2"; url="$3"
+            echo "Downloading: $name"
+            if curl -L --fail --silent --show-error --connect-timeout 5 --max-time 35 --retry 1 -A "Mozilla/5.0" "$url" -o "$folder/$name"; then
+              if head -c 4 "$folder/$name" | grep -q "%PDF"; then
+                printf "%s\t%s\n" "$name" "$url" >> "$folder/INDEX.txt"
+                return 0
+              fi
+            fi
+            rm -f "$folder/$name"
+            printf "%s\t%s\n" "$name" "$url" >> "$folder/MISSING.txt"
+            return 0
+          }
+
+          echo -e "Filename\tSource" > VLA_Kinh_dien/INDEX.txt
+          dl VLA_Kinh_dien "01 - RT-1.pdf" "https://www.roboticsproceedings.org/rss19/p025.pdf"
+          dl VLA_Kinh_dien "02 - PaLM-E.pdf" "https://proceedings.mlr.press/v202/driess23a/driess23a.pdf"
+          dl VLA_Kinh_dien "03 - VIMA.pdf" "https://proceedings.mlr.press/v202/jiang23b/jiang23b.pdf"
+          dl VLA_Kinh_dien "04 - Diffusion Policy.pdf" "https://www.roboticsproceedings.org/rss19/p026.pdf"
+          dl VLA_Kinh_dien "05 - ALOHA - ACT.pdf" "https://www.roboticsproceedings.org/rss19/p016.pdf"
+          dl VLA_Kinh_dien "06 - RT-2.pdf" "https://proceedings.mlr.press/v229/zitkovich23a/zitkovich23a.pdf"
+          dl VLA_Kinh_dien "07 - BridgeData V2.pdf" "https://proceedings.mlr.press/v229/walke23a/walke23a.pdf"
+          dl VLA_Kinh_dien "08 - MimicPlay.pdf" "https://proceedings.mlr.press/v229/wang23a/wang23a.pdf"
+          dl VLA_Kinh_dien "09 - LIBERO.pdf" "https://proceedings.neurips.cc/paper_files/paper/2023/file/8c3c666820ea055a77726d66fc7d447f-Paper-Datasets_and_Benchmarks-Conference.pdf"
+          dl VLA_Kinh_dien "10 - Open X-Embodiment.pdf" "https://arxiv.org/pdf/2310.08864.pdf"
+          dl VLA_Kinh_dien "11 - Octo.pdf" "https://www.roboticsproceedings.org/rss20/p090.pdf"
+          dl VLA_Kinh_dien "12 - DROID.pdf" "https://www.roboticsproceedings.org/rss20/p120.pdf"
+          dl VLA_Kinh_dien "13 - RoboCasa.pdf" "https://www.roboticsproceedings.org/rss20/p050.pdf"
+          dl VLA_Kinh_dien "14 - OpenVLA.pdf" "https://proceedings.mlr.press/v270/kim25c/kim25c.pdf"
+          dl VLA_Kinh_dien "15 - RDT-1B.pdf" "https://proceedings.iclr.cc/paper_files/paper/2025/hash/49f80e4d2471ad4f2edf4f5f1ab62339-Paper-Conference.pdf"
+          dl VLA_Kinh_dien "16 - FAST.pdf" "https://www.roboticsproceedings.org/rss21/p012.pdf"
+          dl VLA_Kinh_dien "17 - pi0.5.pdf" "https://proceedings.mlr.press/v305/black25a/black25a.pdf"
+
+          echo -e "Filename\tSource" > VLA_HEAD_2026/INDEX.txt
+          dl VLA_HEAD_2026 "01 - Being-H0.pdf" "https://proceedings.mlr.press/v306/luo26e/luo26e.pdf"
+          dl VLA_HEAD_2026 "02 - JALA.pdf" "https://openaccess.thecvf.com/content/CVPR2026/papers/Luo_Joint-Aligned_Latent_Action_Towards_Scalable_VLA_Pretraining_in_the_Wild_CVPR_2026_paper.pdf"
+          dl VLA_HEAD_2026 "03 - Data Co-training Study.pdf" "https://www.roboticsproceedings.org/rss22/p007.pdf"
+          dl VLA_HEAD_2026 "04 - UniDex.pdf" "https://openaccess.thecvf.com/content/CVPR2026/papers/Zhang_UniDex_A_Robot_Foundation_Suite_for_Universal_Dexterous_Hand_Control_CVPR_2026_paper.pdf"
+          dl VLA_HEAD_2026 "05 - Task-Agnostic VLA Pretraining.pdf" "https://proceedings.mlr.press/v306/shi26aa/shi26aa.pdf"
+          dl VLA_HEAD_2026 "06 - LARA.pdf" "https://proceedings.mlr.press/v306/liu26bl/liu26bl.pdf"
+          dl VLA_HEAD_2026 "07 - Unified Latent Action - Cycle Consistency.pdf" "https://openaccess.thecvf.com/content/CVPR2026/papers/Chen_Learning_a_Unified_Latent_Action_Space_from_Videos_with_Action-centric_CVPR_2026_paper.pdf"
+          dl VLA_HEAD_2026 "08 - Spatial-Aware VLA Pretraining.pdf" "https://openaccess.thecvf.com/content/CVPR2026/papers/Feng_Spatial-Aware_VLA_Pretraining_through_Visual-Physical_Alignment_from_Human_Videos_CVPR_2026_paper.pdf"
+          dl VLA_HEAD_2026 "09 - Pose-VLA.pdf" "https://www.roboticsproceedings.org/rss22/p145.pdf"
+          dl VLA_HEAD_2026 "10 - LAP.pdf" "https://www.roboticsproceedings.org/rss22/p203.pdf"
+          dl VLA_HEAD_2026 "11 - LDA-1B.pdf" "https://www.roboticsproceedings.org/rss22/p210.pdf"
+          dl VLA_HEAD_2026 "12 - DreamDojo.pdf" "https://proceedings.mlr.press/v306/gao26q/gao26q.pdf"
+          dl VLA_HEAD_2026 "13 - Cross-Embodiment World Models.pdf" "https://proceedings.mlr.press/v306/huang26bv/huang26bv.pdf"
+          dl VLA_HEAD_2026 "14 - mimic-video.pdf" "https://www.roboticsproceedings.org/rss22/p077.pdf"
+          dl VLA_HEAD_2026 "15 - Causal World Modeling.pdf" "https://www.roboticsproceedings.org/rss22/p016.pdf"
+          dl VLA_HEAD_2026 "16 - X-DiffVLA.pdf" "https://www.roboticsproceedings.org/rss22/p081.pdf"
+          dl VLA_HEAD_2026 "17 - Actions as Language.pdf" "https://proceedings.iclr.cc/paper_files/paper/2026/hash/7a0f8055c838df8e62329a76c7c6403d-Paper-Conference.pdf"
+          dl VLA_HEAD_2026 "18 - Discrete Diffusion VLA.pdf" "https://proceedings.mlr.press/v306/liang26l/liang26l.pdf"
+          dl VLA_HEAD_2026 "19 - SRPO.pdf" "https://openaccess.thecvf.com/content/CVPR2026/papers/Fei_SRPO_Self-Referential_Policy_Optimization_for_Vision-Language-Action_Models_CVPR_2026_paper.pdf"
+          dl VLA_HEAD_2026 "20 - RoboTwin 2.0.pdf" "https://proceedings.mlr.press/v306/chen26j/chen26j.pdf"
+
+          echo "Classic PDFs: $(find VLA_Kinh_dien -name '*.pdf' | wc -l)"
+          echo "2026 PDFs: $(find VLA_HEAD_2026 -name '*.pdf' | wc -l)"
+
+      - name: Upload classic papers
+        uses: actions/upload-artifact@v4
+        with:
+          name: VLA_Kinh_dien_fast
+          path: VLA_Kinh_dien/
+          compression-level: 0
+          retention-days: 1
+
+      - name: Upload 2026 papers
+        uses: actions/upload-artifact@v4
+        with:
+          name: VLA_HEAD_2026_fast
+          path: VLA_HEAD_2026/
+          compression-level: 0
+          retention-days: 1
