@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "createdAt": "2026-10-08T05:28:31.123Z",
+  "createdAt": "2026-10-08T05:33:29.043Z",
   "mode": "raw",
   "split": "dev",
   "pipeline": "production extractDocumentBuffer -> production chunkDocument -> production SparseDocumentIndex",
@@ -34,8 +34,8 @@
     "macroWER": 0,
     "blockExactPresence": 1,
     "pagePresence": 1,
-    "p50LatencyMs": 3.544725000000085,
-    "p95LatencyMs": 21.289018999999996
+    "p50LatencyMs": 2.9796819999999116,
+    "p95LatencyMs": 9.723415999999816
   },
   "retrieval": {
     "tasks": 576,
@@ -1069,8 +1069,8 @@
         }
       }
     },
-    "p50LatencyMs": 1.1714560000000347,
-    "p95LatencyMs": 1.4963730000000623,
+    "p50LatencyMs": 0.6359580000003007,
+    "p95LatencyMs": 0.802936999999929,
     "negativeRefusalRate": 0.5833333333333334,
     "falseRefusalRate": 0.5294117647058824,
     "errors": 0
@@ -1080,7 +1080,7 @@
       "id": "networking-01-manual",
       "language": "en",
       "variant": "native",
-      "latencyMs": 242.066416,
+      "latencyMs": 1580.811812,
       "expectedPages": 5,
       "reportedPages": 5,
       "pageCountCorrect": true,
@@ -1177,7 +1177,7 @@
       "id": "networking-01-amendment",
       "language": "en",
       "variant": "native",
-      "latencyMs": 5.840119000000016,
+      "latencyMs": 3.9743049999999585,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -1206,7 +1206,7 @@
       "id": "networking-01-report-a",
       "language": "en",
       "variant": "native",
-      "latencyMs": 6.932192999999984,
+      "latencyMs": 4.401061000000027,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -1235,7 +1235,7 @@
       "id": "networking-01-report-b",
       "language": "en",
       "variant": "native",
-      "latencyMs": 7.107444999999984,
+      "latencyMs": 3.617091999999957,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -1264,7 +1264,7 @@
       "id": "networking-02-manual",
       "language": "vi",
       "variant": "native",
-      "latencyMs": 21.289018999999996,
+      "latencyMs": 9.723415999999816,
       "expectedPages": 5,
       "reportedPages": 5,
       "pageCountCorrect": true,
@@ -1361,7 +1361,7 @@
       "id": "networking-02-amendment",
       "language": "vi",
       "variant": "native",
-      "latencyMs": 8.487088999999969,
+      "latencyMs": 4.007974999999988,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -1390,7 +1390,7 @@
       "id": "networking-02-report-a",
       "language": "en",
       "variant": "native",
-      "latencyMs": 8.599448000000052,
+      "latencyMs": 3.9861929999999575,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -1419,7 +1419,7 @@
       "id": "networking-02-report-b",
       "language": "en",
       "variant": "native",
-      "latencyMs": 7.908409000000006,
+      "latencyMs": 3.3632939999999962,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -1448,7 +1448,7 @@
       "id": "networking-03-manual",
       "language": "en",
       "variant": "native",
-      "latencyMs": 21.62000800000004,
+      "latencyMs": 10.445302000000083,
       "expectedPages": 5,
       "reportedPages": 5,
       "pageCountCorrect": true,
@@ -1545,7 +1545,7 @@
       "id": "networking-03-amendment",
       "language": "en",
       "variant": "native",
-      "latencyMs": 8.196956999999998,
+      "latencyMs": 3.844972000000098,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -1574,7 +1574,7 @@
       "id": "networking-03-report-a",
       "language": "en",
       "variant": "native",
-      "latencyMs": 3.9120609999999942,
+      "latencyMs": 3.4952099999998154,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -1603,7 +1603,7 @@
       "id": "networking-03-report-b",
       "language": "en",
       "variant": "native",
-      "latencyMs": 3.150509999999997,
+      "latencyMs": 2.9649000000001706,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -1632,7 +1632,7 @@
       "id": "networking-04-manual",
       "language": "vi",
       "variant": "native",
-      "latencyMs": 9.26433000000003,
+      "latencyMs": 7.377428000000009,
       "expectedPages": 5,
       "reportedPages": 5,
       "pageCountCorrect": true,
@@ -1729,7 +1729,7 @@
       "id": "networking-04-amendment",
       "language": "vi",
       "variant": "native",
-      "latencyMs": 3.811272000000031,
+      "latencyMs": 3.0872620000000097,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -1758,7 +1758,7 @@
       "id": "networking-04-report-a",
       "language": "en",
       "variant": "native",
-      "latencyMs": 2.832976999999971,
+      "latencyMs": 3.1770759999999427,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -1787,7 +1787,7 @@
       "id": "networking-04-report-b",
       "language": "en",
       "variant": "native",
-      "latencyMs": 3.0376080000000343,
+      "latencyMs": 3.655059000000165,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -1816,7 +1816,7 @@
       "id": "databases-01-manual",
       "language": "en",
       "variant": "native",
-      "latencyMs": 9.912428999999975,
+      "latencyMs": 5.352550000000065,
       "expectedPages": 5,
       "reportedPages": 5,
       "pageCountCorrect": true,
@@ -1913,7 +1913,7 @@
       "id": "databases-01-amendment",
       "language": "en",
       "variant": "native",
-      "latencyMs": 4.249410000000012,
+      "latencyMs": 2.130585999999994,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -1942,7 +1942,7 @@
       "id": "databases-01-report-a",
       "language": "en",
       "variant": "native",
-      "latencyMs": 2.795026000000007,
+      "latencyMs": 2.3191870000000563,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -1971,7 +1971,7 @@
       "id": "databases-01-report-b",
       "language": "en",
       "variant": "native",
-      "latencyMs": 2.559607000000028,
+      "latencyMs": 1.9975879999999506,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -2000,7 +2000,7 @@
       "id": "databases-02-manual",
       "language": "vi",
       "variant": "native",
-      "latencyMs": 8.441663999999946,
+      "latencyMs": 5.090860000000021,
       "expectedPages": 5,
       "reportedPages": 5,
       "pageCountCorrect": true,
@@ -2097,7 +2097,7 @@
       "id": "databases-02-amendment",
       "language": "vi",
       "variant": "native",
-      "latencyMs": 4.199907999999937,
+      "latencyMs": 3.179930999999897,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -2126,7 +2126,7 @@
       "id": "databases-02-report-a",
       "language": "en",
       "variant": "native",
-      "latencyMs": 4.187365,
+      "latencyMs": 2.9796819999999116,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -2155,7 +2155,7 @@
       "id": "databases-02-report-b",
       "language": "en",
       "variant": "native",
-      "latencyMs": 3.4941510000001017,
+      "latencyMs": 2.642129000000068,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -2184,7 +2184,7 @@
       "id": "databases-03-manual",
       "language": "en",
       "variant": "native",
-      "latencyMs": 10.120427999999947,
+      "latencyMs": 6.435905000000048,
       "expectedPages": 5,
       "reportedPages": 5,
       "pageCountCorrect": true,
@@ -2281,7 +2281,7 @@
       "id": "databases-03-amendment",
       "language": "en",
       "variant": "native",
-      "latencyMs": 2.589882999999986,
+      "latencyMs": 1.9442790000000514,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -2310,7 +2310,7 @@
       "id": "databases-03-report-a",
       "language": "en",
       "variant": "native",
-      "latencyMs": 2.4468669999999975,
+      "latencyMs": 2.422902000000022,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -2339,7 +2339,7 @@
       "id": "databases-03-report-b",
       "language": "en",
       "variant": "native",
-      "latencyMs": 2.7696789999999964,
+      "latencyMs": 2.383442999999943,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -2368,7 +2368,7 @@
       "id": "databases-04-manual",
       "language": "vi",
       "variant": "native",
-      "latencyMs": 6.003434999999968,
+      "latencyMs": 4.663293000000067,
       "expectedPages": 5,
       "reportedPages": 5,
       "pageCountCorrect": true,
@@ -2465,7 +2465,7 @@
       "id": "databases-04-amendment",
       "language": "vi",
       "variant": "native",
-      "latencyMs": 2.7906679999999824,
+      "latencyMs": 2.1703460000001087,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -2494,7 +2494,7 @@
       "id": "databases-04-report-a",
       "language": "en",
       "variant": "native",
-      "latencyMs": 2.461644999999976,
+      "latencyMs": 2.03105800000003,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -2523,7 +2523,7 @@
       "id": "databases-04-report-b",
       "language": "en",
       "variant": "native",
-      "latencyMs": 2.3195389999999634,
+      "latencyMs": 1.776638999999932,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -2552,7 +2552,7 @@
       "id": "software-engineering-01-manual",
       "language": "en",
       "variant": "native",
-      "latencyMs": 7.237196999999924,
+      "latencyMs": 4.770982999999887,
       "expectedPages": 5,
       "reportedPages": 5,
       "pageCountCorrect": true,
@@ -2649,7 +2649,7 @@
       "id": "software-engineering-01-amendment",
       "language": "en",
       "variant": "native",
-      "latencyMs": 2.39033100000006,
+      "latencyMs": 2.0038580000000366,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -2678,7 +2678,7 @@
       "id": "software-engineering-01-report-a",
       "language": "en",
       "variant": "native",
-      "latencyMs": 2.3844799999999395,
+      "latencyMs": 1.9291559999999208,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -2707,7 +2707,7 @@
       "id": "software-engineering-01-report-b",
       "language": "en",
       "variant": "native",
-      "latencyMs": 2.64860299999998,
+      "latencyMs": 1.9034079999998994,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -2736,7 +2736,7 @@
       "id": "software-engineering-02-manual",
       "language": "vi",
       "variant": "native",
-      "latencyMs": 5.718923000000018,
+      "latencyMs": 3.667206999999962,
       "expectedPages": 5,
       "reportedPages": 5,
       "pageCountCorrect": true,
@@ -2833,7 +2833,7 @@
       "id": "software-engineering-02-amendment",
       "language": "vi",
       "variant": "native",
-      "latencyMs": 2.7476279999999633,
+      "latencyMs": 2.0265210000000025,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -2862,7 +2862,7 @@
       "id": "software-engineering-02-report-a",
       "language": "en",
       "variant": "native",
-      "latencyMs": 3.544725000000085,
+      "latencyMs": 2.5280689999999595,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -2891,7 +2891,7 @@
       "id": "software-engineering-02-report-b",
       "language": "en",
       "variant": "native",
-      "latencyMs": 3.48003499999993,
+      "latencyMs": 2.4305229999999938,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -2920,7 +2920,7 @@
       "id": "software-engineering-03-manual",
       "language": "en",
       "variant": "native",
-      "latencyMs": 5.800876000000017,
+      "latencyMs": 3.7544769999999517,
       "expectedPages": 5,
       "reportedPages": 5,
       "pageCountCorrect": true,
@@ -3017,7 +3017,7 @@
       "id": "software-engineering-03-amendment",
       "language": "en",
       "variant": "native",
-      "latencyMs": 2.251051000000075,
+      "latencyMs": 1.803579000000127,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -3046,7 +3046,7 @@
       "id": "software-engineering-03-report-a",
       "language": "en",
       "variant": "native",
-      "latencyMs": 2.2597670000000107,
+      "latencyMs": 1.7457530000001498,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -3075,7 +3075,7 @@
       "id": "software-engineering-03-report-b",
       "language": "en",
       "variant": "native",
-      "latencyMs": 2.246762999999987,
+      "latencyMs": 1.697149999999965,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -3104,7 +3104,7 @@
       "id": "software-engineering-04-manual",
       "language": "vi",
       "variant": "native",
-      "latencyMs": 5.874684000000002,
+      "latencyMs": 3.806033999999954,
       "expectedPages": 5,
       "reportedPages": 5,
       "pageCountCorrect": true,
@@ -3201,7 +3201,7 @@
       "id": "software-engineering-04-amendment",
       "language": "vi",
       "variant": "native",
-      "latencyMs": 2.279023000000052,
+      "latencyMs": 1.820464000000129,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -3230,7 +3230,7 @@
       "id": "software-engineering-04-report-a",
       "language": "en",
       "variant": "native",
-      "latencyMs": 2.2541160000000673,
+      "latencyMs": 1.7771999999999935,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -3259,7 +3259,7 @@
       "id": "software-engineering-04-report-b",
       "language": "en",
       "variant": "native",
-      "latencyMs": 2.281869000000029,
+      "latencyMs": 1.8474249999999302,
       "expectedPages": 1,
       "reportedPages": 1,
       "pageCountCorrect": true,
@@ -3293,7 +3293,7 @@
       "intent": "direct",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 3.003135000000043,
+      "latencyMs": 2.2442160000000513,
       "estimatedContextTokens": 1081,
       "refused": false,
       "results": [
@@ -3402,7 +3402,7 @@
       "intent": "direct",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.6797749999999496,
+      "latencyMs": 1.1474699999998847,
       "estimatedContextTokens": 943,
       "refused": false,
       "results": [
@@ -3511,7 +3511,7 @@
       "intent": "paraphrase",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.38274100000001,
+      "latencyMs": 0.8643889999998464,
       "estimatedContextTokens": 1033,
       "refused": true,
       "results": [
@@ -3620,7 +3620,7 @@
       "intent": "paraphrase",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2364469999999983,
+      "latencyMs": 0.753783999999996,
       "estimatedContextTokens": 976,
       "refused": false,
       "results": [
@@ -3729,7 +3729,7 @@
       "intent": "table-lookup",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.091858000000002,
+      "latencyMs": 0.6320419999997284,
       "estimatedContextTokens": 720,
       "refused": false,
       "results": [
@@ -3838,7 +3838,7 @@
       "intent": "table-lookup",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1044099999999162,
+      "latencyMs": 0.6139659999998912,
       "estimatedContextTokens": 598,
       "refused": false,
       "results": [
@@ -3947,7 +3947,7 @@
       "intent": "aggregation",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.11257599999999,
+      "latencyMs": 0.6200739999999314,
       "estimatedContextTokens": 1081,
       "refused": false,
       "results": [
@@ -4056,7 +4056,7 @@
       "intent": "aggregation",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1253099999998994,
+      "latencyMs": 0.6171100000001388,
       "estimatedContextTokens": 915,
       "refused": false,
       "results": [
@@ -4165,7 +4165,7 @@
       "intent": "multi-hop",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.268295999999964,
+      "latencyMs": 0.6886669999998958,
       "estimatedContextTokens": 730,
       "refused": true,
       "results": [
@@ -4274,7 +4274,7 @@
       "intent": "multi-hop",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3235599999999295,
+      "latencyMs": 0.7610650000001442,
       "estimatedContextTokens": 536,
       "refused": true,
       "results": [
@@ -4383,7 +4383,7 @@
       "intent": "temporal-version",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.0809169999999995,
+      "latencyMs": 0.6074250000001484,
       "estimatedContextTokens": 1028,
       "refused": true,
       "results": [
@@ -4492,7 +4492,7 @@
       "intent": "temporal-version",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2094180000000279,
+      "latencyMs": 0.6545849999997699,
       "estimatedContextTokens": 976,
       "refused": true,
       "results": [
@@ -4601,7 +4601,7 @@
       "intent": "comparison",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1573999999999387,
+      "latencyMs": 0.6251819999997679,
       "estimatedContextTokens": 1134,
       "refused": false,
       "results": [
@@ -4710,7 +4710,7 @@
       "intent": "comparison",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.13250400000004,
+      "latencyMs": 0.5781619999997929,
       "estimatedContextTokens": 1050,
       "refused": false,
       "results": [
@@ -4819,7 +4819,7 @@
       "intent": "code-trace",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1403080000000045,
+      "latencyMs": 0.6060130000000754,
       "estimatedContextTokens": 686,
       "refused": true,
       "results": [
@@ -4928,7 +4928,7 @@
       "intent": "code-trace",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2677459999999883,
+      "latencyMs": 0.6912800000000061,
       "estimatedContextTokens": 976,
       "refused": true,
       "results": [
@@ -5037,7 +5037,7 @@
       "intent": "formula",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1795110000000477,
+      "latencyMs": 0.6294479999996838,
       "estimatedContextTokens": 681,
       "refused": true,
       "results": [
@@ -5146,7 +5146,7 @@
       "intent": "formula",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2451039999999693,
+      "latencyMs": 0.6722530000001825,
       "estimatedContextTokens": 632,
       "refused": true,
       "results": [
@@ -5255,7 +5255,7 @@
       "intent": "diagram",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.140939000000003,
+      "latencyMs": 0.6067539999999099,
       "estimatedContextTokens": 674,
       "refused": true,
       "results": [
@@ -5364,7 +5364,7 @@
       "intent": "diagram",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1753840000000082,
+      "latencyMs": 0.7257919999997284,
       "estimatedContextTokens": 678,
       "refused": true,
       "results": [
@@ -5473,7 +5473,7 @@
       "intent": "late-evidence",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1027380000000448,
+      "latencyMs": 0.6062729999998737,
       "estimatedContextTokens": 830,
       "refused": true,
       "results": [
@@ -5582,7 +5582,7 @@
       "intent": "late-evidence",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1548249999999598,
+      "latencyMs": 0.6383309999996527,
       "estimatedContextTokens": 678,
       "refused": true,
       "results": [
@@ -5691,7 +5691,7 @@
       "intent": "multi-intent",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 2.6837490000000344,
+      "latencyMs": 2.098598000000038,
       "estimatedContextTokens": 1028,
       "refused": true,
       "results": [
@@ -5800,7 +5800,7 @@
       "intent": "multi-intent",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.431039999999939,
+      "latencyMs": 0.9139919999997801,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -5909,7 +5909,7 @@
       "intent": "ambiguous-entity",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.057833999999957,
+      "latencyMs": 0.6072650000000976,
       "estimatedContextTokens": 1028,
       "refused": false,
       "results": [
@@ -6018,7 +6018,7 @@
       "intent": "ambiguous-entity",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.1218840000000228,
+      "latencyMs": 0.6563579999997273,
       "estimatedContextTokens": 890,
       "refused": false,
       "results": [
@@ -6127,7 +6127,7 @@
       "intent": "ambiguous-version",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.2661930000000439,
+      "latencyMs": 0.6824669999996331,
       "estimatedContextTokens": 2247,
       "refused": true,
       "results": [
@@ -6236,7 +6236,7 @@
       "intent": "ambiguous-version",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.2639389999999366,
+      "latencyMs": 0.7009649999999965,
       "estimatedContextTokens": 1782,
       "refused": true,
       "results": [
@@ -6345,7 +6345,7 @@
       "intent": "missing-private-fact",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 1.026104999999916,
+      "latencyMs": 0.559835000000021,
       "estimatedContextTokens": 1049,
       "refused": false,
       "results": [
@@ -6454,7 +6454,7 @@
       "intent": "missing-private-fact",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 1.0648980000000847,
+      "latencyMs": 0.5788429999997788,
       "estimatedContextTokens": 806,
       "refused": false,
       "results": [
@@ -6563,7 +6563,7 @@
       "intent": "missing-live-fact",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 1.0958749999999782,
+      "latencyMs": 0.5763190000002396,
       "estimatedContextTokens": 810,
       "refused": true,
       "results": [
@@ -6672,7 +6672,7 @@
       "intent": "missing-live-fact",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 1.2442619999999351,
+      "latencyMs": 0.9251899999999296,
       "estimatedContextTokens": 726,
       "refused": true,
       "results": [
@@ -6781,7 +6781,7 @@
       "intent": "partial-answer",
       "language": "en",
       "expectedAction": "partial",
-      "latencyMs": 1.1982160000000022,
+      "latencyMs": 0.6987719999997353,
       "estimatedContextTokens": 863,
       "refused": true,
       "results": [
@@ -6890,7 +6890,7 @@
       "intent": "partial-answer",
       "language": "vi",
       "expectedAction": "partial",
-      "latencyMs": 1.2499829999999292,
+      "latencyMs": 0.6990919999998368,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -6999,7 +6999,7 @@
       "intent": "conflicting-sources",
       "language": "en",
       "expectedAction": "conflict",
-      "latencyMs": 0.8040809999999965,
+      "latencyMs": 0.46928899999966234,
       "estimatedContextTokens": 148,
       "refused": false,
       "results": [
@@ -7068,7 +7068,7 @@
       "intent": "conflicting-sources",
       "language": "vi",
       "expectedAction": "conflict",
-      "latencyMs": 0.7115080000000944,
+      "latencyMs": 0.38796800000000076,
       "estimatedContextTokens": 148,
       "refused": true,
       "results": [
@@ -7137,7 +7137,7 @@
       "intent": "false-premise",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1528520000000526,
+      "latencyMs": 0.6455120000000534,
       "estimatedContextTokens": 1081,
       "refused": false,
       "results": [
@@ -7246,7 +7246,7 @@
       "intent": "false-premise",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2400939999999991,
+      "latencyMs": 0.6844200000000455,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -7355,7 +7355,7 @@
       "intent": "prompt-injection",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.2003409999999803,
+      "latencyMs": 0.6530330000000504,
       "estimatedContextTokens": 821,
       "refused": true,
       "results": [
@@ -7464,7 +7464,7 @@
       "intent": "prompt-injection",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3626829999999472,
+      "latencyMs": 0.7702879999997094,
       "estimatedContextTokens": 664,
       "refused": false,
       "results": [
@@ -7573,7 +7573,7 @@
       "intent": "scope-boundary",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 0.7670010000000502,
+      "latencyMs": 0.43517800000017814,
       "estimatedContextTokens": 678,
       "refused": false,
       "results": [
@@ -7657,7 +7657,7 @@
       "intent": "scope-boundary",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 0.7626430000000255,
+      "latencyMs": 0.39068300000008094,
       "estimatedContextTokens": 678,
       "refused": true,
       "results": [
@@ -7741,7 +7741,7 @@
       "intent": "conversational-followup",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.5790870000000723,
+      "latencyMs": 0.7731229999999414,
       "estimatedContextTokens": 1081,
       "refused": false,
       "results": [
@@ -7850,7 +7850,7 @@
       "intent": "conversational-followup",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 2.4350839999999607,
+      "latencyMs": 0.768395000000055,
       "estimatedContextTokens": 970,
       "refused": true,
       "results": [
@@ -7959,7 +7959,7 @@
       "intent": "unresolved-followup",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.159112999999934,
+      "latencyMs": 0.372454999999718,
       "estimatedContextTokens": 986,
       "refused": false,
       "results": [
@@ -8068,7 +8068,7 @@
       "intent": "unresolved-followup",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.5102979999999206,
+      "latencyMs": 0.4137670000000071,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -8177,7 +8177,7 @@
       "intent": "conflicting-instructions",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 2.0403669999999465,
+      "latencyMs": 0.6196239999999307,
       "estimatedContextTokens": 2044,
       "refused": true,
       "results": [
@@ -8286,7 +8286,7 @@
       "intent": "conflicting-instructions",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 2.077747000000045,
+      "latencyMs": 0.6535050000002229,
       "estimatedContextTokens": 976,
       "refused": true,
       "results": [
@@ -8395,7 +8395,7 @@
       "intent": "direct",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.7347080000000688,
+      "latencyMs": 0.5561490000000049,
       "estimatedContextTokens": 1075,
       "refused": false,
       "results": [
@@ -8504,7 +8504,7 @@
       "intent": "direct",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 2.0119250000000193,
+      "latencyMs": 0.5940559999999095,
       "estimatedContextTokens": 890,
       "refused": false,
       "results": [
@@ -8613,7 +8613,7 @@
       "intent": "paraphrase",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 2.106420999999955,
+      "latencyMs": 0.6142960000001949,
       "estimatedContextTokens": 1027,
       "refused": true,
       "results": [
@@ -8722,7 +8722,7 @@
       "intent": "paraphrase",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.9792640000000574,
+      "latencyMs": 0.6475759999998445,
       "estimatedContextTokens": 970,
       "refused": false,
       "results": [
@@ -8831,7 +8831,7 @@
       "intent": "table-lookup",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.4391460000000507,
+      "latencyMs": 0.5715420000001359,
       "estimatedContextTokens": 707,
       "refused": true,
       "results": [
@@ -8940,7 +8940,7 @@
       "intent": "table-lookup",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1798919999999953,
+      "latencyMs": 0.5682270000002063,
       "estimatedContextTokens": 640,
       "refused": false,
       "results": [
@@ -9049,7 +9049,7 @@
       "intent": "aggregation",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1279449999999542,
+      "latencyMs": 0.5943859999997585,
       "estimatedContextTokens": 1134,
       "refused": false,
       "results": [
@@ -9158,7 +9158,7 @@
       "intent": "aggregation",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.130769999999984,
+      "latencyMs": 0.5699490000001788,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -9267,7 +9267,7 @@
       "intent": "multi-hop",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.237068000000022,
+      "latencyMs": 0.6572799999999006,
       "estimatedContextTokens": 650,
       "refused": true,
       "results": [
@@ -9376,7 +9376,7 @@
       "intent": "multi-hop",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2899080000000822,
+      "latencyMs": 0.7066530000001876,
       "estimatedContextTokens": 536,
       "refused": true,
       "results": [
@@ -9485,7 +9485,7 @@
       "intent": "temporal-version",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.0890419999999494,
+      "latencyMs": 0.5608860000002096,
       "estimatedContextTokens": 1075,
       "refused": true,
       "results": [
@@ -9594,7 +9594,7 @@
       "intent": "temporal-version",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2295550000000048,
+      "latencyMs": 0.6387629999999263,
       "estimatedContextTokens": 890,
       "refused": false,
       "results": [
@@ -9703,7 +9703,7 @@
       "intent": "comparison",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1685210000000552,
+      "latencyMs": 0.6160380000001169,
       "estimatedContextTokens": 1134,
       "refused": true,
       "results": [
@@ -9812,7 +9812,7 @@
       "intent": "comparison",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1616370000000416,
+      "latencyMs": 0.57210299999997,
       "estimatedContextTokens": 1023,
       "refused": false,
       "results": [
@@ -9921,7 +9921,7 @@
       "intent": "code-trace",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1384740000000875,
+      "latencyMs": 0.6060640000000603,
       "estimatedContextTokens": 707,
       "refused": true,
       "results": [
@@ -10030,7 +10030,7 @@
       "intent": "code-trace",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2885240000000522,
+      "latencyMs": 0.6795830000000933,
       "estimatedContextTokens": 1173,
       "refused": true,
       "results": [
@@ -10139,7 +10139,7 @@
       "intent": "formula",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1754640000000336,
+      "latencyMs": 0.6332139999999526,
       "estimatedContextTokens": 688,
       "refused": true,
       "results": [
@@ -10248,7 +10248,7 @@
       "intent": "formula",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.243090000000052,
+      "latencyMs": 0.6571389999999155,
       "estimatedContextTokens": 612,
       "refused": true,
       "results": [
@@ -10357,7 +10357,7 @@
       "intent": "diagram",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.2273199999999633,
+      "latencyMs": 0.677560000000085,
       "estimatedContextTokens": 674,
       "refused": true,
       "results": [
@@ -10466,7 +10466,7 @@
       "intent": "diagram",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1598850000000311,
+      "latencyMs": 0.6176799999998366,
       "estimatedContextTokens": 612,
       "refused": true,
       "results": [
@@ -10575,7 +10575,7 @@
       "intent": "late-evidence",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.0594979999999623,
+      "latencyMs": 0.5708210000002509,
       "estimatedContextTokens": 830,
       "refused": true,
       "results": [
@@ -10684,7 +10684,7 @@
       "intent": "late-evidence",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.130408999999986,
+      "latencyMs": 0.5967599999999038,
       "estimatedContextTokens": 640,
       "refused": false,
       "results": [
@@ -10793,7 +10793,7 @@
       "intent": "multi-intent",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.2890250000000378,
+      "latencyMs": 0.7300780000000486,
       "estimatedContextTokens": 1060,
       "refused": true,
       "results": [
@@ -10902,7 +10902,7 @@
       "intent": "multi-intent",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.649989000000005,
+      "latencyMs": 1.0566650000000664,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -11011,7 +11011,7 @@
       "intent": "ambiguous-entity",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.016477000000009,
+      "latencyMs": 0.6006750000001375,
       "estimatedContextTokens": 941,
       "refused": true,
       "results": [
@@ -11120,7 +11120,7 @@
       "intent": "ambiguous-entity",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.0911659999999301,
+      "latencyMs": 0.5892179999996188,
       "estimatedContextTokens": 890,
       "refused": false,
       "results": [
@@ -11229,7 +11229,7 @@
       "intent": "ambiguous-version",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.1927659999998923,
+      "latencyMs": 0.6724920000001475,
       "estimatedContextTokens": 2241,
       "refused": true,
       "results": [
@@ -11338,7 +11338,7 @@
       "intent": "ambiguous-version",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.245755000000031,
+      "latencyMs": 0.6586620000002767,
       "estimatedContextTokens": 1702,
       "refused": true,
       "results": [
@@ -11447,7 +11447,7 @@
       "intent": "missing-private-fact",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 1.0115379999999732,
+      "latencyMs": 0.5468559999999343,
       "estimatedContextTokens": 1075,
       "refused": true,
       "results": [
@@ -11556,7 +11556,7 @@
       "intent": "missing-private-fact",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 1.0387089999999262,
+      "latencyMs": 0.5478669999997692,
       "estimatedContextTokens": 720,
       "refused": false,
       "results": [
@@ -11665,7 +11665,7 @@
       "intent": "missing-live-fact",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 1.1909329999999727,
+      "latencyMs": 0.65964299999996,
       "estimatedContextTokens": 815,
       "refused": true,
       "results": [
@@ -11774,7 +11774,7 @@
       "intent": "missing-live-fact",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 1.2831239999999298,
+      "latencyMs": 0.7295880000001489,
       "estimatedContextTokens": 720,
       "refused": true,
       "results": [
@@ -11883,7 +11883,7 @@
       "intent": "partial-answer",
       "language": "en",
       "expectedAction": "partial",
-      "latencyMs": 1.2914400000000796,
+      "latencyMs": 0.7790010000003349,
       "estimatedContextTokens": 815,
       "refused": true,
       "results": [
@@ -11992,7 +11992,7 @@
       "intent": "partial-answer",
       "language": "vi",
       "expectedAction": "partial",
-      "latencyMs": 1.3812980000000152,
+      "latencyMs": 0.7964179999999033,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -12101,7 +12101,7 @@
       "intent": "conflicting-sources",
       "language": "en",
       "expectedAction": "conflict",
-      "latencyMs": 0.7215969999999743,
+      "latencyMs": 0.442841000000044,
       "estimatedContextTokens": 148,
       "refused": false,
       "results": [
@@ -12170,7 +12170,7 @@
       "intent": "conflicting-sources",
       "language": "vi",
       "expectedAction": "conflict",
-      "latencyMs": 0.7490480000000161,
+      "latencyMs": 0.40418199999976423,
       "estimatedContextTokens": 148,
       "refused": true,
       "results": [
@@ -12239,7 +12239,7 @@
       "intent": "false-premise",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.251645999999937,
+      "latencyMs": 0.7288060000000769,
       "estimatedContextTokens": 1075,
       "refused": false,
       "results": [
@@ -12348,7 +12348,7 @@
       "intent": "false-premise",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3825799999999617,
+      "latencyMs": 0.7892769999998563,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -12457,7 +12457,7 @@
       "intent": "prompt-injection",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.5154289999999264,
+      "latencyMs": 0.830808000000161,
       "estimatedContextTokens": 815,
       "refused": true,
       "results": [
@@ -12566,7 +12566,7 @@
       "intent": "prompt-injection",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 3.558871999999951,
+      "latencyMs": 3.199138999999832,
       "estimatedContextTokens": 664,
       "refused": false,
       "results": [
@@ -12675,7 +12675,7 @@
       "intent": "scope-boundary",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 0.8469000000000051,
+      "latencyMs": 0.5144460000001345,
       "estimatedContextTokens": 545,
       "refused": true,
       "results": [
@@ -12759,7 +12759,7 @@
       "intent": "scope-boundary",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 0.7993720000000621,
+      "latencyMs": 0.45230499999979656,
       "estimatedContextTokens": 545,
       "refused": false,
       "results": [
@@ -12843,7 +12843,7 @@
       "intent": "conversational-followup",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.2368790000000445,
+      "latencyMs": 0.7263530000000173,
       "estimatedContextTokens": 1075,
       "refused": false,
       "results": [
@@ -12952,7 +12952,7 @@
       "intent": "conversational-followup",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.387538999999947,
+      "latencyMs": 0.7791019999999662,
       "estimatedContextTokens": 890,
       "refused": true,
       "results": [
@@ -13061,7 +13061,7 @@
       "intent": "unresolved-followup",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 0.7499299999999494,
+      "latencyMs": 0.3961309999999685,
       "estimatedContextTokens": 986,
       "refused": false,
       "results": [
@@ -13170,7 +13170,7 @@
       "intent": "unresolved-followup",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 0.8555370000000266,
+      "latencyMs": 0.43381700000009005,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -13279,7 +13279,7 @@
       "intent": "conflicting-instructions",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.1512389999999186,
+      "latencyMs": 0.6752569999998741,
       "estimatedContextTokens": 2287,
       "refused": true,
       "results": [
@@ -13388,7 +13388,7 @@
       "intent": "conflicting-instructions",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.2413060000000087,
+      "latencyMs": 0.7097979999998643,
       "estimatedContextTokens": 890,
       "refused": true,
       "results": [
@@ -13497,7 +13497,7 @@
       "intent": "direct",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.0847949999999855,
+      "latencyMs": 0.5734950000000936,
       "estimatedContextTokens": 1081,
       "refused": false,
       "results": [
@@ -13606,7 +13606,7 @@
       "intent": "direct",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1273439999999937,
+      "latencyMs": 0.6126030000000355,
       "estimatedContextTokens": 943,
       "refused": false,
       "results": [
@@ -13715,7 +13715,7 @@
       "intent": "paraphrase",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.175002999999947,
+      "latencyMs": 0.6293080000000373,
       "estimatedContextTokens": 1033,
       "refused": true,
       "results": [
@@ -13824,7 +13824,7 @@
       "intent": "paraphrase",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.191314000000034,
+      "latencyMs": 0.6554569999998421,
       "estimatedContextTokens": 976,
       "refused": false,
       "results": [
@@ -13933,7 +13933,7 @@
       "intent": "table-lookup",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.0690349999999853,
+      "latencyMs": 0.5718629999996665,
       "estimatedContextTokens": 720,
       "refused": false,
       "results": [
@@ -14042,7 +14042,7 @@
       "intent": "table-lookup",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1220140000000356,
+      "latencyMs": 0.5631889999999657,
       "estimatedContextTokens": 598,
       "refused": false,
       "results": [
@@ -14151,7 +14151,7 @@
       "intent": "aggregation",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1299089999999978,
+      "latencyMs": 0.5942660000000615,
       "estimatedContextTokens": 1081,
       "refused": false,
       "results": [
@@ -14260,7 +14260,7 @@
       "intent": "aggregation",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1053829999999607,
+      "latencyMs": 0.5900500000002467,
       "estimatedContextTokens": 915,
       "refused": false,
       "results": [
@@ -14369,7 +14369,7 @@
       "intent": "multi-hop",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.2101189999999633,
+      "latencyMs": 0.6712999999999738,
       "estimatedContextTokens": 730,
       "refused": true,
       "results": [
@@ -14478,7 +14478,7 @@
       "intent": "multi-hop",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3361129999999548,
+      "latencyMs": 0.7240290000004279,
       "estimatedContextTokens": 536,
       "refused": true,
       "results": [
@@ -14587,7 +14587,7 @@
       "intent": "temporal-version",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.0733139999999821,
+      "latencyMs": 0.5623279999999795,
       "estimatedContextTokens": 1028,
       "refused": true,
       "results": [
@@ -14696,7 +14696,7 @@
       "intent": "temporal-version",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1902710000000525,
+      "latencyMs": 0.645151999999598,
       "estimatedContextTokens": 976,
       "refused": true,
       "results": [
@@ -14805,7 +14805,7 @@
       "intent": "comparison",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1267030000000204,
+      "latencyMs": 0.6164290000001529,
       "estimatedContextTokens": 1134,
       "refused": false,
       "results": [
@@ -14914,7 +14914,7 @@
       "intent": "comparison",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.090816000000018,
+      "latencyMs": 0.5703300000000127,
       "estimatedContextTokens": 1050,
       "refused": false,
       "results": [
@@ -15023,7 +15023,7 @@
       "intent": "code-trace",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1110230000000456,
+      "latencyMs": 0.610349000000042,
       "estimatedContextTokens": 686,
       "refused": true,
       "results": [
@@ -15132,7 +15132,7 @@
       "intent": "code-trace",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.282312999999931,
+      "latencyMs": 0.690939999999955,
       "estimatedContextTokens": 976,
       "refused": true,
       "results": [
@@ -15241,7 +15241,7 @@
       "intent": "formula",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1525199999999813,
+      "latencyMs": 0.6226179999998749,
       "estimatedContextTokens": 681,
       "refused": true,
       "results": [
@@ -15350,7 +15350,7 @@
       "intent": "formula",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2223820000000387,
+      "latencyMs": 0.6636699999999109,
       "estimatedContextTokens": 632,
       "refused": true,
       "results": [
@@ -15459,7 +15459,7 @@
       "intent": "diagram",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1022570000000087,
+      "latencyMs": 0.586373999999978,
       "estimatedContextTokens": 674,
       "refused": true,
       "results": [
@@ -15568,7 +15568,7 @@
       "intent": "diagram",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2407460000000583,
+      "latencyMs": 1.019420000000082,
       "estimatedContextTokens": 678,
       "refused": true,
       "results": [
@@ -15677,7 +15677,7 @@
       "intent": "late-evidence",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.0872890000000552,
+      "latencyMs": 0.6858929999998509,
       "estimatedContextTokens": 830,
       "refused": true,
       "results": [
@@ -15786,7 +15786,7 @@
       "intent": "late-evidence",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1615479999999252,
+      "latencyMs": 0.6501189999999042,
       "estimatedContextTokens": 678,
       "refused": true,
       "results": [
@@ -15895,7 +15895,7 @@
       "intent": "multi-intent",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.2377400000000307,
+      "latencyMs": 0.7080650000002606,
       "estimatedContextTokens": 1028,
       "refused": true,
       "results": [
@@ -16004,7 +16004,7 @@
       "intent": "multi-intent",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3435480000000553,
+      "latencyMs": 0.7700380000001132,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -16113,7 +16113,7 @@
       "intent": "ambiguous-entity",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.0029710000000023,
+      "latencyMs": 0.548968000000059,
       "estimatedContextTokens": 1028,
       "refused": false,
       "results": [
@@ -16222,7 +16222,7 @@
       "intent": "ambiguous-entity",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.0882110000000011,
+      "latencyMs": 0.5803349999996499,
       "estimatedContextTokens": 890,
       "refused": false,
       "results": [
@@ -16331,7 +16331,7 @@
       "intent": "ambiguous-version",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.2188240000000405,
+      "latencyMs": 0.7127529999997932,
       "estimatedContextTokens": 2247,
       "refused": true,
       "results": [
@@ -16440,7 +16440,7 @@
       "intent": "ambiguous-version",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.2421490000000404,
+      "latencyMs": 0.7296180000003005,
       "estimatedContextTokens": 1782,
       "refused": true,
       "results": [
@@ -16549,7 +16549,7 @@
       "intent": "missing-private-fact",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 1.0068389999999,
+      "latencyMs": 0.5523330000000897,
       "estimatedContextTokens": 1049,
       "refused": false,
       "results": [
@@ -16658,7 +16658,7 @@
       "intent": "missing-private-fact",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 1.034159999999929,
+      "latencyMs": 0.5703300000000127,
       "estimatedContextTokens": 806,
       "refused": false,
       "results": [
@@ -16767,7 +16767,7 @@
       "intent": "missing-live-fact",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 1.0733929999998963,
+      "latencyMs": 0.6127640000004249,
       "estimatedContextTokens": 810,
       "refused": true,
       "results": [
@@ -16876,7 +16876,7 @@
       "intent": "missing-live-fact",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 1.1412900000000263,
+      "latencyMs": 0.6452019999996992,
       "estimatedContextTokens": 726,
       "refused": true,
       "results": [
@@ -16985,7 +16985,7 @@
       "intent": "partial-answer",
       "language": "en",
       "expectedAction": "partial",
-      "latencyMs": 1.1248190000000022,
+      "latencyMs": 0.6305099999999584,
       "estimatedContextTokens": 863,
       "refused": true,
       "results": [
@@ -17094,7 +17094,7 @@
       "intent": "partial-answer",
       "language": "vi",
       "expectedAction": "partial",
-      "latencyMs": 1.205259999999953,
+      "latencyMs": 0.6594529999997576,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -17203,7 +17203,7 @@
       "intent": "conflicting-sources",
       "language": "en",
       "expectedAction": "conflict",
-      "latencyMs": 0.7155149999999821,
+      "latencyMs": 0.39525899999989633,
       "estimatedContextTokens": 148,
       "refused": false,
       "results": [
@@ -17272,7 +17272,7 @@
       "intent": "conflicting-sources",
       "language": "vi",
       "expectedAction": "conflict",
-      "latencyMs": 0.7126499999999396,
+      "latencyMs": 0.36458300000003874,
       "estimatedContextTokens": 148,
       "refused": true,
       "results": [
@@ -17341,7 +17341,7 @@
       "intent": "false-premise",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1175660000000107,
+      "latencyMs": 0.6192230000001473,
       "estimatedContextTokens": 1081,
       "refused": false,
       "results": [
@@ -17450,7 +17450,7 @@
       "intent": "false-premise",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.212884000000031,
+      "latencyMs": 0.6854419999999664,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -17559,7 +17559,7 @@
       "intent": "prompt-injection",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.178007999999977,
+      "latencyMs": 0.6464539999997214,
       "estimatedContextTokens": 821,
       "refused": true,
       "results": [
@@ -17668,7 +17668,7 @@
       "intent": "prompt-injection",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3591770000000452,
+      "latencyMs": 0.7585909999997966,
       "estimatedContextTokens": 664,
       "refused": false,
       "results": [
@@ -17777,7 +17777,7 @@
       "intent": "scope-boundary",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 0.6985240000000204,
+      "latencyMs": 0.36671700000033525,
       "estimatedContextTokens": 678,
       "refused": false,
       "results": [
@@ -17861,7 +17861,7 @@
       "intent": "scope-boundary",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 0.721416999999974,
+      "latencyMs": 0.3698309999999765,
       "estimatedContextTokens": 678,
       "refused": true,
       "results": [
@@ -17945,7 +17945,7 @@
       "intent": "conversational-followup",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1802320000000464,
+      "latencyMs": 0.6537850000004255,
       "estimatedContextTokens": 1081,
       "refused": false,
       "results": [
@@ -18054,7 +18054,7 @@
       "intent": "conversational-followup",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3574439999999868,
+      "latencyMs": 0.7680049999999028,
       "estimatedContextTokens": 970,
       "refused": true,
       "results": [
@@ -18163,7 +18163,7 @@
       "intent": "unresolved-followup",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 0.693854999999985,
+      "latencyMs": 0.35637099999985367,
       "estimatedContextTokens": 986,
       "refused": false,
       "results": [
@@ -18272,7 +18272,7 @@
       "intent": "unresolved-followup",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 0.8358909999999469,
+      "latencyMs": 0.436500000000251,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -18381,7 +18381,7 @@
       "intent": "conflicting-instructions",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.1156230000000278,
+      "latencyMs": 0.6131740000000718,
       "estimatedContextTokens": 2044,
       "refused": true,
       "results": [
@@ -18490,7 +18490,7 @@
       "intent": "conflicting-instructions",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.2765620000000126,
+      "latencyMs": 0.7797319999999672,
       "estimatedContextTokens": 976,
       "refused": true,
       "results": [
@@ -18599,7 +18599,7 @@
       "intent": "direct",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.058716000000004,
+      "latencyMs": 0.6510909999997239,
       "estimatedContextTokens": 1075,
       "refused": false,
       "results": [
@@ -18708,7 +18708,7 @@
       "intent": "direct",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2279610000000503,
+      "latencyMs": 0.6179109999998218,
       "estimatedContextTokens": 890,
       "refused": false,
       "results": [
@@ -18817,7 +18817,7 @@
       "intent": "paraphrase",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1952499999999873,
+      "latencyMs": 0.7085570000003827,
       "estimatedContextTokens": 1027,
       "refused": true,
       "results": [
@@ -18926,7 +18926,7 @@
       "intent": "paraphrase",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1908019999999624,
+      "latencyMs": 0.7512300000003052,
       "estimatedContextTokens": 970,
       "refused": false,
       "results": [
@@ -19035,7 +19035,7 @@
       "intent": "table-lookup",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.0594469999999774,
+      "latencyMs": 0.5798549999999523,
       "estimatedContextTokens": 707,
       "refused": true,
       "results": [
@@ -19144,7 +19144,7 @@
       "intent": "table-lookup",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1055739999999332,
+      "latencyMs": 0.578291999999692,
       "estimatedContextTokens": 640,
       "refused": false,
       "results": [
@@ -19253,7 +19253,7 @@
       "intent": "aggregation",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1208120000000008,
+      "latencyMs": 0.59852200000023,
       "estimatedContextTokens": 1134,
       "refused": false,
       "results": [
@@ -19362,7 +19362,7 @@
       "intent": "aggregation",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1007939999999508,
+      "latencyMs": 0.5730639999997038,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -19471,7 +19471,7 @@
       "intent": "multi-hop",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1901609999999891,
+      "latencyMs": 0.6570189999997638,
       "estimatedContextTokens": 650,
       "refused": true,
       "results": [
@@ -19580,7 +19580,7 @@
       "intent": "multi-hop",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 3.3133929999999054,
+      "latencyMs": 3.244948000000022,
       "estimatedContextTokens": 536,
       "refused": true,
       "results": [
@@ -19689,7 +19689,7 @@
       "intent": "temporal-version",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1010539999999764,
+      "latencyMs": 0.6976700000000164,
       "estimatedContextTokens": 1075,
       "refused": true,
       "results": [
@@ -19798,7 +19798,7 @@
       "intent": "temporal-version",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.212713000000008,
+      "latencyMs": 0.7051010000000133,
       "estimatedContextTokens": 890,
       "refused": false,
       "results": [
@@ -19907,7 +19907,7 @@
       "intent": "comparison",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1711860000000343,
+      "latencyMs": 0.6437089999999444,
       "estimatedContextTokens": 1134,
       "refused": true,
       "results": [
@@ -20016,7 +20016,7 @@
       "intent": "comparison",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1152819999999792,
+      "latencyMs": 0.6139849999999569,
       "estimatedContextTokens": 1023,
       "refused": false,
       "results": [
@@ -20125,7 +20125,7 @@
       "intent": "code-trace",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1256909999999607,
+      "latencyMs": 0.6241799999997966,
       "estimatedContextTokens": 707,
       "refused": true,
       "results": [
@@ -20234,7 +20234,7 @@
       "intent": "code-trace",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2784860000000435,
+      "latencyMs": 0.6878750000000764,
       "estimatedContextTokens": 1173,
       "refused": true,
       "results": [
@@ -20343,7 +20343,7 @@
       "intent": "formula",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1721780000000308,
+      "latencyMs": 0.6477759999997943,
       "estimatedContextTokens": 688,
       "refused": true,
       "results": [
@@ -20452,7 +20452,7 @@
       "intent": "formula",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2600620000000617,
+      "latencyMs": 0.6707599999999729,
       "estimatedContextTokens": 612,
       "refused": true,
       "results": [
@@ -20561,7 +20561,7 @@
       "intent": "diagram",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1430230000000847,
+      "latencyMs": 0.5905099999999948,
       "estimatedContextTokens": 674,
       "refused": true,
       "results": [
@@ -20670,7 +20670,7 @@
       "intent": "diagram",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3318990000000213,
+      "latencyMs": 0.7453509999995731,
       "estimatedContextTokens": 612,
       "refused": true,
       "results": [
@@ -20779,7 +20779,7 @@
       "intent": "late-evidence",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.5850880000000416,
+      "latencyMs": 1.0212620000002062,
       "estimatedContextTokens": 830,
       "refused": true,
       "results": [
@@ -20888,7 +20888,7 @@
       "intent": "late-evidence",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2530850000000555,
+      "latencyMs": 0.9525499999999738,
       "estimatedContextTokens": 640,
       "refused": false,
       "results": [
@@ -20997,7 +20997,7 @@
       "intent": "multi-intent",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.309474000000023,
+      "latencyMs": 0.7853810000001431,
       "estimatedContextTokens": 1060,
       "refused": true,
       "results": [
@@ -21106,7 +21106,7 @@
       "intent": "multi-intent",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3933600000000297,
+      "latencyMs": 0.7726419999999052,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -21215,7 +21215,7 @@
       "intent": "ambiguous-entity",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.0521039999999857,
+      "latencyMs": 0.5722930000001725,
       "estimatedContextTokens": 941,
       "refused": true,
       "results": [
@@ -21324,7 +21324,7 @@
       "intent": "ambiguous-entity",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.1085489999999254,
+      "latencyMs": 0.6128440000002229,
       "estimatedContextTokens": 890,
       "refused": false,
       "results": [
@@ -21433,7 +21433,7 @@
       "intent": "ambiguous-version",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.200089999999932,
+      "latencyMs": 0.6683969999999135,
       "estimatedContextTokens": 2241,
       "refused": true,
       "results": [
@@ -21542,7 +21542,7 @@
       "intent": "ambiguous-version",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.2235629999998991,
+      "latencyMs": 0.6843409999996766,
       "estimatedContextTokens": 1702,
       "refused": true,
       "results": [
@@ -21651,7 +21651,7 @@
       "intent": "missing-private-fact",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 1.0128100000000586,
+      "latencyMs": 0.5446719999999914,
       "estimatedContextTokens": 1075,
       "refused": true,
       "results": [
@@ -21760,7 +21760,7 @@
       "intent": "missing-private-fact",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 1.4257910000000038,
+      "latencyMs": 0.5566800000001422,
       "estimatedContextTokens": 720,
       "refused": false,
       "results": [
@@ -21869,7 +21869,7 @@
       "intent": "missing-live-fact",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 1.1147509999999556,
+      "latencyMs": 0.5943860000002132,
       "estimatedContextTokens": 815,
       "refused": true,
       "results": [
@@ -21978,7 +21978,7 @@
       "intent": "missing-live-fact",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 1.2201069999999845,
+      "latencyMs": 0.6273750000000291,
       "estimatedContextTokens": 720,
       "refused": true,
       "results": [
@@ -22087,7 +22087,7 @@
       "intent": "partial-answer",
       "language": "en",
       "expectedAction": "partial",
-      "latencyMs": 1.2236940000000232,
+      "latencyMs": 0.6355170000001635,
       "estimatedContextTokens": 815,
       "refused": true,
       "results": [
@@ -22196,7 +22196,7 @@
       "intent": "partial-answer",
       "language": "vi",
       "expectedAction": "partial",
-      "latencyMs": 1.241337000000044,
+      "latencyMs": 0.7017359999999826,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -22305,7 +22305,7 @@
       "intent": "conflicting-sources",
       "language": "en",
       "expectedAction": "conflict",
-      "latencyMs": 0.7240709999999808,
+      "latencyMs": 0.38537499999983993,
       "estimatedContextTokens": 148,
       "refused": false,
       "results": [
@@ -22374,7 +22374,7 @@
       "intent": "conflicting-sources",
       "language": "vi",
       "expectedAction": "conflict",
-      "latencyMs": 0.7144240000000082,
+      "latencyMs": 0.36187999999992826,
       "estimatedContextTokens": 148,
       "refused": true,
       "results": [
@@ -22443,7 +22443,7 @@
       "intent": "false-premise",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.11835700000006,
+      "latencyMs": 0.6194330000002992,
       "estimatedContextTokens": 1075,
       "refused": false,
       "results": [
@@ -22552,7 +22552,7 @@
       "intent": "false-premise",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2270800000000008,
+      "latencyMs": 0.6838090000001102,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -22661,7 +22661,7 @@
       "intent": "prompt-injection",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1990279999999984,
+      "latencyMs": 0.6487769999998818,
       "estimatedContextTokens": 815,
       "refused": true,
       "results": [
@@ -22770,7 +22770,7 @@
       "intent": "prompt-injection",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3658390000000509,
+      "latencyMs": 0.7594219999996312,
       "estimatedContextTokens": 664,
       "refused": false,
       "results": [
@@ -22879,7 +22879,7 @@
       "intent": "scope-boundary",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 0.7759479999999712,
+      "latencyMs": 0.4123839999997472,
       "estimatedContextTokens": 545,
       "refused": true,
       "results": [
@@ -22963,7 +22963,7 @@
       "intent": "scope-boundary",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 0.7639750000000731,
+      "latencyMs": 0.3920539999999164,
       "estimatedContextTokens": 545,
       "refused": false,
       "results": [
@@ -23047,7 +23047,7 @@
       "intent": "conversational-followup",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.221270000000004,
+      "latencyMs": 0.7490170000000944,
       "estimatedContextTokens": 1075,
       "refused": false,
       "results": [
@@ -23156,7 +23156,7 @@
       "intent": "conversational-followup",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3694960000000265,
+      "latencyMs": 0.7662129999998797,
       "estimatedContextTokens": 890,
       "refused": true,
       "results": [
@@ -23265,7 +23265,7 @@
       "intent": "unresolved-followup",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 0.7446499999999787,
+      "latencyMs": 0.38024700000005396,
       "estimatedContextTokens": 986,
       "refused": false,
       "results": [
@@ -23374,7 +23374,7 @@
       "intent": "unresolved-followup",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 0.8040599999999358,
+      "latencyMs": 0.41129300000011426,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -23483,7 +23483,7 @@
       "intent": "conflicting-instructions",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.158602999999971,
+      "latencyMs": 0.6214270000000397,
       "estimatedContextTokens": 2287,
       "refused": true,
       "results": [
@@ -23592,7 +23592,7 @@
       "intent": "conflicting-instructions",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.2033660000000737,
+      "latencyMs": 0.6452520000002551,
       "estimatedContextTokens": 890,
       "refused": true,
       "results": [
@@ -23701,7 +23701,7 @@
       "intent": "direct",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.0484169999999722,
+      "latencyMs": 0.5712410000001,
       "estimatedContextTokens": 1078,
       "refused": false,
       "results": [
@@ -23810,7 +23810,7 @@
       "intent": "direct",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.099021000000107,
+      "latencyMs": 0.5929439999999886,
       "estimatedContextTokens": 939,
       "refused": false,
       "results": [
@@ -23919,7 +23919,7 @@
       "intent": "paraphrase",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1312110000000075,
+      "latencyMs": 0.6132739999998194,
       "estimatedContextTokens": 1030,
       "refused": true,
       "results": [
@@ -24028,7 +24028,7 @@
       "intent": "paraphrase",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1762850000000071,
+      "latencyMs": 0.6487069999998312,
       "estimatedContextTokens": 973,
       "refused": false,
       "results": [
@@ -24137,7 +24137,7 @@
       "intent": "table-lookup",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.0590459999999666,
+      "latencyMs": 0.5579219999999623,
       "estimatedContextTokens": 717,
       "refused": false,
       "results": [
@@ -24246,7 +24246,7 @@
       "intent": "table-lookup",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.0818280000000868,
+      "latencyMs": 0.5762999999997191,
       "estimatedContextTokens": 595,
       "refused": false,
       "results": [
@@ -24355,7 +24355,7 @@
       "intent": "aggregation",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1023270000000593,
+      "latencyMs": 0.5980620000000272,
       "estimatedContextTokens": 1078,
       "refused": false,
       "results": [
@@ -24464,7 +24464,7 @@
       "intent": "aggregation",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1067050000000336,
+      "latencyMs": 0.5819480000000112,
       "estimatedContextTokens": 913,
       "refused": false,
       "results": [
@@ -24573,7 +24573,7 @@
       "intent": "multi-hop",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1832490000000462,
+      "latencyMs": 0.6517220000000634,
       "estimatedContextTokens": 726,
       "refused": true,
       "results": [
@@ -24682,7 +24682,7 @@
       "intent": "multi-hop",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.278505999999993,
+      "latencyMs": 0.7043499999999767,
       "estimatedContextTokens": 536,
       "refused": true,
       "results": [
@@ -24791,7 +24791,7 @@
       "intent": "temporal-version",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.0387889999999516,
+      "latencyMs": 0.5476260000000366,
       "estimatedContextTokens": 1026,
       "refused": true,
       "results": [
@@ -24900,7 +24900,7 @@
       "intent": "temporal-version",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1781990000000633,
+      "latencyMs": 0.6410659999996824,
       "estimatedContextTokens": 973,
       "refused": true,
       "results": [
@@ -25009,7 +25009,7 @@
       "intent": "comparison",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1273330000000215,
+      "latencyMs": 0.5996439999998984,
       "estimatedContextTokens": 1130,
       "refused": false,
       "results": [
@@ -25118,7 +25118,7 @@
       "intent": "comparison",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.0952740000000176,
+      "latencyMs": 0.5889980000001742,
       "estimatedContextTokens": 1046,
       "refused": false,
       "results": [
@@ -25227,7 +25227,7 @@
       "intent": "code-trace",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1220439999999599,
+      "latencyMs": 0.6092579999999543,
       "estimatedContextTokens": 684,
       "refused": true,
       "results": [
@@ -25336,7 +25336,7 @@
       "intent": "code-trace",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.242819000000054,
+      "latencyMs": 0.6772799999998824,
       "estimatedContextTokens": 973,
       "refused": true,
       "results": [
@@ -25445,7 +25445,7 @@
       "intent": "formula",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.152490000000057,
+      "latencyMs": 0.634454999999889,
       "estimatedContextTokens": 679,
       "refused": true,
       "results": [
@@ -25554,7 +25554,7 @@
       "intent": "formula",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2181439999999384,
+      "latencyMs": 0.6576999999997497,
       "estimatedContextTokens": 630,
       "refused": true,
       "results": [
@@ -25663,7 +25663,7 @@
       "intent": "diagram",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1077169999999796,
+      "latencyMs": 0.5909409999999298,
       "estimatedContextTokens": 672,
       "refused": true,
       "results": [
@@ -25772,7 +25772,7 @@
       "intent": "diagram",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1783490000000256,
+      "latencyMs": 0.6122930000001361,
       "estimatedContextTokens": 675,
       "refused": true,
       "results": [
@@ -25881,7 +25881,7 @@
       "intent": "late-evidence",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.061191000000008,
+      "latencyMs": 0.5576419999997597,
       "estimatedContextTokens": 830,
       "refused": true,
       "results": [
@@ -25990,7 +25990,7 @@
       "intent": "late-evidence",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.136009999999942,
+      "latencyMs": 0.602668999999878,
       "estimatedContextTokens": 675,
       "refused": true,
       "results": [
@@ -26099,7 +26099,7 @@
       "intent": "multi-intent",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.2570259999999962,
+      "latencyMs": 0.69137099999989,
       "estimatedContextTokens": 1026,
       "refused": true,
       "results": [
@@ -26208,7 +26208,7 @@
       "intent": "multi-intent",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.325413000000026,
+      "latencyMs": 0.7423560000001999,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -26317,7 +26317,7 @@
       "intent": "ambiguous-entity",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 3.0176519999999982,
+      "latencyMs": 2.5615990000001148,
       "estimatedContextTokens": 1026,
       "refused": false,
       "results": [
@@ -26426,7 +26426,7 @@
       "intent": "ambiguous-entity",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.21583899999996,
+      "latencyMs": 0.7276950000000397,
       "estimatedContextTokens": 886,
       "refused": false,
       "results": [
@@ -26535,7 +26535,7 @@
       "intent": "ambiguous-version",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.2319989999999734,
+      "latencyMs": 0.7008949999999459,
       "estimatedContextTokens": 2245,
       "refused": true,
       "results": [
@@ -26644,7 +26644,7 @@
       "intent": "ambiguous-version",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.274609000000055,
+      "latencyMs": 0.7089270000001306,
       "estimatedContextTokens": 1779,
       "refused": true,
       "results": [
@@ -26753,7 +26753,7 @@
       "intent": "missing-private-fact",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 1.0308240000000524,
+      "latencyMs": 0.5612069999997402,
       "estimatedContextTokens": 1046,
       "refused": false,
       "results": [
@@ -26862,7 +26862,7 @@
       "intent": "missing-private-fact",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 1.0571529999999711,
+      "latencyMs": 0.562738999999965,
       "estimatedContextTokens": 803,
       "refused": false,
       "results": [
@@ -26971,7 +26971,7 @@
       "intent": "missing-live-fact",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 1.0799349999999777,
+      "latencyMs": 0.583458999999948,
       "estimatedContextTokens": 807,
       "refused": true,
       "results": [
@@ -27080,7 +27080,7 @@
       "intent": "missing-live-fact",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 1.2291940000000068,
+      "latencyMs": 0.6269349999997758,
       "estimatedContextTokens": 723,
       "refused": true,
       "results": [
@@ -27189,7 +27189,7 @@
       "intent": "partial-answer",
       "language": "en",
       "expectedAction": "partial",
-      "latencyMs": 1.1759949999999435,
+      "latencyMs": 0.6326930000000175,
       "estimatedContextTokens": 859,
       "refused": true,
       "results": [
@@ -27298,7 +27298,7 @@
       "intent": "partial-answer",
       "language": "vi",
       "expectedAction": "partial",
-      "latencyMs": 1.2281919999999218,
+      "latencyMs": 0.6803949999998622,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -27407,7 +27407,7 @@
       "intent": "conflicting-sources",
       "language": "en",
       "expectedAction": "conflict",
-      "latencyMs": 0.7264850000000251,
+      "latencyMs": 0.38375200000018594,
       "estimatedContextTokens": 146,
       "refused": false,
       "results": [
@@ -27476,7 +27476,7 @@
       "intent": "conflicting-sources",
       "language": "vi",
       "expectedAction": "conflict",
-      "latencyMs": 0.7079619999999522,
+      "latencyMs": 0.3538770000000113,
       "estimatedContextTokens": 146,
       "refused": true,
       "results": [
@@ -27545,7 +27545,7 @@
       "intent": "false-premise",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1518399999999929,
+      "latencyMs": 0.6273149999997258,
       "estimatedContextTokens": 1078,
       "refused": false,
       "results": [
@@ -27654,7 +27654,7 @@
       "intent": "false-premise",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2978319999999712,
+      "latencyMs": 0.7247099999999591,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -27763,7 +27763,7 @@
       "intent": "prompt-injection",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.4963730000000623,
+      "latencyMs": 0.732492000000093,
       "estimatedContextTokens": 818,
       "refused": true,
       "results": [
@@ -27872,7 +27872,7 @@
       "intent": "prompt-injection",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3876790000000483,
+      "latencyMs": 0.7659920000000966,
       "estimatedContextTokens": 664,
       "refused": false,
       "results": [
@@ -27981,7 +27981,7 @@
       "intent": "scope-boundary",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 0.7005970000000161,
+      "latencyMs": 0.40099800000007235,
       "estimatedContextTokens": 677,
       "refused": false,
       "results": [
@@ -28065,7 +28065,7 @@
       "intent": "scope-boundary",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 0.7189009999999598,
+      "latencyMs": 0.35847499999999854,
       "estimatedContextTokens": 677,
       "refused": true,
       "results": [
@@ -28149,7 +28149,7 @@
       "intent": "conversational-followup",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1965630000000829,
+      "latencyMs": 0.6718519999999444,
       "estimatedContextTokens": 1078,
       "refused": false,
       "results": [
@@ -28258,7 +28258,7 @@
       "intent": "conversational-followup",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3848349999999527,
+      "latencyMs": 0.7552259999997659,
       "estimatedContextTokens": 966,
       "refused": true,
       "results": [
@@ -28367,7 +28367,7 @@
       "intent": "unresolved-followup",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 0.6932239999999865,
+      "latencyMs": 0.37649099999998725,
       "estimatedContextTokens": 986,
       "refused": false,
       "results": [
@@ -28476,7 +28476,7 @@
       "intent": "unresolved-followup",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 0.8433029999999917,
+      "latencyMs": 0.4136359999997694,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -28585,7 +28585,7 @@
       "intent": "conflicting-instructions",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.1471520000000055,
+      "latencyMs": 0.6308800000001611,
       "estimatedContextTokens": 2041,
       "refused": true,
       "results": [
@@ -28694,7 +28694,7 @@
       "intent": "conflicting-instructions",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.233602000000019,
+      "latencyMs": 0.6658530000004248,
       "estimatedContextTokens": 973,
       "refused": true,
       "results": [
@@ -28803,7 +28803,7 @@
       "intent": "direct",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.0526149999999461,
+      "latencyMs": 0.5605759999998554,
       "estimatedContextTokens": 1071,
       "refused": false,
       "results": [
@@ -28912,7 +28912,7 @@
       "intent": "direct",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1097710000000234,
+      "latencyMs": 0.5999449999999342,
       "estimatedContextTokens": 886,
       "refused": false,
       "results": [
@@ -29021,7 +29021,7 @@
       "intent": "paraphrase",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.144516000000067,
+      "latencyMs": 0.622197999999571,
       "estimatedContextTokens": 1023,
       "refused": true,
       "results": [
@@ -29130,7 +29130,7 @@
       "intent": "paraphrase",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.184641000000056,
+      "latencyMs": 0.6530939999997827,
       "estimatedContextTokens": 966,
       "refused": false,
       "results": [
@@ -29239,7 +29239,7 @@
       "intent": "table-lookup",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.0728419999999232,
+      "latencyMs": 0.5788330000000315,
       "estimatedContextTokens": 703,
       "refused": true,
       "results": [
@@ -29348,7 +29348,7 @@
       "intent": "table-lookup",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1138290000000097,
+      "latencyMs": 0.5802949999997509,
       "estimatedContextTokens": 636,
       "refused": false,
       "results": [
@@ -29457,7 +29457,7 @@
       "intent": "aggregation",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1017459999999346,
+      "latencyMs": 0.5946460000000116,
       "estimatedContextTokens": 1130,
       "refused": false,
       "results": [
@@ -29566,7 +29566,7 @@
       "intent": "aggregation",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.133495000000039,
+      "latencyMs": 0.5831790000002002,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -29675,7 +29675,7 @@
       "intent": "multi-hop",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1980260000000271,
+      "latencyMs": 0.6489269999997305,
       "estimatedContextTokens": 646,
       "refused": true,
       "results": [
@@ -29784,7 +29784,7 @@
       "intent": "multi-hop",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2837160000000267,
+      "latencyMs": 0.7067130000000361,
       "estimatedContextTokens": 536,
       "refused": true,
       "results": [
@@ -29893,7 +29893,7 @@
       "intent": "temporal-version",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.0777819999999565,
+      "latencyMs": 0.5442109999999047,
       "estimatedContextTokens": 1071,
       "refused": true,
       "results": [
@@ -30002,7 +30002,7 @@
       "intent": "temporal-version",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2046480000000201,
+      "latencyMs": 0.6346860000003289,
       "estimatedContextTokens": 886,
       "refused": false,
       "results": [
@@ -30111,7 +30111,7 @@
       "intent": "comparison",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1397470000000567,
+      "latencyMs": 0.6006359999996675,
       "estimatedContextTokens": 1130,
       "refused": true,
       "results": [
@@ -30220,7 +30220,7 @@
       "intent": "comparison",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1154319999999416,
+      "latencyMs": 0.5811459999999897,
       "estimatedContextTokens": 1019,
       "refused": false,
       "results": [
@@ -30329,7 +30329,7 @@
       "intent": "code-trace",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.169031999999902,
+      "latencyMs": 0.6194230000000971,
       "estimatedContextTokens": 703,
       "refused": true,
       "results": [
@@ -30438,7 +30438,7 @@
       "intent": "code-trace",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2659230000000434,
+      "latencyMs": 0.691190000000006,
       "estimatedContextTokens": 1170,
       "refused": true,
       "results": [
@@ -30547,7 +30547,7 @@
       "intent": "formula",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.178829999999948,
+      "latencyMs": 0.6434589999998934,
       "estimatedContextTokens": 686,
       "refused": true,
       "results": [
@@ -30656,7 +30656,7 @@
       "intent": "formula",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2328109999999697,
+      "latencyMs": 0.7529819999999745,
       "estimatedContextTokens": 609,
       "refused": true,
       "results": [
@@ -30765,7 +30765,7 @@
       "intent": "diagram",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.126702000000023,
+      "latencyMs": 0.6228289999999106,
       "estimatedContextTokens": 672,
       "refused": true,
       "results": [
@@ -30874,7 +30874,7 @@
       "intent": "diagram",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1504269999999224,
+      "latencyMs": 0.6376809999997022,
       "estimatedContextTokens": 609,
       "refused": true,
       "results": [
@@ -30983,7 +30983,7 @@
       "intent": "late-evidence",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.076799000000051,
+      "latencyMs": 0.5847210000001724,
       "estimatedContextTokens": 830,
       "refused": true,
       "results": [
@@ -31092,7 +31092,7 @@
       "intent": "late-evidence",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1423719999999093,
+      "latencyMs": 0.6119920000001002,
       "estimatedContextTokens": 636,
       "refused": false,
       "results": [
@@ -31201,7 +31201,7 @@
       "intent": "multi-intent",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.3411029999999755,
+      "latencyMs": 0.7562570000000051,
       "estimatedContextTokens": 1058,
       "refused": true,
       "results": [
@@ -31310,7 +31310,7 @@
       "intent": "multi-intent",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.661359999999945,
+      "latencyMs": 0.848044999999729,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -31419,7 +31419,7 @@
       "intent": "ambiguous-entity",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.0360230000000001,
+      "latencyMs": 0.5628389999997125,
       "estimatedContextTokens": 938,
       "refused": true,
       "results": [
@@ -31528,7 +31528,7 @@
       "intent": "ambiguous-entity",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.0974369999998999,
+      "latencyMs": 0.6268850000001294,
       "estimatedContextTokens": 886,
       "refused": false,
       "results": [
@@ -31637,7 +31637,7 @@
       "intent": "ambiguous-version",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.1915730000000622,
+      "latencyMs": 0.6694779999997991,
       "estimatedContextTokens": 2238,
       "refused": true,
       "results": [
@@ -31746,7 +31746,7 @@
       "intent": "ambiguous-version",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.259881000000064,
+      "latencyMs": 0.6678460000002815,
       "estimatedContextTokens": 1699,
       "refused": true,
       "results": [
@@ -31855,7 +31855,7 @@
       "intent": "missing-private-fact",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 1.0330280000000585,
+      "latencyMs": 0.6895879999997305,
       "estimatedContextTokens": 1071,
       "refused": true,
       "results": [
@@ -31964,7 +31964,7 @@
       "intent": "missing-private-fact",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 1.0580550000000812,
+      "latencyMs": 0.7789010000001326,
       "estimatedContextTokens": 716,
       "refused": false,
       "results": [
@@ -32073,7 +32073,7 @@
       "intent": "missing-live-fact",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 1.0814579999999978,
+      "latencyMs": 0.6125530000003891,
       "estimatedContextTokens": 811,
       "refused": true,
       "results": [
@@ -32182,7 +32182,7 @@
       "intent": "missing-live-fact",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 1.1600449999999682,
+      "latencyMs": 0.6710210000001098,
       "estimatedContextTokens": 716,
       "refused": true,
       "results": [
@@ -32291,7 +32291,7 @@
       "intent": "partial-answer",
       "language": "en",
       "expectedAction": "partial",
-      "latencyMs": 1.1478819999999814,
+      "latencyMs": 0.6461239999998725,
       "estimatedContextTokens": 811,
       "refused": true,
       "results": [
@@ -32400,7 +32400,7 @@
       "intent": "partial-answer",
       "language": "vi",
       "expectedAction": "partial",
-      "latencyMs": 1.2580679999999802,
+      "latencyMs": 0.6664339999997537,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -32509,7 +32509,7 @@
       "intent": "conflicting-sources",
       "language": "en",
       "expectedAction": "conflict",
-      "latencyMs": 0.7368749999999409,
+      "latencyMs": 0.39647100000001956,
       "estimatedContextTokens": 146,
       "refused": false,
       "results": [
@@ -32578,7 +32578,7 @@
       "intent": "conflicting-sources",
       "language": "vi",
       "expectedAction": "conflict",
-      "latencyMs": 0.7094540000000507,
+      "latencyMs": 0.35361699999975826,
       "estimatedContextTokens": 146,
       "refused": true,
       "results": [
@@ -32647,7 +32647,7 @@
       "intent": "false-premise",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1294880000000376,
+      "latencyMs": 0.6107510000001639,
       "estimatedContextTokens": 1071,
       "refused": false,
       "results": [
@@ -32756,7 +32756,7 @@
       "intent": "false-premise",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2303060000000414,
+      "latencyMs": 0.6708000000003267,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -32865,7 +32865,7 @@
       "intent": "prompt-injection",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1792299999999614,
+      "latencyMs": 0.6439900000000307,
       "estimatedContextTokens": 811,
       "refused": true,
       "results": [
@@ -32974,7 +32974,7 @@
       "intent": "prompt-injection",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3734830000000784,
+      "latencyMs": 0.7533229999999094,
       "estimatedContextTokens": 664,
       "refused": false,
       "results": [
@@ -33083,7 +33083,7 @@
       "intent": "scope-boundary",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 0.7565819999999803,
+      "latencyMs": 0.3969219999999041,
       "estimatedContextTokens": 542,
       "refused": true,
       "results": [
@@ -33167,7 +33167,7 @@
       "intent": "scope-boundary",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 0.7702679999999873,
+      "latencyMs": 0.39929499999971085,
       "estimatedContextTokens": 542,
       "refused": false,
       "results": [
@@ -33251,7 +33251,7 @@
       "intent": "conversational-followup",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1932469999999284,
+      "latencyMs": 0.6371899999999187,
       "estimatedContextTokens": 1071,
       "refused": false,
       "results": [
@@ -33360,7 +33360,7 @@
       "intent": "conversational-followup",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 3.4236590000000433,
+      "latencyMs": 3.009045999999671,
       "estimatedContextTokens": 886,
       "refused": true,
       "results": [
@@ -33469,7 +33469,7 @@
       "intent": "unresolved-followup",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 0.7513120000000981,
+      "latencyMs": 0.4770809999999983,
       "estimatedContextTokens": 986,
       "refused": false,
       "results": [
@@ -33578,7 +33578,7 @@
       "intent": "unresolved-followup",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 0.8258409999999685,
+      "latencyMs": 0.45900399999982255,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -33687,7 +33687,7 @@
       "intent": "conflicting-instructions",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.1715259999999716,
+      "latencyMs": 0.6524720000002162,
       "estimatedContextTokens": 2283,
       "refused": true,
       "results": [
@@ -33796,7 +33796,7 @@
       "intent": "conflicting-instructions",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.2129839999998921,
+      "latencyMs": 0.6805249999997613,
       "estimatedContextTokens": 886,
       "refused": true,
       "results": [
@@ -33905,7 +33905,7 @@
       "intent": "direct",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.0573739999999816,
+      "latencyMs": 0.570901000000049,
       "estimatedContextTokens": 1078,
       "refused": false,
       "results": [
@@ -34014,7 +34014,7 @@
       "intent": "direct",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1812250000000404,
+      "latencyMs": 0.6220069999999396,
       "estimatedContextTokens": 939,
       "refused": false,
       "results": [
@@ -34123,7 +34123,7 @@
       "intent": "paraphrase",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1409390000001167,
+      "latencyMs": 0.736978999999792,
       "estimatedContextTokens": 1030,
       "refused": true,
       "results": [
@@ -34232,7 +34232,7 @@
       "intent": "paraphrase",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2470369999998638,
+      "latencyMs": 0.7061430000003384,
       "estimatedContextTokens": 973,
       "refused": false,
       "results": [
@@ -34341,7 +34341,7 @@
       "intent": "table-lookup",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.0575830000000224,
+      "latencyMs": 0.6107200000001285,
       "estimatedContextTokens": 717,
       "refused": false,
       "results": [
@@ -34450,7 +34450,7 @@
       "intent": "table-lookup",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.092047999999977,
+      "latencyMs": 0.7142650000000685,
       "estimatedContextTokens": 595,
       "refused": false,
       "results": [
@@ -34559,7 +34559,7 @@
       "intent": "aggregation",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.0796040000000175,
+      "latencyMs": 0.6223879999997735,
       "estimatedContextTokens": 1078,
       "refused": false,
       "results": [
@@ -34668,7 +34668,7 @@
       "intent": "aggregation",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.11204500000008,
+      "latencyMs": 0.6061239999999088,
       "estimatedContextTokens": 913,
       "refused": false,
       "results": [
@@ -34777,7 +34777,7 @@
       "intent": "multi-hop",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.198327000000063,
+      "latencyMs": 0.6684369999998125,
       "estimatedContextTokens": 726,
       "refused": true,
       "results": [
@@ -34886,7 +34886,7 @@
       "intent": "multi-hop",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2806699999998727,
+      "latencyMs": 0.7247309999997924,
       "estimatedContextTokens": 536,
       "refused": true,
       "results": [
@@ -34995,7 +34995,7 @@
       "intent": "temporal-version",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.064866999999822,
+      "latencyMs": 0.5743469999997615,
       "estimatedContextTokens": 1026,
       "refused": true,
       "results": [
@@ -35104,7 +35104,7 @@
       "intent": "temporal-version",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.171275999999807,
+      "latencyMs": 0.6269549999997253,
       "estimatedContextTokens": 973,
       "refused": true,
       "results": [
@@ -35213,7 +35213,7 @@
       "intent": "comparison",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1687620000000152,
+      "latencyMs": 0.6275649999997768,
       "estimatedContextTokens": 1130,
       "refused": false,
       "results": [
@@ -35322,7 +35322,7 @@
       "intent": "comparison",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.0915970000000925,
+      "latencyMs": 0.588937999999871,
       "estimatedContextTokens": 1046,
       "refused": false,
       "results": [
@@ -35431,7 +35431,7 @@
       "intent": "code-trace",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.120480999999927,
+      "latencyMs": 0.6106210000002648,
       "estimatedContextTokens": 684,
       "refused": true,
       "results": [
@@ -35540,7 +35540,7 @@
       "intent": "code-trace",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2552720000001045,
+      "latencyMs": 0.6979510000001028,
       "estimatedContextTokens": 973,
       "refused": true,
       "results": [
@@ -35649,7 +35649,7 @@
       "intent": "formula",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1521000000000186,
+      "latencyMs": 0.6666740000000573,
       "estimatedContextTokens": 679,
       "refused": true,
       "results": [
@@ -35758,7 +35758,7 @@
       "intent": "formula",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2549220000000787,
+      "latencyMs": 0.7518310000000383,
       "estimatedContextTokens": 630,
       "refused": true,
       "results": [
@@ -35867,7 +35867,7 @@
       "intent": "diagram",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.103939999999966,
+      "latencyMs": 0.6270549999999275,
       "estimatedContextTokens": 672,
       "refused": true,
       "results": [
@@ -35976,7 +35976,7 @@
       "intent": "diagram",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1826869999999872,
+      "latencyMs": 0.6443710000003193,
       "estimatedContextTokens": 675,
       "refused": true,
       "results": [
@@ -36085,7 +36085,7 @@
       "intent": "late-evidence",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.0547780000001694,
+      "latencyMs": 0.5709119999996801,
       "estimatedContextTokens": 830,
       "refused": true,
       "results": [
@@ -36194,7 +36194,7 @@
       "intent": "late-evidence",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1317520000000059,
+      "latencyMs": 0.6342260000001261,
       "estimatedContextTokens": 675,
       "refused": true,
       "results": [
@@ -36303,7 +36303,7 @@
       "intent": "multi-intent",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.2505439999999908,
+      "latencyMs": 0.7171490000000631,
       "estimatedContextTokens": 1026,
       "refused": true,
       "results": [
@@ -36412,7 +36412,7 @@
       "intent": "multi-intent",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3696560000000773,
+      "latencyMs": 0.756959000000279,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -36521,7 +36521,7 @@
       "intent": "ambiguous-entity",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.008331999999882,
+      "latencyMs": 0.5454529999997249,
       "estimatedContextTokens": 1026,
       "refused": false,
       "results": [
@@ -36630,7 +36630,7 @@
       "intent": "ambiguous-entity",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.133244999999988,
+      "latencyMs": 0.5685770000000048,
       "estimatedContextTokens": 886,
       "refused": false,
       "results": [
@@ -36739,7 +36739,7 @@
       "intent": "ambiguous-version",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.2873030000000654,
+      "latencyMs": 0.6673350000000937,
       "estimatedContextTokens": 2245,
       "refused": true,
       "results": [
@@ -36848,7 +36848,7 @@
       "intent": "ambiguous-version",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.2212389999999687,
+      "latencyMs": 0.6710800000000745,
       "estimatedContextTokens": 1779,
       "refused": true,
       "results": [
@@ -36957,7 +36957,7 @@
       "intent": "missing-private-fact",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 1.1499160000000757,
+      "latencyMs": 0.6372299999998177,
       "estimatedContextTokens": 1046,
       "refused": false,
       "results": [
@@ -37066,7 +37066,7 @@
       "intent": "missing-private-fact",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 1.8222909999999501,
+      "latencyMs": 1.033911000000444,
       "estimatedContextTokens": 803,
       "refused": false,
       "results": [
@@ -37175,7 +37175,7 @@
       "intent": "missing-live-fact",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 1.7569690000000264,
+      "latencyMs": 0.971328000000085,
       "estimatedContextTokens": 807,
       "refused": true,
       "results": [
@@ -37284,7 +37284,7 @@
       "intent": "missing-live-fact",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 1.9920680000000175,
+      "latencyMs": 1.0711559999999736,
       "estimatedContextTokens": 723,
       "refused": true,
       "results": [
@@ -37393,7 +37393,7 @@
       "intent": "partial-answer",
       "language": "en",
       "expectedAction": "partial",
-      "latencyMs": 1.518694000000096,
+      "latencyMs": 1.2192270000000462,
       "estimatedContextTokens": 859,
       "refused": true,
       "results": [
@@ -37502,7 +37502,7 @@
       "intent": "partial-answer",
       "language": "vi",
       "expectedAction": "partial",
-      "latencyMs": 1.2415369999998802,
+      "latencyMs": 0.927342999999837,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -37611,7 +37611,7 @@
       "intent": "conflicting-sources",
       "language": "en",
       "expectedAction": "conflict",
-      "latencyMs": 0.7213870000000497,
+      "latencyMs": 0.40633600000001024,
       "estimatedContextTokens": 146,
       "refused": false,
       "results": [
@@ -37680,7 +37680,7 @@
       "intent": "conflicting-sources",
       "language": "vi",
       "expectedAction": "conflict",
-      "latencyMs": 0.7181900000000496,
+      "latencyMs": 0.3657860000002984,
       "estimatedContextTokens": 146,
       "refused": true,
       "results": [
@@ -37749,7 +37749,7 @@
       "intent": "false-premise",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1235169999999925,
+      "latencyMs": 0.6283469999998488,
       "estimatedContextTokens": 1078,
       "refused": false,
       "results": [
@@ -37858,7 +37858,7 @@
       "intent": "false-premise",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2698499999999058,
+      "latencyMs": 0.6986109999998007,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -37967,7 +37967,7 @@
       "intent": "prompt-injection",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.210258999999951,
+      "latencyMs": 0.6522620000000643,
       "estimatedContextTokens": 818,
       "refused": true,
       "results": [
@@ -38076,7 +38076,7 @@
       "intent": "prompt-injection",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3658689999999751,
+      "latencyMs": 0.779262000000017,
       "estimatedContextTokens": 664,
       "refused": false,
       "results": [
@@ -38185,7 +38185,7 @@
       "intent": "scope-boundary",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 0.7290810000001784,
+      "latencyMs": 0.3907930000000306,
       "estimatedContextTokens": 677,
       "refused": false,
       "results": [
@@ -38269,7 +38269,7 @@
       "intent": "scope-boundary",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 0.7137219999999616,
+      "latencyMs": 0.36399200000005294,
       "estimatedContextTokens": 677,
       "refused": true,
       "results": [
@@ -38353,7 +38353,7 @@
       "intent": "conversational-followup",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1810550000000148,
+      "latencyMs": 0.6678459999998267,
       "estimatedContextTokens": 1078,
       "refused": false,
       "results": [
@@ -38462,7 +38462,7 @@
       "intent": "conversational-followup",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.365628999999899,
+      "latencyMs": 0.7660219999997935,
       "estimatedContextTokens": 966,
       "refused": true,
       "results": [
@@ -38571,7 +38571,7 @@
       "intent": "unresolved-followup",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 0.7158059999999296,
+      "latencyMs": 0.3698010000002796,
       "estimatedContextTokens": 986,
       "refused": false,
       "results": [
@@ -38680,7 +38680,7 @@
       "intent": "unresolved-followup",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 0.873410000000149,
+      "latencyMs": 0.4126160000000709,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -38789,7 +38789,7 @@
       "intent": "conflicting-instructions",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.1634820000001582,
+      "latencyMs": 0.6209060000001045,
       "estimatedContextTokens": 2041,
       "refused": true,
       "results": [
@@ -38898,7 +38898,7 @@
       "intent": "conflicting-instructions",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.2238640000000487,
+      "latencyMs": 0.6568700000002536,
       "estimatedContextTokens": 973,
       "refused": true,
       "results": [
@@ -39007,7 +39007,7 @@
       "intent": "direct",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.0411119999998846,
+      "latencyMs": 0.5770910000001095,
       "estimatedContextTokens": 1071,
       "refused": false,
       "results": [
@@ -39116,7 +39116,7 @@
       "intent": "direct",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1139889999999468,
+      "latencyMs": 0.6189030000000457,
       "estimatedContextTokens": 886,
       "refused": false,
       "results": [
@@ -39225,7 +39225,7 @@
       "intent": "paraphrase",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1456679999998869,
+      "latencyMs": 0.619633999999678,
       "estimatedContextTokens": 1023,
       "refused": true,
       "results": [
@@ -39334,7 +39334,7 @@
       "intent": "paraphrase",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.204488000000083,
+      "latencyMs": 0.6504500000000917,
       "estimatedContextTokens": 966,
       "refused": false,
       "results": [
@@ -39443,7 +39443,7 @@
       "intent": "table-lookup",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.0602879999999004,
+      "latencyMs": 0.5588330000000497,
       "estimatedContextTokens": 703,
       "refused": true,
       "results": [
@@ -39552,7 +39552,7 @@
       "intent": "table-lookup",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.080635999999913,
+      "latencyMs": 0.5844409999999698,
       "estimatedContextTokens": 636,
       "refused": false,
       "results": [
@@ -39661,7 +39661,7 @@
       "intent": "aggregation",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.075076000000081,
+      "latencyMs": 0.592902999999751,
       "estimatedContextTokens": 1130,
       "refused": false,
       "results": [
@@ -39770,7 +39770,7 @@
       "intent": "aggregation",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.102388000000019,
+      "latencyMs": 0.5870049999998628,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -39879,7 +39879,7 @@
       "intent": "multi-hop",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.199378999999908,
+      "latencyMs": 0.6604539999998451,
       "estimatedContextTokens": 646,
       "refused": true,
       "results": [
@@ -39988,7 +39988,7 @@
       "intent": "multi-hop",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3876299999999446,
+      "latencyMs": 0.7139549999997143,
       "estimatedContextTokens": 536,
       "refused": true,
       "results": [
@@ -40097,7 +40097,7 @@
       "intent": "temporal-version",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.170033999999987,
+      "latencyMs": 0.5680769999999029,
       "estimatedContextTokens": 1071,
       "refused": true,
       "results": [
@@ -40206,7 +40206,7 @@
       "intent": "temporal-version",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1780989999999747,
+      "latencyMs": 0.6808049999999639,
       "estimatedContextTokens": 886,
       "refused": false,
       "results": [
@@ -40315,7 +40315,7 @@
       "intent": "comparison",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 3.4706370000001243,
+      "latencyMs": 0.6462530000003426,
       "estimatedContextTokens": 1130,
       "refused": true,
       "results": [
@@ -40424,7 +40424,7 @@
       "intent": "comparison",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3445400000000518,
+      "latencyMs": 2.8941650000001573,
       "estimatedContextTokens": 1019,
       "refused": false,
       "results": [
@@ -40533,7 +40533,7 @@
       "intent": "code-trace",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1997690000000603,
+      "latencyMs": 0.7522610000000896,
       "estimatedContextTokens": 703,
       "refused": true,
       "results": [
@@ -40642,7 +40642,7 @@
       "intent": "code-trace",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2764620000000377,
+      "latencyMs": 0.7709100000001854,
       "estimatedContextTokens": 1170,
       "refused": true,
       "results": [
@@ -40751,7 +40751,7 @@
       "intent": "formula",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.206431000000066,
+      "latencyMs": 0.6796229999999923,
       "estimatedContextTokens": 686,
       "refused": true,
       "results": [
@@ -40860,7 +40860,7 @@
       "intent": "formula",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2688080000000355,
+      "latencyMs": 0.695165999999972,
       "estimatedContextTokens": 609,
       "refused": true,
       "results": [
@@ -40969,7 +40969,7 @@
       "intent": "diagram",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1056229999999232,
+      "latencyMs": 0.6267139999999927,
       "estimatedContextTokens": 672,
       "refused": true,
       "results": [
@@ -41078,7 +41078,7 @@
       "intent": "diagram",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1491449999998622,
+      "latencyMs": 0.6211359999997512,
       "estimatedContextTokens": 609,
       "refused": true,
       "results": [
@@ -41187,7 +41187,7 @@
       "intent": "late-evidence",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.0624830000001566,
+      "latencyMs": 0.5970099999999547,
       "estimatedContextTokens": 830,
       "refused": true,
       "results": [
@@ -41296,7 +41296,7 @@
       "intent": "late-evidence",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1321230000000924,
+      "latencyMs": 0.6500989999999547,
       "estimatedContextTokens": 636,
       "refused": false,
       "results": [
@@ -41405,7 +41405,7 @@
       "intent": "multi-intent",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.2757409999999254,
+      "latencyMs": 0.7228179999997337,
       "estimatedContextTokens": 1058,
       "refused": true,
       "results": [
@@ -41514,7 +41514,7 @@
       "intent": "multi-intent",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3825199999998858,
+      "latencyMs": 0.7871029999996608,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -41623,7 +41623,7 @@
       "intent": "ambiguous-entity",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.0435479999998734,
+      "latencyMs": 0.5727339999998549,
       "estimatedContextTokens": 938,
       "refused": true,
       "results": [
@@ -41732,7 +41732,7 @@
       "intent": "ambiguous-entity",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.1175049999999374,
+      "latencyMs": 0.5854229999999916,
       "estimatedContextTokens": 886,
       "refused": false,
       "results": [
@@ -41841,7 +41841,7 @@
       "intent": "ambiguous-version",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.2797189999998864,
+      "latencyMs": 0.692602000000079,
       "estimatedContextTokens": 2238,
       "refused": true,
       "results": [
@@ -41950,7 +41950,7 @@
       "intent": "ambiguous-version",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.2533989999999449,
+      "latencyMs": 0.6983510000000024,
       "estimatedContextTokens": 1699,
       "refused": true,
       "results": [
@@ -42059,7 +42059,7 @@
       "intent": "missing-private-fact",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 1.013721999999916,
+      "latencyMs": 0.541917999999896,
       "estimatedContextTokens": 1071,
       "refused": true,
       "results": [
@@ -42168,7 +42168,7 @@
       "intent": "missing-private-fact",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 1.0470940000000155,
+      "latencyMs": 0.5808560000000398,
       "estimatedContextTokens": 716,
       "refused": false,
       "results": [
@@ -42277,7 +42277,7 @@
       "intent": "missing-live-fact",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 1.0730819999998857,
+      "latencyMs": 0.593253999999888,
       "estimatedContextTokens": 811,
       "refused": true,
       "results": [
@@ -42386,7 +42386,7 @@
       "intent": "missing-live-fact",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 1.1482529999998405,
+      "latencyMs": 0.6327940000001036,
       "estimatedContextTokens": 716,
       "refused": true,
       "results": [
@@ -42495,7 +42495,7 @@
       "intent": "partial-answer",
       "language": "en",
       "expectedAction": "partial",
-      "latencyMs": 1.1639829999999165,
+      "latencyMs": 0.6653619999997318,
       "estimatedContextTokens": 811,
       "refused": true,
       "results": [
@@ -42604,7 +42604,7 @@
       "intent": "partial-answer",
       "language": "vi",
       "expectedAction": "partial",
-      "latencyMs": 1.2701700000000073,
+      "latencyMs": 0.6685969999998633,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -42713,7 +42713,7 @@
       "intent": "conflicting-sources",
       "language": "en",
       "expectedAction": "conflict",
-      "latencyMs": 0.7271869999999581,
+      "latencyMs": 0.4254949999999553,
       "estimatedContextTokens": 146,
       "refused": false,
       "results": [
@@ -42782,7 +42782,7 @@
       "intent": "conflicting-sources",
       "language": "vi",
       "expectedAction": "conflict",
-      "latencyMs": 0.7241420000000289,
+      "latencyMs": 0.3908230000001822,
       "estimatedContextTokens": 146,
       "refused": true,
       "results": [
@@ -42851,7 +42851,7 @@
       "intent": "false-premise",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1205419999998867,
+      "latencyMs": 0.7517010000001392,
       "estimatedContextTokens": 1071,
       "refused": false,
       "results": [
@@ -42960,7 +42960,7 @@
       "intent": "false-premise",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2440819999999349,
+      "latencyMs": 0.766732999999931,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -43069,7 +43069,7 @@
       "intent": "prompt-injection",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1887990000000173,
+      "latencyMs": 0.7158979999999247,
       "estimatedContextTokens": 811,
       "refused": true,
       "results": [
@@ -43178,7 +43178,7 @@
       "intent": "prompt-injection",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.4068760000000111,
+      "latencyMs": 0.7780099999999948,
       "estimatedContextTokens": 664,
       "refused": false,
       "results": [
@@ -43287,7 +43287,7 @@
       "intent": "scope-boundary",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 0.7651169999999183,
+      "latencyMs": 0.42590500000005704,
       "estimatedContextTokens": 542,
       "refused": true,
       "results": [
@@ -43371,7 +43371,7 @@
       "intent": "scope-boundary",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 0.8009750000001077,
+      "latencyMs": 0.3918949999997494,
       "estimatedContextTokens": 542,
       "refused": false,
       "results": [
@@ -43455,7 +43455,7 @@
       "intent": "conversational-followup",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.2093970000000809,
+      "latencyMs": 0.7436490000000049,
       "estimatedContextTokens": 1071,
       "refused": false,
       "results": [
@@ -43564,7 +43564,7 @@
       "intent": "conversational-followup",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.4137180000000171,
+      "latencyMs": 0.8367379999999685,
       "estimatedContextTokens": 886,
       "refused": true,
       "results": [
@@ -43673,7 +43673,7 @@
       "intent": "unresolved-followup",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 0.7205039999998917,
+      "latencyMs": 0.3752089999998134,
       "estimatedContextTokens": 986,
       "refused": false,
       "results": [
@@ -43782,7 +43782,7 @@
       "intent": "unresolved-followup",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 0.8006040000000212,
+      "latencyMs": 0.43216400000028443,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -43891,7 +43891,7 @@
       "intent": "conflicting-instructions",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.1559270000000197,
+      "latencyMs": 0.6258729999999559,
       "estimatedContextTokens": 2283,
       "refused": true,
       "results": [
@@ -44000,7 +44000,7 @@
       "intent": "conflicting-instructions",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.2267389999999523,
+      "latencyMs": 0.672041999999692,
       "estimatedContextTokens": 886,
       "refused": true,
       "results": [
@@ -44109,7 +44109,7 @@
       "intent": "direct",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1101419999999962,
+      "latencyMs": 0.5727940000001581,
       "estimatedContextTokens": 1107,
       "refused": false,
       "results": [
@@ -44218,7 +44218,7 @@
       "intent": "direct",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.168139999999994,
+      "latencyMs": 0.6275160000000142,
       "estimatedContextTokens": 967,
       "refused": false,
       "results": [
@@ -44327,7 +44327,7 @@
       "intent": "paraphrase",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1644229999999425,
+      "latencyMs": 0.6480259999998452,
       "estimatedContextTokens": 1054,
       "refused": true,
       "results": [
@@ -44436,7 +44436,7 @@
       "intent": "paraphrase",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.216179000000011,
+      "latencyMs": 0.6487969999998313,
       "estimatedContextTokens": 1002,
       "refused": false,
       "results": [
@@ -44545,7 +44545,7 @@
       "intent": "table-lookup",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1198790000000827,
+      "latencyMs": 0.5994540000001507,
       "estimatedContextTokens": 749,
       "refused": false,
       "results": [
@@ -44654,7 +44654,7 @@
       "intent": "table-lookup",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.0965960000000905,
+      "latencyMs": 0.578211999999894,
       "estimatedContextTokens": 622,
       "refused": false,
       "results": [
@@ -44763,7 +44763,7 @@
       "intent": "aggregation",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1053930000000491,
+      "latencyMs": 0.5962189999995644,
       "estimatedContextTokens": 1107,
       "refused": false,
       "results": [
@@ -44872,7 +44872,7 @@
       "intent": "aggregation",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1349780000000464,
+      "latencyMs": 0.6166589999997996,
       "estimatedContextTokens": 933,
       "refused": false,
       "results": [
@@ -44981,7 +44981,7 @@
       "intent": "multi-hop",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.2334920000000693,
+      "latencyMs": 0.6707499999997708,
       "estimatedContextTokens": 758,
       "refused": true,
       "results": [
@@ -45090,7 +45090,7 @@
       "intent": "multi-hop",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.300807000000077,
+      "latencyMs": 0.7244300000002113,
       "estimatedContextTokens": 548,
       "refused": true,
       "results": [
@@ -45199,7 +45199,7 @@
       "intent": "temporal-version",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.059357000000091,
+      "latencyMs": 0.5739650000000438,
       "estimatedContextTokens": 1052,
       "refused": true,
       "results": [
@@ -45308,7 +45308,7 @@
       "intent": "temporal-version",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2257270000000062,
+      "latencyMs": 0.6457330000002912,
       "estimatedContextTokens": 1002,
       "refused": true,
       "results": [
@@ -45417,7 +45417,7 @@
       "intent": "comparison",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1538230000001022,
+      "latencyMs": 0.6735539999999673,
       "estimatedContextTokens": 1162,
       "refused": false,
       "results": [
@@ -45526,7 +45526,7 @@
       "intent": "comparison",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1169350000000122,
+      "latencyMs": 0.6215669999996862,
       "estimatedContextTokens": 1078,
       "refused": false,
       "results": [
@@ -45635,7 +45635,7 @@
       "intent": "code-trace",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1653250000001663,
+      "latencyMs": 0.6228780000001279,
       "estimatedContextTokens": 707,
       "refused": true,
       "results": [
@@ -45744,7 +45744,7 @@
       "intent": "code-trace",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.29338400000006,
+      "latencyMs": 0.7211649999999281,
       "estimatedContextTokens": 1002,
       "refused": true,
       "results": [
@@ -45853,7 +45853,7 @@
       "intent": "formula",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.2231930000000375,
+      "latencyMs": 0.6535939999998845,
       "estimatedContextTokens": 703,
       "refused": true,
       "results": [
@@ -45962,7 +45962,7 @@
       "intent": "formula",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.270900999999867,
+      "latencyMs": 0.6791720000001078,
       "estimatedContextTokens": 650,
       "refused": true,
       "results": [
@@ -46071,7 +46071,7 @@
       "intent": "diagram",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1331050000001142,
+      "latencyMs": 0.6165889999997489,
       "estimatedContextTokens": 694,
       "refused": true,
       "results": [
@@ -46180,7 +46180,7 @@
       "intent": "diagram",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1820859999997992,
+      "latencyMs": 0.618771999999808,
       "estimatedContextTokens": 704,
       "refused": true,
       "results": [
@@ -46289,7 +46289,7 @@
       "intent": "late-evidence",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.160235000000057,
+      "latencyMs": 0.5687379999999393,
       "estimatedContextTokens": 834,
       "refused": true,
       "results": [
@@ -46398,7 +46398,7 @@
       "intent": "late-evidence",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1880469999998695,
+      "latencyMs": 0.6365390000000843,
       "estimatedContextTokens": 704,
       "refused": true,
       "results": [
@@ -46507,7 +46507,7 @@
       "intent": "multi-intent",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.2742879999998422,
+      "latencyMs": 0.7079149999999572,
       "estimatedContextTokens": 1052,
       "refused": true,
       "results": [
@@ -46616,7 +46616,7 @@
       "intent": "multi-intent",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.380737000000181,
+      "latencyMs": 0.7710090000000491,
       "estimatedContextTokens": 846,
       "refused": false,
       "results": [
@@ -46725,7 +46725,7 @@
       "intent": "ambiguous-entity",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.046583999999939,
+      "latencyMs": 0.5529239999996207,
       "estimatedContextTokens": 1052,
       "refused": false,
       "results": [
@@ -46834,7 +46834,7 @@
       "intent": "ambiguous-entity",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.1207519999998112,
+      "latencyMs": 0.586334000000079,
       "estimatedContextTokens": 914,
       "refused": false,
       "results": [
@@ -46943,7 +46943,7 @@
       "intent": "ambiguous-version",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.2437210000000505,
+      "latencyMs": 0.6762179999996079,
       "estimatedContextTokens": 2269,
       "refused": true,
       "results": [
@@ -47052,7 +47052,7 @@
       "intent": "ambiguous-version",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.25908000000004,
+      "latencyMs": 0.6954970000001595,
       "estimatedContextTokens": 1808,
       "refused": true,
       "results": [
@@ -47161,7 +47161,7 @@
       "intent": "missing-private-fact",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 1.0198139999999967,
+      "latencyMs": 0.5356780000001891,
       "estimatedContextTokens": 1075,
       "refused": false,
       "results": [
@@ -47270,7 +47270,7 @@
       "intent": "missing-private-fact",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 3.137856000000056,
+      "latencyMs": 2.7473260000001574,
       "estimatedContextTokens": 832,
       "refused": false,
       "results": [
@@ -47379,7 +47379,7 @@
       "intent": "missing-live-fact",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 1.175162999999884,
+      "latencyMs": 0.7650509999998576,
       "estimatedContextTokens": 839,
       "refused": true,
       "results": [
@@ -47488,7 +47488,7 @@
       "intent": "missing-live-fact",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 1.2725349999998343,
+      "latencyMs": 0.6890870000001996,
       "estimatedContextTokens": 750,
       "refused": true,
       "results": [
@@ -47597,7 +47597,7 @@
       "intent": "partial-answer",
       "language": "en",
       "expectedAction": "partial",
-      "latencyMs": 1.2186240000000907,
+      "latencyMs": 0.6905099999999038,
       "estimatedContextTokens": 894,
       "refused": true,
       "results": [
@@ -47706,7 +47706,7 @@
       "intent": "partial-answer",
       "language": "vi",
       "expectedAction": "partial",
-      "latencyMs": 1.2746290000000045,
+      "latencyMs": 0.7265330000000176,
       "estimatedContextTokens": 846,
       "refused": false,
       "results": [
@@ -47815,7 +47815,7 @@
       "intent": "conflicting-sources",
       "language": "en",
       "expectedAction": "conflict",
-      "latencyMs": 0.7613810000000285,
+      "latencyMs": 0.39842399999997724,
       "estimatedContextTokens": 162,
       "refused": false,
       "results": [
@@ -47884,7 +47884,7 @@
       "intent": "conflicting-sources",
       "language": "vi",
       "expectedAction": "conflict",
-      "latencyMs": 0.7611709999998766,
+      "latencyMs": 0.38877899999988585,
       "estimatedContextTokens": 162,
       "refused": true,
       "results": [
@@ -47953,7 +47953,7 @@
       "intent": "false-premise",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1857730000001538,
+      "latencyMs": 0.6213459999999031,
       "estimatedContextTokens": 1107,
       "refused": false,
       "results": [
@@ -48062,7 +48062,7 @@
       "intent": "false-premise",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2776240000000598,
+      "latencyMs": 0.7038690000003953,
       "estimatedContextTokens": 846,
       "refused": false,
       "results": [
@@ -48171,7 +48171,7 @@
       "intent": "prompt-injection",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.217111000000159,
+      "latencyMs": 0.6781310000001213,
       "estimatedContextTokens": 847,
       "refused": true,
       "results": [
@@ -48280,7 +48280,7 @@
       "intent": "prompt-injection",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.431100000000015,
+      "latencyMs": 0.7746649999999136,
       "estimatedContextTokens": 676,
       "refused": false,
       "results": [
@@ -48389,7 +48389,7 @@
       "intent": "scope-boundary",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 0.7407820000000811,
+      "latencyMs": 0.4074180000002343,
       "estimatedContextTokens": 695,
       "refused": false,
       "results": [
@@ -48473,7 +48473,7 @@
       "intent": "scope-boundary",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 0.7676120000000992,
+      "latencyMs": 0.37293599999975413,
       "estimatedContextTokens": 695,
       "refused": true,
       "results": [
@@ -48557,7 +48557,7 @@
       "intent": "conversational-followup",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.2324700000001485,
+      "latencyMs": 0.6860529999999017,
       "estimatedContextTokens": 1107,
       "refused": false,
       "results": [
@@ -48666,7 +48666,7 @@
       "intent": "conversational-followup",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.4209720000001198,
+      "latencyMs": 0.802936999999929,
       "estimatedContextTokens": 996,
       "refused": true,
       "results": [
@@ -48775,7 +48775,7 @@
       "intent": "unresolved-followup",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 0.7663099999999758,
+      "latencyMs": 0.36727799999971467,
       "estimatedContextTokens": 986,
       "refused": false,
       "results": [
@@ -48884,7 +48884,7 @@
       "intent": "unresolved-followup",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 0.8316520000000764,
+      "latencyMs": 0.4335170000003927,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -48993,7 +48993,7 @@
       "intent": "conflicting-instructions",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.2110999999999876,
+      "latencyMs": 0.6467640000000756,
       "estimatedContextTokens": 2070,
       "refused": true,
       "results": [
@@ -49102,7 +49102,7 @@
       "intent": "conflicting-instructions",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.2383310000000165,
+      "latencyMs": 0.6889069999997446,
       "estimatedContextTokens": 1002,
       "refused": true,
       "results": [
@@ -49211,7 +49211,7 @@
       "intent": "direct",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.083351999999877,
+      "latencyMs": 0.5737349999999424,
       "estimatedContextTokens": 1101,
       "refused": false,
       "results": [
@@ -49320,7 +49320,7 @@
       "intent": "direct",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1628299999999854,
+      "latencyMs": 0.6291080000000875,
       "estimatedContextTokens": 914,
       "refused": false,
       "results": [
@@ -49429,7 +49429,7 @@
       "intent": "paraphrase",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1793209999998453,
+      "latencyMs": 0.6432190000000446,
       "estimatedContextTokens": 1048,
       "refused": true,
       "results": [
@@ -49538,7 +49538,7 @@
       "intent": "paraphrase",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.256896000000097,
+      "latencyMs": 0.6520220000002155,
       "estimatedContextTokens": 996,
       "refused": false,
       "results": [
@@ -49647,7 +49647,7 @@
       "intent": "table-lookup",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1127960000001167,
+      "latencyMs": 0.5962689999996655,
       "estimatedContextTokens": 733,
       "refused": true,
       "results": [
@@ -49756,7 +49756,7 @@
       "intent": "table-lookup",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1139689999999973,
+      "latencyMs": 0.5974900000001071,
       "estimatedContextTokens": 669,
       "refused": false,
       "results": [
@@ -49865,7 +49865,7 @@
       "intent": "aggregation",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1073159999998552,
+      "latencyMs": 0.5909910000000309,
       "estimatedContextTokens": 1162,
       "refused": false,
       "results": [
@@ -49974,7 +49974,7 @@
       "intent": "aggregation",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2043080000000828,
+      "latencyMs": 0.6174009999999726,
       "estimatedContextTokens": 846,
       "refused": false,
       "results": [
@@ -50083,7 +50083,7 @@
       "intent": "multi-hop",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.23943300000019,
+      "latencyMs": 0.6601639999998952,
       "estimatedContextTokens": 676,
       "refused": true,
       "results": [
@@ -50192,7 +50192,7 @@
       "intent": "multi-hop",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3584549999998217,
+      "latencyMs": 0.7398330000000897,
       "estimatedContextTokens": 548,
       "refused": true,
       "results": [
@@ -50301,7 +50301,7 @@
       "intent": "temporal-version",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.0886520000001383,
+      "latencyMs": 0.5844809999998688,
       "estimatedContextTokens": 1101,
       "refused": true,
       "results": [
@@ -50410,7 +50410,7 @@
       "intent": "temporal-version",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2237739999998212,
+      "latencyMs": 0.64597300000014,
       "estimatedContextTokens": 914,
       "refused": false,
       "results": [
@@ -50519,7 +50519,7 @@
       "intent": "comparison",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1591839999998683,
+      "latencyMs": 0.6453320000000531,
       "estimatedContextTokens": 1162,
       "refused": true,
       "results": [
@@ -50628,7 +50628,7 @@
       "intent": "comparison",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1215729999998985,
+      "latencyMs": 0.6116120000001501,
       "estimatedContextTokens": 1049,
       "refused": false,
       "results": [
@@ -50737,7 +50737,7 @@
       "intent": "code-trace",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.193768000000091,
+      "latencyMs": 0.6246519999999691,
       "estimatedContextTokens": 733,
       "refused": true,
       "results": [
@@ -50846,7 +50846,7 @@
       "intent": "code-trace",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3152249999998276,
+      "latencyMs": 0.7203840000001946,
       "estimatedContextTokens": 1195,
       "refused": true,
       "results": [
@@ -50955,7 +50955,7 @@
       "intent": "formula",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.2356869999998707,
+      "latencyMs": 0.6663929999999709,
       "estimatedContextTokens": 708,
       "refused": true,
       "results": [
@@ -51064,7 +51064,7 @@
       "intent": "formula",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2878230000001167,
+      "latencyMs": 0.6834679999997206,
       "estimatedContextTokens": 633,
       "refused": true,
       "results": [
@@ -51173,7 +51173,7 @@
       "intent": "diagram",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.174792000000025,
+      "latencyMs": 0.6221070000001419,
       "estimatedContextTokens": 694,
       "refused": true,
       "results": [
@@ -51282,7 +51282,7 @@
       "intent": "diagram",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1951910000000225,
+      "latencyMs": 0.6372999999998683,
       "estimatedContextTokens": 633,
       "refused": true,
       "results": [
@@ -51391,7 +51391,7 @@
       "intent": "late-evidence",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1350179999999455,
+      "latencyMs": 0.5719330000001719,
       "estimatedContextTokens": 834,
       "refused": true,
       "results": [
@@ -51500,7 +51500,7 @@
       "intent": "late-evidence",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1725679999999556,
+      "latencyMs": 0.6306099999997059,
       "estimatedContextTokens": 669,
       "refused": false,
       "results": [
@@ -51609,7 +51609,7 @@
       "intent": "multi-intent",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.2895869999999832,
+      "latencyMs": 0.7281450000000405,
       "estimatedContextTokens": 1084,
       "refused": true,
       "results": [
@@ -51718,7 +51718,7 @@
       "intent": "multi-intent",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3859870000001138,
+      "latencyMs": 0.7570580000001428,
       "estimatedContextTokens": 846,
       "refused": false,
       "results": [
@@ -51827,7 +51827,7 @@
       "intent": "ambiguous-entity",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.0202740000001995,
+      "latencyMs": 0.5535250000002634,
       "estimatedContextTokens": 978,
       "refused": true,
       "results": [
@@ -51936,7 +51936,7 @@
       "intent": "ambiguous-entity",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.124368000000004,
+      "latencyMs": 0.5931639999998879,
       "estimatedContextTokens": 914,
       "refused": false,
       "results": [
@@ -52045,7 +52045,7 @@
       "intent": "ambiguous-version",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.2310879999999997,
+      "latencyMs": 0.6937449999995806,
       "estimatedContextTokens": 2263,
       "refused": true,
       "results": [
@@ -52154,7 +52154,7 @@
       "intent": "ambiguous-version",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.2620650000001206,
+      "latencyMs": 0.714846000000307,
       "estimatedContextTokens": 1726,
       "refused": true,
       "results": [
@@ -52263,7 +52263,7 @@
       "intent": "missing-private-fact",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 1.0515219999999772,
+      "latencyMs": 0.543210000000272,
       "estimatedContextTokens": 1101,
       "refused": true,
       "results": [
@@ -52372,7 +52372,7 @@
       "intent": "missing-private-fact",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 1.1626999999998588,
+      "latencyMs": 0.5776110000001609,
       "estimatedContextTokens": 744,
       "refused": false,
       "results": [
@@ -52481,7 +52481,7 @@
       "intent": "missing-live-fact",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 1.1001830000000155,
+      "latencyMs": 0.6060640000000603,
       "estimatedContextTokens": 841,
       "refused": true,
       "results": [
@@ -52590,7 +52590,7 @@
       "intent": "missing-live-fact",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 1.1769070000000283,
+      "latencyMs": 0.641367000000173,
       "estimatedContextTokens": 744,
       "refused": true,
       "results": [
@@ -52699,7 +52699,7 @@
       "intent": "partial-answer",
       "language": "en",
       "expectedAction": "partial",
-      "latencyMs": 1.160135000000082,
+      "latencyMs": 0.6816359999997985,
       "estimatedContextTokens": 841,
       "refused": true,
       "results": [
@@ -52808,7 +52808,7 @@
       "intent": "partial-answer",
       "language": "vi",
       "expectedAction": "partial",
-      "latencyMs": 1.2499230000000807,
+      "latencyMs": 0.7117710000002262,
       "estimatedContextTokens": 846,
       "refused": false,
       "results": [
@@ -52917,7 +52917,7 @@
       "intent": "conflicting-sources",
       "language": "en",
       "expectedAction": "conflict",
-      "latencyMs": 0.7527949999998782,
+      "latencyMs": 0.3901019999998425,
       "estimatedContextTokens": 162,
       "refused": false,
       "results": [
@@ -52986,7 +52986,7 @@
       "intent": "conflicting-sources",
       "language": "vi",
       "expectedAction": "conflict",
-      "latencyMs": 0.7319059999999808,
+      "latencyMs": 0.381778999999824,
       "estimatedContextTokens": 162,
       "refused": true,
       "results": [
@@ -53055,7 +53055,7 @@
       "intent": "false-premise",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.153252000000066,
+      "latencyMs": 0.6556679999998778,
       "estimatedContextTokens": 1101,
       "refused": false,
       "results": [
@@ -53164,7 +53164,7 @@
       "intent": "false-premise",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2542109999999411,
+      "latencyMs": 0.7144459999999526,
       "estimatedContextTokens": 846,
       "refused": false,
       "results": [
@@ -53273,7 +53273,7 @@
       "intent": "prompt-injection",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.2152780000001258,
+      "latencyMs": 0.6633590000001277,
       "estimatedContextTokens": 841,
       "refused": true,
       "results": [
@@ -53382,7 +53382,7 @@
       "intent": "prompt-injection",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3951640000000225,
+      "latencyMs": 0.7794930000000022,
       "estimatedContextTokens": 676,
       "refused": false,
       "results": [
@@ -53491,7 +53491,7 @@
       "intent": "scope-boundary",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 0.8070360000001529,
+      "latencyMs": 0.4223099999999249,
       "estimatedContextTokens": 561,
       "refused": true,
       "results": [
@@ -53575,7 +53575,7 @@
       "intent": "scope-boundary",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 0.7856560000000172,
+      "latencyMs": 0.3946289999998953,
       "estimatedContextTokens": 561,
       "refused": false,
       "results": [
@@ -53659,7 +53659,7 @@
       "intent": "conversational-followup",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.2426490000000285,
+      "latencyMs": 0.6705400000000736,
       "estimatedContextTokens": 1101,
       "refused": false,
       "results": [
@@ -53768,7 +53768,7 @@
       "intent": "conversational-followup",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3944819999999254,
+      "latencyMs": 0.7548659999997653,
       "estimatedContextTokens": 914,
       "refused": true,
       "results": [
@@ -53877,7 +53877,7 @@
       "intent": "unresolved-followup",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 0.7124599999999646,
+      "latencyMs": 0.37392799999997806,
       "estimatedContextTokens": 986,
       "refused": false,
       "results": [
@@ -53986,7 +53986,7 @@
       "intent": "unresolved-followup",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 0.8535930000000462,
+      "latencyMs": 0.40632600000026287,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -54095,7 +54095,7 @@
       "intent": "conflicting-instructions",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.1819459999999253,
+      "latencyMs": 0.6493980000000192,
       "estimatedContextTokens": 2313,
       "refused": true,
       "results": [
@@ -54204,7 +54204,7 @@
       "intent": "conflicting-instructions",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.257287000000133,
+      "latencyMs": 0.6776099999997314,
       "estimatedContextTokens": 914,
       "refused": true,
       "results": [
@@ -54313,7 +54313,7 @@
       "intent": "direct",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.070758000000069,
+      "latencyMs": 0.5684570000003077,
       "estimatedContextTokens": 1107,
       "refused": false,
       "results": [
@@ -54422,7 +54422,7 @@
       "intent": "direct",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 3.15649099999996,
+      "latencyMs": 0.6143459999998413,
       "estimatedContextTokens": 967,
       "refused": false,
       "results": [
@@ -54531,7 +54531,7 @@
       "intent": "paraphrase",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.3453409999999622,
+      "latencyMs": 2.985461000000214,
       "estimatedContextTokens": 1054,
       "refused": true,
       "results": [
@@ -54640,7 +54640,7 @@
       "intent": "paraphrase",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2575669999998809,
+      "latencyMs": 0.8023760000000948,
       "estimatedContextTokens": 1002,
       "refused": false,
       "results": [
@@ -54749,7 +54749,7 @@
       "intent": "table-lookup",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1586930000000848,
+      "latencyMs": 0.6422370000000228,
       "estimatedContextTokens": 749,
       "refused": false,
       "results": [
@@ -54858,7 +54858,7 @@
       "intent": "table-lookup",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1605759999999918,
+      "latencyMs": 0.62724500000013,
       "estimatedContextTokens": 622,
       "refused": false,
       "results": [
@@ -54967,7 +54967,7 @@
       "intent": "aggregation",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1402279999999791,
+      "latencyMs": 0.5988330000000133,
       "estimatedContextTokens": 1107,
       "refused": false,
       "results": [
@@ -55076,7 +55076,7 @@
       "intent": "aggregation",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2028239999999641,
+      "latencyMs": 0.6263340000000426,
       "estimatedContextTokens": 933,
       "refused": false,
       "results": [
@@ -55185,7 +55185,7 @@
       "intent": "multi-hop",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.3053960000002007,
+      "latencyMs": 0.6949260000001232,
       "estimatedContextTokens": 758,
       "refused": true,
       "results": [
@@ -55294,7 +55294,7 @@
       "intent": "multi-hop",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.4033289999999852,
+      "latencyMs": 0.7289269999996577,
       "estimatedContextTokens": 548,
       "refused": true,
       "results": [
@@ -55403,7 +55403,7 @@
       "intent": "temporal-version",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.0911469999998644,
+      "latencyMs": 0.5859540000001289,
       "estimatedContextTokens": 1052,
       "refused": true,
       "results": [
@@ -55512,7 +55512,7 @@
       "intent": "temporal-version",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.287183000000141,
+      "latencyMs": 0.6682959999998275,
       "estimatedContextTokens": 1002,
       "refused": true,
       "results": [
@@ -55621,7 +55621,7 @@
       "intent": "comparison",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1688409999999294,
+      "latencyMs": 0.6300289999999222,
       "estimatedContextTokens": 1162,
       "refused": false,
       "results": [
@@ -55730,7 +55730,7 @@
       "intent": "comparison",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1349880000000212,
+      "latencyMs": 0.6137450000001081,
       "estimatedContextTokens": 1078,
       "refused": false,
       "results": [
@@ -55839,7 +55839,7 @@
       "intent": "code-trace",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.2314890000000105,
+      "latencyMs": 0.6423680000002605,
       "estimatedContextTokens": 707,
       "refused": true,
       "results": [
@@ -55948,7 +55948,7 @@
       "intent": "code-trace",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3687949999998636,
+      "latencyMs": 0.717489999999998,
       "estimatedContextTokens": 1002,
       "refused": true,
       "results": [
@@ -56057,7 +56057,7 @@
       "intent": "formula",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.2247560000000703,
+      "latencyMs": 0.6560389999999643,
       "estimatedContextTokens": 703,
       "refused": true,
       "results": [
@@ -56166,7 +56166,7 @@
       "intent": "formula",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3307130000000598,
+      "latencyMs": 0.6990120000000388,
       "estimatedContextTokens": 650,
       "refused": true,
       "results": [
@@ -56275,7 +56275,7 @@
       "intent": "diagram",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1714560000000347,
+      "latencyMs": 0.6096090000000913,
       "estimatedContextTokens": 694,
       "refused": true,
       "results": [
@@ -56384,7 +56384,7 @@
       "intent": "diagram",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2070220000000518,
+      "latencyMs": 0.6424979999997049,
       "estimatedContextTokens": 704,
       "refused": true,
       "results": [
@@ -56493,7 +56493,7 @@
       "intent": "late-evidence",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1556570000000193,
+      "latencyMs": 0.5881369999997332,
       "estimatedContextTokens": 834,
       "refused": true,
       "results": [
@@ -56602,7 +56602,7 @@
       "intent": "late-evidence",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1677690000001348,
+      "latencyMs": 0.6368290000000343,
       "estimatedContextTokens": 704,
       "refused": true,
       "results": [
@@ -56711,7 +56711,7 @@
       "intent": "multi-intent",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.3190620000000308,
+      "latencyMs": 0.7287860000001274,
       "estimatedContextTokens": 1052,
       "refused": true,
       "results": [
@@ -56820,7 +56820,7 @@
       "intent": "multi-intent",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.4087889999998424,
+      "latencyMs": 0.7820259999998598,
       "estimatedContextTokens": 846,
       "refused": false,
       "results": [
@@ -56929,7 +56929,7 @@
       "intent": "ambiguous-entity",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.0325669999999718,
+      "latencyMs": 0.5372910000000957,
       "estimatedContextTokens": 1052,
       "refused": false,
       "results": [
@@ -57038,7 +57038,7 @@
       "intent": "ambiguous-entity",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.102085999999872,
+      "latencyMs": 0.5988529999999628,
       "estimatedContextTokens": 914,
       "refused": false,
       "results": [
@@ -57147,7 +57147,7 @@
       "intent": "ambiguous-version",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.2348139999999148,
+      "latencyMs": 0.6638889999999265,
       "estimatedContextTokens": 2269,
       "refused": true,
       "results": [
@@ -57256,7 +57256,7 @@
       "intent": "ambiguous-version",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.265470999999934,
+      "latencyMs": 0.7000739999998586,
       "estimatedContextTokens": 1808,
       "refused": true,
       "results": [
@@ -57365,7 +57365,7 @@
       "intent": "missing-private-fact",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 1.0340400000000045,
+      "latencyMs": 0.667826000000332,
       "estimatedContextTokens": 1075,
       "refused": false,
       "results": [
@@ -57474,7 +57474,7 @@
       "intent": "missing-private-fact",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 1.0867279999999937,
+      "latencyMs": 0.6102999999998246,
       "estimatedContextTokens": 832,
       "refused": false,
       "results": [
@@ -57583,7 +57583,7 @@
       "intent": "missing-live-fact",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 1.0959150000001046,
+      "latencyMs": 0.6117920000001504,
       "estimatedContextTokens": 839,
       "refused": true,
       "results": [
@@ -57692,7 +57692,7 @@
       "intent": "missing-live-fact",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 1.2186749999998483,
+      "latencyMs": 0.6607250000001841,
       "estimatedContextTokens": 750,
       "refused": true,
       "results": [
@@ -57801,7 +57801,7 @@
       "intent": "partial-answer",
       "language": "en",
       "expectedAction": "partial",
-      "latencyMs": 1.1836390000000847,
+      "latencyMs": 0.6443410000001677,
       "estimatedContextTokens": 894,
       "refused": true,
       "results": [
@@ -57910,7 +57910,7 @@
       "intent": "partial-answer",
       "language": "vi",
       "expectedAction": "partial",
-      "latencyMs": 1.257225999999946,
+      "latencyMs": 0.739292000000205,
       "estimatedContextTokens": 846,
       "refused": false,
       "results": [
@@ -58019,7 +58019,7 @@
       "intent": "conflicting-sources",
       "language": "en",
       "expectedAction": "conflict",
-      "latencyMs": 0.7358130000000074,
+      "latencyMs": 0.39649099999996906,
       "estimatedContextTokens": 162,
       "refused": false,
       "results": [
@@ -58088,7 +58088,7 @@
       "intent": "conflicting-sources",
       "language": "vi",
       "expectedAction": "conflict",
-      "latencyMs": 0.7322269999999662,
+      "latencyMs": 0.3738370000000941,
       "estimatedContextTokens": 162,
       "refused": true,
       "results": [
@@ -58157,7 +58157,7 @@
       "intent": "false-premise",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1506079999999201,
+      "latencyMs": 0.6259530000002087,
       "estimatedContextTokens": 1107,
       "refused": false,
       "results": [
@@ -58266,7 +58266,7 @@
       "intent": "false-premise",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.252476999999999,
+      "latencyMs": 0.6936739999996462,
       "estimatedContextTokens": 846,
       "refused": false,
       "results": [
@@ -58375,7 +58375,7 @@
       "intent": "prompt-injection",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.2125129999999444,
+      "latencyMs": 0.6651110000002518,
       "estimatedContextTokens": 847,
       "refused": true,
       "results": [
@@ -58484,7 +58484,7 @@
       "intent": "prompt-injection",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3918479999999818,
+      "latencyMs": 0.8460709999999381,
       "estimatedContextTokens": 676,
       "refused": false,
       "results": [
@@ -58593,7 +58593,7 @@
       "intent": "scope-boundary",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 0.7806169999998929,
+      "latencyMs": 0.4163010000002032,
       "estimatedContextTokens": 695,
       "refused": false,
       "results": [
@@ -58677,7 +58677,7 @@
       "intent": "scope-boundary",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 0.8088290000000598,
+      "latencyMs": 0.3866170000001148,
       "estimatedContextTokens": 695,
       "refused": true,
       "results": [
@@ -58761,7 +58761,7 @@
       "intent": "conversational-followup",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.2129429999999957,
+      "latencyMs": 0.6766689999999471,
       "estimatedContextTokens": 1107,
       "refused": false,
       "results": [
@@ -58870,7 +58870,7 @@
       "intent": "conversational-followup",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.421572999999853,
+      "latencyMs": 0.793503000000328,
       "estimatedContextTokens": 996,
       "refused": true,
       "results": [
@@ -58979,7 +58979,7 @@
       "intent": "unresolved-followup",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 0.69658000000004,
+      "latencyMs": 0.3594749999997475,
       "estimatedContextTokens": 986,
       "refused": false,
       "results": [
@@ -59088,7 +59088,7 @@
       "intent": "unresolved-followup",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 0.8345169999997779,
+      "latencyMs": 0.434186999999838,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -59197,7 +59197,7 @@
       "intent": "conflicting-instructions",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.213365000000067,
+      "latencyMs": 0.6311710000004496,
       "estimatedContextTokens": 2070,
       "refused": true,
       "results": [
@@ -59306,7 +59306,7 @@
       "intent": "conflicting-instructions",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.2684780000001865,
+      "latencyMs": 0.6889169999999467,
       "estimatedContextTokens": 1002,
       "refused": true,
       "results": [
@@ -59415,7 +59415,7 @@
       "intent": "direct",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.0675919999998769,
+      "latencyMs": 0.5804450000000543,
       "estimatedContextTokens": 1101,
       "refused": false,
       "results": [
@@ -59524,7 +59524,7 @@
       "intent": "direct",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1370320000000902,
+      "latencyMs": 0.6149569999997766,
       "estimatedContextTokens": 914,
       "refused": false,
       "results": [
@@ -59633,7 +59633,7 @@
       "intent": "paraphrase",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1605150000000322,
+      "latencyMs": 0.6451310000002195,
       "estimatedContextTokens": 1048,
       "refused": true,
       "results": [
@@ -59742,7 +59742,7 @@
       "intent": "paraphrase",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2251759999999194,
+      "latencyMs": 0.6568590000001677,
       "estimatedContextTokens": 996,
       "refused": false,
       "results": [
@@ -59851,7 +59851,7 @@
       "intent": "table-lookup",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.0913969999999154,
+      "latencyMs": 0.5821379999997589,
       "estimatedContextTokens": 733,
       "refused": true,
       "results": [
@@ -59960,7 +59960,7 @@
       "intent": "table-lookup",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1797919999999067,
+      "latencyMs": 0.6082069999997657,
       "estimatedContextTokens": 669,
       "refused": false,
       "results": [
@@ -60069,7 +60069,7 @@
       "intent": "aggregation",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1446460000001935,
+      "latencyMs": 0.5990339999998469,
       "estimatedContextTokens": 1162,
       "refused": false,
       "results": [
@@ -60178,7 +60178,7 @@
       "intent": "aggregation",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1426320000000487,
+      "latencyMs": 0.635627999999997,
       "estimatedContextTokens": 846,
       "refused": false,
       "results": [
@@ -60287,7 +60287,7 @@
       "intent": "multi-hop",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.217202000000043,
+      "latencyMs": 0.7041199999998753,
       "estimatedContextTokens": 676,
       "refused": true,
       "results": [
@@ -60396,7 +60396,7 @@
       "intent": "multi-hop",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3455320000000484,
+      "latencyMs": 0.7412650000001122,
       "estimatedContextTokens": 548,
       "refused": true,
       "results": [
@@ -60505,7 +60505,7 @@
       "intent": "temporal-version",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.0852859999999964,
+      "latencyMs": 0.6516909999995733,
       "estimatedContextTokens": 1101,
       "refused": true,
       "results": [
@@ -60614,7 +60614,7 @@
       "intent": "temporal-version",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.208114999999907,
+      "latencyMs": 0.702056999999968,
       "estimatedContextTokens": 914,
       "refused": false,
       "results": [
@@ -60723,7 +60723,7 @@
       "intent": "comparison",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1717069999999694,
+      "latencyMs": 0.628816999999799,
       "estimatedContextTokens": 1162,
       "refused": true,
       "results": [
@@ -60832,7 +60832,7 @@
       "intent": "comparison",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1215430000002016,
+      "latencyMs": 0.6139450000000579,
       "estimatedContextTokens": 1049,
       "refused": false,
       "results": [
@@ -60941,7 +60941,7 @@
       "intent": "code-trace",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1577409999999873,
+      "latencyMs": 0.6382009999997535,
       "estimatedContextTokens": 733,
       "refused": true,
       "results": [
@@ -61050,7 +61050,7 @@
       "intent": "code-trace",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3215569999999843,
+      "latencyMs": 0.7145150000001195,
       "estimatedContextTokens": 1195,
       "refused": true,
       "results": [
@@ -61159,7 +61159,7 @@
       "intent": "formula",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.203796999999895,
+      "latencyMs": 0.6653519999999844,
       "estimatedContextTokens": 708,
       "refused": true,
       "results": [
@@ -61268,7 +61268,7 @@
       "intent": "formula",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2686980000000858,
+      "latencyMs": 0.6954470000000583,
       "estimatedContextTokens": 633,
       "refused": true,
       "results": [
@@ -61377,7 +61377,7 @@
       "intent": "diagram",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 3.134830999999849,
+      "latencyMs": 0.6078859999997803,
       "estimatedContextTokens": 694,
       "refused": true,
       "results": [
@@ -61486,7 +61486,7 @@
       "intent": "diagram",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2097980000000916,
+      "latencyMs": 3.11113800000021,
       "estimatedContextTokens": 633,
       "refused": true,
       "results": [
@@ -61595,7 +61595,7 @@
       "intent": "late-evidence",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1032500000001164,
+      "latencyMs": 0.7262919999998303,
       "estimatedContextTokens": 834,
       "refused": true,
       "results": [
@@ -61704,7 +61704,7 @@
       "intent": "late-evidence",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.1858029999998507,
+      "latencyMs": 0.716707999999926,
       "estimatedContextTokens": 669,
       "refused": false,
       "results": [
@@ -61813,7 +61813,7 @@
       "intent": "multi-intent",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.3134110000000874,
+      "latencyMs": 0.8119299999998475,
       "estimatedContextTokens": 1084,
       "refused": true,
       "results": [
@@ -61922,7 +61922,7 @@
       "intent": "multi-intent",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.3805360000001201,
+      "latencyMs": 0.7992019999996955,
       "estimatedContextTokens": 846,
       "refused": false,
       "results": [
@@ -62031,7 +62031,7 @@
       "intent": "ambiguous-entity",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.0364150000000336,
+      "latencyMs": 0.5613870000001953,
       "estimatedContextTokens": 978,
       "refused": true,
       "results": [
@@ -62140,7 +62140,7 @@
       "intent": "ambiguous-entity",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.1934069999999792,
+      "latencyMs": 0.6253719999999703,
       "estimatedContextTokens": 914,
       "refused": false,
       "results": [
@@ -62249,7 +62249,7 @@
       "intent": "ambiguous-version",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.234324000000015,
+      "latencyMs": 0.682006999999885,
       "estimatedContextTokens": 2263,
       "refused": true,
       "results": [
@@ -62358,7 +62358,7 @@
       "intent": "ambiguous-version",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.2607329999998456,
+      "latencyMs": 0.6977199999996628,
       "estimatedContextTokens": 1726,
       "refused": true,
       "results": [
@@ -62467,7 +62467,7 @@
       "intent": "missing-private-fact",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 1.0510320000000775,
+      "latencyMs": 0.5654629999999088,
       "estimatedContextTokens": 1101,
       "refused": true,
       "results": [
@@ -62576,7 +62576,7 @@
       "intent": "missing-private-fact",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 1.1623090000000502,
+      "latencyMs": 0.5720920000003389,
       "estimatedContextTokens": 744,
       "refused": false,
       "results": [
@@ -62685,7 +62685,7 @@
       "intent": "missing-live-fact",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 1.1133879999999863,
+      "latencyMs": 0.6001649999998335,
       "estimatedContextTokens": 841,
       "refused": true,
       "results": [
@@ -62794,7 +62794,7 @@
       "intent": "missing-live-fact",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 1.2264889999999014,
+      "latencyMs": 0.6443610000001172,
       "estimatedContextTokens": 744,
       "refused": true,
       "results": [
@@ -62903,7 +62903,7 @@
       "intent": "partial-answer",
       "language": "en",
       "expectedAction": "partial",
-      "latencyMs": 1.1776480000000902,
+      "latencyMs": 0.6359580000003007,
       "estimatedContextTokens": 841,
       "refused": true,
       "results": [
@@ -63012,7 +63012,7 @@
       "intent": "partial-answer",
       "language": "vi",
       "expectedAction": "partial",
-      "latencyMs": 1.2509549999999763,
+      "latencyMs": 0.753432999999859,
       "estimatedContextTokens": 846,
       "refused": false,
       "results": [
@@ -63121,7 +63121,7 @@
       "intent": "conflicting-sources",
       "language": "en",
       "expectedAction": "conflict",
-      "latencyMs": 0.7401319999999032,
+      "latencyMs": 0.404964000000291,
       "estimatedContextTokens": 162,
       "refused": false,
       "results": [
@@ -63190,7 +63190,7 @@
       "intent": "conflicting-sources",
       "language": "vi",
       "expectedAction": "conflict",
-      "latencyMs": 0.741083000000117,
+      "latencyMs": 0.40041699999983393,
       "estimatedContextTokens": 162,
       "refused": true,
       "results": [
@@ -63259,7 +63259,7 @@
       "intent": "false-premise",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.1368820000000142,
+      "latencyMs": 0.6246809999997822,
       "estimatedContextTokens": 1101,
       "refused": false,
       "results": [
@@ -63368,7 +63368,7 @@
       "intent": "false-premise",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.2586089999999786,
+      "latencyMs": 0.7091970000001311,
       "estimatedContextTokens": 846,
       "refused": false,
       "results": [
@@ -63477,7 +63477,7 @@
       "intent": "prompt-injection",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.2059010000000399,
+      "latencyMs": 0.6777099999999336,
       "estimatedContextTokens": 841,
       "refused": true,
       "results": [
@@ -63586,7 +63586,7 @@
       "intent": "prompt-injection",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.420761000000084,
+      "latencyMs": 0.7765770000000884,
       "estimatedContextTokens": 676,
       "refused": false,
       "results": [
@@ -63695,7 +63695,7 @@
       "intent": "scope-boundary",
       "language": "en",
       "expectedAction": "abstain",
-      "latencyMs": 0.8123060000000351,
+      "latencyMs": 0.41805299999987255,
       "estimatedContextTokens": 561,
       "refused": true,
       "results": [
@@ -63779,7 +63779,7 @@
       "intent": "scope-boundary",
       "language": "vi",
       "expectedAction": "abstain",
-      "latencyMs": 0.8062049999998635,
+      "latencyMs": 0.3986939999999777,
       "estimatedContextTokens": 561,
       "refused": false,
       "results": [
@@ -63863,7 +63863,7 @@
       "intent": "conversational-followup",
       "language": "en",
       "expectedAction": "answer",
-      "latencyMs": 1.2262279999999919,
+      "latencyMs": 0.6819360000004053,
       "estimatedContextTokens": 1101,
       "refused": false,
       "results": [
@@ -63972,7 +63972,7 @@
       "intent": "conversational-followup",
       "language": "vi",
       "expectedAction": "answer",
-      "latencyMs": 1.4123560000000452,
+      "latencyMs": 0.7743839999998272,
       "estimatedContextTokens": 914,
       "refused": true,
       "results": [
@@ -64081,7 +64081,7 @@
       "intent": "unresolved-followup",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 0.714623999999958,
+      "latencyMs": 0.36817900000005466,
       "estimatedContextTokens": 986,
       "refused": false,
       "results": [
@@ -64190,7 +64190,7 @@
       "intent": "unresolved-followup",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 0.8006440000001476,
+      "latencyMs": 0.42464399999971647,
       "estimatedContextTokens": 834,
       "refused": false,
       "results": [
@@ -64299,7 +64299,7 @@
       "intent": "conflicting-instructions",
       "language": "en",
       "expectedAction": "clarify",
-      "latencyMs": 1.1841699999999946,
+      "latencyMs": 0.6325729999998657,
       "estimatedContextTokens": 2313,
       "refused": true,
       "results": [
@@ -64408,7 +64408,7 @@
       "intent": "conflicting-instructions",
       "language": "vi",
       "expectedAction": "clarify",
-      "latencyMs": 1.2430090000000291,
+      "latencyMs": 0.6901589999997668,
       "estimatedContextTokens": 914,
       "refused": true,
       "results": [
