@@ -1,0 +1,22 @@
+{
+  "id": "machine-learning-03-amendment",
+  "scenarioId": "machine-learning-03",
+  "family": "machine-learning",
+  "split": "validation",
+  "language": "en",
+  "title": "Machine-Learning Lab 35266 / Signed amendment",
+  "pages": [
+    [
+      {
+        "id": "title",
+        "type": "heading",
+        "text": "Machine-Learning Lab 35266 / Signed amendment"
+      },
+      {
+        "id": "revision",
+        "type": "paragraph",
+        "text": "Signed amendment effective 2026-01-01: copies becomes 8 replicas. All other settings and regional limits of the 2025 baseline remain unchanged."
+      }
+    ]
+  ]
+}

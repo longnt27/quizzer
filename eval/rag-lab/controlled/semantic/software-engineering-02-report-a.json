@@ -1,0 +1,22 @@
+{
+  "id": "software-engineering-02-report-a",
+  "scenarioId": "software-engineering-02",
+  "family": "software-engineering",
+  "split": "dev",
+  "language": "en",
+  "title": "Software-Engineering Lab 70670 / Report A",
+  "pages": [
+    [
+      {
+        "id": "title",
+        "type": "heading",
+        "text": "Software-Engineering Lab 70670 / Report A"
+      },
+      {
+        "id": "measurement",
+        "type": "paragraph",
+        "text": "Unsigned report A: project Software-Engineering Lab 70670; event E17; measured at 2026-02-02 10:00 UTC; latency = 68 ms. Neither report has priority over the other. These are conflicting observations of the same event, not two independent runs."
+      }
+    ]
+  ]
+}

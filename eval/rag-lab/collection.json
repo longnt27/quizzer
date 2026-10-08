@@ -1,0 +1,9 @@
+{
+  "version": "0.2.0",
+  "perCourse": 8,
+  "families": ["algorithms", "probability", "automata", "operating-systems", "databases", "machine-learning"],
+  "excluded": [
+    {"family": "data-science", "reason": "Explicit Creative Commons exclusions encountered in selected PDFs; omit this course pending per-asset rights review."},
+    {"family": "tailieuhust-originals", "reason": "Catalog offers free access but a blanket PDF redistribution license was not established. Original links remain in ../course-benchmark/v1/sources.json."}
+  ]
+}

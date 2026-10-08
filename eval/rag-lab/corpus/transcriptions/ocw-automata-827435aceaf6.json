@@ -1,0 +1,219 @@
+{
+  "sourceId": "ocw-automata-827435aceaf6",
+  "sourceSha256": "5aa8a276d4dc20c87039f13dd772e13627f47ae3a3e70780f30e28db116709fe",
+  "method": "pypdf-5.9.0 independent source inspection; NOT extraction ground truth",
+  "pages": [
+    {
+      "page": 1,
+      "text": "6.045:  Automata, Computability, and \nComplexity (GITCS)\nClass 17\nNancy Lynch"
+    },
+    {
+      "page": 2,
+      "text": "Today\n• Probabilistic Turing Machines and Probabilistic \nTime Complexity Classes\n• Now add a new capability to standard TMs:  \nrandom choice of moves.\n• Gives rise to new complexity classes:  BPP and \nRP\n• Topics:\n– Probabilistic polynomial-time TMs, BPP and RP\n– Amplification lemmas\n– Example 1:  Primality testing\n– Example 2:  Branching-program equivalence\n– Relationships between classes\n• Reading:\n– Sipser Section 10.2"
+    },
+    {
+      "page": 3,
+      "text": "Probabilistic Polynomial-Time Turing \nMachines, BPP and RP"
+    },
+    {
+      "page": 4,
+      "text": "Probabilistic Polynomial-Time TM\n• New kind of NTM, in which each nondeterministic step is a \ncoin flip:  has exactly 2 next moves, to each of which we \nassign probability ½.\n• Example:\n1/4 1/4\n1/8 1/8 1/8\n1/16 1/16\nComputation on input w– To each maximal branch, we assign \na probability:\n½ × ½ × … × ½\n• Has accept and reject states, as \nfor NTMs.\n• Now we can talk about probability \nof acceptance or rejection, on \ninput w.\nnumber of coin flips\non the branch"
+    },
+    {
+      "page": 5,
+      "text": "Probabilistic Poly-Time TMs\n1/4 1/4\n1/8 1/8 1/8\n1/16 1/16\nComputation on input w\n• Probability of acceptance =\nΣb an accepting branch Pr(b)\n• Probability of rejection =\nΣb a rejecting branch Pr(b)\n• Example:  \n– Add accept/reject information\n– Probability of acceptance = 1/16 + 1/8 \n+ 1/4 + 1/8 + 1/4 = 13/16\n– Probability of rejection = 1/16 + 1/8 = \n3/16\n• We consider TMs that halt (either \naccept or reject) on every branch--\n-deciders.\n• So the two probabilities total 1.\nAcc Acc\nAcc Acc Rej\nAcc Rej"
+    },
+    {
+      "page": 6,
+      "text": "Probabilistic Poly-Time TMs\n• Time complexity:\n– Worst case over all branches, as usual.\n•Q : What good are probabilistic TMs?\n• Random choices can help solve some problems efficiently.\n• Good for getting estimates---arbitrarily accurate, based on \nthe number of choices.\nf\n• Example: Monte Carlo estimation of areas \n– E.g, integral of a function f.\n– Repeatedly choose a random poi nt (x,y) in the rectangle. \n– Compare y with f(x).\n– Fraction of trials in which y ≤ f(x) can be used to estimate the \nintegral of f."
+    },
+    {
+      "page": 7,
+      "text": "Probabilistic Poly-Time TMs\n• Random choices can help solve some problems efficiently.\n• We’ll see 2 languages that have efficient probabilistic \nestimation algorithms.\n•Q : What does it mean to estimate a language?\n• Each w is either in the language or not; what does it mean \nto “approximate” a binary decision?\n• Possible answer: For “most” inputs w, we always get the \nright answer, on all branches of the probabilistic \ncomputation tree.\n•O r : For “most” w, we get the right answer with high \nprobability.\n• Better answer: For every input w, we get the right answer \nwith high probability."
+    },
+    {
+      "page": 8,
+      "text": "Probabilistic Poly-Time TMs\n• Better answer: For every input w, we get the right answer \nwith high probability.\n• Definition: A probabilistic TM decider M decides language \nL with error probability ε if\n–w  ∈ L implies that Pr[ M accepts w ] ≥ 1 - ε, and\n–w  ∉ L implies that Pr[ M rejects w ] ≥ 1 - ε.\n• Definition: Language L is in BPP (Bounded-error \nProbabilistic Polynomial time) if there is a probabilistic \npolynomial-time TM that decides L with error probability 1/3.\n•Q : What’s so special about 1/3?\n• Nothing.  We would get an equivalent definition (same \nlanguage class) if we chose ε to be any value with 0 < ε < \n½.\n• We’ll see this soon---Amplification Theorem"
+    },
+    {
+      "page": 9,
+      "text": "Probabilistic Poly-Time TMs\n• Another class, RP, where the error is 1-sided:\n• Definition: Language L is in RP (Random \nPolynomial time) if there is a a probabilistic \npolynomial-time TM that decides L, where:\n–w  ∈ L implies that Pr[ M accepts w ] ≥ 1/2, and\n–w  ∉ L implies that Pr[ M rejects w ] = 1.\n• Thus, absolutely guaranteed to be correct for \nwords not in L---always rejects them.\n• But, might be incorrect for words in L---might \nmistakenly reject these, in fact, with probability up \nto ½.\n• We can improve the ½ to any larger constant < 1, \nusing another Amplification Theorem."
+    },
+    {
+      "page": 10,
+      "text": "RP\n• Definition: Language L is in RP (Random \nPolynomial time) if there is a a probabilistic \npolynomial-time TM that decides L, where:\n–w  ∈ L implies that Pr[ M accepts w ] ≥ 1/2, and\n–w  ∉ L implies that Pr[ M rejects w ] = 1.\n• Always correct for words not in L. \n• Might be incorrect for words in L---can reject these \nwith probability up to ½.\n• Compare with nondeterministic TM acceptance:\n–w  ∈ L implies that there is some accepting path, and\n–w  ∉ L implies that there is no accepting path."
+    },
+    {
+      "page": 11,
+      "text": "Amplification Lemmas"
+    },
+    {
+      "page": 12,
+      "text": "Amplification Lemmas\n•L e m m a :Suppose that M is a PPT-TM that decides L with \nerror probability ε, where 0 ≤ ε < ½.  \nThen for any ε′, 0 ≤ ε′ < ½, there exists M′, another PPT-\nTM, that decides L with error probability ε′.\n• Proof idea: \n–M ′ simulates M many times and takes the majority value \nfor the decision.\n– Why does this improve the probability of getting the right \nanswer?\n– E.g., suppose ε = 1/3; then each trial gives the right \nanswer at least 2/3 of the time (with 2/3 probability).\n– If we repeat the experiment many times, then with very \nhigh probability, we’ll get the right answer a majority of \nthe times.\n– How many times?  Depends on ε and ε′."
+    },
+    {
+      "page": 13,
+      "text": "Amplification Lemmas\n•L e m m a :Suppose that M is a PPT-TM that decides L with \nerror probability ε, where 0 ≤ ε < ½.  \nThen for any ε′, 0 ≤ ε′ < ½, there exists M′, another PPT-\nTM, that decides L with error probability ε′.\n• Proof idea: \n–M ′ simulates M many times, takes the majority value.\n– E.g., suppose ε = 1/3; then each trial gives the right \nanswer at least 2/3 of the time (with 2/3 probability).\n– If we repeat the experiment many times, then with very \nhigh probability, we’ll get the right answer a majority of \nthe times.\n– How many times?  Depends on ε and ε′.\n– 2k, where ( 4ε (1- ε) )k ≤ ε′ , suffices.\n– In other words k ≥ (log2 ε′) / (log2 (4ε (1- ε))).\n– See book for calculations."
+    },
+    {
+      "page": 14,
+      "text": "Characterization of BPP\n• Theorem: L∈BPP if and only for, for some ε, 0 ≤ε\n< ½, there is a PPT-TM that decides L with error \nprobability ε.\n•P r o o f :\n⇒ If L ∈ BPP, then there is some PPT-TM that decides L \nwith error probability ε = 1/3, which suffices.\n⇐ If for some ε, a PPT-TM decides L with error probability \nε, then by the Lemma, there is a PPT-TM that decides L \nwith error probability 1/3; this means that L ∈ BPP."
+    },
+    {
+      "page": 15,
+      "text": "Amplification Lemmas\n•F o r  RP, the situation is a little different: \n–I f  w  ∈L, then Pr[ M accepts w ] could be equal to ½.\n– So after many trials, the majority would be just as likely \nto be correct or incorrect.\n• But this isn’t useless, because when w ∉ L, the \nmachine always answers correctly.\n• Lemma: Suppose M is a PPT-TM that decides L, \n0 ≤ ε < 1, and \nw ∈ L implies Pr[ M accepts w ] ≥ 1 - ε.\nw ∉ L implies Pr[ M rejects w ] = 1.\nThen for any ε′, 0 ≤ ε′ < 1, there exists M′, another \nPPT-TM, that decides L with:\nw ∈ L implies Pr[ M accepts w ] ≥ 1 - ε′.\nw ∉ L implies Pr[ M rejects w ] = 1."
+    },
+    {
+      "page": 16,
+      "text": "Amplification Lemmas\n• Lemma: Suppose M is a PPT-TM that decides L, 0 ≤ε < 1, \nw ∈ L implies Pr[ M accepts w ] ≥ 1 - ε.\nw ∉ L implies Pr[ M rejects w ] = 1.\nThen for any ε′, 0 ≤ε ′< 1, there exists M′, another PPT-TM, that \ndecides L with:\nw ∈ L implies Pr[ M′ accepts w ] ≥ 1 - ε′.\nw ∉ L implies Pr[ M′ rejects w ] = 1.\n• Proof idea:\n–M ′:  On input w:\n• Run k independent trials of M on w.\n• If any accept, then accept; else reject.\n– Here, choose k such that εk ≤ε ′.\n– If w ∉ L then all trials reject, so M′ rejects, as needed.\n– If w ∈ L then each trial accepts with probability ≥ 1 - ε, so \nProb(at least one of the k trials accepts) \n= 1 – Prob(all k reject) ≥ 1 - εk ≥ 1 - ε′."
+    },
+    {
+      "page": 17,
+      "text": "Characterization of RP\n•L e m m a :Suppose M is a PPT-TM that decides L, 0 ≤ε < 1, \nw ∈ L implies Pr[ M accepts w ] ≥ 1 - ε.\nw ∉ L implies Pr[ M rejects w ] = 1.\nThen for any ε′, 0 ≤ε ′< 1, there exists M′, another PPT-\nTM, that decides L with:\nw ∈ L implies Pr[ M′ accepts w ] ≥ 1 - ε′.\nw ∉ L implies Pr[ M′ rejects w ] = 1.\n• Theorem: L ∈ RP iff for some ε, 0 ≤ε < 1, there is a PPT-\nTM that decides L with:\nw ∈ L implies Pr[ M accepts w ] ≥ 1 - ε.\nw ∉ L implies Pr[ M rejects w ] = 1."
+    },
+    {
+      "page": 18,
+      "text": "RP vs. BPP\n• Lemma: Suppose M is a PPT-TM that decides L, 0 ≤ε < 1, \nw ∈ L implies Pr[ M accepts w ] ≥ 1 - ε.\nw ∉ L implies Pr[ M rejects w ] = 1.\nThen for any ε′, 0 ≤ε ′< 1, there exists M′, another PPT-TM, that \ndecides L with:\nw ∈ L implies Pr[ M′ accepts w ] ≥ 1 - ε′.\nw ∉ L implies Pr[ M′ rejects w ] = 1.\n• Theorem: RP ⊆ BPP.\n• Proof:  \n– Given A ∈ RP, get (by def. of RP) a PPT-TM M with:\nw ∈ L implies Pr[ M accepts w ] ≥ ½.\nw ∉ L implies Pr[ M rejects w ] = 1.\n– By Lemma, get another PPT-TM for A, with:\nw ∈ L implies Pr[ M accepts w ] ≥ 2/3.\nw ∉ L implies Pr[ M rejects w ] = 1.\n–I m p l i e s  A  ∈BPP, by definition of BPP."
+    },
+    {
+      "page": 19,
+      "text": "RP, co-RP, and BPP\n• Definition: coRP = { L | Lc ∈ RP }\n• coRP contains the languages L that can be \ndecided by a PPT-TM that is always correct for w \n∈ L and has error probability at most ½ for w ∉ L.\n• That is, L is in coRP if there is a PPT-TM that \ndecides L, where:\n–w  ∈ L implies that Pr[ M accepts w ] = 1, and\n–w  ∉ L implies that Pr[ M rejects w ] ≥ 1/2.\n• Theorem: coRP ⊆ BPP.\n•S o  w e  h a v e :\ncoRPRP\nBPP"
+    },
+    {
+      "page": 20,
+      "text": "Example 1:  Primality Testing"
+    },
+    {
+      "page": 21,
+      "text": "Primality Testing\n•P R I M E S  = { <n> | n is a natural number > 1 and n cannot be factored \nas q r, where 1 < q, r < n }\n•C O M P O S I T E S= { <n> | n > 1 and n can be factored…}\n• We will show an algorith m demonstrating that PRIMES ∈ coRP.\n•S o  C O M P O S I T E S  ∈ RP, and both ∈ BPP.\n• This is not exciting, because it is  now known that both are in P.  \n[Agrawal, Kayal, Saxema 2002]\n• But their poly-time algorithm is  hard, whereas the probabilistic \nalgorithm is easy.\n• And anyway, this illustrates some nice probabilistic methods.\ncoRPRP\nBPP\nCOMPOSITES\nPRIMES"
+    },
+    {
+      "page": 22,
+      "text": "Primality Testing\n• PRIMES = { <n> | n is a natural number > 1 and n cannot \nbe factored as q r, where 1 < q, r < n }\n•C O M P O S I T E S= { <n> | n > 1 and n can be factored…}\n• Note:  \n– Deciding whether n is prime/compos ite isn’t the same as factoring.\n– Factoring seems to be a much harder  problem; it’s at the heart of \nmodern cryptography.\ncoRPRP\nBPP\nCOMPOSITES\nPRIMES"
+    },
+    {
+      "page": 23,
+      "text": "Primality Testing\n• PRIMES = { <n> | n is a natural number > 1 and n cannot \nbe factored as q r, where 1 < q, r < n }\n• Show PRIMES ∈ coRP.\n• Design PPT-TM (algorithm) M for PRIMES that satisfies:\n–n  ∈ PRIMES ⇒ Pr[ M accepts n] = 1.\n–n  ∉ PRIMES ⇒ Pr[ M accepts n] ≤ 2-k.\n• Here, k depends on the number of “trials” M makes.\n• M always accepts primes, and almost always correctly \nidentifies composites.\n• Algorithm rests on some number-theoretic facts about \nprimes (just state them here):"
+    },
+    {
+      "page": 24,
+      "text": "Fermat’s Little Theorem\n• PRIMES = { <n> | n is a natural number > 1 and n cannot \nbe factored as q r, where 1 < q, r < n }\n• Design PPT-TM (algorithm) M for PRIMES that satisfies:\n–n  ∈ PRIMES ⇒ Pr[ M accepts n] = 1.\n–n  ∉ PRIMES ⇒ Pr[ M accepts n] ≤ 2-k.\n• Fact 1:  Fermat’s Little Theorem: If n is prime and a ∈ Zn\n+\nthen an-1 ≡ 1 mod n.\n• Example: n = 5, Zn\n+ = {1,2,3,4}.\n–a  =  1 :   15-1 = 14  = 1 ≡ 1 mod 5.\n–a  =  2 :   25-1 = 24  = 16 ≡ 1 mod 5.\n–a  =  3 :   35-1 = 34  = 81 ≡ 1 mod 5.\n–a  =  4 :   45-1 = 44  = 256 ≡ 1 mod 5.\nIntegers mod n except for 0, that is, {1,2,…,n-1}"
+    },
+    {
+      "page": 25,
+      "text": "Fermat’s test\n• Design PPT-TM (algorithm) M for PRIMES that satisfies:\n–n  ∈ PRIMES ⇒ Pr[ M accepts n] = 1.\n–n  ∉ PRIMES ⇒ Pr[ M accepts n] ≤ 2-k.\n•F e r m a t :If n is prime and a ∈ Zn\n+ then an-1 ≡ 1 mod n.\n• We can use this fact to identify some composites without \nfactoring them:\n• Example: n = 8, a = 3.\n–3 8-1 = 37 ≡ 3 mod 8, not 1 mod 8.\n– So 8 is composite.\n• Algorithm attempt 1: \n– On input n:\n• Choose a number a randomly from Zn\n+ = { 1,…,n-1 }.\n• If an-1 ≡ 1 mod n then accept (passes Fermat test).\n• Else reject (known not to be prime)."
+    },
+    {
+      "page": 26,
+      "text": "Algorithm attempt 1\n• Design PPT-TM (algorithm) M for PRIMES that satisfies:\n–n  ∈ PRIMES ⇒ Pr[ M accepts n] = 1.\n–n  ∉ PRIMES ⇒ Pr[ M accepts n] ≤ 2-k.\n•F e r m a t :If n is prime and a ∈ Zn\n+ then an-1 ≡ 1 mod n.\n• First try: On input n:\n– Choose number a randomly from Z n\n+ = { 1,…,n-1 }.\n– If a n-1 ≡ 1 mod n then accept (passes Fermat test).\n– Else reject (known not to be prime).\n• This guarantees:\n–n  ∈ PRIMES ⇒ Pr[ M accepts n] = 1.\n–n  ∉ PRIMES ⇒ ??\n– Don’t know.  It could pass the test, and be accepted erroneously.\n• The problem isn’t helped by repeating the test many times, \nfor many values of a---because there are some non-prime \nn’s that pass the test for all values of a."
+    },
+    {
+      "page": 27,
+      "text": "Carmichael numbers\n•F e r m a t :If n is prime and a ∈ Zn\n+ then an-1 ≡ 1 mod n.\n• On input n:\n– Choose a randomly from Z n\n+ = { 1,…,n-1 }.\n–I f  an-1 ≡ 1 mod n then accept (passes Fermat test).\n– Else reject (known not to be prime).\n• Carmichael numbers: Non-primes that pass all Fermat tests, \nfor all values of a.\n• Fact 2: Any non-Carmichael composite number fails at least \nhalf of all Fermat tests (for at least half of all values of a).\n• So for any non-Carmichael composite, the algorithm \ncorrectly identifies it as composite, with probability ≥ ½.\n• So, we can repeat k times to get more assurance.\n• Guarantees:\n–n  ∈ PRIMES ⇒ Pr[ M accepts n] = 1.\n– n a non-Carmichael composite number  ⇒ Pr[ M accepts n] ≤ 2-k.\n– n a Carmichael composite number ⇒ Pr[ M accepts n ] = 1 (wrong)"
+    },
+    {
+      "page": 28,
+      "text": "Carmichael numbers\n•F e r m a t :If n is prime and a ∈ Zn\n+ then an-1 ≡ 1 mod n.\n• On input n:\n– Choose a randomly from Z n\n+ = { 1,…,n-1 }.\n–I f  an-1 ≡ 1 mod n then accept (passes Fermat test).\n– Else reject (known not to be prime).\n• Carmichael numbers: Non-primes that pass all Fermat tests.\n• Algorithm guarantees:\n–n  ∈ PRIMES ⇒ Pr[ M accepts n] = 1.\n– n a non-Carmichael composite number  ⇒ Pr[ M accepts n] ≤ 2-k.\n– n a Carmichael composite number ⇒ Pr[ M accepts n] = 1.  \n• We must do something about the Carmichael numbers.\n• Use another test, based on:\n• Fact 3: For every Carmichael composite n, there is some b \n≠ 1, -1 such that b2 ≡ 1 mod n (that is, 1 has a nontrivial \nsquare root, mod n).  No prime has such a square root."
+    },
+    {
+      "page": 29,
+      "text": "Primality-testing algorithm\n• Fact 3: For every Carmichael composite n, there is some b \n≠ 1, -1 such that b2 ≡ 1 mod n.  No prime has such a \nsquare root.\n• Primality-testing algorithm:  On input n:\n– If n = 1 or n is even:  Give the obvious answer (easy).\n– If n is odd and > 1:   Choose a randomly from Zn\n+.\n• (Fermat test)  If an-1 is not congruent to 1 mod n then reject.\n• (Carmichael test)  Write n – 1 = 2h s, where s is odd (factor out \ntwos).\n– Consider successive squares, as,  a2s, a4s, a8s ..., a2^h s = an-1.\n– If all terms are ≡ 1 mod n, then accept.\n– If not, then find the last one that isn’t congruent to 1.\n– If it’s ≡-1 mod n then accept else reject."
+    },
+    {
+      "page": 30,
+      "text": "Primality-testing algorithm\n• If n is odd and > 1: \n– Choose a randomly from Z n\n+.\n– (Fermat test)  If a n-1 is not congruent to 1 mod n then reject.\n– (Carmichael test)  Write n – 1 = 2 h s, where s is odd.\n• Consider successive squares, as,  a2s, a4s, a8s ..., a2^h s = an-1.\n• If all terms are ≡ 1 mod n, then accept.\n• If not, then find the last one that isn’t congruent to 1.\n• If it’s ≡-1 mod n then accept else reject.\n• Theorem:  This algorithm satisfies:\n–n  ∈ PRIMES ⇒ Pr[ accepts n] = 1.\n–n  ∉ PRIMES ⇒ Pr[ accepts n] ≤ ½.\n• By repeating it k times, we get:\n–n  ∉ PRIMES ⇒ Pr[ accepts n] ≤ (½)k."
+    },
+    {
+      "page": 31,
+      "text": "Primality-testing algorithm\n• If n is odd and > 1: \n– Choose a randomly from Z n\n+.\n– (Fermat test)  If a n-1 is not congruent to 1 mod n then reject.\n– (Carmichael test)  Write n – 1 = 2 h s, where s is odd.\n• Consider successive squares, as,  a2s, a4s, a8s ..., a2^h s = an-1.\n• If all terms are ≡ 1 mod n, then accept.\n• If not, then find the last one that isn’t congruent to 1.\n• If it’s ≡-1 mod n then accept else reject.\n• Theorem:  This algorithm satisfies:\n–n  ∈ PRIMES ⇒ Pr[ accepts n] = 1.\n–n  ∉ PRIMES ⇒ Pr[ accepts n] ≤ ½.\n•P r o o f :Suppose n is odd and > 1."
+    },
+    {
+      "page": 32,
+      "text": "Proof\n• If n is odd and > 1:\n– Choose a randomly from Z n\n+.\n– (Fermat test)  If a n-1 is not congruent to 1 mod n then reject.\n– (Carmichael test)  Write n – 1 = 2 h s, where s is odd.\n• Consider successive squares, as,  a2s, a4s, a8s ..., a2^h s = an-1.\n• If all terms are ≡ 1 mod n, then accept.\n• If not, then find the last one that isn’t congruent to 1.\n• If it’s ≡-1 mod n then accept else reject.\n• Proof that n ∈ PRIMES ⇒ Pr[accepts n] = 1.\n– Show that, if the algorithm reje cts, then n must be composite.\n– Reject because of Fermat:  Then not prime, by Fact 1 (primes pass).\n– Reject because of Carmichael:  Then 1 has a nontrivial square root b, \nmod n, so n isn’t prime, by Fact 3.\n– Let b be the last term in the s equence that isn’t congruent to 1 mod n.\n–b 2 is the next one, and is ≡ 1 mod n, so b is a square root of 1, mod n."
+    },
+    {
+      "page": 33,
+      "text": "Proof\n• If n is odd and > 1:\n– Choose a randomly from Z n\n+.\n– (Fermat test)  If a n-1 is not congruent to 1 mod n then reject.\n– (Carmichael test)  Write n – 1 = 2 h s, where s is odd.\n• Consider successive squares, as,  a2s, a4s, a8s ..., a2^h s = an-1.\n• If all terms are ≡ 1 mod n, then accept.\n• If not, then find the last one that isn’t congruent to 1.\n• If it’s ≡-1 mod n then accept else reject.\n• Proof that n ∉ PRIMES ⇒ Pr[accepts n] ≤ ½.\n– Suppose n is a composite.\n– If n is not a Carmichael number, t hen at least half of the possible \nchoices of a fail the Fermat test (by Fact 2).\n– If n is a Carmichael number, then Fact 3 says that some b fails the \nCarmichael test (is a nontrivial square root).\n– Actually, when we generate b using a as above, at least half of the \npossible choices of a generate bs that fail the Carmichael test.\n– Why:  Technical argument, in Sipser, p. 374-375."
+    },
+    {
+      "page": 34,
+      "text": "Primality-testing algorithm\n• So we have proved:\n• Theorem:  This algorithm satisfies:\n–n  ∈ PRIMES ⇒ Pr[ accepts n] = 1.\n–n  ∉ PRIMES ⇒ Pr[ accepts n] ≤ ½.\n• This implies:\n• Theorem:  PRIMES ∈ coRP.\n• Repeating k times, or using an amplification lemma, we get:\n–n  ∈ PRIMES ⇒ Pr[ accepts n] = 1.\n–n  ∉ PRIMES ⇒ Pr[ accepts n] ≤ (½)k.\n• Thus, the algorithm might sometimes make mistakes and \nclassify a composite as a prime, but the probability of doing \nthis can be made arbitrarily low. \n• Corollary:  COMPOSITES ∈ RP."
+    },
+    {
+      "page": 35,
+      "text": "Primality-testing algorithm\n• Theorem:  PRIMES ∈ coRP.\n• Corollary:  COMPOSITES ∈ RP.\n• Corollary:  Both PRIMES and COMPOSITES ∈\nBPP. \ncoRPRP\nBPP\nCOMPOSITES\nPRIMES"
+    },
+    {
+      "page": 36,
+      "text": "Example 2:  Branching-Program \nEquivalence"
+    },
+    {
+      "page": 37,
+      "text": "Branching Programs\n• Branching program: A variant of a decision tree.  Can be a \nDAG, not just a tree:\n• Describes a Boolean function of a set { x 1, x2, x3,…} of \nBoolean variables.\n• Restriction:  Each variable appears at most once on each \npath.\n• Example:  x 1 x2 x3 result\n0   0   0                0\n0   0   1                1\n0   1   0                0\n0   1   1                0\n1   0   0                0\n1   0   1                1\n1   1   0                1\n1   1   1                1\nx1\nx3\nx2\n10\nx3\nx2\n1\n1\n11\n1\n0\n0\n00\n0"
+    },
+    {
+      "page": 38,
+      "text": "Branching Programs\n• Branching program representation for Boolean functions is \nused by system modeling and analysis tools, for systems in \nwhich the state can be represented using just Boolean \nvariables.\n• Programs called Binary Decision Diagrams (BDDs).\n• Analyzing a model involves exploring all the states, which \nin turn involves exploring all the paths in the diagram.\n• Choosing the “right” order of evaluating the variables can \nmake a big difference in cost (running time).\n•Q : Given two branching programs, B1 and B2, do they \ncompute the same Boolean function?\n• That is, do the same values for all the variables always \nlead to the same result in both programs?"
+    },
+    {
+      "page": 39,
+      "text": "Branching-Program Equivalence\n•Q : Given two branching programs, B1 and B2, do they \ncompute the same Boolean function?\n• Express as a language problem:\nEQBP = { < B1, B2 > | B1 and B2 are BPs that compute the \nsame Boolean function }.\n• Theorem: EQBP is in coRP ⊆ BPP.\n• Note: Need the restriction that a variable appears at most \nonce on each path.  Otherwise, the problem is coNP-\ncomplete.\n• Proof idea:\n– Pick random values for x 1, x2, … and see if they lead to the same \nanswer in B1 and B2.\n– If so, accept; if not, reject.\n– Repeat several times for extra assurance."
+    },
+    {
+      "page": 40,
+      "text": "Branching-Program Equivalence\nEQBP = { < B1, B2 > | B1 and B2 are BPs that compute the\nsame Boolean function }\n• Theorem: EQBP is in coRP ⊆ BPP.\n• Proof idea:\n– Pick random values for x 1, x2, … and see if they lead to the same \nanswer in B1 and B2.\n– If so, accept; if not, reject.\n– Repeat several times for extra assurance.\n• This is not quite good enough:  \n– Some inequivalent BPs differ on only one assignment to the vars.  \n– Unlikely that the algorithm would guess this assignment.\n• Better proof idea:  \n– Consider the same BPs but now pretend the domain of values for \nthe variables is Zp, the integers mod p, for a large prime p, rather \nthan just {0,1}.\n– This will let us make more distinct ions, making it less likely that we \nwould think B1 and B2 are equivalent if they aren’t."
+    },
+    {
+      "page": 41,
+      "text": "Branching-Program Equivalence\nEQBP = { < B1, B2 > | B1 and B2 are BPs that compute the\nsame Boolean function }\n• Theorem: EQBP is in coRP ⊆ BPP.\n• Proof idea:\n– Pick random values for x 1, x2, … and see if they lead to the same \nanswer in B1 and B2.\n– If so, accept; if not, reject.\n– Repeat several times for extra assurance.\n• Better proof idea:  \n– Pretend that the domain of values for the variables is Z p, the \nintegers mod p, for a large prime p, rather than just {0,1}.\n– This lets us make more distincti ons, making it less likely that we \nwould think B1 and B2 are equivalent if they aren’t.\n– But how do we apply the programs to integers mod p?\n– By associating a multi-variable polynomial with each program:"
+    },
+    {
+      "page": 42,
+      "text": "Associating a polynomial with a BP\n• Associate a polynomial with each node in the BP, \nand use the poly associated with the 1-result node \nas the poly for the entire BP.   \nx1\nx3\nx2\n10\nx3\nx2\n1\n1\n11\n1\n0\n0\n00\n0\n1\nx1\nx1 (1-x3)\nx1 (1-x3) x2\n+ x1 x3\n+ (1-x1) (1-x2) x3\n1 - x1\n(1-x1)( 1 - x2)\n(1-x1) (1-x2) (1-x3)\n+ (1- x1) x2\n+ x1 (1-x3) (1- x2)\nThe polynomial associated with the program"
+    },
+    {
+      "page": 43,
+      "text": "Labeling rules\n• Top node:  Label with polynomial 1.\n• Non-top node:  Label with sum of  polys, one for each incoming edge:\n– Edge labeled with 1, from x, labeled with p, contributes p x.\n– Edge labeled with 0, from x, labeled with p, contributes p (1-x).\nx1\nx3\nx2\n10\nx3\nx2\n1\n1\n11\n1\n0\n0\n00\n0\n1\nx1\nx1 (1-x3)\nx1 (1-x3) x2\n+ x1 x3\n+ (1-x1) (1-x2) x3\n1 - x1\n(1-x1)( 1 - x2)\n(1-x1) (1-x2) (1-x3)\n+ (1- x1) x2\n+ x1 (1-x3) (1- x2)\nThe polynomial associated with the program"
+    },
+    {
+      "page": 44,
+      "text": "Labeling rules\n• Top node:  Label with polynomial 1.\n• Non-top node:  Label with sum of polys, one for \neach incoming edge:\n– Edge labeled with 1, from x labeled with p, contributes \np x.\n– Edge labeled with 0, from x labeled with p, contributes \np (1-x).\nx\n1\np\np x\nx\n0\np\np (1-x)"
+    },
+    {
+      "page": 45,
+      "text": "Associating a polynomial with a BP\n• What do these polynomials mean for Boolean values?\n• For any particular assignment of { 0, 1 } to the variables, \neach polynomial at each node evaluates to either 0 or 1 \n(because of their special form).\n• The polynomials on the path followed by that assignment \nall evaluate to 1, and all others evaluate to 0.\n• The polynomial associated with the entire program \nevaluates to 1 exactly for the assignments that lead there = \nthose that are assigned value 1 by the program.\n• Example: Above.  \n– The assignments leading to resu lt 1 are:           \n– Which are exactly the assignments for which \nthe program’s polynomial evaluates to 1.    \nx1 x2 x3\n0   0   1    \n1   0   1            \n1   1   0            \n1   1   1       \nx1 (1-x3) x2\n+ x1 x3\n+ (1-x1) (1-x2) x3"
+    },
+    {
+      "page": 46,
+      "text": "Branching-Program Equivalence\n• Now consider Z p, integers mod p, for a large prime p (much \nbigger than the number of variables).\n• Equivalence algorithm: On input < B1, B2 >, where both \nprograms use m variables:\n– Choose elements a 1, a2,…,a m from Zp at random.\n– Evaluate the polynomials p 1 associated with B1 and p2 associated \nwith B2 for x1 = a1, x2 = a2,…,x m = am.\n• Evaluate them node-by-node, without actually constructing all \nthe polynomials for both programs.\n• Do this in polynomial time in the size of < B1, B2 >, LTTR.\n– If the results are equal (mod p) then accept; else reject.\n• Theorem: The equivalence algorithm guarantees:\n– If B 1 and B2 are equivalent BPs (for Boolean values) then \nPr[ algorithm accepts n] = 1.\n– If B 1 and B2 are not equivalent, then Pr[ algorithm rejects n] ≥ 2/3."
+    },
+    {
+      "page": 47,
+      "text": "Branching-Program Equivalence\n• Equivalence algorithm: On input < B1, B2 >:\n– Choose elements a 1, a2,…,a m from Zp at random.\n– Evaluate the polynomials p 1 associated with B1 and p2 associated \nwith B2 for x1 = a1, x2 = a2,…,x m = am.\n– If the results are equal (mod p) then accept; else reject.\n• Theorem: The equivalence algorithm guarantees:\n– If B 1 and B2 are equivalent BPs then Pr[ accepts n] = 1.\n– If B 1 and B2 are not equivalent, then Pr[ rejects n] ≥ 2/3.\n• Proof idea:  (See Sipser, p. 379)\n– If B 1 and B2 are equivalent BPs (for Boolean values), then p1 and p2 \nare equivalent polynomials over Zp, so always accepts.\n– If B 1 and B2 are not equivalent (for Boolean values), then at least \n2/3 of the possible sets of choices from Zp yield different values, so \nPr[ rejects n] ≥ 2/3.\n• Corollary: EQBP ∈ coRP ⊆ BPP."
+    },
+    {
+      "page": 48,
+      "text": "Relationships Between Complexity \nClasses"
+    },
+    {
+      "page": 49,
+      "text": "Relationships between         \ncomplexity classes\n• We know:\n• Also recall: \n• From the definitions, RP ⊆ NP and coRP ⊆ coNP.\n•S o  w e  h a v e :\ncoRPRP\nP\nBPP\nNP\nP\ncoNP"
+    },
+    {
+      "page": 50,
+      "text": "Relationships between classes\n• So we have:\n•Q : Where does BPP fit in?\nRP\nP\ncoRP\nNP coNP"
+    },
+    {
+      "page": 51,
+      "text": "Relationships between classes\n• Where does BPP fit?\n–N P  ∪ coNP ⊆ BPP ?\n– BPP = P ?\n– Something in between ?\n• Many people believe \nBPP = RP = coRP = P, \nthat is, that randomness \ndoesn’t help.\n• How could this be?\nRP\nP\ncoRP\nNP coNP\n• Perhaps we can emulate randomness with pseudo-random \ngenerators---deterministic algorithms whose output “looks \nrandom”.\n• What does it mean to “look random”?\n• A polynomial-time TM can’t distinguish them from random.\n• Current research!"
+    },
+    {
+      "page": 52,
+      "text": "Next time…\n• Cryptography!"
+    },
+    {
+      "page": 53,
+      "text": "MIT OpenCourseWare\nhttp://ocw.mit.edu \n6.045J / 18.400J Automata, Computability, and Complexity \nSpring 2011 \nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms. "
+    }
+  ]
+}

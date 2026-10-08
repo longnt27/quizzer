@@ -1,0 +1,239 @@
+{
+  "sourceId": "ocw-automata-9758cd5801e4",
+  "sourceSha256": "145dd6b1cfe6c5912406a2b1a8c0269d4e73820fadc191003976bb60965f734a",
+  "method": "pypdf-5.9.0 independent source inspection; NOT extraction ground truth",
+  "pages": [
+    {
+      "page": 1,
+      "text": "6.045: Automata, Computability, and \n \nComplexity\n \nOr, Great Ideas in Theoretical \n \nComputer Science \n \nSpring, 2010\n \nClass 4\n \nNancy Lynch\n "
+    },
+    {
+      "page": 2,
+      "text": "Today\n \n•\t Two more models of computation: \n–\t Nondeterministic Finite Automata (NFAs) \n•\t Add a guessing capability to FAs. \n•\t But provably equivalent to FAs. \n–\t Regular expressions \n•\t A different sort of model---expressions rather than machines. \n•\t Also provably equivalent. \n• Topics: \n–\t Nondeterministic Finite Automata and the languages they \nrecognize\n \n–N FAs vs. FAs \n \n–\t Closure of FA-recognizable languages under various operations, \nrevisited \n–\t Regular expressions \n–\t Regular expressions denote FA-recognizable languages \n•\t Reading: Sipser, Sections 1.2, 1.3 \n• Next: Section 1.4 "
+    },
+    {
+      "page": 3,
+      "text": "Nondeterministic Finite Automata \n \nand the languages they \n \nrecognize\n "
+    },
+    {
+      "page": 4,
+      "text": "Nondeterministic Finite Automata\n \n•\t Generalize FAs by adding nondeterminism, allowing\nseveral alternative computations on the same input string. \n•\t Ordinary deterministic FAs follow one path on each input.\n \n• Two changes: \n–A llow δ(q, a) to specify more than one successor state: \na \na \nq \n–A dd ε-transitions, transitions made “for free”, without “consuming”\nany input symbols. \nε \n•\t Formally, combine these changes: \nq1 q2 "
+    },
+    {
+      "page": 5,
+      "text": "Formal Definition of an NFA\n \n• An NFA is a 5-tuple ( Q, Σ, δ, q0, F ), where:\n \n– Q is a finite set of states, \n– Σ is a finite set (alphabet) of input symbols, \n– δ: Q ×Σ ε → P(Q) is the transition function, \nThe arguments The result is a set of states.\n \nare a state and either \n \nan alphabet symbol or \n \nε. Σε means Σ∪ {ε }.\n \n–q 0 ∈ Q, is the start state, and\n \n–F ⊆ Q is the set of accepting, or final states.\n "
+    },
+    {
+      "page": 6,
+      "text": "Formal Definition of an NFA\n \n•\t An NFA is a 5-tuple ( Q, Σ, δ, q0, F ), where:\n \n– Q is a finite set of states, \n– Σ is a finite set (alphabet) of input symbols, \n– δ: Q ×Σ ε → P(Q) is the transition function,\n \n–q 0 ∈ Q, is the start state, and\n \n–F ⊆ Q is the set of accepting, or final states.\n \n•\t How many states in P(Q)? \n2|Q| \n•\t Example: Q = { a, b, c } \nP(Q) = { ∅, {a}, {b}, {c}, {a,b}, {a,c}, {b,c}, {a,b,c} } "
+    },
+    {
+      "page": 7,
+      "text": "NFA Example 1 \na b c\n0,1 \n0 1 \nQ = { a, b, c } \nΣ = { 0, 1 } \n0 1 εq0 = a \nF = { c } a {a,b} {a} ∅ \nδ: b ∅ {c} ∅ \nc ∅ ∅ ∅ "
+    },
+    {
+      "page": 8,
+      "text": "c        \nNFA Example 2\n \nb c0,1 d\n0 1 \ne f g \n1 0 \na \nε \nε \n0 1 ε \na {a} {a} {b,c} \nb {c} ∅ ∅ \n∅ {d} ∅ \nd ∅ ∅ ∅ \ne ∅ {f} ∅ \nf {g} ∅ ∅ \ng ∅ ∅ ∅ "
+    },
+    {
+      "page": 9,
+      "text": "Nondeterministic Finite Automata\n \n•\t NFAs are like DFAs with two additions: \n–A llow δ(q, a) to specify more than one successor state. \n–A dd ε-transitions. \n•\t Formally, an NFA is a 5-tuple ( Q, Σ, δ, q0, F ), \nwhere: \n–\t Q is a finite set of states, \n– Σ\tis a finite set (alphabet) of input symbols, \n–\t δ: Q ×Σ ε → P(Q) is the transition function, \nΣε means Σ∪ {ε }.\n \n–q 0 ∈ Q, is the start state, and\n \n–F ⊆ Q is the set of accepting, or final states.\n "
+    },
+    {
+      "page": 10,
+      "text": "NFA Examples \nExample 1: \na b \n0,1 \nc \n0 1 \nExample 2:\n \nb c0,1 d\n0 1 \ne f g \n1 0 \na \nε \nε "
+    },
+    {
+      "page": 11,
+      "text": "How NFAs compute\n \n• Informally: \n– Follow allowed arrows in any possible way, \nwhile “consuming” the designated input \nsymbols. \n– Optionally follow any ε arrow at any time, \nwithout consuming any input. \n– Accepts a string if some allowed sequence of \ntransitions on that string leads to an accepting \nstate. "
+    },
+    {
+      "page": 12,
+      "text": "Example 1\n \na b \n0,1 \nc \n0 1 \n• L(M) = { w | w ends with 01 } \n• M accepts exactly the strings in this set. \n• Computations for input word w = 101: \n– Input word w: 1 0 1 \n \n– States:  a a a a \n– Or:  a a b c \n• Since c is an accepting state, M accepts 101\n "
+    },
+    {
+      "page": 13,
+      "text": "Example 1\n \na b \n0,1 \nc \n0 1 \n•\t Computations for input word w = 0010: \n–\t Possible states after 0:  { a, b } \n–\t Then after another 0:  { a, b } \n–\t After 1: { a, c } \n–\t After final 0:  { a, b } \n•\t Since neither a nor b is accepting, M does not \naccept 0010. \n0 \t 0 0 \n{ a } Æ { a, b } Æ { a, b } Æ { a, c } Æ { a, b }1 "
+    },
+    {
+      "page": 14,
+      "text": "Example 2\n \nb c0,1 d\n0 1 \ne f g \n1 0 \na \nε \nε \n• L(M) = { w | w ends with 01 or 10 } \n• Computations for w = 0010: \n– Possible states after no input:  { a, b, e } \n– After 0:  { a, b, e, c } \n– After 0:  { a, b, e, c } \n– After 1:  { a, b, e, d, f } \n– After 0:  { a, b, e, c, g } \n• Since g is accepting, M accepts 0010.\n \n0 0 1 0\n \n{ a, b, e } Æ { a, b, e, c } Æ { a, b, e, c} Æ { a, b, e, d, f } Æ { a, b, e, c, g }\n "
+    },
+    {
+      "page": 15,
+      "text": "Example 2\n \nb c0,1 d\n0 1 \ne f g \n1 0 \na \nε \nε \n•\t Computations for w = 0010: \n0 0 \n{ a, b, e } Æ { a, b, e, c } Æ { a, b, e, c } \n1 0 \nÆ { a, b, e, d, f } Æ { a, b, e, c, g } \n• Path to accepting state: \n0 0 ε 1 0 \n \na Æ a Æ a Æ e Æ f Æ g \n "
+    },
+    {
+      "page": 16,
+      "text": "Viewing computations as a tree\n \nInput w = 01b c0, \n1 \nd0 1 \ne f g1 0 \na \nε \nε \na \nba e \nc \ndfeb \neba \n0 \n1 \n1 \n0 \n1 \nε \nε ε \nε \nε \nε \nDone, \naccept \nStuck: No \nmoves on ε \nor 0 \nStuck: No \nmoves on ε \nor 1 \nIn general, accept if \nthere is a path labeled \nby the entire input \nstring, possibly \ninterspersed with εs, \nleading to an \naccepting state. \nHere, leads to accepting \nstate d. "
+    },
+    {
+      "page": 17,
+      "text": "Formal definition of computation\n \n•\t Define E(q) = set of states reachable from q using zero or \nmore ε-moves (includes q itself). \n• Example 2: E(a) = { a, b, e } \n•\t Define δ*: Q ×Σ * → P(Q), state and string yield a set of\nstates: δ*( q, w ) = states that can be reached from q by \nfollowing w. \n•\t Defined iteratively: Compute δ*( q, a1 a2 …a k) by: \nS : = E(q)\n \nfor i = 1 to k do \n \nS := ∪r′∈ δ( r, ai) for some r in S E(r′) \n•\t Or define recursively, LTTR. "
+    },
+    {
+      "page": 18,
+      "text": "Formal definition of computation\n \n•\t δ*( q, w ) = states that can be reached from\nq by following w. \n•\t String w is accepted if δ*( q0, w ) ∩ F ≠∅ , \nthat is, at least one of the possible end\nstates is accepting. \n•\t String w is rejected if it isn’t accepted. \n•\t L(M), the language recognized by NFA M, =\n{ w | w is accepted by M}. "
+    },
+    {
+      "page": 19,
+      "text": "NFAs vs. FAs\n "
+    },
+    {
+      "page": 20,
+      "text": "NFAs vs. DFAs\n \n• DFA = Deterministic Finite Automaton, new name for\nordinary Finite Automata (FA). \n–\t To emphasize the difference from NFAs. \n•\t What languages are recognized by NFAs? \n•\t Since DFAs are special cases of NFAs, NFAs recognize at \nleast the DFA-recognizable (regular) languages. \n•\t Nothing else! \n•\t Theorem: If M is an NFA then L(M) is DFA-recognizable. \n• Proof: \n–\t Given NFA M1 = ( Q1, Σ, δ1, q01, F1 ), produce an equivalent DFA M2\n= ( Q2, Σ, δ2, q02, F2 ). \n•\t Equivalent means they recognize the same language, L(M2) =\nL(M1). \n–\t Each state of M2 represents a set of states of M1: Q2 = P(Q1). \n–\t Start state of M2 is E(start state of M1) = all states M1 could be in \nafter scanning ε: q02 = E(q01). "
+    },
+    {
+      "page": 21,
+      "text": "NFAs vs. DFAs\n \n•\t Theorem: If M is an NFA then L(M) is DFA-\nrecognizable. \n• Proof: \n– Given NFA M1 = ( Q1, Σ, δ1, q01, F1 ), produce an\n \nequivalent DFA M2 = ( Q2, Σ, δ2, q02, F2 ).\n \n–Q 2 = P(Q1)\n \n–q 02 = E(q01)\n \n–F 2 = { S ⊆ Q1 | S ∩ F1 ≠∅ }\n \n•\t Accepting states of M2 are the sets that contain an accepting\nstate of M1. \n–\t δ2( S, a ) = ∪r ∈ S E( δ1( r, a ) ) \n•\t Starting from states in S, δ2( S, a ) gives all states M1 could reach \nafter a and possibly some ε-transitions. \n–M 2 recognizes L(M1): At any point in processing the\nstring, the state of M2 represents exactly the set of states \nthat M1 could be in. "
+    },
+    {
+      "page": 22,
+      "text": "Example: NFA Æ DFA\n \n•M 1: \t \na b c\n0,1 \n0\t 1 \n•\t States of M2: ∅, {a}, {b}, {c}, {a,b}, {a,c}, {b,c},\n{a,b,c} \n•\t Other 5 subsets aren’t reachable from start state, \ndon’t bother drawing them. \n• δ2: \n{a} {a,b} \n1 \n{a,c}\n0 1 \n0 \n0 \n1 \nF2 "
+    },
+    {
+      "page": 23,
+      "text": "NFAs vs. DFAs\n \n• NFAs and DFAs have the same power. \n• But sometimes NFAs are simpler than equivalent DFAs.\n \n• Example: L = strings ending in 01 or 10 \n– Simple NFA, harder DFA (LTTR) \n• Example: L = strings having substring 101 0,1–R ecall DFA: \n–N FA: \n1 0 1a cb d \n0 \n0 1 \n0,10,1 \n1 0 1 \n– Simpler---has the power to “guess” when to start matching.\n "
+    },
+    {
+      "page": 24,
+      "text": "NFAs vs. DFAs\n \n•\t Which brings us back to last time. \n•\t We got stuck in the proof of closure for DFA\nlanguages under concatenation: \n•\t Example: L = { 0, 1 }* { 0 } { 0 }* \n0,1 0 \n0 \n• NFA can guess when the critical 0 occurs.\n "
+    },
+    {
+      "page": 25,
+      "text": "Closure of regular (FA\n-\nrecognizable) languages under \n \nvarious operations, revisited\n "
+    },
+    {
+      "page": 26,
+      "text": "Closure under operations \n \n•\t The last example suggests we retry proofs of \nclosure of FA languages under concatenation and\nstar, this time using NFAs. \n•\t OK since they have the same expressive power \n(recognize the same languages) as DFAs. \n•\t We already proved closure under common set-\ntheoretic operations---union, intersection,\ncomplement, difference---using DFAs. \n•\t Got stuck on concatenation and star. \n•\t First (warmup):  Redo union proof in terms of\nNFAs. "
+    },
+    {
+      "page": 27,
+      "text": "Closure under union\n \n•\t Theorem: FA-recognizable languages are closed \nunder union. \n•\t Old Proof: \n–\t Start with DFAs M1 and M2 for the same alphabet Σ. \n–\t Get another DFA, M3, with L(M3) = L(M1) ∪ L(M2). \n– Idea: Run M1 and M2 “in parallel” on the same input.  If \neither reaches an accepting state, accept. "
+    },
+    {
+      "page": 28,
+      "text": "Closure under union\n• Example: \n0\nM1:  Substring 01\n1\nM2:  Odd number of 1s\na b c\n1 0 0,1\n1\nd e\n1\n0 0\nM3: \n\u001f 1 1\n1 1\n1\n1\n0\n0\n0\nad bd cd\nae be ce\n0 0\n0"
+    },
+    {
+      "page": 29,
+      "text": "Closure under union, general rule \n•\t Assume: \n–M 1 = ( Q1, Σ, δ1, q01, F1 ) \n–M 2 = ( Q2, Σ, δ2, q02, F2 ) \n•\t Define M3 = ( Q3, Σ, δ3, q03, F3 ), where \n–Q 3 =Q 1 × Q2 \n• Cartesian product, {(q1,q2) | q1∈Q1 and q2∈Q2 } \n– δ3 ((q1,q2), a) = (δ1(q1, a), δ2(q2, a)) \n–q 03 = (q01, q02)\n \n–F 3 ={ (q1,q2) | q1 ∈ F1 or q2 ∈ F2 }\n "
+    },
+    {
+      "page": 30,
+      "text": "Closure under union\n \n•\t Theorem: FA-recognizable languages are closed \nunder union. \n•\t New Proof: \n–\t Start with NFAs M1 and M2. \n–\t Get another NFA, M3, with L(M3) = L(M1) ∪ L(M2). \nM1 \nUse final statesε \nfrom M1 and M2. \nM2\nAdd new ε\n \nstart state\n "
+    },
+    {
+      "page": 31,
+      "text": "Closure under union\n \n•\t Theorem: FA-recognizable languages are \nclosed under union. \n•\t New Proof: Simpler! \n•\t Intersection: \n– NFAs don’t seem to help. \n•\t Concatenation, star: \n– Now try NFA-based constructions. "
+    },
+    {
+      "page": 32,
+      "text": "Closure under concatenation\n \n• L1 ◦ L2 = { x y | x ∈ L1 and y ∈ L2 } \n•\t Theorem: FA-recognizable languages are closed\nunder concatenation. \n• Proof: \n–\t Start with NFAs M1 and M2. \n–\t Get another NFA, M3, with L(M3) = L(M1) ◦ L(M2). \nM1 M2 \nε \nε \nThese are no longer \nfinal states. \nThese are still\n \nfinal states.\n "
+    },
+    {
+      "page": 33,
+      "text": "Closure under concatenation\n \n• Example: \n– Σ = { 0, 1}, L1 = Σ*, L2 = {0} {0}*.\n \n–L 1 L2 = strings that end with a block of at least \n \none 0\n \n–M 1:\n \n–M 2: \n– Now combine: \n0,1 \n0 \n0 \nNFAs \n0,1 \n0 \n0ε "
+    },
+    {
+      "page": 34,
+      "text": "Closure under star\n \n•\t L* = { x | x = y1 y2 …y k for some k ≥ 0, every y in L } \n= L0 ∪ L1 ∪ L2 ∪ … \n•\t Theorem: FA-recognizable languages are closed under \nstar. \n• Proof: \n–\t Start with FA M1. \n–\t Get an NFA, M2, with L(M2) = L(M1)*. \nUse final states \nfrom M1 and M2. \nM1\nε \nAdd new start \nstate; it’s also \nε \nε \na final state, \nsince ε is in \nL(M1)*. "
+    },
+    {
+      "page": 35,
+      "text": "Closure under star\n \n• Example: \n– Σ = { 0, 1}, L1 = { 01, 10 }\n \n–( L1)* = even-length strings where each pair\n \nconsists of a 0 and a 1. \n–M 1: ε 0 1 \nε \n1 0 \n–C onstruct M2: \nε ε \nε \n0 1 \n1 0 \nε \nε "
+    },
+    {
+      "page": 36,
+      "text": "Closure, summary\n \n•\t FA-recognizable (regular) languages are \nclosed under set operations, concatenation,\nand star. \n•\t Regular operations: Union, concatenation, \nand star. \n•\t Can be used to build regular expressions, \nwhich denote languages. \n• E.g., regular expression ( 0 ∪ 1 )* 0 0*\n \ndenotes the language { 0, 1 }* {0} {0}*\n \n•\t Study these next… "
+    },
+    {
+      "page": 37,
+      "text": "Regular Expressions\n "
+    },
+    {
+      "page": 38,
+      "text": "Regular expressions\n \n•\t An algebraic-expression notation for describing (some)\nlanguages, rather than a machine representation. \n•\t Languages described by regular expressions are exactly\nthe FA-recognizable languages. \n– That’s why FA-recognizable languages are called “regular”. \n•\t Definition: R is a regular expression over alphabet Σ \nexactly if R is one of the following: \n–\t a, for some a in Σ, \n–\t ε, \n– ∅,\n \n–(  R1 ∪ R2 ), where R1 and R2 are smaller regular expressions,\n \n–(  R1 ° R2 ), where R1 and R2 are smaller regular expressions, or\n \n–(  R1* ), where R1 is a smaller regular expression.\n \n•\t A recursive definition. "
+    },
+    {
+      "page": 39,
+      "text": "Regular expressions\n \n•\t Definition: R is a regular expression over alphabet Σ \nexactly if R is one of the following: \n–\t a, for some a in Σ, \n–\t ε, \n– ∅,\n \n–(  R1 ∪ R2 ), where R1 and R2 are smaller regular expressions,\n \n–(  R1 ° R2 ), where R1 and R2 are smaller regular expressions, or\n \n–(  R1* ), where R1 is a smaller regular expression.\n \n•\t These are just formal expressions---we haven’t said yet \nwhat they “mean”. \n•\t Example: ( ( ( 0 ∪ 1 ) °ε )* ∪ 0 ) \n•\t Abbreviations: \n–\t Sometimes omit °, use juxtaposition. \n–\t Sometimes omit parens, use precedence of operations:  * highest, \nthen °, then ∪ . \n•\t Example: Abbreviate above as ( ( 0 ∪ 1 ) ε )* ∪ 0 \n•\t Example: ( 0 ∪ 1 )* 111 ( 0 ∪ 1 )* "
+    },
+    {
+      "page": 40,
+      "text": "How regular expressions \n \ndenote languages\n \n•\t Define the languages recursively, based on the \nexpression structure: \n•\t Definition: \n– L(a) = { a }; one string, with one symbol a.\n \n–L (ε) = { ε }; one string, with no symbols.\n \n–L (∅) = ∅; no strings.\n \n–L ( R1 ∪ R2 ) = L( R1 ) ∪ L( R2 )\n \n–L ( R1 ° R2 ) = L( R1 ) ° L( R2 )\n \n–L ( R1* ) = ( L(R1) )*\n \n• \tExample: Expression ( ( 0 ∪ 1 ) ε )* ∪ 0 denotes \n \nlanguage { 0, 1 }* ∪ { 0 } = { 0, 1 }*, all strings.\n \n•\t Example: ( 0 ∪ 1 )* 111 ( 0 ∪ 1 )* denotes { 0, 1 }*\n \n{ 111 } { 0, 1 }*, all strings with substring 111. "
+    },
+    {
+      "page": 41,
+      "text": "More examples\n \n• Definition: \n– L(a) = { a }; one string, with one symbol a.\n \n–L (ε) = { ε }; one string, with no symbols.\n \n–L (∅) = ∅; no strings.\n \n–L ( R1 ∪ R2 ) = L( R1 ) ∪ L( R2 )\n \n–L ( R1 ° R2 ) = L( R1 ) ° L( R2 )\n \n–L ( R1* ) = ( L(R1) )*\n \n•\t Example: L = strings over { 0, 1 } with odd number of 1s. \n0* 1 0* ( 0* 1 0* 1 0* )* \n•\t Example: L = strings with substring 01 or 10. \n( 0 ∪ 1 )* 01 ( 0 ∪ 1 )* ∪ ( 0 ∪ 1 )* 10 ( 0 ∪ 1 )* \nAbbreviate (writing Σ for ( 0 ∪ 1 )):\n \nΣ* 01 Σ* ∪Σ * 10 Σ* \n "
+    },
+    {
+      "page": 42,
+      "text": "More examples\n \n•\t Example:  L = strings with substring 01 or 10. \n( 0 ∪ 1 )* 01 ( 0 ∪ 1 )* ∪ ( 0 ∪ 1 )* 10 ( 0 ∪ 1 )* \nAbbreviate:\n \nΣ* 01 Σ* ∪Σ * 10 Σ* \n \n•\t Example: L = strings with neither substring 01 or\n \n10. \n–\t Can’t write complement. \n–\t But can write:  0* ∪ 1*. \n•\t Example: L = strings with no more than two\nconsecutive 0s or two consecutive 1s \n– Would be easy if we could write complement. \n( ε∪ 1 ∪ 11 ) (( 0 ∪ 00 ) (1 ∪ 11 ) )* ( ε∪ 0 ∪ 00 ) \n–\t Alternate one or two of each. "
+    },
+    {
+      "page": 43,
+      "text": "More examples\n \n•\t Regular expressions commonly used to specify \nsyntax. \n– For (portions of) programming languages\n \n–E ditors \n \n–\t Command languages like UNIX shell \n•\t Example: Decimal numbers \nD D* . D* ∪ D* . D D*, \nwhere D is the alphabet { 0, …, 9 } \nNeed a digit either before or after the decimal point. "
+    },
+    {
+      "page": 44,
+      "text": "Regular Expressions Denote \n \nFA-Recognizable Languages\n "
+    },
+    {
+      "page": 45,
+      "text": "Languages denoted by regular \n \nexpressions\n \n•\t The languages denoted by regular expressions \nare exactly the regular (FA-recognizable) \nlanguages. \n•\t Theorem 1: If R is a regular expression, then L(R) \nis a regular language (recognized by a FA). \n• Proof: Easy. \n•\t Theorem 2: If L is a regular language, then there \nis a regular expression R with L = L(R). \n• Proof: Harder, more technical. "
+    },
+    {
+      "page": 46,
+      "text": "Theorem 1\n \n•\t Theorem 1: If R is a regular expression, then L(R) \nis a regular language (recognized by a FA). \n• Proof: \n–\t For each R, define an NFA M with L(M) = L(R). \n–\t Proceed by induction on the structure of R: \n•\t Show for the three base cases. \n•\t Show how to construct NFAs for more complex expressions \nfrom NFAs for their subexpressions. \n–\t Case 1: R = a \n•\t L(R) = { a }                Accepts only a. \na \n–\t Case 2: R = ε \n• L(R) = { ε } ε. \nAccepts only "
+    },
+    {
+      "page": 47,
+      "text": "Theorem 1\n \n•\t Theorem 1: If R is a regular expression, then L(R) \nis a regular language (recognized by a FA). \n• Proof: \n–\t Case 3: R = ∅\n• L(R) = ∅ Accepts nothing. \n–\t Case 4: R = R1 ∪ R2 \n•M 1 recognizes L(R1), \t M1 \n• M2 recognizes L(R2). ε \n•\t Same construction \nwe used to show \nregular languages \n M2 \nare closed under ε\nunion. \n"
+    },
+    {
+      "page": 48,
+      "text": "Theorem 1\n \n•\t Theorem 1: If R is a regular expression, then L(R) \nis a regular language (recognized by a FA). \n•\t Proof: \n–\t Case 5: R = R1 ° R2 \n• M1 recognizes L(R1), \n• M2 recognizes L(R2). \n•\t Same construction we used to show regular languages are \nclosed under concatenation. \nM1 M2 \nε \nε "
+    },
+    {
+      "page": 49,
+      "text": "ε\nε\nTheorem 1\n \n•\t Theorem 1: If R is a regular expression, then L(R) \nis a regular language (recognized by a FA). \n•\t Proof: \n–\t Case 6:  R = (R1)* \n• M1 recognizes L(R1), \n•\t Same construction we used to show regular languages are \nclosed under star. \nM1\nε "
+    },
+    {
+      "page": 50,
+      "text": "Example for Theorem 1 \n• L = ab ∪ a* \n• Construct machines recursively: \n• a:  a b: b\n \n• ab: a bε \nε\nε a \n• a*: \na ε b \nε\nε \na• ab ∪ a*: \nε ε "
+    },
+    {
+      "page": 51,
+      "text": "Theorem 2\n \n•\t Theorem 2: If L is a regular language, then there\nis a regular expression R with L = L(R). \n• Proof: \n– For each NFA M, define a regular expression R with \nL(R) = L(M). \n–\t Show with an example: \nb\nx y z\nb a a \na\t b \n– Convert to a special form with only one final state, no \nincoming arrows to start state, no outgoing arrows from\nfinal state. \nb\nx y z qfq0\nb a a \nε a b ε "
+    },
+    {
+      "page": 52,
+      "text": "Theorem 2\n \nb\nxq0 y z qf\nb a a \nε a b ε \n•\t Now remove states one at a time (any order), replacing \nlabels of edges with more complicated regular expressions. \n•\t First remove z: \nb\nx y qfq0\nb a \nε a b a* \n•\t New label b a* describes all strings that can move the \nmachine from state y to state qf, visiting (just) z any\nnumber of times. "
+    },
+    {
+      "page": 53,
+      "text": "Theorem 2\n \nb\nx yq0 qf\nb a \nε a b a* \n•\t Then remove x: a ∪ bb* a \nb a*b*a \nyq0 qf \n•\t New label b*a describes all strings that can move the \nmachine from q0 to y, visiting (just) x any number of times. \n• New label a ∪ bb* a describes all strings that can move the \n \nmachine from y to y, visiting (just) x any number of times.\n "
+    },
+    {
+      "page": 54,
+      "text": "Theorem 2\n \nyq0 qf\na ∪ bb* a \nb*a b a* \n•\t Finally, remove y: \nb*a (a ∪ bb* a)* b a* \nq0 qf \n•\t New label describes all strings that can move the machine \nfrom q0 to qf, visiting (just) y any number of times. \n•\t This final label is the needed regular expression. "
+    },
+    {
+      "page": 55,
+      "text": "Theorem 2\n \n•\t Define a generalized NFA (gNFA). \n–\t Same as NFA, but: \n•\t Only one accept state, ≠ start state. \n•\t Start state has no incoming arrows, accept state no outgoing arrows. \n•\t Arrows are labeled with regular expressions. \n–\t How it computes:  Follow an arrow labeled with a regular \nexpression R while consuming a block of input that is a word in the \nlanguage L(R). \n•\t Convert the original NFA M to a gNFA. \n•\t Successively transform the gNFA to equivalent gNFAs\n(recognize same language), each time removing one state. \n•\t When we have 2 states and one arrow, the regular \nexpression R on the arrow is the final answer: \nR\n \nq0 qf "
+    },
+    {
+      "page": 56,
+      "text": "we get: \nTheorem 2\n \n•\t To remove a state x, consider every pair of other states, y \nand z, including y = z. \n•\t New label for edge (y, z) is the union of two expressions:\n \n–\t What was there before, and \n–\t One for paths through (just) x. \ny\t \nx\nz\ny x\nR R ∪ SU*T\n•I f y ≠ z: \n we get:\n y z \nS T \nU \nR U R ∪ SU*T \nS \n•\t If y = z:              y \nT\n "
+    },
+    {
+      "page": 57,
+      "text": "Next time…\n \n•\t Existence of non-regular languages \n•\t Showing specific languages aren’t regular \n•\t The Pumping Lemma \n•\t Algorithms that answer questions about \nFAs. \n•\t Reading: Sipser, Section 1.4; some pieces\nfrom 4.1 "
+    },
+    {
+      "page": 58,
+      "text": "MIT OpenCourseWare\nhttp://ocw.mit.edu \n6.045J / 18.400J Automata, Computability, and Complexity \nSpring 2011 \nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms. "
+    }
+  ]
+}

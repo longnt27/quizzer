@@ -1,0 +1,43 @@
+{
+  "sourceId": "ocw-databases-7e56beb287d1",
+  "sourceSha256": "090f08a1cb4ae2b9fd65330e63030cea5d37951989513094f6761755be07427c",
+  "method": "pypdf-5.9.0 independent source inspection; NOT extraction ground truth",
+  "pages": [
+    {
+      "page": 1,
+      "text": "DryadLINQ 11/24/09 -- Lecture 20 \nWhat is DryadLINQ? \n(Programming language and distributed execution framework for manipulating very\nlarge datasets spread across many computers.) \nLINQ -- programming language \nDryad -- execution framework \nWhat are the goals of Dryad?\nProvide parallel database-style scalability in a more general purpose language.\nUsers write a single program, don't worry about how it is partitioned across many\nmachines.\nWhy not SQL?\nWant to run arbitrary programs over data. Databases do allow users to write user \ndeﬁned functions and create data types, but this can be awkward at times.\nWant better integration with development framework and main (host) language.\nWhy not MapReduce? \nIt has a very restricted communication pattern that often requires multiple map/reduce\nphases to write complex tasks (e.g., joins.) No cross-phase optimization.\nWhat types of programs are they trying to run?\nThey are not trying to provide transactions, and are focused more on chewing on a\nbunch of big data ﬁles than applying a few small updates, etc.\nWhat is the LINQ programming model?\nSQL-like, except that it is embedded in C#, and can make use of C# functions. It is \ncompiled and type checked using C#.\nExample:\n"
+    },
+    {
+      "page": 2,
+      "text": "Ex 1: \nusing System;\nusing System.Linq;\nusing System.Collections.Generic;\nclass app {\nstatic void Main() {\nstring[] names = { \"Burke\", \"Connor\", \"Frank\",\n\"Everett\", \"Albert\", \"George\",\n\"Harris\", \"David\" };\n IEnumerable<string> query = from s in names\nwhere s.Length == 5\norderby s\nselect s.ToUpper();\n foreach (string item in query)\nConsole.WriteLine(item);\n}\n} \nEx 2: \nstring[] names = { \"Albert\", \"Burke\", \"Connor\", \"David\",\n\"Everett\", \"Frank\", \"George\", \"Harris\"}; \n// group by length\nvar groups = names.GroupBy(s => s.Length, s => s[0]);\nforeach (IGrouping<int, char> group in groups) {\nConsole.WriteLine(\"Strings of length {0}\", group.Key);\n foreach (char value in group)\nConsole.WriteLine(\" {0}\", value);\n} \nThis variation prints the following: \nStrings of length 6\nA\n G\n H\nStrings of length 5\nB\n D\n F \nStrings of length 7\nE \n  C"
+    },
+    {
+      "page": 3,
+      "text": "Ex 3: (In general, you can combine a sequence of operations together) \nvar adjustedScoreTriples =\nfrom d in scoreTriples\njoin r in staticRank on d.docID equals r.key\nselect new QueryScoreDocIDTriple(d, r); \nvar rankedQueries = \nfrom s in adjustedScoreTriples\ngroup s by s.query into g\nselect TakeTopQueryResults(g);\nCan think of this as a graph of operators, just like in SQL (except that SQL plans are\nmostly trees, whereas here they are DAGs) \nrankedQueries \ngroup by takeTop... \n... \nscoreTriples \njoin \nstaticRank \nqueryScore \nadjustedScoreTriples \n... \nOperators: \nselect \nproject\norder by\njoin\ngroup by \nWhy is that good? What are the advantages? \nAvoids \"Impedence Mismatch\" where you run a SQL query, retrieve and typecheck the\nresults, then pack the results back into a string, which you send to the SQL engine,\nwhich typechecks the inputs, etc.... "
+    },
+    {
+      "page": 4,
+      "text": "Any disadvantages? \nBinds you to a speciﬁc language;  complicates host language; may not support all of\nSQL. \nHow does this get distributed in Dry adLINQ?\n(Show architecture diagram)\nLabel pieces -- note similarity to BigTable/MapReduce\nNote that the output of each operator goes to disk\nSimple example: Sort \na \nsample \nhist \nrepartition \nrepartition \nW 1 \nW 2 \nsample \nW 3 \ninterleave \ninterleave \nsort \nsort \na,s,q,m \nb,d,b,a \ns,q,m \nb,b,a \nd \n1:a-c \n2:d-z \na,b,b,a \ns,q,m,d \na,a,b,b \nd,m,q,s \nInput data partitioned across nodes, just like in RDBMS \nMGR NS\nClient\nStorage System\nW 1 W 2 W 3\nImage by MIT OpenCourseWare."
+    },
+    {
+      "page": 5,
+      "text": "Example 2 -- Aggregate, e.g. Q2\nvar names = GetTable<LineRecord>(\"file://names.txt\")\n// group by length\nvar groups = names.GroupBy(s => s.Length, s => s[0]);\nvar output = ToDryadTable(groups, \"file://out.txt\") \nVery similar to how a DDBMS would do this. \nHow many partitions to create?\nJust say it \"depends on the size of the input data\"\nAre there restrictions on the pro grams that can be run?\nSays that they must be \"side effect free\"\nWhat does that mean? \nNo modiﬁcations to any shared state.\nHow restrictive is that? \nCan make it tough to do some operations -- for example, you can't write a group by in\nthe language w/out special group by support.\nEx:\ncurgroup = 0\nsaved = NULL\nvoid aggGbySorted(t, groupf, aggf)\nif (groupf(t) != curgroup && saved != NULL)\nemit aggf(saved)\nsaved = new list().append(t)\ncurgroup = groupf(t)\nelse\nsaved.append(t)\n"
+    },
+    {
+      "page": 6,
+      "text": "(can only auto-parallelie user deﬁ ned funcs that are stateless) \nCan I read shared state? Yes \nHow is that handled? \nShipped to each processing node \nWhat if I can't ﬁgure out how to write my program in the above constraints or \nconstructs? \nApply (f, list) --> Can perform arbitrary computation on the list, but will be run on a\nsingle node \nWhat compiler optimizations are su pported? \nStatic (e.g., at compile time) \n- Pipeline operators on the same node\nEx: (somewhat unclear how they choose what to combine)\nsort partial agg. \nsort partial agg. \n- Eager aggregation -- see aggregate above; perform partial aggregation before\nrepartitioning \n- I/O reduction \ndon't write intermediate data to ﬁ les -- \ninstead, store in a buffer or send over a TCP pipe when possible \nDynamic (e.g., at run time): \n- Dynamic aggregation\n- perform eager aggregation at edges between data centers \n- Dynamic partitioning\n- choose number of partitions to create based on the amount of data\nunclear how they do this "
+    },
+    {
+      "page": 7,
+      "text": "- Sort optimizations\n- speciﬁc plan for order by -- sample data to determine ranges, compute \nhistogram, split into ranges with equal #s of tuples, redistribute and sort on each node. \nOptimizations are very specialized to sepciﬁ c programs -- e.g., they seem to have a \nspeciﬁc optimization to make orderby, groupby, etc run fast, rather than true general \npurpose opts. \nLots of talk about how they can 'automatically apply' many different optimizations and\ninfer properties like commutativity, etc., but a bit hard to ﬁgure out how these actually \nwork. If you go look at their other papers they have more detail. \nIn general, this means that programs with lots of custom ops may do many\nrepartitionings -- e.g., after any selection that modiﬁ es tuples, repartitioning is needed. \nFault tolerance \nDon't really mention it -- though they claim the ability to restart slow nodes as a\ncontribution (kind of an oversight.) \nPresumably they do something like what MapReduce does -- if they notice that a\nparticular part of a job fails, they can simply restart/rerun it. Less clear that this works \nas well as in map reduce where there is a well deﬁ ned notion of a \"job\" assigned to \none or more nodes. \nDebugging, etc. \nLINQ programs can compile to other execution frameworks, including a single node\nthing that makes debugging easy \nPerformance -- Terasort (3.87 GB / node)  (Sec 5.1/Table 1)\n1 node takes 119 secs \n4 striped disks should read/write sequentially at about ~200 MB/sec \n3.87 / .2 = ~20 sec \n~40 sec to read and write data; so sorting 3.87 GB is about 80 secs? \n> 1 node -- Each node ships n-1/n of data \nData compresses by a factor of 6 \nCompressed 645 MB\nfor n=2, sends 320 MB "
+    },
+    {
+      "page": 8,
+      "text": "1 gbit/sec switch ==> 2.5 sec to send\nfor n = 10, sends 580 MB ==> 4.6 sec to send \n(so slight increase from 2-->10 seems to make sense)\nSo why is sorting so much slower when going from 1-->2?\nSampling? Dunno. Frustrating performance analysis.\n"
+    },
+    {
+      "page": 9,
+      "text": "MIT OpenCourseWare \nhttp://ocw.mit.edu \n6.830 / 6.814 Database Systems \nFall 2010 \nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms. "
+    }
+  ]
+}

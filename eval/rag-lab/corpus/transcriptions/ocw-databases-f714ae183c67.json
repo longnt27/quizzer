@@ -1,0 +1,167 @@
+{
+  "sourceId": "ocw-databases-f714ae183c67",
+  "sourceSha256": "a5a5d9286738e025a5bfb043dd4cb0081bd70a625927b8f9ed80364ececce3ce",
+  "method": "pypdf-5.9.0 independent source inspection; NOT extraction ground truth",
+  "pages": [
+    {
+      "page": 1,
+      "text": "What to do with Scientific Data?\nby\nMichael Stonebraker"
+    },
+    {
+      "page": 2,
+      "text": "OutlineOutline\nScience data – what it looks like\nHardware options for deployment\nSoftware options\nRDBMS\nWrappers on RDBMS\nSciDB"
+    },
+    {
+      "page": 3,
+      "text": "O(100) petabytes\nCourtesy of LSST. Used with permission."
+    },
+    {
+      "page": 4,
+      "text": "Courtesy of LSST. Used with permission."
+    },
+    {
+      "page": 5,
+      "text": "LSST DataLSST Data\nRaw imagery\n2-D arrays of telescope readings\n“Cooked” into observations\nImage intensity algorithm (data clustering)\nSpatial data \nFurther cooked into “trajectories”\nSimilarity query\nConstrained by maximum distance"
+    },
+    {
+      "page": 6,
+      "text": "Example LSST QueriesExample LSST Queries\nRecook raw imagery with my algorithm\nFind all observations in a spatial region\nFind all trajectories that intersect a cylinder in \ntime"
+    },
+    {
+      "page": 7,
+      "text": "Snow Cover in the SierrasSnow Cover in the Sierras\n© Source unknown.  All rights reserved. This content is excluded from our Creative \nCommons license. For more information, see http://ocw.mit.edu/fairuse."
+    },
+    {
+      "page": 8,
+      "text": "Satellite ImagerySatellite Imagery\nRaw data\nArray of pixels precessing around the earth\nSpherical co-ordinates\nCooked into images\nTypically “best” pixel over a time window\ni.e. image is a composite of several passes\nFurther cooked into various other things\nE.g. polygons of constant snow cover"
+    },
+    {
+      "page": 9,
+      "text": "Example QueriesExample Queries\nRecook raw data\nUsing a different composition algorithm\nRetrieve cooked imagery in a time cylinder\nRetrieve imagery which is changing at a large \nrate"
+    },
+    {
+      "page": 10,
+      "text": "Chemical Plant DataChemical Plant Data\nPlant is a directed graph of plumbing\nSensors at various places (1/sec observations)\nDirected graph of time series\nTo optimize output plant runs “near the edge”\nAnd fails every once in a while – down for a \nweek"
+    },
+    {
+      "page": 11,
+      "text": "Chemical Plant DataChemical Plant Data\nRecord all data  \n{(time, sensor-1, … sensor-5000)}\nLook for “interesting events – i.e. sensor \nvalues out of whack”\nCluster events near each other in 5000 \ndimension space\nIdea is to identify “near-failure modes”"
+    },
+    {
+      "page": 12,
+      "text": "General ModelGeneral Model\nsensors\nCooking\nAlgorithm(s)\n(pipeline)\nDerived data"
+    },
+    {
+      "page": 13,
+      "text": "Traditional WisdomTraditional Wisdom\nCooking pipeline outside DBMS\nDerived data loaded into DBMS for subsequent \nquerying"
+    },
+    {
+      "page": 14,
+      "text": "Problems with This ApproachProblems with This Approach\nEasy to lose track of the raw data\nCannot query the raw data\nRecooking is painful in application logic –\nmight be easier in a DBMS (stay tuned)\nProvenance (meta data about the data) is often \nnot captured\nE.g. cooking parameters\nE.g. sensor calibration"
+    },
+    {
+      "page": 15,
+      "text": "My preferenceMy preference\nLoad the raw data into a DBMS\nCooking pipeline is a collection of user-defined \nfunctions (DBMS extensions) \nActivated by triggers or a workflow \nmanagement system\nALL data captured in a common system!!!"
+    },
+    {
+      "page": 16,
+      "text": "Deployment OptionsDeployment Options\nSupercomputer/mainframe\nIndividual project “silos”\nInternal grid (cloud behind the firewall)\nExternal cloud (e.g. Amazon EC20"
+    },
+    {
+      "page": 17,
+      "text": "Deployment OptionsDeployment Options\nSupercomputer/main frame \n($$$$)\nIndividual project “silos”\nProbably what you do now….\nEvery silo has a system administrator and a \nDBA (expensive)\nGenerally results in poor sharing of data"
+    },
+    {
+      "page": 18,
+      "text": "Deployment OptionsDeployment Options\nInternal grid (cloud behind the firewall)\nMimic what Google/Amazon/Yahoo/et.al do\nOther report huge savings in DBA/SE costs\nDoes not require you buy VMware\nRequires a software stack that can enforce \nservice guarantees "
+    },
+    {
+      "page": 19,
+      "text": "Deployment OptionsDeployment Options\nExternal cloud (e.g. EC2)\nAmazon can “stand up” a node wildly \ncheaper than Exxon – economies of scale \nfrom 10K nodes to 500K nodes\nSecurity/company policy issues will be an \nissue\nAmazon pricing will be an issue\nLikely to be the cheapest in the long run"
+    },
+    {
+      "page": 20,
+      "text": "What DBMS to Use?What DBMS to Use?\nRDBMS (e.g. Oracle)\nPretty hopeless on raw data\nSimulating arrays on top of tables likely to \ncost a factor of 10-100\nNot pretty on time series data\nFind me a sensor reading whose average \nvalue over the last 3 days is within 1% of \nthe average value over the adjoining 5 \nsensors "
+    },
+    {
+      "page": 21,
+      "text": "What DBMS to Use?What DBMS to Use?\nRDBMS (e.g. Oracle)\nSpatial data may (or may not) be ok\nCylinder queries will probably not work \nwell\n2-D rectangular regions will probably be \nok\nLook carefully at spatial indexing support \n(usually R-trees)"
+    },
+    {
+      "page": 22,
+      "text": "RDBMS SummaryRDBMS Summary\nWrong data model\nArrays not tables\nWrong operations\nRegrid not join\nMissing features\nVersions, no-overwrite, provenance, support \nfor uncertain data, …"
+    },
+    {
+      "page": 23,
+      "text": "But your mileage may varyBut your mileage may vary…………\nSQLServer working well for Sloan Skyserver \ndata base\nSee paper in CIDR 2009 by Jose Blakeley"
+    },
+    {
+      "page": 24,
+      "text": "How to Do Analytics (e.g.clustering)How to Do Analytics (e.g.clustering)\nSuck out the data\nConvert to array format\nPass to MatLab, R, SAS, …\nCompute\nReturn answer to DBMS"
+    },
+    {
+      "page": 25,
+      "text": "Bad NewsBad News\nPainful\nSlow\nMany analysis platforms are main memory only"
+    },
+    {
+      "page": 26,
+      "text": "RDBMS SummaryRDBMS Summary\nIssues not likely to get fixed any time soon\nScience is small compared to business data \nprocessing"
+    },
+    {
+      "page": 27,
+      "text": "Wrapper on Top of RDBMS Wrapper on Top of RDBMS ---- MonetDBMonetDB\nArrays simulated on top of tables\nLayer above RDBMS will replace SQL with \nsomething friendlier to science\nBut will not fix performance problems!!\nBandaid solution……"
+    },
+    {
+      "page": 28,
+      "text": "RasDaMan SolutionRasDaMan Solution\nAn array is a blob \nor array is cut into chunks and stored as a \ncollection of blobs\nArray DBMS is in user-code outside DBMS\nUses RDBMS as a reliable (but slow) file \nsystem\nGrid support looks especially slow"
+    },
+    {
+      "page": 29,
+      "text": "My Proposal My Proposal ---- SciDBSciDB\nBuild a commercial-quality array DBMS from \nthe ground up."
+    },
+    {
+      "page": 30,
+      "text": "SciDB Data ModelSciDB Data Model\nNested multidimensional arrays\nAugmented with co-ordinate systems \n(floating point dimensions)\nRagged arrays\nArray values are a tuple of values and arrays"
+    },
+    {
+      "page": 31,
+      "text": "Data Storage\n• Optimized for both dense and sparse array data\n Different data storage, compression, and access \n• Arrays are “chunked” (in multiple dimensions)\n• Chunks are partitioned across  a collection of nodes\n• Chunks have ‘overlap’ to support neighborhood operations \n• Replication provides efficiency and back-up\n• Fast access to data sliced along any dimension\n Without materialized views\n"
+    },
+    {
+      "page": 32,
+      "text": "SciDB DDL\nCREATE ARRAY Test_Array  \n< A: integer NULLS,\nB: double, \nC: USER_DEFINED_TYPE > \n[I=0:99999,1000, 10, J=0:99999,1000, 10] \nPARTITION OVER ( Node1, Node2, Node3 ) \nUSING block_cyclic();\nchunk \nsize\n1000\noverlap\n10\nattribute \nnames\nA, B, C\nindex names\nI, J"
+    },
+    {
+      "page": 33,
+      "text": "Array Query Language (AQL)Array Query Language (AQL)\nArray data management (e.g. filter, aggregate, \njoin, etc.)\nStat operations (multiply, QR factor, etc.)\nParallel, disk-oriented\nUser-defined operators (Postgres-style)\nInterface to external stat packages (e.g. R)"
+    },
+    {
+      "page": 34,
+      "text": "Array Query Language (AQL)\nSELECT Geo-Mean ( T.B )\nFROM Tes t_ Ar ray  T  \nWHERE  \nT.I  BETWEEN : C1 AND :C2 \nAND T. J BETWEEN :C3 AND :C4\nAND T.A  =  10\nGROUP BY  T . I;\nUser-defined aggregate on an\nattribute B in array T\nSubsample\nFilter\nGroup-by\nSo far as SELECT / FROM / WHERE / GROUP BY queries are \nconcerned, there is little logical difference between AQL and SQL"
+    },
+    {
+      "page": 35,
+      "text": "Matrix Multiply\n• Smaller of the two arrays is replicated at all nodes\n Scatter-gather\n• Each node does its “core” of the bigger array with the replicated smaller \none\n• Produces a distributed answer\nCREATE ARRAY TS_Data < A1:int32, B1:double >\n[ I=0:99999,1000,0, J=0:3999,100,0 ]\nSelect  multiply (TS_data.A1, test_array.B) "
+    },
+    {
+      "page": 36,
+      "text": "Architecture\n• Shared nothing cluster\n 10’s–1000’s of nodes\n Commodity hardware\n TCP/IP between nodes\n Linear scale-up\n• Each node has a processor and storage\n• Queries refer to arrays as if not distributed\n• Query planner optimizes queries for efficient \ndata access & processing\n• Query plan runs on a node’s local \nexecutor&storage manager\n• Runtime supervisor coordinates execution\nApplication\nLanguage Specific UI\nQuery Interface \nand Parser\nRuntime Supervisor\nPlan Generator\nNode 3Node 2\nLocal ExecutorLocal Executor\nStorage ManagerStorage Manager\nNode 1\nApplication Layer\nServer Layer\nStorage Layer\nApplication\nLanguage Specific UI\nQuery Interface \nand Parser\nRuntime Supervisor\nPlan Generator\nNode 3Node 2\nLocal ExecutorLocal Executor\nStorage ManagerStorage Manager\nNode 1\nNode 3Node 2\nLocal ExecutorLocal Executor\nStorage ManagerStorage Manager\nNode 1\nApplication Layer\nServer Layer\nStorage Layer\nDoesn’t require JDBC, ODBC\nAQL an extension of SQL\nAlso supports UDFs\nJava, C++, whatever…"
+    },
+    {
+      "page": 37,
+      "text": "Other Features Other Features \nWhich Science Guys WantWhich Science Guys Want\n(These could be in RDBMS, but Aren(These could be in RDBMS, but Aren’’t)t)\nUncertainty\n Data has error bars\n Which must be carried along in the computation \n(interval arithmetic)"
+    },
+    {
+      "page": 38,
+      "text": "Other FeaturesOther Features\nTime travel\n Don’t fix errors by overwrite\n I.e. keep all of the data\nNamed versions\n Recalibration usually handled this way"
+    },
+    {
+      "page": 39,
+      "text": "Other FeaturesOther Features\nProvenance (lineage)\n What calibration generated the data\n What was the “cooking” algorithm\n In general – repeatability of data derivation"
+    },
+    {
+      "page": 40,
+      "text": "MIT OpenCourseWare\nhttp://ocw.mit.edu \n6.830 / 6.814 Database Systems\nFall 2010\n \nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms. "
+    }
+  ]
+}

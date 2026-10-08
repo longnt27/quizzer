@@ -1,0 +1,23 @@
+{
+  "sourceId": "ocw-probability-49d336afe56d",
+  "sourceSha256": "b766c872baf79b57069e44fb11bd9a0b6282cbd78544eaf7891073dbe9476c85",
+  "method": "pypdf-5.9.0 independent source inspection; NOT extraction ground truth",
+  "pages": [
+    {
+      "page": 1,
+      "text": "6.041 Probabilistic Systems Analysis\t Coursework \n6.431 Applied Probability \n–\t Quiz 1 (October 12, 12:05-12:55pm) 17% \n•\t Staﬀ: –\t Quiz 2 (November 2, 7:30-9:30pm) 30% \n–\t Lecturer: John Tsitsikli  –\t Final exam (scheduled by registrar) 40% \n–\t Weekly homework (best 9 of 10) 10%\n–\t Attendance/participation/enthusiasm in 3%\nrecitations/tutorials \nPick up and\n\t         \n•\t        read course information handout\n•\t Turn in recitation and tutorial scheduling form\n \n• Collab\noration policy de scribed in course info handout \n(last sheet of  course information handout) \n\t Text: Introduc tion to Probability, 2nd Edition, \n•\t Pick up  copy of slides \n•\nD. P.\n Bertsekas and J. N. Tsitsiklis, Athena Scientiﬁc, 2008 \n\t  \nRead the text! \nLECTU\nRE 1\t Sample\n space Ω \n•\t Readings: Sections 1.1, 1.2 • “List” (set) of possible outcomes \n• List must be: \nLecture outline – Mutually exclusive \n–\t Collectively exhaustive •\t Probability as a mathematical framework \nfor reasoning about uncertainty • Art: to be at the “right” granularity \n•\t Probabilistic models \n–\t sample space \n–\t probability law \n•\t Axioms of probability \n•\t Simple examples \n1\ns"
+    },
+    {
+      "page": 2,
+      "text": "Sample space: Discrete example Sample space: Continuous example \n• Two rolls of a tetrahedral die Ω = {(x, y) | 0 ≤ x, y ≤ 1} \n– Sample space vs. sequential description \ny \n1,1\n1 1,2 \n1,3 1 \n1,4 \n4 2 \nY 3  = Second \nroll 32  \n1 x \n1 \n1 2 3 4 4 \nX = First roll 4,4 \nProbability axioms Probability law: Example with ﬁnite sample space \n• Event: a subset of the sample space 4 \n• Probability is assigned to events \nY 3 = Second \nroll \n2 \nAxioms: \n11. Nonnegativity: P(A) ≥ 0 \n1 2 3 42. Normalization: P(Ω)=1 \nX = First roll \n3. Additivity: If A ∩ B = Ø, then P(A ∪ B)= P(A)+ P(B) \n• Let every possible outcome have probability 1/16 \n– P((X, Y)   is (1,1) or (1,2)) = • P({s1,s 2,...,s k})= P({s1})+ ··· + P({sk}) \n–= P( X =1 )=P(s )+  {  1  ··· + P(sk) }\n– P(X + Y is odd) = • Axiom 3 needs strengthening \n• Do weird sets have probabilities? – P(min(X, Y) = 2) = \n2"
+    },
+    {
+      "page": 3,
+      "text": "Discrete uniform law Continuous uniform law \n• Let all outcomes be equally likely • Two “random” numbers in [0, 1]. \ny \n• Then, 1 \nnumber of elements of A P(A)= total number of sample points \n x \n• Computing probabilities 1≡ counting \n Uniform law: Probability = Area • Deﬁnes fair coins, fair dice, well-shuﬄed decks •\n– P(X + Y ≤ 1/2) = ? \n– P(( X, Y)=( 0.5, 0.3) ) \nProbability law: Ex. w/countably inﬁnite sample space \n• Sample space: {1, 2,... }\n    −n – We are givenP(n)=2 , n =1 , 2,... \n– Find P(outcome is even) Remember! \np \n1/2 Turn •  in recitation/tutorial scheduling form now \n1/4      \n1/8 1/16 \n…..       \n1 2 3 4 \nTutorials start next week\n1 1 1 1\n     \n  P({2, 4, 6,... })= P (2) + P(4) +  = + + +  = \n•\n··· 22 24 26 ··· 3 \n• Countable additivity axiom (needed for this calculation): \nIf A1,A 2,... are disjoint events, then: \nP(A1 ∪ A2 ∪ ···)= P(A1)+ P(A2)+ ··· \n3"
+    },
+    {
+      "page": 4,
+      "text": "MIT OpenCourseWare\nhttp://ocw.mit.edu \n6.041 / 6.431 Probabilistic Systems Analysis and Applied Probability \nFall 2010 \nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms. "
+    }
+  ]
+}
