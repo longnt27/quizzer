@@ -1,0 +1,43 @@
+name: Temporary VLA Final Missing PDFs
+
+on:
+  pull_request:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download final missing PDFs
+        shell: bash
+        run: |
+          set -u
+          mkdir -p classic_final head_final
+          dl () {
+            folder="$1"; name="$2"; url="$3"
+            echo "Downloading: $name"
+            curl -L --fail --silent --show-error --connect-timeout 5 --max-time 45 --retry 1 -A "Mozilla/5.0" "$url" -o "$folder/$name"
+            head -c 4 "$folder/$name" | grep -q "%PDF"
+          }
+          dl classic_final "09 - LIBERO.pdf" "https://arxiv.org/pdf/2306.03310.pdf"
+          dl head_final "13 - Cross-Embodiment World Models.pdf" "https://raw.githubusercontent.com/mlresearch/v306/main/assets/huang26bv/huang26bv.pdf"
+          dl head_final "17 - Actions as Language.pdf" "https://arxiv.org/pdf/2509.22195.pdf"
+          echo "Classic final: $(find classic_final -name '*.pdf' | wc -l)"
+          echo "2026 final: $(find head_final -name '*.pdf' | wc -l)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VLA_classic_final
+          path: classic_final/
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VLA_head_final
+          path: head_final/
+          compression-level: 0
+          retention-days: 1
