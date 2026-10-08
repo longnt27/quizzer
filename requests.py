@@ -23,4 +23,4 @@ class Session:
         self.headers = {}
     def get(self, url, timeout=120, allow_redirects=True, stream=True):
         req = urllib.request.Request(url, headers=self.headers)
-        return _Response(urllib.request.urlopen(req, timeout=timeout))
+        return _Response(urllib.request.urlopen(req, timeout=min(timeout, 15)))
