@@ -1,0 +1,63 @@
+name: Temporary VLA Missing PDFs
+
+on:
+  pull_request:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+jobs:
+  missing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download missing PDFs
+        shell: bash
+        run: |
+          set -u
+          mkdir -p classic_missing head_missing
+          dl () {
+            folder="$1"; name="$2"; url="$3"
+            echo "Downloading: $name"
+            if curl -L --fail --silent --show-error --connect-timeout 5 --max-time 45 --retry 1 -A "Mozilla/5.0" "$url" -o "$folder/$name"; then
+              if head -c 4 "$folder/$name" | grep -q "%PDF"; then
+                return 0
+              fi
+            fi
+            rm -f "$folder/$name"
+            echo "$name	$url" >> "$folder/MISSING.txt"
+            return 0
+          }
+
+          dl classic_missing "09 - LIBERO.pdf" "https://openreview.net/pdf?id=xzEtNSuDJk"
+          dl classic_missing "14 - OpenVLA.pdf" "https://arxiv.org/pdf/2406.09246.pdf"
+          dl classic_missing "15 - RDT-1B.pdf" "https://arxiv.org/pdf/2410.07864.pdf"
+          dl classic_missing "17 - pi0.5.pdf" "https://arxiv.org/pdf/2504.16054.pdf"
+
+          dl head_missing "01 - Being-H0.pdf" "https://arxiv.org/pdf/2507.15597.pdf"
+          dl head_missing "05 - Task-Agnostic VLA Pretraining.pdf" "https://arxiv.org/pdf/2607.02466.pdf"
+          dl head_missing "06 - LARA.pdf" "https://arxiv.org/pdf/2606.07100.pdf"
+          dl head_missing "12 - DreamDojo.pdf" "https://arxiv.org/pdf/2602.06949.pdf"
+          dl head_missing "13 - Cross-Embodiment World Models.pdf" "https://openreview.net/pdf/5c8fa1532215f2ea0717ed9db11ee805185dc7d3.pdf"
+          dl head_missing "17 - Actions as Language.pdf" "https://openreview.net/pdf/cf9593931d94a949b766ab027d77762088dc056c.pdf"
+          dl head_missing "18 - Discrete Diffusion VLA.pdf" "https://arxiv.org/pdf/2508.20072.pdf"
+          dl head_missing "20 - RoboTwin 2.0.pdf" "https://arxiv.org/pdf/2506.18088.pdf"
+
+          echo "Classic missing recovered: $(find classic_missing -name '*.pdf' | wc -l)"
+          echo "2026 missing recovered: $(find head_missing -name '*.pdf' | wc -l)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VLA_classic_missing
+          path: classic_missing/
+          compression-level: 0
+          retention-days: 1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VLA_head_missing
+          path: head_missing/
+          compression-level: 0
+          retention-days: 1
