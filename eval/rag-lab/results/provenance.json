@@ -1,0 +1,29 @@
+{
+  "gitCommit": "b80f70740a2275b1aaae9ab369fae3b15de3560e",
+  "runId": "37732939098",
+  "node": "v22.23.3",
+  "hashes": {
+    "package-lock.json": "09f24417dfa1510e80e414558017e8de63262ce7bf1b932db19f0bb81dbc78a5",
+    "eval/rag-lab/controlled/tasks.jsonl": "d3ce881203d662c19593f030ad3013a47f84fd6bbfb679c279c88e42bacef1c2",
+    "eval/rag-lab/controlled/sources.jsonl": "d5e40245cf743797724b17252ed392f2f09426487e3637f3f8a07ca5d50c4692",
+    "eval/rag-lab/controlled/extraction-gold.jsonl": "bc7caba4d5dc8de5c7b319681d1f30d1abff3e94009d39f7ff16577b8a1332c5",
+    "eval/rag-lab/controlled/variants.jsonl": "1adeef43b5b280a19203316a0d3f4830b8426da8015f68d014d5b10f8a5acabc",
+    "eval/rag-lab/corpus/sources.json": "78eef3bb8e6d5d1a0d0682e3e1fbba72e4ceb437d4817feffc2170c8ac17a079"
+  },
+  "generatorUsed": false,
+  "reports": [
+    "oracle-dev.json",
+    "oracle-gap-dev.json",
+    "oracle-gap-test.json",
+    "oracle-gap-validation.json",
+    "oracle-test.json",
+    "oracle-validation.json",
+    "raw-dev.json",
+    "raw-test.json",
+    "raw-validation.json",
+    "real-extraction.json",
+    "scan-dev.json",
+    "scan-test.json",
+    "scan-validation.json"
+  ]
+}

@@ -1,0 +1,70 @@
+name: RAG lab raw-PDF evaluation
+on:
+  push:
+    branches: [feat/course-benchmark-evaluation]
+    paths:
+      - eval/rag-lab/**
+      - scripts/run-rag-lab.mjs
+      - test/rag-lab-*.test.mjs
+      - .github/workflows/rag-lab-evaluate.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: rag-lab-evaluation
+  cancel-in-progress: false
+jobs:
+  raw-pdf:
+    if: github.repository == 'longnt27/quizzer' && github.ref == 'refs/heads/feat/course-benchmark-evaluation'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Verify new and retained evaluation contracts
+        run: node --test test/rag-lab-*.test.mjs test/course-benchmark-*.test.mjs
+      - name: Run production PDF extraction, chunking, and BM25 on all splits
+        run: |
+          mkdir -p /tmp/rag-lab-results
+          for split in dev validation test; do
+            for mode in raw scan oracle; do
+              node scripts/run-rag-lab.mjs benchmark --mode "$mode" --split "$split" --out "/tmp/rag-lab-results/$mode-$split.json"
+            done
+            node scripts/run-rag-lab.mjs compare --left "/tmp/rag-lab-results/raw-$split.json" --right "/tmp/rag-lab-results/oracle-$split.json" --out "/tmp/rag-lab-results/oracle-gap-$split.json"
+          done
+          node scripts/run-rag-lab.mjs real-extraction --out /tmp/rag-lab-results/real-extraction.json
+      - name: Record exact evaluated source revision and dependency lock
+        run: |
+          node --input-type=module <<'JS'
+          import {readFileSync,writeFileSync,readdirSync} from 'node:fs';
+          import {createHash} from 'node:crypto';
+          const sha256=path=>createHash('sha256').update(readFileSync(path)).digest('hex');
+          const hashes=Object.fromEntries(['package-lock.json','eval/rag-lab/controlled/tasks.jsonl','eval/rag-lab/controlled/sources.jsonl','eval/rag-lab/controlled/extraction-gold.jsonl','eval/rag-lab/controlled/variants.jsonl','eval/rag-lab/corpus/sources.json'].map(p=>[p,sha256(p)]));
+          const reports=readdirSync('/tmp/rag-lab-results').filter(p=>p.endsWith('.json'));
+          writeFileSync('/tmp/rag-lab-results/provenance.json',JSON.stringify({gitCommit:process.env.GITHUB_SHA,runId:process.env.GITHUB_RUN_ID,node:process.version,hashes,generatorUsed:false,reports},null,2)+'\n');
+          for(const name of reports){const r=JSON.parse(readFileSync('/tmp/rag-lab-results/'+name));console.log(JSON.stringify({file:name,extraction:r.extractionSummary,retrieval:r.retrieval?.overall,negativeRefusalRate:r.retrieval?.negativeRefusalRate,falseRefusalRate:r.retrieval?.falseRefusalRate,sourceCount:r.sourceCount,failedDocuments:r.failedDocuments}));}
+          JS
+      - name: Commit measured reports to this feature branch only
+        run: |
+          mkdir -p eval/rag-lab/results
+          cp /tmp/rag-lab-results/*.json eval/rag-lab/results/
+          git add eval/rag-lab/results
+          if git diff --cached --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'eval: record measured raw-PDF extraction and retrieval baselines'
+          git push origin HEAD:refs/heads/feat/course-benchmark-evaluation
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rag-lab-measured-reports
+          path: /tmp/rag-lab-results
+          if-no-files-found: warn

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "kind": "paired-extraction-condition-comparison",
+  "left": "raw",
+  "right": "oracle",
+  "metric": "required evidence recall@5",
+  "groups": 2,
+  "meanDelta": -0.05330882352941177,
+  "interval95": [
+    -0.07352941176470588,
+    -0.03308823529411765
+  ],
+  "estimand": "equal-weight source-group mean difference",
+  "replicates": 2000,
+  "seed": 20261008,
+  "limitation": "Conditional on these source groups; shared templates do not establish population independence",
+  "warning": "This is conditional controlled-template uncertainty, not proof of broad-domain generalization."
+}
