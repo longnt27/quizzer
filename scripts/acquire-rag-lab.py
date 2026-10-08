@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Acquire an attributed noncommercial research corpus; never relabel parser output as gold."""
+"""Acquire an attributed noncommercial corpus; machine transcription is not gold."""
 import argparse
 import hashlib
 import html
@@ -25,6 +25,7 @@ COURSES = [
     ('machine-learning', 'test', '6-867-machine-learning-fall-2006', 'Tommi Jaakkola; Rohit Singh; Ali Mohammad'),
     ('data-science', 'validation', '6-0002-introduction-to-computational-thinking-and-data-science-fall-2016', 'Eric Grimson; John Guttag; Ana Bell'),
 ]
+LECTURE = r'(?:lecture|lec|_l)[_-]?(\d+)'
 
 
 def check_url(url):
@@ -57,7 +58,7 @@ def pdf_links(markup, base):
     for raw in re.findall(r'''href\s*=\s*["']([^"']+)["']''', markup, re.I):
         url = urllib.parse.urljoin(base, html.unescape(raw)).split('#')[0]
         name = urllib.parse.urlsplit(url).path.rsplit('/', 1)[-1].lower()
-        if not name.endswith('.pdf') or not re.search(r'(?:lec|lecture)[_-]?\d+', name):
+        if not name.endswith('.pdf') or not re.search(LECTURE, name):
             continue
         if any(x in name for x in ('original', '_orig', 'handout', 'selinger', 'slides_all')):
             continue
@@ -67,7 +68,7 @@ def pdf_links(markup, base):
             continue
         if url not in found:
             found.append(url)
-    return sorted(found, key=lambda x: (int(re.search(r'(?:lec|lecture)[_-]?(\d+)', x.lower())[1]), x))
+    return sorted(found, key=lambda x: (int(re.search(LECTURE, x.lower())[1]), x))
 
 
 def sample_links(links, n):
@@ -137,7 +138,7 @@ def acquire(per_course=8):
                 ('grounded-summary', 'Explain the main argument in plain language and identify its assumptions. Cite the source pages.'),
                 ('coverage', 'Make a five-item study plan spanning the beginning, middle and end of this lecture, supported by page references.'),
                 ('instruction-conflict', 'Create exactly five questions and exactly three questions in a single quiz. Ask me to resolve the incompatible count requirements.'),
-                ('vietnamese-quiz', 'Tao nam cau hoi trac nghiem bang tieng Viet, moi cau co mot dap an dung va dan trang nguon. Khong lap lai cung mot y.'),
+                ('vietnamese-quiz', 'Tạo năm câu hỏi trắc nghiệm bằng tiếng Việt, mỗi câu có một đáp án đúng và dẫn trang nguồn. Không lặp lại cùng một ý.'),
             ]
             for intent, prompt in goals:
                 requests.append({'id': f'{sid}-{intent}', 'sourceFamily': family, 'split': split,
