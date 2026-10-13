@@ -54,6 +54,18 @@ function Assert-Authenticode([string] $Path) {
   }
 }
 
+function Install-QuizzerRuntime([string] $Download, [string] $Destination, [string] $TaskName) {
+  $ExistingTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+  if ($ExistingTask) { Stop-ScheduledTask -InputObject $ExistingTask }
+  $ServiceProcesses = @(Get-Process -Name quizzer -ErrorAction SilentlyContinue |
+    Where-Object { $_.Path -eq $Destination })
+  $ServiceProcesses | Stop-Process -Force
+  foreach ($ServiceProcess in $ServiceProcesses) {
+    if (-not $ServiceProcess.WaitForExit(15000)) { Fail 'The previous Quizzer service did not stop' }
+  }
+  Copy-Item -Force $Download $Destination
+}
+
 New-Item -ItemType Directory -Path $TemporaryDirectory | Out-Null
 try {
   $OsVersion = [Environment]::OSVersion.Version
@@ -89,7 +101,7 @@ __QUIZZER_RELEASE_PUBLIC_KEY_PEM__
   if ($ExpectedCertificateSha256) {
     Assert-Authenticode $CliDownload
   } else {
-    Write-Warning 'This beta has no Windows publisher signature. The bootstrap CLI is fetched over GitHub HTTPS, then verifies the Quizzer-signed release metadata before desktop installation.'
+    Write-Warning 'This beta has no Windows publisher signature. The bootstrap CLI is fetched over GitHub HTTPS, then verifies the Quizzer-signed release metadata before runtime installation.'
   }
 
   & $CliDownload release verify --metadata $MetadataPath --signature $SignaturePath --public-key $PublicKeyPath --json | Out-Null
@@ -98,7 +110,8 @@ __QUIZZER_RELEASE_PUBLIC_KEY_PEM__
   $BinDirectory = Join-Path $env:LOCALAPPDATA 'Quizzer\bin'
   New-Item -ItemType Directory -Force -Path $BinDirectory | Out-Null
   $InstalledCli = Join-Path $BinDirectory 'quizzer.exe'
-  Copy-Item -Force $CliDownload $InstalledCli
+  $TaskName = 'Quizzer Local Service'
+  Install-QuizzerRuntime $CliDownload $InstalledCli $TaskName
   $UserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
   $PathEntries = @($UserPath -split ';' | Where-Object { $_ })
   if ($PathEntries -notcontains $BinDirectory) {
@@ -106,7 +119,6 @@ __QUIZZER_RELEASE_PUBLIC_KEY_PEM__
   }
   if (($env:Path -split ';') -notcontains $BinDirectory) { $env:Path = "$BinDirectory;$env:Path" }
 
-  $TaskName = 'Quizzer Local Service'
   $EscapedCli = $InstalledCli.Replace("'", "''")
   $TaskCommand = "& '$EscapedCli' serve --port 8787"
   $Action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -Command `"$TaskCommand`""
@@ -114,10 +126,7 @@ __QUIZZER_RELEASE_PUBLIC_KEY_PEM__
   $Settings = New-ScheduledTaskSettingsSet -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero)
   Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Description 'Runs the Quizzer local service for the current user.' -Force | Out-Null
 
-  Get-Process -Name quizzer -ErrorAction SilentlyContinue |
-    Where-Object { $_.Path -eq $InstalledCli } |
-    Stop-Process -Force -ErrorAction SilentlyContinue
-  Start-Process -FilePath $InstalledCli -ArgumentList 'serve', '--port', '8787' -WindowStyle Hidden
+  Start-ScheduledTask -TaskName $TaskName
   Start-Sleep -Milliseconds 500
   Start-Process 'http://127.0.0.1:8787' | Out-Null
 

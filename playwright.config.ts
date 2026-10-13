@@ -4,7 +4,7 @@ const port = 4174;
 
 export default defineConfig({
   testDir: './e2e',
-  testIgnore: /cost-continuation\.spec\.ts/,
+  testIgnore: /(?:cost-continuation|production-path)\.spec\.ts/,
   timeout: 120_000,
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),

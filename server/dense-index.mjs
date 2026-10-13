@@ -90,6 +90,14 @@ const tableNameFor = (embeddingModel, dimension) => `${TABLE_PREFIX}${sha256(emb
 const tablePrefixForModel = embeddingModel => `${TABLE_PREFIX}${sha256(embeddingModel).slice(0, 12)}_`;
 
 export class DenseDocumentIndex {
+  #writeTail = Promise.resolve();
+
+  #write(operation) {
+    const result = this.#writeTail.then(operation);
+    this.#writeTail = result.catch(() => {});
+    return result;
+  }
+
   constructor(databasePath) {
     if (typeof databasePath !== 'string' || !databasePath) throw new Error('Dense index requires a database path');
     this.databasePath = databasePath;
@@ -114,7 +122,13 @@ export class DenseDocumentIndex {
     return (await connection.tableNames()).includes(name) ? connection.openTable(name) : undefined;
   }
 
-  async indexDocument(record, { embeddingModel, embed, force = false } = {}) {
+  indexDocument(record, options) {
+    // Automatic and manual jobs share this index. Serialize mutations so
+    // table creation and document replacement cannot interleave.
+    return this.#write(() => this.#indexDocument(record, options));
+  }
+
+  async #indexDocument(record, { embeddingModel, embed, force = false } = {}) {
     if (!record || typeof record.id !== 'string' || !record.data || typeof record.data.content !== 'string') {
       throw new Error('A stored document with extracted text is required');
     }
@@ -194,7 +208,11 @@ export class DenseDocumentIndex {
     }));
   }
 
-  async removeDocument(documentId) {
+  removeDocument(documentId) {
+    return this.#write(() => this.#removeDocument(documentId));
+  }
+
+  async #removeDocument(documentId) {
     if (typeof documentId !== 'string' || !documentId) throw new Error('A document id is required');
     const connection = await this.#connection();
     const tableNames = (await connection.tableNames()).filter(name => name.startsWith(TABLE_PREFIX));
@@ -233,6 +251,7 @@ export class DenseDocumentIndex {
   }
 
   async close() {
+    await this.#writeTail;
     if (this.connection) (await this.connection).close();
     this.connection = undefined;
   }
