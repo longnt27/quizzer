@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { chmod, mkdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -23,6 +23,19 @@ const lanceDbTarget = process.platform === 'darwin'
     ? `@lancedb/lancedb-win32-${process.arch}-msvc`
     : `@lancedb/lancedb-linux-${process.arch}-gnu`;
 const lanceDbAddon = require.resolve(lanceDbTarget);
+
+const collectWebAssets = async (directory, prefix = '') => {
+  const result = {};
+  const entries = await readdir(directory, { withFileTypes: true });
+  for (const entry of entries) {
+    const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) Object.assign(result, await collectWebAssets(path, relative));
+    else result[`web/${relative}`] = path;
+  }
+  return result;
+};
+const webAssets = await collectWebAssets(join(projectDirectory, 'dist'));
 
 const [major] = process.versions.node.split('.').map(Number);
 if (major < 26) throw new Error('Building the Quizzer executable requires Node.js 26 or newer');
@@ -80,6 +93,7 @@ await writeFile(configPath, `${JSON.stringify({
     'plugin-sdk/quizzer.plugin.schema.json': join(projectDirectory, 'plugin-sdk', 'quizzer.plugin.schema.json'),
     'scripts/docling_extract.py': join(projectDirectory, 'scripts', 'docling_extract.py'),
     'scripts/ocr_image.py': join(projectDirectory, 'scripts', 'ocr_image.py'),
+    ...webAssets,
   },
 }, null, 2)}\n`);
 

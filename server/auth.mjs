@@ -4,6 +4,9 @@ import { join } from 'node:path';
 
 const tokenPath = appDataDirectory => join(appDataDirectory, 'service-token');
 
+export const SERVICE_SESSION_COOKIE = 'quizzer_session';
+const defaultSessionMaxAgeSeconds = 30 * 24 * 60 * 60;
+
 const validToken = value => typeof value === 'string' && value.trim().length >= 24 && value.trim().length <= 256;
 
 export const ensureServiceToken = async (appDataDirectory, environment = process.env) => {
@@ -37,10 +40,59 @@ const safelyEqual = (left, right) => {
   return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 };
 
+const cookieValue = (request, name) => {
+  const header = request.headers.cookie;
+  if (typeof header !== 'string') return undefined;
+  for (const part of header.split(';')) {
+    const separator = part.indexOf('=');
+    if (separator < 0 || part.slice(0, separator).trim() !== name) continue;
+    try { return decodeURIComponent(part.slice(separator + 1).trim()); }
+    catch { return undefined; }
+  }
+  return undefined;
+};
+
+// Binding to loopback does not prevent a browser from reaching the service
+// through an attacker-controlled hostname after its DNS answer changes.
+export const isTrustedServiceHost = request => {
+  const host = request.headers.host;
+  if (typeof host !== 'string') return false;
+  const match = /^(127\.0\.0\.1|localhost)(?::([0-9]{1,5}))?$/i.exec(host);
+  return Boolean(match && match[0] === host && (!match[2] || (Number(match[2]) > 0 && Number(match[2]) <= 65_535)));
+};
+
+const isSameOriginBrowserRequest = request => {
+  if (!isTrustedServiceHost(request)) return false;
+  const origin = request.headers.origin;
+  if (origin !== undefined) {
+    const protocol = request.socket?.encrypted === true ? 'https:' : 'http:';
+    try {
+      const expected = new URL(`${protocol}//${request.headers.host}`).origin;
+      return typeof origin === 'string' && origin === expected;
+    } catch { return false; }
+  }
+  // Cookies are scoped to a host, not a port. Reject browser requests from
+  // other origins even when their site is also localhost.
+  const site = request.headers['sec-fetch-site'];
+  return site === undefined || site === 'same-origin' || site === 'none';
+};
+
+export const serviceSessionCookie = (token, {
+  secure = false,
+  maxAgeSeconds = defaultSessionMaxAgeSeconds,
+} = {}) => {
+  if (!validToken(token)) throw new Error('Quizzer service token is invalid');
+  if (!Number.isSafeInteger(maxAgeSeconds) || maxAgeSeconds < 0) throw new Error('Session max age must be a non-negative integer');
+  return `${SERVICE_SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAgeSeconds}${secure ? '; Secure' : ''}`;
+};
+
 export const isAuthorizedRequest = (request, token) => {
   const authorization = request.headers.authorization;
-  const supplied = typeof authorization === 'string' && authorization.startsWith('Bearer ')
+  const headerToken = typeof authorization === 'string' && authorization.startsWith('Bearer ')
     ? authorization.slice('Bearer '.length).trim()
     : request.headers['x-quizzer-token'];
+  const supplied = typeof headerToken === 'string'
+    ? headerToken
+    : isSameOriginBrowserRequest(request) ? cookieValue(request, SERVICE_SESSION_COOKIE) : undefined;
   return typeof supplied === 'string' && safelyEqual(supplied, token);
 };

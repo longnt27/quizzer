@@ -22,8 +22,8 @@ const filesBelow = async directory => {
 
 export const collectReleaseArtifacts = async ({ sourceDirectory, cliPath, outputDirectory, platform, architecture, version }) => {
   if (!minimumOs[platform] || (architecture !== 'x64' && architecture !== 'arm64')) throw new Error('Unsupported release target');
-  const candidates = (await filesBelow(sourceDirectory)).filter(path => formats.has(extname(path).toLowerCase()));
-  if (!candidates.length) throw new Error(`No supported release artifacts found in ${sourceDirectory}`);
+  const candidates = sourceDirectory ? (await filesBelow(sourceDirectory)).filter(path => formats.has(extname(path).toLowerCase())) : [];
+  if (!candidates.length && !cliPath) throw new Error('No release artifacts were provided');
   await mkdir(outputDirectory, { recursive: true });
   const artifacts = [];
   const seen = new Set();

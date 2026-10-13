@@ -1,6 +1,6 @@
 # Releasing Quizzer
 
-Quizzer releases are built for six operating-system and architecture targets, assembled into one Ed25519-signed manifest, and published only after an explicit maintainer approval. Native Apple notarization and Windows publisher signing are optional until the project can justify their cost. `develop` is the integration branch; `main` contains release commits only.
+Quizzer releases are built as six standalone runtime targets across the supported operating systems and architectures, assembled into one Ed25519-signed manifest, and published only after an explicit maintainer approval. Each runtime serves the built PWA and the local API from the same loopback origin. Native Apple notarization and Windows publisher signing are optional until the project can justify their cost. `develop` is the integration branch; `main` contains release commits only.
 
 ## Required GitHub configuration
 
@@ -29,10 +29,7 @@ Leave `QUIZZER_MACOS_SIGNING_ENABLED` and `QUIZZER_WINDOWS_SIGNING_ENABLED` unse
 | --- | --- |
 | `MACOS_CERTIFICATE` | Base64 PKCS#12 Apple Developer ID Application certificate |
 | `MACOS_CERTIFICATE_PASSWORD` | Password for the application certificate |
-| `MACOS_INSTALLER_CERTIFICATE` | Base64 PKCS#12 Apple Developer ID Installer certificate |
-| `MACOS_INSTALLER_CERTIFICATE_PASSWORD` | Password for the installer certificate |
 | `APPLE_IDENTITY` | Exact Developer ID Application signing identity |
-| `APPLE_INSTALLER_IDENTITY` | Exact Developer ID Installer signing identity |
 | `APPLE_ID` | Apple account used by `notarytool` |
 | `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password used by `notarytool` |
 | `APPLE_TEAM_ID` | Expected Apple developer team ID |
@@ -58,6 +55,7 @@ New publicly trusted Windows keys are normally HSM-backed and non-exportable. Wh
    npm run eval:rag
    npm run build
    npm run test:e2e
+   npm run test:e2e:production
    npm run test:e2e:cost
    (cd landing && npm ci && npm run lint && npm run build && npm run test:e2e)
    ```
@@ -65,12 +63,12 @@ New publicly trusted Windows keys are normally HSM-backed and non-exportable. Wh
 5. Complete clean-machine install, update, rollback, and recovery checks for the release candidate. Record the results outside the repository together with the artifact checksums.
 6. Open a release pull request from `develop` to `main`, verify its required checks, and squash-merge it as one release commit. Never push a release commit or tag directly.
 
-The `Release from main` workflow validates the exact pushed commit, confirms the package and lockfile versions match and increased, and creates the immutable `v<version>` tag. Because GitHub does not recursively start workflows for tags pushed by `GITHUB_TOKEN`, the bridge explicitly dispatches `release.yml` with the matching beta or stable channel and `publish=true`. It reuses an existing tag only when it points to the exact commit, skips an already published release or an active run, and leaves failed runs safe to retry. The dispatched workflow verifies source, tests the application and landing page, builds all six desktop and CLI targets, verifies Electron fuses, generates SBOMs and provenance, signs the release manifest, and publishes only after approval of the protected `release` environment. Native signing and notarization run only when their explicit enable variables are set.
+The `Release from main` workflow validates the exact pushed commit, confirms the package and lockfile versions match and increased, and creates the immutable `v<version>` tag. Because GitHub does not recursively start workflows for tags pushed by `GITHUB_TOKEN`, the bridge explicitly dispatches `release.yml` with the matching beta or stable channel and `publish=true`. It reuses an existing tag only when it points to the exact commit, skips an already published release or an active run, and leaves failed runs safe to retry. The dispatched workflow verifies source, tests both the development and production daemon paths, tests the landing page, builds all six standalone runtime targets, generates SBOMs and provenance, signs the release manifest, and publishes only after approval of the protected `release` environment. Native signing and notarization run only when their explicit enable variables are set.
 
 ## Publish
 
 1. Inspect every job and download the `signed-release-<tag>` workflow artifact.
-2. Verify that the bundle contains the expected desktop and CLI targets, `install.sh`, `install.ps1`, both SBOMs, the canonical manifest, and its detached signature.
+2. Verify that the bundle contains the six expected standalone runtime targets, `install.sh`, `install.ps1`, both SBOMs, the canonical manifest, and its detached signature.
 3. Confirm that the main-branch bridge dispatched **Release** with the matching `beta` or `stable` channel and publishing enabled. After a failed run, rerun the bridge or manually dispatch **Release** for the existing tag.
 4. Approve the `release` environment deployment only after the rebuilt candidate passes.
 5. Confirm the GitHub Release uses the curated notes, is marked as a prerelease only for beta versions, and that both installer entrypoints resolve from the release page.

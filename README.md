@@ -48,7 +48,7 @@ curl -fsSL https://github.com/longnt27/quizzer/releases/latest/download/install.
 irm https://github.com/longnt27/quizzer/releases/latest/download/install.ps1 | iex
 ```
 
-The installer detects x64 or arm64, verifies the release before installing, adds `quizzer` to your user PATH, registers the desktop app, and opens the guided setup. The command installers are Quizzer's supported distribution path.
+The installer detects x64 or arm64, verifies the release, installs the standalone `quizzer` runtime, adds it to your user PATH, registers a per-user background service, and opens the local web UI at `http://127.0.0.1:8787`. The browser is only the presentation layer: indexing and generation continue in the local daemon when the window closes. You can also install the UI as a PWA from a supporting browser. The command installers are Quizzer's supported distribution path.
 
 <details>
 <summary><strong>Supported systems</strong></summary>
@@ -176,7 +176,7 @@ Routes carry capability, privacy, and cost metadata. Quizzer can continue throug
 
 - SQLite stores authoritative documents, tests, attempts, jobs, and unfinished sessions in the operating system's application-data directory.
 - Original files and extracted figures live in a SHA-256 content-addressed object store. Sparse and dense indexes are rebuildable and stored separately.
-- The desktop keeps remembered credentials in OS-backed encrypted storage. Session credentials remain in memory. Secrets are excluded from jobs, logs, exports, backups, and diagnostics.
+- The local daemon keeps active provider credentials in memory and still accepts credentials supplied through the supported environment variables. Secrets are excluded from jobs, logs, exports, backups, and diagnostics.
 - Local providers keep generation local. Remote routes receive only the selected excerpts and relevant images after explicit approval.
 - Backups include the authoritative database, safe configuration, and verified objects. Restores preserve the previous library as a recovery backup before replacement.
 
@@ -184,7 +184,7 @@ Local-first does not make every provider private. Check the data-handling terms 
 
 ## Command line
 
-The installer includes the same durable core as the desktop app:
+The installer includes the same durable core used by the local daemon and browser UI:
 
 ```sh
 quizzer doctor
@@ -218,6 +218,7 @@ npm test
 npm run test:coverage
 npm run eval:rag
 npm run test:e2e
+npm run test:e2e:production
 npm run screenshots:readme
 npm run build
 ```

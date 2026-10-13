@@ -4,7 +4,7 @@ const port = 4174;
 
 export default defineConfig({
   testDir: './e2e',
-  testIgnore: /cost-continuation\.spec\.ts/,
+  testIgnore: /(?:cost-continuation|production-path)\.spec\.ts/,
   timeout: 120_000,
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
@@ -20,8 +20,8 @@ export default defineConfig({
   projects: [
     { name: 'chromium', testMatch: /.*\.spec\.ts/, use: { ...devices['Desktop Chrome'] } },
     { name: 'firefox', testMatch: /cross-browser-smoke\.spec\.ts/, use: { ...devices['Desktop Firefox'] } },
-    // WebKit coverage for the Vite-served app is deferred pending an
-    // unresolved boot incompatibility; Electron itself remains Chromium.
+    // WebKit coverage for the development server remains deferred pending an
+    // unresolved boot incompatibility. The production daemon path has its own Chromium smoke test.
   ],
   webServer: {
     command: 'node scripts/e2e-dev.mjs',
