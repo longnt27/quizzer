@@ -57,6 +57,36 @@ download_artifact() {
   verify_hash "$artifact_hash" "$destination"
 }
 
+install_runtime() {
+  runtime_download=$1
+  runtime_destination=$2
+  # Rename on the same filesystem so a running executable is never truncated.
+  install -m 755 "$runtime_download" "$runtime_destination.new"
+  mv -f "$runtime_destination.new" "$runtime_destination"
+}
+
+start_linux_service() {
+  installed_runtime=$1
+  unit_directory=$2
+  mkdir -p "$unit_directory"
+  cat > "$unit_directory/quizzer.service" <<EOF
+[Unit]
+Description=Quizzer local service
+After=network-online.target
+
+[Service]
+ExecStart="$installed_runtime" serve --port 8787
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
+EOF
+  systemctl --user daemon-reload
+  systemctl --user enable quizzer.service
+  systemctl --user restart quizzer.service
+}
+
 require_command curl
 require_command awk
 require_command grep
@@ -123,7 +153,7 @@ fi
 
 bin_directory="$HOME/.local/bin"
 mkdir -p "$bin_directory"
-install -m 755 "$cli_download" "$bin_directory/quizzer"
+install_runtime "$cli_download" "$bin_directory/quizzer"
 
 path_line='export PATH="$HOME/.local/bin:$PATH"'
 case "${SHELL:-}" in
@@ -166,25 +196,8 @@ EOF
   launchctl kickstart -k "gui/$(id -u)/dev.quizzer.service"
   open "$service_url"
 else
-  user_units="$HOME/.config/systemd/user"
-  service_unit="$user_units/quizzer.service"
-  mkdir -p "$user_units"
-  cat > "$service_unit" <<EOF
-[Unit]
-Description=Quizzer local service
-After=network-online.target
-
-[Service]
-ExecStart=$bin_directory/quizzer serve --port 8787
-Restart=on-failure
-RestartSec=2
-
-[Install]
-WantedBy=default.target
-EOF
   if command -v systemctl >/dev/null 2>&1; then
-    systemctl --user daemon-reload
-    systemctl --user enable --now quizzer.service
+    start_linux_service "$bin_directory/quizzer" "$HOME/.config/systemd/user"
   else
     nohup "$bin_directory/quizzer" serve --port 8787 >"$HOME/.local/share/quizzer.log" 2>&1 &
   fi

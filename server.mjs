@@ -9,7 +9,7 @@ import {
   listRecords, putRecord, raiseGenerationCostCeiling, renewGenerationJobLease, reserveGenerationAttempt, storageInfo, subscribeStorageChanges, syncStorage, updateGenerationJobWithLease,
 } from './server/storage.mjs';
 import { detectHardwareCapabilities } from './server/hardware-profile.mjs';
-import { ensureServiceToken, isAuthorizedRequest, serviceSessionCookie } from './server/auth.mjs';
+import { ensureServiceToken, isAuthorizedRequest, isTrustedServiceHost, serviceSessionCookie } from './server/auth.mjs';
 import {
   HARDWARE_PROFILE_SETTINGS, loadResolvedSettings, readUserSettings, SETTINGS_REGISTRY, SETTINGS_SCHEMA, settingsPath, validateSettings, writeUserSettings,
 } from './server/settings.mjs';
@@ -59,6 +59,7 @@ const webRootDirectory = process.env.QUIZZER_WEB_ROOT || join(resourceDirectory,
 const webContentTypes = Object.freeze({
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.webmanifest': 'application/manifest+json; charset=utf-8',
@@ -110,7 +111,7 @@ const sendWebApp = async (request, response, url) => {
   if (!asset) return false;
 
   const extension = extname(relativePath).toLowerCase();
-  const secure = request.socket?.encrypted === true || request.headers['x-forwarded-proto'] === 'https';
+  const secure = request.socket?.encrypted === true;
   const headers = {
     'Content-Type': webContentTypes[extension] || 'application/octet-stream',
     'Content-Length': String(asset.length),
@@ -118,7 +119,10 @@ const sendWebApp = async (request, response, url) => {
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'no-referrer',
   };
-  if (relativePath === 'index.html') headers['Set-Cookie'] = serviceSessionCookie(serviceToken, { secure });
+  if (relativePath === 'index.html') {
+    headers['Set-Cookie'] = serviceSessionCookie(serviceToken, { secure });
+    headers['Cache-Control'] = 'private, no-store';
+  }
   if (relativePath === 'sw.js') headers['Service-Worker-Allowed'] = '/';
   response.writeHead(200, headers);
   if (request.method === 'HEAD') response.end();
@@ -1764,6 +1768,9 @@ const handleVersionedApi = async (request, response, url) => {
 };
 
 const serviceServer = createServer(async (request, response) => {
+  if (!isTrustedServiceHost(request)) {
+    return send(response, 403, { error: 'Quizzer requires a loopback hostname', code: 'untrusted_host' });
+  }
   const url = new URL(request.url || '/', 'http://127.0.0.1');
   if (request.method === 'OPTIONS') {
     response.writeHead(204, { 'Access-Control-Allow-Origin': 'http://localhost:5173', 'Access-Control-Allow-Headers': 'Content-Type, Authorization' });

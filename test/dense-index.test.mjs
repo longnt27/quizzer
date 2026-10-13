@@ -30,6 +30,67 @@ const record = (id, name, content, tags = []) => ({
   data: { id, name, content, tags, contentHash: id.padEnd(64, '0').slice(0, 64), parserVersion: 'test-1' },
 });
 
+test('concurrent automatic and manual writes create one table and preserve each document', async () => {
+  const concurrent = new DenseDocumentIndex(join(directory, 'concurrent.lance'));
+  try {
+    const apple = record('concurrent-apple', 'Apples', 'Apple orchards produce fruit.');
+    const terraform = record('concurrent-terraform', 'Terraform', 'Terraform state tracks infrastructure.');
+    const options = {
+      embeddingModel: 'concurrent-model',
+      embed: async texts => {
+        await new Promise(resolve => setImmediate(resolve));
+        return texts.map(vectorFor);
+      },
+    };
+    const [first, repeated] = await Promise.all([
+      concurrent.indexDocument(apple, options),
+      concurrent.indexDocument(apple, options),
+      concurrent.indexDocument(terraform, options),
+    ]);
+    assert.equal(first.reused, false);
+    assert.equal(repeated.reused, true);
+    const status = await concurrent.status();
+    assert.equal(status.tableCount, 1);
+    assert.equal(status.chunkCount, 2);
+    const results = await concurrent.retrieve({ vector: vectorFor('terraform'), embeddingModel: options.embeddingModel });
+    assert.deepEqual(new Set(results.map(result => result.documentId)), new Set([apple.id, terraform.id]));
+    await assert.rejects(concurrent.indexDocument(undefined, options), /stored document/);
+    const removed = await concurrent.removeDocument(apple.id);
+    assert.equal(removed.removedChunks, 1);
+  } finally {
+    await concurrent.close();
+  }
+});
+
+test('index status remains readable while a model request is pending', async () => {
+  const pendingIndex = new DenseDocumentIndex(join(directory, 'pending-embedding.lance'));
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  let started;
+  const embeddingStarted = new Promise(resolve => { started = resolve; });
+  const indexing = pendingIndex.indexDocument(record('pending-doc', 'Pending', 'Apple orchards.'), {
+    embeddingModel: 'pending-model',
+    embed: async texts => { started(); await gate; return texts.map(vectorFor); },
+  });
+  let timeout;
+  try {
+    await embeddingStarted;
+    const status = await Promise.race([
+      pendingIndex.status(),
+      new Promise((_resolve, reject) => { timeout = setTimeout(() => reject(new Error('Model request blocked index status')), 5_000); }),
+    ]);
+    assert.equal(status.chunkCount, 0);
+    release();
+    await indexing;
+    assert.equal((await pendingIndex.status()).chunkCount, 1);
+  } finally {
+    clearTimeout(timeout);
+    release();
+    await indexing.catch(() => {});
+    await pendingIndex.close();
+  }
+});
+
 test('builds model-versioned LanceDB tables and reuses unchanged documents', async () => {
   const apple = record('apple-doc', 'Apples', 'Apple orchards produce fruit.', ['food']);
   const terraform = record('terraform-doc', 'Terraform', 'Terraform state tracks infrastructure.', ['iac']);

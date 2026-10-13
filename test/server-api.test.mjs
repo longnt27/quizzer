@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { createServer } from 'node:http';
+import { createServer, request as httpRequest } from 'node:http';
 import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { serviceSessionCookie } from '../server/auth.mjs';
 
 const directory = await mkdtemp(join(tmpdir(), 'quizzer-api-test-'));
 const token = 'quizzer-test-token-0123456789abcdef';
@@ -174,6 +175,35 @@ test('requires authentication for every sensitive service endpoint', async () =>
   assert.match(openApi, /GenerationProfile:/);
   assert.match(openApi, /minGroundingScore:/);
   assert.match(openApi, /generationProfile: \{ \$ref: '#\/components\/schemas\/GenerationProfile' \}/);
+});
+
+test('rejects untrusted hosts before issuing sessions or serving authenticated APIs', async () => {
+  for (const path of ['/', '/index.html', '/api/health', '/api/v1/health']) {
+    // Use the HTTP transport directly: fetch normalizes Host to the URL.
+    const response = await new Promise((resolve, reject) => {
+      const request = httpRequest(`${origin}${path}`, {
+        headers: { Host: 'untrusted.example:8787', Authorization: `Bearer ${token}` },
+      }, response => {
+        let body = '';
+        response.on('data', chunk => { body += chunk; });
+        response.on('end', () => resolve({ status: response.statusCode, headers: response.headers, body: JSON.parse(body) }));
+      });
+      request.once('error', reject);
+      request.end();
+    });
+    assert.equal(response.status, 403, path);
+    assert.equal(response.headers['set-cookie'], undefined);
+    assert.equal(response.body.code, 'untrusted_host');
+  }
+});
+
+test('browser sessions authorize only same-origin API calls', async () => {
+  const cookie = serviceSessionCookie(token).split(';')[0];
+  assert.equal((await fetch(`${origin}/api/v1/health`, { headers: { Cookie: cookie, Origin: origin } })).status, 200);
+  for (const Origin of ['http://untrusted.example', 'http://127.0.0.1:1234', 'null']) {
+    const response = await fetch(`${origin}/api/v1/health`, { headers: { Cookie: cookie, Origin } });
+    assert.equal(response.status, 401);
+  }
 });
 
 test('reports and invokes local Ollama only after explicit setup confirmation', async () => {
@@ -482,6 +512,7 @@ test('provides onboarding, document, job, and event operations', async () => {
     body: JSON.stringify({ documentIds: ['doc-1'], idempotencyKey: 'api-index-doc-1' }),
   });
   const indexResult = await indexed.json();
+  assert.equal(indexed.status, 200, JSON.stringify(indexResult));
   assert.equal(indexResult.job.status, 'completed');
   assert.deepEqual(indexResult.job.completedDocumentIds, ['doc-1']);
   assert.equal(indexResult.status.documentCount, 1);
