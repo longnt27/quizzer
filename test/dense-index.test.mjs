@@ -62,6 +62,35 @@ test('concurrent automatic and manual writes create one table and preserve each 
   }
 });
 
+test('index status remains readable while a model request is pending', async () => {
+  const pendingIndex = new DenseDocumentIndex(join(directory, 'pending-embedding.lance'));
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  let started;
+  const embeddingStarted = new Promise(resolve => { started = resolve; });
+  const indexing = pendingIndex.indexDocument(record('pending-doc', 'Pending', 'Apple orchards.'), {
+    embeddingModel: 'pending-model',
+    embed: async texts => { started(); await gate; return texts.map(vectorFor); },
+  });
+  let timeout;
+  try {
+    await embeddingStarted;
+    const status = await Promise.race([
+      pendingIndex.status(),
+      new Promise((_resolve, reject) => { timeout = setTimeout(() => reject(new Error('Model request blocked index status')), 5_000); }),
+    ]);
+    assert.equal(status.chunkCount, 0);
+    release();
+    await indexing;
+    assert.equal((await pendingIndex.status()).chunkCount, 1);
+  } finally {
+    clearTimeout(timeout);
+    release();
+    await indexing.catch(() => {});
+    await pendingIndex.close();
+  }
+});
+
 test('builds model-versioned LanceDB tables and reuses unchanged documents', async () => {
   const apple = record('apple-doc', 'Apples', 'Apple orchards produce fruit.', ['food']);
   const terraform = record('terraform-doc', 'Terraform', 'Terraform state tracks infrastructure.', ['iac']);

@@ -90,11 +90,11 @@ const tableNameFor = (embeddingModel, dimension) => `${TABLE_PREFIX}${sha256(emb
 const tablePrefixForModel = embeddingModel => `${TABLE_PREFIX}${sha256(embeddingModel).slice(0, 12)}_`;
 
 export class DenseDocumentIndex {
-  #writeTail = Promise.resolve();
+  #tableOperations = Promise.resolve();
 
-  #write(operation) {
-    const result = this.#writeTail.then(operation);
-    this.#writeTail = result.catch(() => {});
+  #withTableLock(operation) {
+    const result = this.#tableOperations.then(operation);
+    this.#tableOperations = result.catch(() => {});
     return result;
   }
 
@@ -122,13 +122,7 @@ export class DenseDocumentIndex {
     return (await connection.tableNames()).includes(name) ? connection.openTable(name) : undefined;
   }
 
-  indexDocument(record, options) {
-    // Automatic and manual jobs share this index. Serialize mutations so
-    // table creation and document replacement cannot interleave.
-    return this.#write(() => this.#indexDocument(record, options));
-  }
-
-  async #indexDocument(record, { embeddingModel, embed, force = false } = {}) {
+  async indexDocument(record, { embeddingModel, embed, force = false } = {}) {
     if (!record || typeof record.id !== 'string' || !record.data || typeof record.data.content !== 'string') {
       throw new Error('A stored document with extracted text is required');
     }
@@ -141,40 +135,59 @@ export class DenseDocumentIndex {
     const predicate = `document_id = ${sqlString(record.id)}`;
 
     if (!force) {
-      const connection = await this.#connection();
-      const existingNames = (await connection.tableNames()).filter(name => name.startsWith(tablePrefixForModel(embeddingModel)));
-      for (const name of existingNames) {
-        const existingTable = await connection.openTable(name);
-        const existing = await existingTable.query().where(predicate).select(['version_hash', 'vector_dimension']).limit(1).toArray();
-        if (existing[0]?.version_hash === versionHash) {
-          return {
-            id: record.id, name: record.data.name, versionHash, chunks: await existingTable.countRows(predicate), reused: true,
-            embeddingModel, dimension: Number(existing[0].vector_dimension), tableName: name,
-          };
+      const reused = await this.#withTableLock(async () => {
+        const connection = await this.#connection();
+        const existingNames = (await connection.tableNames()).filter(name => name.startsWith(tablePrefixForModel(embeddingModel)));
+        for (const name of existingNames) {
+          const existingTable = await connection.openTable(name);
+          const existing = await existingTable.query().where(predicate).select(['version_hash', 'vector_dimension']).limit(1).toArray();
+          if (existing[0]?.version_hash === versionHash) {
+            return {
+              id: record.id, name: record.data.name, versionHash, chunks: await existingTable.countRows(predicate), reused: true,
+              embeddingModel, dimension: Number(existing[0].vector_dimension), tableName: name,
+            };
+          }
         }
-      }
+      });
+      if (reused) return reused;
     }
 
+    // Model requests can run concurrently; only table operations are locked.
     const { vectors: probeVectors, dimension } = await embedDenseRows(rows, embed);
     const tableName = tableNameFor(embeddingModel, dimension);
-    let table = await this.#table(tableName);
     const embeddedRows = rows.map((row, index) => ({
       ...row, vector: probeVectors[index], version_hash: versionHash, embedding_model: embeddingModel, vector_dimension: dimension,
     }));
-    if (table) {
-      await table.delete(predicate);
-      await table.add(embeddedRows);
-    } else {
-      const connection = await this.#connection();
-      table = await connection.createTable(tableName, embeddedRows);
-    }
-    return {
-      id: record.id, name: record.data.name, versionHash, chunks: rows.length, reused: false,
-      embeddingModel, dimension, tableName,
-    };
+    // Automatic and manual jobs must not interleave table creation, replacement,
+    // or reads of a table whose first commit has not finished yet.
+    return this.#withTableLock(async () => {
+      const table = await this.#table(tableName);
+      if (table) {
+        if (!force) {
+          const existing = await table.query().where(predicate).select(['version_hash']).limit(1).toArray();
+          if (existing[0]?.version_hash === versionHash) return {
+            id: record.id, name: record.data.name, versionHash, chunks: await table.countRows(predicate), reused: true,
+            embeddingModel, dimension, tableName,
+          };
+        }
+        await table.delete(predicate);
+        await table.add(embeddedRows);
+      } else {
+        const connection = await this.#connection();
+        await connection.createTable(tableName, embeddedRows);
+      }
+      return {
+        id: record.id, name: record.data.name, versionHash, chunks: rows.length, reused: false,
+        embeddingModel, dimension, tableName,
+      };
+    });
   }
 
-  async retrieve({ vector, embeddingModel, documentIds = [], limit = 10 } = {}) {
+  retrieve(options) {
+    return this.#withTableLock(() => this.#retrieve(options));
+  }
+
+  async #retrieve({ vector, embeddingModel, documentIds = [], limit = 10 } = {}) {
     const dimension = validateDenseVectors([vector], 1);
     if (typeof embeddingModel !== 'string' || !embeddingModel.trim()) throw new Error('Dense retrieval requires an embedding model');
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new Error('Dense retrieval limit must be from 1 to 100');
@@ -209,7 +222,7 @@ export class DenseDocumentIndex {
   }
 
   removeDocument(documentId) {
-    return this.#write(() => this.#removeDocument(documentId));
+    return this.#withTableLock(() => this.#removeDocument(documentId));
   }
 
   async #removeDocument(documentId) {
@@ -226,7 +239,11 @@ export class DenseDocumentIndex {
     return { id: documentId, removedChunks };
   }
 
-  async status() {
+  status() {
+    return this.#withTableLock(() => this.#status());
+  }
+
+  async #status() {
     const connection = await this.#connection();
     const tableNames = (await connection.tableNames()).filter(name => name.startsWith(TABLE_PREFIX)).sort();
     const tables = [];
@@ -251,7 +268,7 @@ export class DenseDocumentIndex {
   }
 
   async close() {
-    await this.#writeTail;
+    await this.#tableOperations;
     if (this.connection) (await this.connection).close();
     this.connection = undefined;
   }
