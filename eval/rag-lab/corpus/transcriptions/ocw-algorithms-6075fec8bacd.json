@@ -1,0 +1,39 @@
+{
+  "sourceId": "ocw-algorithms-6075fec8bacd",
+  "sourceSha256": "5ac9a2478b5bb0525210daedc70a7a316752468af565646a5b3f79d7bc3ed045",
+  "method": "pypdf-5.9.0 independent source inspection; NOT extraction ground truth",
+  "pages": [
+    {
+      "page": 1,
+      "text": "Lecture 11 Numerics I 6.006 Fall 2011\nLecture 11: Numerics I\nLecture Overview\n•Irrationals\n•Newton’s Method( (a), 1/b)\n•High precision multiply\n√\n←\nIrrationals:\nPythagoras discovered that a square’s diagonal and its side are incommensurable, i.e.,\ncould not be expressed as a ratio - he called the ratio “speechless”!\n1\n1\n√2\nFigure 1: Ratio of a Square’s Diagonal to its Sides.\nPythagoras worshipped numbers\n“All is number”\nIrrationals were a threat!\nMotivating Question:Are there hidden patterns in irrationals?\n√\n2 = 1. 414 213 562 373 095\n048 801 688 724 209\n698 078 569 671 875\nCan you see a pattern?\n1"
+    },
+    {
+      "page": 2,
+      "text": "Lecture 11 Numerics I 6.006 Fall 2011\nDigression\nCatalan numbers:\nSet P of balanced parentheses strings are recursively deﬁned as\n•λ ∈P (λ is empty string)\n•If α,β ∈P, then(α)β ∈P\nEvery nonempty balanced paren string can be obtained via Rule 2 from a uniqueα,β\npair.\nFor example,(()) ()() obtained by( () ) ()()\nα\n\nβ\nEnumeration\nCn: number of balanced parentheses strings with exactlyn pairs of parentheses\nC0 = 1 empty string\nCn+1? Every string withn+ 1pairs of parentheses can be obtained in a unique way\nvia rule2.\nOne paren pair comes explicitly from the rule.\nk pairs fromα, n−k pairs fromβ\nn\nCn+1 =\n∑\nCk n\nk\n·Cn−k\n=0\n≥0\nC0 = 1 C1 = C 2\n0 = 1 C2 = C0C1 + C1C0 = 2 C3 = ··· = 5\n1, 1, 2, 5, 14, 42, 132, 429, 1430, 4862, 16796, 58786, 208012, 742900, 2674440,\n9694845, 35357670, 129644790, 477638700, 1767263190, 6564120420, 24466267020,\n91482563640, 343059613650, 1289904147324, 4861946401452, 18367353072152,\n69533550916004, 263747951750360, 1002242216651368\n2"
+    },
+    {
+      "page": 3,
+      "text": "Lecture 11 Numerics I 6.006 Fall 2011\nNewton’s Method\nFind root off(x) = 0through successive approximation e.g.,f(x) =x2 −a\nxi\nxi+1\ny = f(x)\nFigure 2: Newton’s Method.\nTangent at(xi,f(xi)) is line y= f(xi) + f′(xi) ·( x−xi) where f′(xi) is the derivative.\nxi+1 = in\ntercept on x-axis\nf(xxi+1 = xi − i)\nf′(xi)\nSquare\nRoots\nf(\nx) =x2 −a\na\n(χ2 χ\ni a) i + χχ i\ni+1 = χi\n−− =2\nχi 2\nExample\nχ0 = 1.000000000 a= 2\nχ1 = 1.\n500000000\nχ2 = 1.416666666\nχ3 = 1.414215686\nχ4 = 1.414213562\nQuadratic convergence,♯digits doubles. Of course, in order to use Newton’s method,\nwe need high-precision division. We’ll start with multiplication and cover division in\nLecture 12.\n3"
+    },
+    {
+      "page": 4,
+      "text": "Lecture 11 Numerics I 6.006 Fall 2011\nHigh Precision Computation\n√\n2 to d-digit precision: 1.414213562373 ···\nd digits\nWant integer⌊10d√\n2⌋=\n√\n⌊ 2 ·\n\n102d⌋- in\n\ntegral part of square root\nCan still use Newton’s Method.\nHigh Precision Multiplication\nMultiplying twon-digit numbers (radixr= 2,10)\n0 ≤x,y <rn\nx = x1 ·rn/2 + x0 x1 = high half\ny = y1 ·rn/2 + y0 x0 = low half\n0 ≤ x n/\n0,x1 <r 2\n0 ≤ y0,y1 <rn/2\nz = x·y= x n\n1y1 ·r + (x0 ·y1 + x1 ·y0)rn/2 + x0 ·y0\n4 multiplications of half-sized♯’s =⇒ quadratic algorithmθ(n2) time\nKaratsuba’s Method\nlog2n log2n\n4T(n/2)\n4log n nlog 4\n2 2= n2=\n3T(n/2)\n3log n nlog 3\n2 2=\nFigure 3: Branching Factors.\n4"
+    },
+    {
+      "page": 5,
+      "text": "Lecture 11 Numerics I 6.006 Fall 2011\nLet\nz0 = x0 ·y0\nz2 = x1 ·y1\nz1 = (x0 + x1) ·(y0 + y1) −z0 −z2\n= x0y1 + x1y0\nz = z2 ·rn + z1 ·rn/2 + z0\nThere arethree multipliesin the above calculations.\nT(n) = time to multiply twon-digit♯′s\n= 3 T((n/2) +θ(n)\n= θ nlog23)\n= θ\n(\nn1.5849625···\nThis is better thanθ(n2). Python does this, and more (see\n)\nLecture 12).\nFun Geometry Problem\nA\nB\nC D\n1000,000,000,000\n1\nFigure 4: Geometry Problem.\nBD = 1\nWhat isAD?\nAD= AC−CD = 500,000,000,000 −\n√\n500,000,000,0002 −1\na\nLet’s calculateAD to a million places. (This assumes\n\nwe ha\n\nve high-precision\n\ndi-\nvision, which we will cover in Lecture 12.) Remarkably, if we evaluate the length\n5"
+    },
+    {
+      "page": 6,
+      "text": "Lecture 11 Numerics I 6.006 Fall 2011\nto several hundred digits of precision using Newton’s method, the Catalan numbers\ncome marching out! Try it at:\nhttp://people.csail.mit.edu/devadas/numerics_demo/chord.html.\nAn Explanation\nThis wasnot covered in lecture and willnot be on a test. Let’s start by looking at\nthe power series of a real-valued functionQ.\nQ(x) = c0 + c1x+ c 2\n2x + c 3\n3x + ... (1)\nThen, by ordinary algebra, we have:\n1 +xQ(x)2 = 1 + c2x+ (c 2 3\n0 0c1 + c1c0)x + (c0c2 + c1c1 + c2c0)x + ... (2)\nNow consider the equation:\nQ(x) = 1 + xQ(x)2 (3)\nFor this equation to hold, the power series ofQ(x) must equal the power series of\n1 +xQ(x)2. This happens only if all the coeﬃcients of the two power series are equal;\nthat is, if:\nc0 = 1 (4)\nc1 = c2\n0 (5)\nc2 = c0c1 + c1c0 (6)\nc3 = c0c2 + c1c1 + c2c0 (7)\netc. (8)\nIn other words, the coeﬃcients of the functionQ must be the Catalan numbers!\nWe can solve forQ using the quadratic equation:\n1 √\nQ(x) = ± 1 −4x (9)2x\nLet’s use the negative square root. From this formula forQ, we ﬁnd:\n6"
+    },
+    {
+      "page": 7,
+      "text": "Lecture 11 Numerics I 6.006 Fall 2011\n10−12 ·Q(10−24 1\n√\n1 4 10 −24\n) = 10 −12 ± − ·· (10)2 ·10−24\n= 500000000000\n√\n− 5000000000002 −1 (11)\nFrom the original power-series expression forQ, we ﬁnd:\n10−12 ·Q(10−24) = c010−12 + c110−36 + c 60\n210− + c310−84 + ... (12)\nTherefore, 500000000000\n√\n− 5000000000002 −1 should contain a Catalan number in\nevery twenty-fourth position, which is what we observed.\n7"
+    },
+    {
+      "page": 8,
+      "text": " \n \n \n \n \nMIT OpenCourseWare\nhttp://ocw.mit.edu\n6.006 Introduction to Algorithms\nFall 2011\nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms."
+    }
+  ]
+}

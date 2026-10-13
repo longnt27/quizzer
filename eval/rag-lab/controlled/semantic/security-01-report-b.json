@@ -1,0 +1,22 @@
+{
+  "id": "security-01-report-b",
+  "scenarioId": "security-01",
+  "family": "security",
+  "split": "test",
+  "language": "en",
+  "title": "Security Lab 23063 / Report B",
+  "pages": [
+    [
+      {
+        "id": "title",
+        "type": "heading",
+        "text": "Security Lab 23063 / Report B"
+      },
+      {
+        "id": "measurement",
+        "type": "paragraph",
+        "text": "Unsigned report B: project Security Lab 23063; event E17; measured at 2026-02-02 10:00 UTC; latency = 84 ms. Neither report has priority over the other. These are conflicting observations of the same event, not two independent runs."
+      }
+    ]
+  ]
+}

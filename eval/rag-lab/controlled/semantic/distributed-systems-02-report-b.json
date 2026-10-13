@@ -1,0 +1,22 @@
+{
+  "id": "distributed-systems-02-report-b",
+  "scenarioId": "distributed-systems-02",
+  "family": "distributed-systems",
+  "split": "test",
+  "language": "en",
+  "title": "Distributed-Systems Lab 41559 / Report B",
+  "pages": [
+    [
+      {
+        "id": "title",
+        "type": "heading",
+        "text": "Distributed-Systems Lab 41559 / Report B"
+      },
+      {
+        "id": "measurement",
+        "type": "paragraph",
+        "text": "Unsigned report B: project Distributed-Systems Lab 41559; event E17; measured at 2026-02-02 10:00 UTC; latency = 72 ms. Neither report has priority over the other. These are conflicting observations of the same event, not two independent runs."
+      }
+    ]
+  ]
+}

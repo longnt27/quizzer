@@ -1,0 +1,31 @@
+{
+  "sourceId": "ocw-algorithms-ab5269304083",
+  "sourceSha256": "dc04facffd88355daf6e3e1620c4e253b84d31dc4bac7417500240f6baf16b66",
+  "method": "pypdf-5.9.0 independent source inspection; NOT extraction ground truth",
+  "pages": [
+    {
+      "page": 1,
+      "text": "Lecture 1\t Introduction and Peak Finding 6.006 Fall 2011  \nLecture 1: Introduction and Peak Finding \nLecture Overview \n•\t Administrivia \n•\t Course Overview \n•\t “Peak ﬁnding” problem — 1D and 2D versions \nCourse Overview \nThis course covers: \n•\t Eﬃcient procedures for solving problems on large inputs (Ex: U.S. Highway Map, \nHuman Genome) \n•\t Scalability \n•\t Classic data structures and elementary algorithms (CLRS text) \n•\t Real implementations in Python \n•\t Fun problem sets! \nThe course is divided into 8 modules — each of which has a motivating problem and problem \nset(s) (except for the last module). Tentative module topics and motivating problems are \nas described below: \n1. Algorithmic Thinking: Peak Finding \n2. Sorting & Trees: Event Simulation \n3. Hashing: Genome Comparison \n4. Numerics: RSA Encryption \n5. Graphs: Rubik’s Cube \n6. Shortest Paths: Caltech → MIT \n7. Dynamic Programming: Image Compression \n8. Advanced Topics \n1  "
+    },
+    {
+      "page": 2,
+      "text": "Lecture 1 Introduction and Peak Finding 6.006 Fall 2011  \nPeak Finder \nOne-dimensional Version \nPosition 2 is a peak if and only if b ≥ a and b ≥ c. Position 9 is a peak if i ≥ h. \ng f iba c d e h\n1 2 3 4 5 6 7 8 9\nFigure 1: a-i are numbers \nProblem: Find a peak if it exists (Does it always exist?) \nStraightforward Algorithm \nStart from left  \n4 17 4 3 2 56\n1 2 .   .    . n/2 n-1 n\nmight be peak\nθ(n) complexity worst case\n.   .    .\nFigure 2: Look at n/2 elements on average, could look at n elements in the worst case \nWhat if we start in the middle? For the conﬁguration below, we would look at n/2 elements. \nWould we have to ever look at more than n/2 elements if we start in the middle, and choose \na direction based on which neighboring element is larger that the middle element? \nn/2\n2  "
+    },
+    {
+      "page": 3,
+      "text": "Lecture 1 Introduction and Peak Finding 6.006 Fall 2011  \nCan we do better?  \n1 2 .  .  . n/2 n-1 n\nlook at n/2 position\n.  .  .n/2 -1 n/2 +1\nFigure 3: Divide & Conquer \n• If a[n/2] < a[n/2 − 1] then only look at left half 1 . . . n/2 −−− 1 to look for peak \n• Else if a[n/2] < a[n/2 + 1] then only look at right half n/2 + 1 . . . n to look for peak \n• Else n/2 position is a peak: WHY? \na[n/2] ≥ a[n/2 − 1] \na[n/2] ≥ a[n/2 + 1] \nWhat is the complexity? \nT (n) = T (n/2) + Θ(1) = Θ(1) + . . . + Θ(1) (log2(n) times) = Θ(log2(n))' -v \" \nto compare a[n/2] to neighbors \nIn order to sum up the Θ(i)‘s as we do here, we need to ﬁnd a constant that works for all. \nIf n = 1000000, Θ(n) algo needs 13 sec in python. If algo is Θ(log n) we only need 0.001 sec. \nArgue that the algorithm is correct. \nTwo-dimensional Version \nc\nb a\ne\ndn rows\nm columns\nFigure 4: Greedy Ascent Algorithm: Θ(nm) complexity, Θ(n 2) algorithm if m = n \na is a 2D-peak iﬀ a ≥ b, a ≥ d, a ≥ c, a ≥ e \n3  "
+    },
+    {
+      "page": 4,
+      "text": "Lecture 1 Introduction and Peak Finding 6.006 Fall 2011  \n14 13 12\n15\n16\n9 11 17\n17 19 20\nFigure 5: Circled value is peak. \nAttempt # 1: Extend 1D Divide and Conquer to 2D \ni\nj = m/2\n• Pick middle column j = m/2. \n• Find a 1D-peak at i, j. \n• Use (i, j) as a start point on row i to ﬁnd 1D-peak on row i. \nAttempt #1 fails \nProblem: 2D-peak may not exist on row i \n14 13 12\n15\n16\n9 11\n10\n17 19 20\nEnd up with 14 which is not a 2D-peak.  \n4  "
+    },
+    {
+      "page": 5,
+      "text": "Lecture 1 Introduction and Peak Finding 6.006 Fall 2011  \nAttempt # 2 \n• Pick middle column j = m/2 \n• Find global maximum on column j at (i, j) \n• Compare (i, j − 1), (i, j), (i, j + 1) \n• Pick left columns of (i, j − 1) > (i, j) \n• Similarly for right \n• (i, j) is a 2D-peak if neither condition holds ← WHY? \n• Solve the new problem with half the number of columns. \n• When you have a single column, ﬁnd global maximum and you‘re done. \nExample of Attempt #2 \n14 13 12\n15\n16\n9 11 21\n17 19 20\npick this column\n17 global max \nfor this column\n11\n1010 108\n12\n11 21\n19 20\n11\n1010\n11\n10\npick this column\n19 global max\nfor this column\n20\n/f_ind 2121\ngo with\nComplexity of Attempt #2 \nIf T (n, m) denotes work required to solve problem with n rows and m columns \nT (n, m) = T (n, m/2) + Θ(n) (to ﬁnd global maximum on a column — (n rows)) \nT (n, m) = Θ(n) + . . . + Θ(n)' -v \" \nlog m \n= Θ(n log m) = Θ(n log n) if m = n \nQuestion: What if we replaced global maximum with 1D-peak in Attempt #2? Would that \nwork? \n5 "
+    },
+    {
+      "page": 6,
+      "text": " \n \n \n \n \nMIT OpenCourseWare\nhttp://ocw.mit.edu\n6.006 Introduction to Algorithms\nFall 2011\nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms."
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+name: Course benchmark candidates
+on:
+  workflow_dispatch:
+    inputs:
+      download_sources:
+        description: Acknowledge source terms and acquire PDF fingerprints
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - 'eval/course-benchmark/**'
+      - 'scripts/*benchmark*.mjs'
+      - 'test/course-benchmark-*.test.mjs'
+      - '.github/workflows/course-benchmark.yml'
+permissions:
+  contents: read
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test test/course-benchmark-*.test.mjs
+      - run: node scripts/course-benchmark-data.mjs validate
+  source-observation:
+    if: github.event_name == 'workflow_dispatch' && inputs.download_sources
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Observe source bytes without redistributing PDFs
+        id: sources
+        continue-on-error: true
+        run: node scripts/benchmark-sources.mjs "$RUNNER_TEMP/course-pdfs" "$RUNNER_TEMP/source-lock.json" --acknowledge-source-terms
+      - name: Save hash manifest only
+        if: steps.sources.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: course-source-lock
+          path: ${{ runner.temp }}/source-lock.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Record acquisition limitation
+        if: steps.sources.outcome != 'success'
+        run: echo 'Source acquisition failed. Dataset remains unpinned and candidate; do not claim reproducibility or human validation.' >> "$GITHUB_STEP_SUMMARY"

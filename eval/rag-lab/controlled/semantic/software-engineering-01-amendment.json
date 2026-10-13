@@ -1,0 +1,22 @@
+{
+  "id": "software-engineering-01-amendment",
+  "scenarioId": "software-engineering-01",
+  "family": "software-engineering",
+  "split": "dev",
+  "language": "en",
+  "title": "Software-Engineering Lab 71206 / Signed amendment",
+  "pages": [
+    [
+      {
+        "id": "title",
+        "type": "heading",
+        "text": "Software-Engineering Lab 71206 / Signed amendment"
+      },
+      {
+        "id": "revision",
+        "type": "paragraph",
+        "text": "Signed amendment effective 2026-01-01: copies becomes 6 replicas. All other settings and regional limits of the 2025 baseline remain unchanged."
+      }
+    ]
+  ]
+}

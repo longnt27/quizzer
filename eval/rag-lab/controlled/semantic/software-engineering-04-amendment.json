@@ -1,0 +1,22 @@
+{
+  "id": "software-engineering-04-amendment",
+  "scenarioId": "software-engineering-04",
+  "family": "software-engineering",
+  "split": "dev",
+  "language": "vi",
+  "title": "Software-Engineering Lab 87040 / Signed amendment",
+  "pages": [
+    [
+      {
+        "id": "title",
+        "type": "heading",
+        "text": "Software-Engineering Lab 87040 / Signed amendment"
+      },
+      {
+        "id": "revision",
+        "type": "paragraph",
+        "text": "Phụ lục có chữ ký, hiệu lực từ 2026-01-01: copies đổi thành 9. Các thiết lập và giới hạn khác của bản 2025 giữ nguyên."
+      }
+    ]
+  ]
+}

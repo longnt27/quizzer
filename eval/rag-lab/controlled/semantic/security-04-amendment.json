@@ -1,0 +1,22 @@
+{
+  "id": "security-04-amendment",
+  "scenarioId": "security-04",
+  "family": "security",
+  "split": "test",
+  "language": "vi",
+  "title": "Security Lab 50239 / Signed amendment",
+  "pages": [
+    [
+      {
+        "id": "title",
+        "type": "heading",
+        "text": "Security Lab 50239 / Signed amendment"
+      },
+      {
+        "id": "revision",
+        "type": "paragraph",
+        "text": "Phụ lục có chữ ký, hiệu lực từ 2026-01-01: copies đổi thành 9. Các thiết lập và giới hạn khác của bản 2025 giữ nguyên."
+      }
+    ]
+  ]
+}

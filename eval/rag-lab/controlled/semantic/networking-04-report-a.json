@@ -1,0 +1,22 @@
+{
+  "id": "networking-04-report-a",
+  "scenarioId": "networking-04",
+  "family": "networking",
+  "split": "dev",
+  "language": "en",
+  "title": "Networking Lab 39433 / Report A",
+  "pages": [
+    [
+      {
+        "id": "title",
+        "type": "heading",
+        "text": "Networking Lab 39433 / Report A"
+      },
+      {
+        "id": "measurement",
+        "type": "paragraph",
+        "text": "Unsigned report A: project Networking Lab 39433; event E17; measured at 2026-02-02 10:00 UTC; latency = 63 ms. Neither report has priority over the other. These are conflicting observations of the same event, not two independent runs."
+      }
+    ]
+  ]
+}

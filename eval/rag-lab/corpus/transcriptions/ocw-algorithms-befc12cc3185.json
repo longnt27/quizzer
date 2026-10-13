@@ -1,0 +1,31 @@
+{
+  "sourceId": "ocw-algorithms-befc12cc3185",
+  "sourceSha256": "437a3bdebc34eed32e36015071961cf75fdc9a396271b8c8ab0d4d75477fc135",
+  "method": "pypdf-5.9.0 independent source inspection; NOT extraction ground truth",
+  "pages": [
+    {
+      "page": 1,
+      "text": "Lecture 21 Dynamic Programming III of IV 6.006 Fall 2011\nLecture 21: Dynamic Programming III\nLecture Overview\n• Subproblems for strings\n• Parenthesization\n• Edit distance (& longest common subseq.)\n• Knapsack\n• Pseudopolynomial Time\nReview:\n* 5 easy steps to dynamic programming\n(a) deﬁne subproblems count # subproblems\n(b) guess (part of solution) count # choices\n(c) relate subproblem solutions compute time/subproblem\n(d) recurse + memoize time = time/subproblem ·# sub-\nproblems\nOR build DP table bottom-up\ncheck subproblems acyclic/topological order\n(e) solve original problem: = a subproblem\nOR by combining subproblem solutions =⇒ extra time\n* problems from L20 (text justiﬁcation, Blackjack) are on sequences (words, cards)\n* useful problems for strings/sequences x:\nsuﬃxes x[i :]\n}\nΘ(|x|) ←cheaper = ⇒ use if possible\npreﬁxes x[: i]\nsubstrings x[i : j]\n}\nΘ(x2)\n1"
+    },
+    {
+      "page": 2,
+      "text": "Lecture 21 Dynamic Programming III of IV 6.006 Fall 2011\nParenthesization:\nOptimal evaluation of associative expression A[0] ·A[1] ···A[n −1] — e.g., multiplying\nrectangular matrices\n. .\nA B C\n. .\n(A.B) C A (B.C)\nθ(n2) time θ(n) time\nvs\nFigure 1:\n2. guessing = outermost multiplication ( ··· )( ··· )\n↑k−1 ↑k\n=⇒ # choices = O(n)\n \n1. subproblems = preﬁxes & sufﬁxes? NO\n= cost of substring A[i : j]\n=⇒ # subproblems = Θ(n 2)\n3. recurrence:\n•DP[i, j] = min(DP [i, k] + DP[k, j]+ cost of multiplying ( A[i] ···A[k −1]) by\n(A[k] ···A[j −1]) for k in range(i + 1, j))\ni j\ni jk\nDAG\n•DP[i, i+ 1] = 0\n=⇒ cost per subproblem = O(j −i) = O(n)\n4. topological order: increasing substring size. Total time = O(n3)\n5. original problem = DP [0, n]\n(& use parent pointers to recover parens.)\nNOTE: Above DP is not shortest paths in the subproblem DAG! Two dependencies = ⇒\nnot path!\n2"
+    },
+    {
+      "page": 3,
+      "text": "Lecture 21 Dynamic Programming III of IV 6.006 Fall 2011\nEdit Distance\nUsed for DNA comparison, diﬀ, CVS/SVN/. . . , spellchecking (typos), plagiarism detection,\netc.\nGiven two strings x & y, what is the cheapest possible sequence of character edits (insert\nc, delete c, replace c →c’) to transform x into y?\n• cost of edit depends only on characters c, c′\n• for example in DNA, C →G common mutation = ⇒ low cost\n• cost of sequence = sum of costs of edits\n• If insert & delete cost 1, replace costs 0, minimum edit distance equivalent to ﬁnd-\ning longest common subsequence. Note that a subsequence is sequential but not\nnecessarily contiguous.\n• for example H I E R O G L Y P H O L O G Y vs. M I C H A E L A N G E L O\n=⇒ HELLO\nSubproblems for multiple strings/sequences\n• combine suﬃx/preﬁx/substring subproblems\n• multiply state spaces\n• still polynomial for O(1) strings\nEdit Distance DP\n(1) subproblems: c(i, j) = edit-distance(x[i :], y[j :]) for 0 ≤i <|x|, 0 ≤j <|y|\n=⇒ Θ(|x|·|y |) subproblems\n(2) guess whether, to turn x into y, (3 choices):\n•x[i] deleted\n• y[j] inserted\n•x[i] replaced by y[j]\n(3) recurrence: c(i, j) = maximum of:\n• cost(delete x[i]) + c(i + 1, j) if i <|x|,\n•cost(insert y[j]) + c(i, j+ 1) if j <|y|,\n•cost(replace x[i] →y[j]) + c(i + 1, j+ 1) if i <|x|&j <|y|\nbase case: c(|x|, |y|) = 0\n=⇒ Θ(1) time per subproblem\n3"
+    },
+    {
+      "page": 4,
+      "text": "Lecture 21 Dynamic Programming III of IV 6.006 Fall 2011\n(4) topological order: DAG in 2D table:\n• bottom-up OR right to left\n• only need to keep last 2 rows/columns\n=⇒ linear space\n•total time = Θ(|x|·|y |)\n(5) original\nproblem: c(0, 0)\nKnapsack:\nKnapsac\nk of size S you want to pack\n• item i has integer size si & real value vi\n• goal: choose subset of items of maximum total value subject to total size ≤S\nFirst Attempt:\n1. subproblem = value for sufﬁx i: WRONG\n2. guessing = whether to include item i =⇒ # choices = 2\n3. recurrence:\n\u0018\u0018•DP [i] = max(D P[i + 1], vi + D P[i + 1] if\u0018s \u0018i ≤S?! )\n•not e\nnough information to know whether item i ﬁts — how much space is left?\nGUESS!\nCorrect:\n1. subproblem = value for suﬃx i:\ngiven knapsack of size X\n=⇒ # subproblems = O(nS) !\n0 |y|\n0 \n|x|\ni\nj\n4"
+    },
+    {
+      "page": 5,
+      "text": "Lecture 21 Dynamic Programming III of IV 6.006 Fall 2011\n3. recurrence:\n•DP [i, X] = max(DP [i + 1, X], vi + DP [i + 1, X−si] ifsi ≤X)\n•DP [n, X] = 0\n=⇒ time per subproblem = O(1)\n4. topological order: for i in n, . . . ,0: for X in 0, . . . S\ntotal time = O(nS)\n5. original problem = DP [0, S]\n(& use parent pointers to recover subset)\nAMAZING: eﬀectively trying all possible subsets! . . . but is this actually fast?\nPolynomial time\nPolynomial time = polynomial in input size\n• here Θ(n) if number S ﬁts in a word\n• O(n lg S) in general\n• S is exponential in lg S (not polynomial)\nPseudopolynomial Time\nPseudopolynomial time = polynomial in the problem size AND the numbers (here: S, si’s,\nvi’s) in input. Θ( nS) is pseudopolynomial.\nRemember:\npolynomial — GOOD\nexponential — BAD\npseudopoly — SO SO\n5"
+    },
+    {
+      "page": 6,
+      "text": "MIT OpenCourseWare\nhttp://ocw.mit.edu\n6.006 Introduction to Algorithms \nFall  2011\n \n \n \nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms."
+    }
+  ]
+}

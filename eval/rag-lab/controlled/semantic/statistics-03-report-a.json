@@ -1,0 +1,22 @@
+{
+  "id": "statistics-03-report-a",
+  "scenarioId": "statistics-03",
+  "family": "statistics",
+  "split": "validation",
+  "language": "en",
+  "title": "Statistics Lab 25172 / Report A",
+  "pages": [
+    [
+      {
+        "id": "title",
+        "type": "heading",
+        "text": "Statistics Lab 25172 / Report A"
+      },
+      {
+        "id": "measurement",
+        "type": "paragraph",
+        "text": "Unsigned report A: project Statistics Lab 25172; event E17; measured at 2026-02-02 10:00 UTC; latency = 63 ms. Neither report has priority over the other. These are conflicting observations of the same event, not two independent runs."
+      }
+    ]
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "sourceId": "ocw-probability-001fc446dfea",
+  "sourceSha256": "1ece8f40b9b67a89d346d5994c8c80920892890c7dcf52b2f15e8bcef08144b2",
+  "method": "pypdf-5.9.0 independent source inspection; NOT extraction ground truth",
+  "pages": [
+    {
+      "page": 1,
+      "text": "LECTURE 25 Simple binary hypothesis testing\nOutline\n–n u l l h y p o t h e s i sHcm\n• Reference: Section lag X ∼ pXTxn HcU[ o r fXTxn HcU]\n–a l t e r n a t i v e h y p o t h e s i sH m• vourse xvaluations Tuntil debdiU d\nX ∼ pXTxn HdU[ o r fXTxn HdU]http://web.mit.edu/subjectevaluation\n– vhoose a rejection region Rn\nreject Hc iﬀ data R\n• Review of simple binary hypothesis tests\n∈\nLikelihood ratio testm rejectH if– examples • c\npXTxn HdU fXTxn HdU\n• > ξ or > ξTesting composite hypotheses pXTxn HcU fXTxn HcU\n– is my coin fairr – ﬁx false rejection probabilityα\n– is my die fairr Teaga] α pc .chU\n– goodness of ﬁt tests – choose ξ so that PTreject Hcn HcUpα\nExample (test on normal mean) Example (test on normal variance)\n• n data points] iaiada • n data points] iaiada\nHcm Xi ∼ NTc, dU Hcm Xi ∼ NTc, dU\nHdm Xi ∼ NTd, dU Hdm Xi ∼ NTc, gU\n• Likelihood ratio testn rejection regionm • Likelihood ratio testn rejection regionm\nTd n T e/\n√\neπU exp{− i Xi − dU /e} Td/e\n√\neπUn exp{ eiξ − X /Te · gU}\nTd/\n√ > i > ξeπUn exp{\n￿\n− ei X /ei } Td/\n√\neπUn exp{−\n￿\nei\n– algebram re ct\n￿\nX /ei }\nje Hc ifm\n￿\nXi > ξ￿ – algebram reject\n￿\neHc if > ξ￿\ni\n￿\nXi\ni\n• yind ξ￿ such that • yind ξ￿ such that\n￿ ￿n\n￿n\n￿\np\n￿ ￿n\neP Xi > ξ Hc α P Xi > ξ￿n Hc\nipd ipd\n￿\np α\n– use normal tables – the distribution of ei X is knowni\nTderived distribution\n￿\nproblemU\n– “chiˆsquare” distributionn\ntables are available\n1"
+    },
+    {
+      "page": 2,
+      "text": "Composite hypotheses Is my die fair?\n• Got S p gje heads inn p dccc tossesn • Hypothesis Hcm\nis the coin fairr PTX p iUpp i pd /i] i pd ,...,i\n– Hc m p pd /e versus Hd m p pd /e • Observed occurrences ofim Ni\n• Pick a “statistic” Teaga] SU • vhoose form of rejection regionn\nchiˆsquare testm• Pick shape ofrejection region\nTeaga] |S − Uen/e| > ξU TN npreject Hc if T p i − i > ξnpi i\n• vhoose signiﬁcance levelTeaga] α pc .chU\n￿\n• vhoose ξ so thatm• Pick critical value ξ so thatm\nPTreject Hcn HcUpc .chPTreject Hcn HcUpα\nUsing the vLTm PTT> ξn HcUpc .ch\nPT|S − hcc| ≤ fdn HcU ≈ c.lhn ξ p fd • Need the distribution ofTm\nTvLT “ derived distribution problemU\n• In our examplem|S − hcc| p ek< ξ\n– for largen] T has approximatelyHc not rejected Tat the hP levelU\na chiˆsquare distribution\n– available in tables\nDo I have the correct pdf? What else is there?\n• Partition the range into bins • Systematic methods for coming up with\n– npim expected incidence of bini shape of rejection regions\nTfrom the pdfU\n– Nim observed incidence of bini • Methods to estimate an unknown Pwy\nTeaga] form a histogram and “smooth” it– Use chiˆsquare test Tas in die problemU outU\n• KolmogorovˆSmirnov testm\nform empirical CDF] Fˆ ] from data • xﬃcient and recursive signal processing\nX\n• Methods to select between less or more\ncomplex models\n– Teaga] identify relevant “explanatory\nvariables” in regression modelsU\n• Methods tailored to highˆdimensional\nunknown parameter vectors and huge\nnumber of data points Tdata miningU\nThttpmbbwwwaitlanistagovbdivklkbhandbookbU • etca etca...\n• Dn pm a xx |FXTxU − FˆXTxU|\n• PT√nDn ≥ d.fiU ≈ c.ch\n￿\n2"
+    },
+    {
+      "page": 3,
+      "text": "MIT OpenCourseWare\nhttp://ocw.mit.edu\n6.041 / 6.431 Probabilistic Systems Analysis and Applied Probability\nFall 2010\nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms."
+    }
+  ]
+}

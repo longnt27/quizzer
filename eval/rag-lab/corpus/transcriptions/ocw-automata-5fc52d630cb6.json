@@ -1,0 +1,191 @@
+{
+  "sourceId": "ocw-automata-5fc52d630cb6",
+  "sourceSha256": "6ed6867940621c0020070f5407f967419a828c9ee924b9c490bb339512fb9ae3",
+  "method": "pypdf-5.9.0 independent source inspection; NOT extraction ground truth",
+  "pages": [
+    {
+      "page": 1,
+      "text": "6.045:  Automata, Computability, and \nComplexity\nOr, Great Ideas in Theoretical \nComputer Science \nSpring, 2010\nClass 10\nNancy Lynch"
+    },
+    {
+      "page": 2,
+      "text": "Today\n• Final topic in computability theory:  Self-Reference \nand the Recursion Theorem\n• Consider adding to TMs (or programs) a new, \npowerful capability to “know” and use their own \ndescriptions.\n• The Recursion Theorem says that this apparent \nextra power does not add anything to the basic \ncomputability model:  these self-referencing \nmachines can be transformed into ordinary non-\nself-referencing TMs."
+    },
+    {
+      "page": 3,
+      "text": "Today\n• Self-Reference and the Recursion Theorem\n• Topics:\n– Self-referencing machines and programs\n– Statement of the Recursion Theorem\n– Applications of the Recursion Theorem\n– Proof of the Recursion Theorem:  Special case\n– Proof of the Recursion Theorem:  General case\n• Reading:\n– Sipser, Section 6.1"
+    },
+    {
+      "page": 4,
+      "text": "Self-referencing machines and \nprograms"
+    },
+    {
+      "page": 5,
+      "text": "Self-referencing machines/programs\n• Consider the following program P 1.\n•P 1:  \n– Obtain < P1 >\n–O u t p u t  <  P1 >\n•P 1 simply outputs its own representation, as a \nstring.\n• Simplest example of a machine/program that uses \nits own description."
+    },
+    {
+      "page": 6,
+      "text": "Self-referencing machines/programs\n• A more interesting example:\n•P 2:  On input w:\n– If w = ε then output 0\n–E l s e\n• Obtain < P 2 >\n• Run P 2 on tail(w)\n• If P 2 on tail(w) outputs a number n then output n+1.\n• What does P 2 compute?\n• It computes |w|, the length of its input.\n• Uses the recursive style common in LISP, Scheme, other \nrecursive programming languages.\n• We assume that, once we have the representation of a \nmachine, we can simulate it on a given input.\n• E.g., if P 2 gets < P2 >, it can simulate P2 on any input."
+    },
+    {
+      "page": 7,
+      "text": "Self-referencing machines/programs\n• One more example:\n•P 3:  On input w:\n– Obtain < P3 >\n– Run P 3 on w\n–I f  P3 on w outputs a number n then output n+1.\n• A valid self-referencing program.\n• What does P 3 compute?\n• Seems contradictory:  if P 3 on w outputs n then P3\non w outputs n+1.\n• But according to the usual semantics of recursive \ncalls, it never halts, so there’s no contradiction.\n•P 3 computes a partial function that isn’t defined \nanywhere."
+    },
+    {
+      "page": 8,
+      "text": "Statement of the Recursion \nTheorem"
+    },
+    {
+      "page": 9,
+      "text": "The Recursion Theorem\n• Used to justify self-referential programs like P 1, P2, \nP3, by asserting that they have corresponding \n(equivalent) basic TMs. \n• Recursion Theorem (Sipser Theorem 6.3):\nLet T be a TM that computes a (possibly partial) 2-\nargument function t: Σ* ×Σ * →Σ *.  \nThen there is another TM R that computes the \nfunction r: Σ* →Σ *, where for any w, r(w) = t(<R>, \nw)."
+    },
+    {
+      "page": 10,
+      "text": "The Recursion Theorem\n• Recursion Theorem:  Let T be a TM that computes a \n(possibly partial) 2-argument function t: Σ* ×Σ * →Σ *.  Then \nthere is another TM R that computes the function r: Σ* →\nΣ*, where for any w, r(w) = t(<R>, w).\n• Thus, T is a TM that takes 2 inputs.  \n• Think of the first as the description of \nsome arbitrary 1-input TM M.\n• Then R behaves like T, but with the \nfirst input set to <R>, the description \nof R itself.\n• Thus, R uses its own representation.\nT\n<M> w\nt(<M>, w)\nR\nt(<R>, w)\nw"
+    },
+    {
+      "page": 11,
+      "text": "The Recursion Theorem\n• Recursion Theorem:  Let T be a TM that computes a \n(possibly partial) 2-argument function t: Σ* ×Σ * →Σ *.  Then \nthere is another TM R that computes the function r: Σ* →\nΣ*, where for any w, r(w) = t(<R>, w).\n• Example: P2, revisited\n– Computes length of input.\n– What are T and R?\n– Here is a version of P\n2 with an extra \ninput <M>: \n–T 2:  On inputs <M> and w:\n• If w = ε then output 0\n• Else run M on tail(w); if it outputs n then \noutput n+1.\nT\n<M> w\nt(<M>, w)\nR\nt(<R>, w)\nw"
+    },
+    {
+      "page": 12,
+      "text": "The Recursion Theorem\n• Example: P2, revisited\n–T 2:  On inputs <M> and w:\n• If w = ε then output 0\n• Else run M on tail(w); if it outputs n then output \nn+1.\n–T 2 produces different results, depending \non what M does.\n– E.g., if M always loops:\n•T 2 outputs 0 on input w = ε and loops on every \nother input.\n– E.g., if M always halts and outputs 1:\n•T 2 outputs 0 on input w = ε and outputs 2 on \nevery other input.\nT\n<M> w\nt(<M>, w)\nR\nt(<R>, w)\nw"
+    },
+    {
+      "page": 13,
+      "text": "The Recursion Theorem\n• Example: P2, revisited\n–T 2:  On inputs <M> and w:\n• If w = ε then output 0\n• Else run M on tail(w); if it outputs n then output \nn+1.\n– Recursion Theorem says there is a TM R \ncomputing t(<R>, w)---just like T2 but with \ninput <M> set to <R> for the same R.\n– This R is just P 2 as defined earlier.\nT\n<M> w\nt(<M>, w)\nR\nt(<R>, w)\nw"
+    },
+    {
+      "page": 14,
+      "text": "The Recursion Theorem\n• Recursion Theorem (Sipser\nTheorem 6.3):\nLet T be a TM that computes a \n(possibly partial) 2-argument \nfunction t: Σ* ×Σ * →Σ *. \nThen there is another TM R that \ncomputes the function r: Σ* →Σ *, \nwhere for any w, r(w) = t(<R>, w).\nT\n<M> w\nt(<M>, w)\nR\nt(<R>, w)\nw"
+    },
+    {
+      "page": 15,
+      "text": "Applications of the Recursion \nTheorem"
+    },
+    {
+      "page": 16,
+      "text": "Applications of Recursion Theorem\n• The Recursion Theorem can be used to show various \nnegative results, e.g., undecidability results.\n• Application 1:  Acc TM is undecidable\n– We already know this, but the Re cursion Theorem provides a new \nproof.\n– Suppose for contradiction that  D is a TM that decides AccTM.\n– Construct another machine R usin g self-reference (justified by the \nRecursion Theorem):\n• R:  On input w:\n– Obtain < R >  (using Recursion Theorem)\n– Run D on input <R, w>  (we can construct <R, w> from <R> and w)\n– Do the opposite of what D does:\n• If D accepts <R, w> then reject.\n• If D rejects <R, w> then accept."
+    },
+    {
+      "page": 17,
+      "text": "Application 1:  AccTM is undecidable\n• Suppose for contradiction that D decides Acc TM.\n• R:  On input w:\n– Obtain < R > \n– Run D on input <R, w> \n– Do the opposite of what D does:\n• If D accepts <R, w> then reject.\n• If D rejects <R, w> then accept.\n• RT says that TM R exists, assuming decider D exists.\n• Formally, to apply RT, use the 2-input machine T:\n• T:  On inputs <M> and w:\n– Run D on input <M, w> \n– Do the opposite of what D does:\n• If D accepts <M, w> then reject.\n• If D rejects <M, w> then accept."
+    },
+    {
+      "page": 18,
+      "text": "Application 1:  AccTM is undecidable\n• Suppose for contradiction that D decides Acc TM.\n• R:  On input w:\n– Obtain < R > \n– Run D on input <R, w> \n– Do the opposite of what D does:\n• If D accepts <R, w> then reject.\n• If D rejects <R, w> then accept.\n• Now get a contradiction:\n– If R accepts w, then \n• D accepts <R, w> since D is a decider for AccTM, so\n• R rejects w by definition of R.\n– If R does not accept w, then \n• D rejects <R, w> since D is a decider for AccTM, so\n• R accepts w by definition of R.\n• Contradiction.  So D can’t exist, so AccTM is undecidable."
+    },
+    {
+      "page": 19,
+      "text": "Applications of Recursion Theorem\n• Application 2:  Acc01 TM is undecidable\n– Similar to the previous example.\n– Suppose for contradiction that D is a TM that decides \nAcc01TM.\n– Construct another machine R using the Recursion \nTheorem:\n• R:  On input w: (ignores its input)\n– Obtain < R >  (using RT)\n– Run D on input <R>  \n– Do the opposite of what D does:\n• If D accepts <R> then reject.\n• If D rejects <R> then accept.\n• RT says that R exists, assuming decider D exists."
+    },
+    {
+      "page": 20,
+      "text": "Application 2:  Acc01TM is undecidable\n• Suppose for contradiction that D decides Acc01 TM.\n• R:  On input w:\n– Obtain < R > \n– Run D on input <R>  \n– Do the opposite of what D does:\n• If D accepts <R> then reject.\n• If D rejects <R> then accept.\n• Now get a contradiction, based on what R does on input 01:\n– If R accepts 01, then \n• D accepts <R> since D is a decider for Acc01TM, so\n• R rejects 01 (and everything else), by definition of R.\n– If R does not accept 01, then \n• D rejects <R> since D is a decider for Acc01TM, so\n• R accepts 01 (and everything else), by definition of R.\n• Contradiction.  So D can’t exist, so Acc01TM is undecidable."
+    },
+    {
+      "page": 21,
+      "text": "Applications of Recursion Theorem\n• Application 3:  Using Recursion Theorem to prove \nRice’s Theorem\n– Rice’s Theorem:  Let P be a nontrivial property of \nTuring-recognizable languages.  Let MP = { < M > | L(M) \n∈ P }.  Then MP is undecidable.\n– Nontriviality:  There is some M 1 with L(M1) ∈ P, and \nsome M2 with L(M2) ∉ P.\n– Implies lots of things are undecidable.\n– We already proved this; now, a new proof using the \nRecursion Theorem.\n– Suppose for contradiction that D is a TM that decides \nMP.\n– Construct machine R using the Recursion Theorem:…"
+    },
+    {
+      "page": 22,
+      "text": "Application 3:  Using Recursion \nTheorem to prove Rice’s Theorem\n• Rice’s Theorem:  Let P be a nontrivial property of Turing-\nrecognizable languages.  Let MP = { < M > | L(M) ∈ P }.  \nThen MP is undecidable.\n• Nontriviality:  L(M 1) ∈ P, L(M2) ∉ P.\n• D decides M P.\n• R:  On input w:\n– Obtain < R > \n– Run D on input <R>  \n– If D accepts <R> then run M 2 on input w and do the same thing.\n– If D rejects <R> then run M 1 on input w and do the same thing.\n•M 1 and M2 are as above, in the nontriviality definition.\n• R exists, by the Recursion Theorem.\n• Get contradiction by considering whether or not L(R) ∈ P:"
+    },
+    {
+      "page": 23,
+      "text": "Application 3:  Using Recursion \nTheorem to prove Rice’s Theorem\n• Rice’s Theorem:  Let P be a nontrivial property of Turing-\nrecognizable languages.  Let MP = { < M > | L(M) ∈ P }.  \nThen MP is undecidable.\n•L ( M1) ∈ P, L(M2) ∉ P.\n• D decides M P.\n• R:  On input w:\n– Obtain < R > \n– Run D on input <R>  \n– If D accepts <R> then run M 2 on input w and do the same thing.\n– If D rejects <R> then run M 1 on input w and do the same thing.\n• Get contradiction by considering whether or not L(R) ∈ P:\n– If L(R) ∈ P, then \n• D accepts <R>, since D decides M P, so\n• L(R) = L(M 2) by definition of R, so\n• L(R) ∉ P."
+    },
+    {
+      "page": 24,
+      "text": "Application 3:  Using Recursion \nTheorem to prove Rice’s Theorem\n• Rice’s Theorem:  Let P be a nontrivial property of Turing-\nrecognizable languages.  Let MP = { < M > | L(M) ∈ P }.  \nThen MP is undecidable.\n•L ( M1) ∈ P, L(M2) ∉ P.\n• D decides M P.\n• R:  On input w:\n– Obtain < R > \n– Run D on input <R>  \n– If D accepts <R> then run M 2 on input w and do the same thing.\n– If D rejects <R> then run M 1 on input w and do the same thing.\n• Get contradiction by considering whether or not L(R) ∈ P:\n– If L(R) ∉ P, then \n• D rejects <R>, since D decides M P, so\n• L(R) = L(M 1) by definition of R, so\n• L(R) ∈ P.\n• Contradiction!"
+    },
+    {
+      "page": 25,
+      "text": "Applications of Recursion Theorem\n• Application 4:  Showing non-Turing-recognizability\n–D e f i n eMINTM = { < M > | M is a “minimal” TM, that is, no \nTM with a shorter encoding recognizes the same \nlanguage }.\n– Theorem: MINTM is not Turing-recognizable.\n– Note:  This doesn’t follow from Rice:\n• Requires non-T-recognizability, not just undecidability.\n• Besides, it’s not a language property.\n– Proof:  \n• Assume for contradiction that MINTM is Turing-recognizable.\n• Then it’s enumerable, say by enumerator TM E.\n• Define TM R, using the Recursion Theorem:\n• R:  On input w: …"
+    },
+    {
+      "page": 26,
+      "text": "Application 4:  Non-Turing-recognizability\n•M I NTM = { < M > | M is a “minimal” TM }.\n• Theorem: MINTM is not Turing-recognizable.\n• Proof:  \n– Assume that MIN TM is Turing-recognizable.\n– Then it’s enumerable, say by enumerator TM E.\n– R:  On input w:\n• Obtain <R>.\n• Run E, producing list < M1 >, < M2 >, … of all minimal TMs, until \nyou find some < Mi > with |< Mi >| strictly greater than |< R >|.\n– That is, until you find a TM with a rep bigger than yours.\n•R u n  Mi(w) and do the same thing.\n– Contradiction:\n•L ( R )  =  L ( Mi)\n• |< R >| less than |< Mi >|\n• Therefore, Mi is not minimal, and should not be in the list."
+    },
+    {
+      "page": 27,
+      "text": "Proof of the Recursion Theorem: \nSpecial case"
+    },
+    {
+      "page": 28,
+      "text": "Proof of Recursion Theorem:\nSpecial Case\n• Start with easier first step:  Produce a TM corresponding \nto P1:\n•P 1:  \n–O b t a i n  <  P1 >\n– Output < P 1 >\n•P 1 outputs its own description.\nQ\nq(w) = < Pw >\nw\n• Lemma:  (Sipser Lemma 6.1): There is a \ncomputable function q: Σ* →Σ * such \nthat, for any string w, q(w) is the \ndescription of a TM Pw that just prints out \nw and halts.\n•P r o o f :Straightforward construction.  \nCan hard-wire w in the FSC of Pw."
+    },
+    {
+      "page": 29,
+      "text": "Proof of RT:  Special Case\nQ\nq(w) = < Pw >\nw• Lemma:  (Sipser Lemma 6.1): There is a \ncomputable function q: Σ* →Σ * such \nthat, for any string w, q(w) is the \ndescription of a TM Pw that just prints out \nw and halts.\n• Now, back to the machine that outputs its own \ndescription…\n• Consists of 2 sub-machines, A and B.\n• Output of A feeds into B.\n• Write as A ° B.\nA B"
+    },
+    {
+      "page": 30,
+      "text": "Construction of B\n• B expects its input to be the representation <M> of a 1-\ninput TM (a function-computing TM, not a language \nrecognizer).\n– If not, we don’t care what B does.\n• B outputs the encoding of the combination of two \nmachines, P<M> and M.\n• The first machine is P <M>, which simply outputs <M>.\n• The second is the input machine M.\n•P <M> ° M:\nB\n<M> < P<M> ° M >\nP<M> M\n<M> Some output"
+    },
+    {
+      "page": 31,
+      "text": "Construction of B\n• How can B generate < P <M> ° M >?\n– B can generate a description of P <M> , that is, <P<M>>, \nby Lemma 6.1.\n– B can generate a description of M, that is, <M>, since it \nalready has <M> as its input.\n– Once B has descriptions of P <M> and M, it can combine \nthem into a single description of the combined machine \nP<M> ° M, that is, < P<M> ° M >.\nB\n<M> < P<M> ° M >\nP<M> M\n<M> Some output"
+    },
+    {
+      "page": 32,
+      "text": "Construction of A\n•A  i s  P<B>, the machine that just outputs <B>, \nwhere B is the complicated machine \nconstructed above.\n• A has no input, just outputs <B>.\nA\n<B>"
+    },
+    {
+      "page": 33,
+      "text": "Combining the Pieces\n•A  ° B:\n• Claim A ° B outputs its own description, which is < A ° B >.\n• Check this…\n•A  i s  P<B>, so the output from A to B is <B>:\n• Substituting B for M in B’s output:\nA B\nA = P<B> B\n<B>\nA = P<B> B\n<B> < P<B> ° B >"
+    },
+    {
+      "page": 34,
+      "text": "Combining the Pieces\n•A  ° B:\n• Claim A ° B outputs its own description, which is < A ° B >.\n• The output of A ° B is, therefore, < P<B> ° B > = < A ° B >.\n• As needed!\n•A  ° B outputs its own description, < A ° B >.\nA B\nA = P<B> B\n<B> < P<B> ° B >"
+    },
+    {
+      "page": 35,
+      "text": "Proof of the Recursion Theorem: \nGeneral case"
+    },
+    {
+      "page": 36,
+      "text": "Proof of the RT: General case\n• So, we have a machine that outputs its own \ndescription.\n• A curiosity---this is not the general RT.\n• RT says not just that:\n– There is a TM that outputs its own description.\n• But that:\n– There are TMs that can use their own descriptions, in \n“arbitrary ways”.\n• The “arbitrary ways” are captured by the \nmachine T in the RT statement.\nT\n<M> w\nt(<M>, w)"
+    },
+    {
+      "page": 37,
+      "text": "The Recursion Theorem\n• Recursion Theorem:  \nLet T be a TM that computes a \n(possibly partial) 2-argument \nfunction t: Σ* ×Σ * →Σ *.  \nThen there is another TM R that \ncomputes the function r: Σ* →Σ *, \nwhere for any w, r(w) = t(<R>, w).\nR\nt(<R>, w)\nw\nT\n<M> w\nt(<M>, w)"
+    },
+    {
+      "page": 38,
+      "text": "The Recursion Theorem\n• Recursion Theorem:  \nLet T be a TM that computes a \n(possibly partial) 2-argument \nfunction t: Σ* ×Σ * →Σ *.  \nThen there is another TM R that \ncomputes the function r: Σ* →Σ *, \nwhere for any w, r(w) = t(<R>, w).\nR\nt(<R>, w)\nw\nT\n<M> w\nt(<M>, w)\n• Construct R from:\n– The given T, and \n– Variants of A and B from the special-\ncase proof."
+    },
+    {
+      "page": 39,
+      "text": "Proof of RT:  General Case\n• R looks like:\n• Write this as (A ° B) °1 T\n– The °1 means that the output from (A ° B) \nconnects to the first (top) input line of T.\nA B\nT"
+    },
+    {
+      "page": 40,
+      "text": "Proof of RT:  General Case\n•R  =  ( A  ° B) °1 T\n• New A:  P<B °1 T>, where B °1 T means:\nA B\nT\nB\nT"
+    },
+    {
+      "page": 41,
+      "text": "Proof of RT:  General Case\n•N e w  B :\n• Like B in the special case, but now M is a 2-\ninput TM.\n•P <M> °1 M: 1-input TM, which uses output of \nP<M> as first input of M.\nB\n<M> < P<M> °1 M >\nP<M>\nM"
+    },
+    {
+      "page": 42,
+      "text": "Combining the Pieces\n•R  =  ( A  °B) °1 T\n• Claim R outputs t(<R>, w):\n•A  i s  P<B °1 T>, so the output from A to B is <B °1 T >:\n• Now recall definition of B:\n•P l u g  i n  B  °\n1 T for M in B’s input, and obtain output for B.\nA B\nT\nw\nA = P<B °1 T> B\n<B °1 T >\nB\n<M> < P<M> °1 M >\n< P<B °\n1\nT>  °1 (B °1 T) >"
+    },
+    {
+      "page": 43,
+      "text": "Combining the Pieces\n• B’s output = < A °1 (B °1 T) > = < R >:\n• Now combine with T, plugging in R for M in T’s input: \nA = P<B °1 T> B\n<B °1 T > < P<B °\n1\nT>  °1 (B °1 T) >\nA B\n<B °1 T > < R>\nT\nw\nA B\n<B °1 T > < R>\nt(<R>,w)"
+    },
+    {
+      "page": 44,
+      "text": "Combining the Pieces\n• Thus, R = (A ° B) °1 T, on input w, produces \nt(<R>,w), as needed for the Recursion Theorem.\nT\nw\nA B\n<B °1 T > < R>\nt(<R>,w)\nR\nt(<R>, w)\nw"
+    },
+    {
+      "page": 45,
+      "text": "Next time…\n• More on computabilty theory\n• Reading:\n– \"Computing Machinery and Intelligence\" by Alan \nTuring:\nhttp://www.loebner.net/Prizef/TuringArticle.html"
+    },
+    {
+      "page": 46,
+      "text": "MIT OpenCourseWare\nhttp://ocw.mit.edu \n6.045J / 18.400J Automata, Computability, and Complexity \nSpring 2011 \nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms. "
+    }
+  ]
+}

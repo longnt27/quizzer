@@ -1,0 +1,22 @@
+{
+  "id": "networking-01-amendment",
+  "scenarioId": "networking-01",
+  "family": "networking",
+  "split": "dev",
+  "language": "en",
+  "title": "Networking Lab 48297 / Signed amendment",
+  "pages": [
+    [
+      {
+        "id": "title",
+        "type": "heading",
+        "text": "Networking Lab 48297 / Signed amendment"
+      },
+      {
+        "id": "revision",
+        "type": "paragraph",
+        "text": "Signed amendment effective 2026-01-01: copies becomes 6 replicas. All other settings and regional limits of the 2025 baseline remain unchanged."
+      }
+    ]
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "version": "0.2.0",
+  "status": "controlled-synthetic-not-natural-gold",
+  "seed": 20261008,
+  "logicalDocuments": 128,
+  "nativePages": 256,
+  "rasterVariants": 32,
+  "renderedFiles": 160,
+  "taskRows": 1536,
+  "semanticGroups": 768,
+  "scenarioGroups": 32,
+  "intentTemplates": 24,
+  "humanReviewed": 0,
+  "sourcesSha256": "d5e40245cf743797724b17252ed392f2f09426487e3637f3f8a07ca5d50c4692",
+  "tasksSha256": "d3ce881203d662c19593f030ad3013a47f84fd6bbfb679c279c88e42bacef1c2",
+  "generatorSha256": "0fa0a367548029545eb254d5aff44bfc5ae16ebe53a3c10d6ecf5983083c605b",
+  "limitations": [
+    "Domain names are scenario labels; shared templates are not eight independently authored subject benchmarks.",
+    "Translations and scan variants are paired, not independent observations.",
+    "Gold is generated before rendering, never copied from the extractor under test.",
+    "Scan variants are simulated, not natural scans; page five is late evidence, not a long-document claim."
+  ]
+}

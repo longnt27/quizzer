@@ -1,0 +1,22 @@
+{
+  "id": "security-04-report-a",
+  "scenarioId": "security-04",
+  "family": "security",
+  "split": "test",
+  "language": "en",
+  "title": "Security Lab 50239 / Report A",
+  "pages": [
+    [
+      {
+        "id": "title",
+        "type": "heading",
+        "text": "Security Lab 50239 / Report A"
+      },
+      {
+        "id": "measurement",
+        "type": "paragraph",
+        "text": "Unsigned report A: project Security Lab 50239; event E17; measured at 2026-02-02 10:00 UTC; latency = 59 ms. Neither report has priority over the other. These are conflicting observations of the same event, not two independent runs."
+      }
+    ]
+  ]
+}

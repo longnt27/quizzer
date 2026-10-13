@@ -1,0 +1,27 @@
+{
+  "sourceId": "ocw-databases-6710a6eff977",
+  "sourceSha256": "aeda73ec3368cbc587698cf1dcae989c136fd979f7cb544cd08c8719d80921d1",
+  "method": "pypdf-5.9.0 independent source inspection; NOT extraction ground truth",
+  "pages": [
+    {
+      "page": 1,
+      "text": "Modern day OLTP: \nMain memory problem\nNo-disk stalls in a Xact\nDo not allow user-stalls in a Xact (Aunt Millie will go out for lunch)\n--- hence no stalls.\nA heavy Xact is 200 record touches – less than 1 Msec.  \nWhy not run Xact to completion – single threaded!  No latches, no issues, no nothing.  \nBasically TS order !!!\nProblem:  multiprocessor support – we will come back to this.  \nOk to ask for Xact classes in advance (no ad-hoc updates in an OLTP system).\nLook at the xacts classes…..\nThey might commute:  if so run with no locking\nThey might never conflict – if so run with no locking.\nMight be only two classes that conflict (Ti and Tj).  Run everybody else with no controls.  \nSerialize Ti and Tj (with timestamp techniques or something else)\nIf a transaction is alive for nanoseconds (processor transactional memory) or \nmicroseconds (modern OLTP), then interesting to rerun Carey simulations (which \nassumed disk not main memory). \nContracts/Saga \nVacation in San Diego \nT1:  get a plane ticket \nT2: get a hotel \nT3: get a rental car \nT4: tickets to San Diego zoo \nOops – get sick – can’t go.  Want to “unwind” whole “workflow”.  Want something \nbigger than a Xact which can be reversed.  Notion of Sagas and Contracts.  Need \ncompensation actions, which will reverse a xact.  Can’t abort after a commit.  "
+    },
+    {
+      "page": 2,
+      "text": "Crash recovery\nNever lose my data ever.  Surest recipe to get fired on the spot.\nScenarios:\n1) transaction aborts  (back him out)\n2) transaction deadlocks, and is picked as a victim (ditto)\n3) transaction violates an integrity constraint (ditto)\nOS fails (rule of thumb – MVS crashes once a year, Linux once a month, Windows once \na week or more)  -- reload OS, reload DBMS, undo losers, redo winners \nDBMS fails \nbohrbugs (repeatable).  These are knocked out quickly by a good QA process.  If \nyou are buying a DBMS, get clear on how serious the vendor is about QA \n(typically not very)  -- don’t run a DBMS in production until it is “mature” -- like \n1-2 years after release \nheisen bugs (not repeatable)  timing problems, race conditions, …  Unbelievably \nhard to find.  Usually put engineers on airplanes. \nDisk crash:  modern disks fail every 5 years or so.  Usually start to see disk errors (redo \nreads or writes in advance).  In any case, take a dump periodically, weekly full with daily \npartials.  Must roll forward from the last partial, redoing history using a log. \nBad, bad, bad, bad:  unrecoverable failures (corrupted the log)  -- “up the creek” \nApp fails: \nNot an issue in this class \nComm. Failures: \nWe will come back to these when we deal with multi-processor issues \nDisaster  -- Machine room fails (fire, flood, earthquake, 9/11, …) \n1970’s solution to disasters: \nWrite a log (journal) of changes\nSpool the log to tape\n"
+    },
+    {
+      "page": 3,
+      "text": "Hire iron mountain to put the tapes under the mountain \nBuy IBM hardware – they were heroic in getting you back up in small numbers of \ndays \n1980’s solution \nHire Comdisco to put the tapes at their machine room in Atlanta \nSend your system programmers to Atlanta, restore the log tapes, divert comm to \nAtlanta \nBack up in small numbers of hours \n(average CIO conducts a disaster drill more than once a year) \n2000’s solution (for some) \nRun a dedicated “hot standby” in Atlanta \nFail over in seconds to a few minutes \nDriven by plummeting cost of hardware and the increasing cost of downtime (thousands \nof dollars per minute) \nIn most cases, you tend to lose a few transactions.  Too costly to lower the probability to \nzero.  Write disgruntled users a check!!! \nDisk-intact recovery \n1) undo uncommitted transactions \n2) redo committed transactions \nwrite this stuff in a log \ndepends on buffer pool tactics. \nBuffer pool implements “steal” – can write to disk a dirty page of an uncommitted xact – \nwhen it needs the slot for something else.  All systems do this.  Requires the before image \nin a log to perform undo \nBuffer pool implements “no force” – do not require dirty blocks to be forced at commit \ntime – takes too long.  Everybody does this.  Requires the after image to perform redo \nHence write (before image, after image) in a log.  Must write the log before writing the \ndata.  Otherwise screwed.  Hence WAL. \nOptions for the log: \nCan use a physical log.  Whenever the bits change, write a log record. "
+    },
+    {
+      "page": 4,
+      "text": "Insert could cause logging of 4K worth of data\nCan use a logical log – record the SQL command (nobody does this – too slow -- and \nwon’t work for undo)\nCan use something in between – e.g. insert (record) on page-X\nCan log B-tree updates\nPhysical:  means 8K bytes for a page splitter\nLogical:  do nothing – side effect of SQL\nIn between: insert (key, block – X)\nMost of these have been used at one time or another.\n"
+    },
+    {
+      "page": 5,
+      "text": "MIT OpenCourseWare \nhttp://ocw.mit.edu \n6.830 / 6.814 Database Systems \nFall 2010 \nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms. "
+    }
+  ]
+}

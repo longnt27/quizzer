@@ -1,0 +1,219 @@
+{
+  "sourceId": "ocw-automata-08aaeacf8310",
+  "sourceSha256": "6280b99d73da10435f9b7d6f508aa5e46da5208bc169e9b1ff1f7aa67fcf5325",
+  "method": "pypdf-5.9.0 independent source inspection; NOT extraction ground truth",
+  "pages": [
+    {
+      "page": 1,
+      "text": "6.045:  Automata, Computability, and \nComplexity\nOr, Great Ideas in Theoretical \nComputer Science \nSpring, 2010\nClass 7\nNancy Lynch"
+    },
+    {
+      "page": 2,
+      "text": "Today\n• Basic computability theory\n• Topics:\n– Decidable and recognizable languages\n– Recursively enumerable languages\n– Turing Machines that solve problems involving FAs\n– Undecidability of the Turing machine acceptance \nproblem\n– Undecidability of the Turing machine halting problem\n• Reading: Sipser, Sections 3.1, 3.2, Chapter 4\n•N e x t :Sections 5.1, 5.2"
+    },
+    {
+      "page": 3,
+      "text": "Decidable and Recognizable \nLanguages"
+    },
+    {
+      "page": 4,
+      "text": "Decidable and recognizable \nlanguages\n• Last time, we began studying the important notion \nof computability.\n• As a concrete model of computation, we \nintroduced basic one-tape, one-head Turing \nmachines.\n• Also discussed some variants.\n• Claimed they are all equivalent, so the notion of  \ncomputability is robust.\n• Today:  Look more carefully at the notions of \ncomputability and equivalence."
+    },
+    {
+      "page": 5,
+      "text": "Decidable and recognizable \nlanguages\n• Assume:  TM has accepting state q acc and rejecting state \nqrej.\n• Definition: TM M recognizes language L provided that L = \n{ w | M on w reaches qacc } = { w | M accepts w }.\n• Another important notion of computability:\n• Definition: TM M decides language L provided that both of \nthe following hold:\n– On every w, M eventually reaches either q acc or qrej.\n– L = { w | M on w reaches q acc }.\n• Thus, if M recognizes L , then:\n– Words in L lead to q acc.\n– Words not in L either lead to q rej or never halt (“loop”).\n• Whereas if M decides L , then:\n– Words in L lead to q acc.\n– Words not in L lead to q rej. Always halts"
+    },
+    {
+      "page": 6,
+      "text": "Decidable and recognizable \nlanguages\n• Theorem 1: If M decides L then M recognizes L.\n• Obviously.\n• But not necessarily vice versa.\n• In fact, these two notions define different language classes:\n• Definition:  \n–L  i s  Turing-recognizable if there is some TM that recognizes L.\n–L  i s  Turing-decidable if there is some TM that decides L.\n• The classes of Turing-recognizable and Turing-decidable \nlanguages are different.\n• Theorem 2: If L is Turing-decidable then L is Turing-\nrecognizable.\n• Obviously.\n• But the other direction does not hold---there are languages \nthat are Turing-recognizable but not Turing-decidable.\n• We’ll see some examples soon."
+    },
+    {
+      "page": 7,
+      "text": "• Theorem 3: If L is Turing-decidable then Lc is T-\ndecidable.  \n•P r o o f :\n– Suppose that M decides L.\n– Design a new machine M ′ that behaves just like M, but:\n• If M accepts, M′ rejects.\n• If M rejects, M′ accepts.\n– Formally, can do this by interchanging q acc and qrej.\n– Then M′ decides Lc.\nDecidable and recognizable \nlanguages"
+    },
+    {
+      "page": 8,
+      "text": "• A basic connection between Turing-recognizable \nand Turing-decidable languages:\n• Theorem 4: L is Turing decidable if and only if L \nand Lc are both Turing-recognizable.\n•P r o o f :  ⇒\n– Suppose that L is Turing-decidable.\n– Then L is Turing-recognizable, by Theorem 2.\n–A l s o ,  Lc is Turing-decidable, by Theorem 3.\n–S o  Lc is Turing-recognizable, by Theorem 2.\n•P r o o f :⇐\n–G i v e n  M1 recognizing L, and M2 recognizing Lc.\n– Produce a Turing Machine M that decides whether or \nnot its input w is in L or Lc.\nDecidable and recognizable \nlanguages"
+    },
+    {
+      "page": 9,
+      "text": "• Theorem 4: L is Turing decidable if and only if L \nand Lc are both Turing-recognizable.\n•P r o o f :⇐\n–G i v e n  M1 recognizing L, and M2 recognizing Lc.\n– Produce a Turing Machine M that decides whether or \nnot its input w is in L or Lc.\n– Idea: Run both M1 and M2 on w.\n• One must accept.\n• If M1 accepts, then M accepts.\n• If M2 accepts, then M rejects.\n– But, we can’t run M1 and M2 one after the other because \nthe first one might never halt.\n– Run them in parallel, until one accepts?\n– How?  We don’t have a parallel Turing Machine model.\nDecidable and recognizable \nlanguages"
+    },
+    {
+      "page": 10,
+      "text": "• Theorem 4: L is Turing decidable if and only if L and Lc are \nboth Turing-recognizable.\n•P r o o f :⇐\n–M 1 recognizes L, and M2 recognizes Lc.\n– Let M be a 2-tape Turing Machine:\nDecidable and recognizable \nlanguages\nM1 M2\nM1 M2"
+    },
+    {
+      "page": 11,
+      "text": "• Theorem 4: L is Turing decidable if and only if L \nand Lc are both Turing-recognizable.\nDecidable and recognizable \nlanguages\nM1 M2\n•P r o o f :⇐\n– M copies input from 1 st tape to \n2nd tape.\n– Then emulates M 1 and M2\ntogether, step-by-step.\n– No interaction between them.\n– M’s finite-state control keeps \ntrack of states of M1 and M2; thus, \nQ includes Q1 × Q2.\n– Also includes new start, accept, \nand reject states and whatever \nelse is needed for bookkeeping."
+    },
+    {
+      "page": 12,
+      "text": "Language Classification\n• Four possibilities:\n– L and L c are both Turing-recognizable.\n• Equivalently, L is Turing-decidable.\n– L is Turing-recognizable, L c is not.\n–L c is Turing-recognizable, L is not.\n– Neither L nor L c is Turing-recognizable.\n• All four possibilities occur, as we will see.\n• How do we know that there are languages L that are \nneither Turing-recognizable nor co-Turing-recognizable?\n• Cardinality argument:\n– There are uncountably many languages.\n– There are only countably many Tu ring-recognizable languages and \nonly countably many co-Turing-recognizable languages.\n– Because there are only countably many Turing machines (up to \nrenaming)."
+    },
+    {
+      "page": 13,
+      "text": "Examples\n• Example: Every regular language L is \ndecidable.\n– Let M be a DFA with L(M) = L.\n– Design a Turing machine M′ that simulates M.\n– If, after processing the input, the simulated M is \nin an accepting state, M′ accepts; else M′\nrejects."
+    },
+    {
+      "page": 14,
+      "text": "Examples\n• Example: Let X = be the set of binary \nrepresentations of natural numbers for \nwhich the following procedure halts:\nwhile x ≠ 1 do\nif x is odd then x := 3x + 1\nif x is even then x := x/2\nhalt\n– Obviously, X is Turing-recognizable:  just \nsimulate this procedure and accept if/when it \nhalts.\n– Is it decidable?  (?)"
+    },
+    {
+      "page": 15,
+      "text": "Closure Properties\n• Theorem 5: The set of Turing-recognizable languages is \nclosed under set union and intersection.\n•P r o o f :\n– Run both machines in parallel.\n– For union, accept if either accepts.\n– For intersection, accept if both accept.\n• However, the set of Turing-recognizable languages is not \nclosed under complement.\n• As we will soon see.\n• Theorem 6: The set of Turing-decidable languages is \nclosed under union, intersection, and complement.\n• Theorem 7: Both the Turing-recognizable and Turing-\ndecidable languages are closed under concatenation and \nstar (HW)."
+    },
+    {
+      "page": 16,
+      "text": "Recursively Enumerable Languages"
+    },
+    {
+      "page": 17,
+      "text": "Recursively enumerable languages\n• Yet another kind of computability for Turing Machines.\n•A n  enumerator is a Turing Machine variant:\n• Starts with a blank work tape (no input).\n• Prints a sequence of finite strings (possibly infinitely many) \non output tape.\n• More specifically, e.g.:\n– Enters a special state q print, where contents of work tape, up to first \nblank, are copied to output tape, followed by blank as a separator.\n– Then machine continues.\n– No accept or reject states.\nFSC\nWork tape\nOutput tape"
+    },
+    {
+      "page": 18,
+      "text": "Recursively enumerable languages\n• Starts with a blank work tape (no input).\n• Prints a sequence of finite strings (possibly infinitely many) \non output tape.\n• It may print the same string more than once.\n• If E is an enumerator, then define \nL(E) = { x | x is printed by E }.\n• If L = L(E) for some enumerator E, then we say that L is \nrecursively enumerable (r.e.).\nFSC\nWork tape\nOutput tape"
+    },
+    {
+      "page": 19,
+      "text": "Recursively enumerable languages\n• Interesting connection between recursive \nenumerability and Turing recognizability:\n• Theorem 8: L is recursively enumerable if and \nonly if L is Turing-recognizable.\n•P r o o f :  ⇒\n– Given E, an enumerator for L, construct Turing machine \nM to recognize L.\n– M:  On input x:\n• M simulates E (on no input, as usual).\n• Whenever E prints, M checks to see if the new output is x.\n• If it ever sees x, M accepts.\n• Otherwise, M keeps going forever."
+    },
+    {
+      "page": 20,
+      "text": "Recursively enumerable languages\n• Theorem 8: L is recursively enumerable if and \nonly if L is Turing-recognizable.\n•P r o o f :  ⇐\n– Given M, a Turing machine that recognizes L, construct \nE to enumerate L.\n– Idea:  \n• Simulate M on all inputs.   \n• If/when any simulated execution reaches qacc, print out the \nassociated input.\n– As before, we can’t run M on all inputs sequentially, \nbecause some computations might not terminate.\n– So we must run them in parallel.\n– But this time we must run infinitely many computations, \nso we can’t just use a multitape Turing machine."
+    },
+    {
+      "page": 21,
+      "text": "Recursively enumerable languages\n• Theorem 8: L is recursively enumerable if and only if L is \nTuring-recognizable.\n• Proof: ⇐\n– Given M, a Turing machine that  recognizes L, construct E to \nenumerate L.\n– Simulate M on all inputs; when any simulated execution reaches \nqacc, print out the associated input.\n– New trick:  Dovetailing\n• Run 1 step for 1 st input string, ε.\n• Run 2 steps for 1 st and 2nd inputs, ε and 0.\n• Run 3 steps for 1 st, 2nd, and 3rd inputs, ε, 0 and 1.\n•…\n• Run more and more steps for more and more inputs.\n– Eventually succeeds in reaching q acc for each accepting \ncomputation of M, so enumerates all elements of L."
+    },
+    {
+      "page": 22,
+      "text": "Recursively enumerable languages\n• Theorem 8: L is recursively enumerable if and \nonly if L is Turing-recognizable.\n•P r o o f :  ⇐\n– Simulate M on all inputs; when any simulated execution \nreaches qacc, print out the associated input.\n– Dovetail all computations of M.\n– Complicated bookkeeping, messy to work out in detail.\n– But can do algorithmically, hence on a Turing machine."
+    },
+    {
+      "page": 23,
+      "text": "Turing Machines that solve problems \nfor other domains besides strings"
+    },
+    {
+      "page": 24,
+      "text": "Turing Machines that solve problems \nfor other domains\n• [Sipser Section 4.1]\n• Our examples of computability by Turing machines \nhave so far involved properties of strings, and \nnumbers represented by strings.\n• We can also consider computability by TMs for \nother domains, such as graphs or DFAs.\n• Graphs:\n– Consider the problem of whether a given graph has a \ncycle of length > 2.\n– Can formalize this problem as a language (set of \nstrings) by encoding graphs as strings over some finite \nalphabet.\n– Graph = (V,E), V = vertices, E = edges, undirected."
+    },
+    {
+      "page": 25,
+      "text": "Turing Machines that solve graph problems \n• Consider the problem of whether a given graph has a cycle \nof length > 2.\n• Formalize as a language (set of strings) by encoding \ngraphs as strings over some finite alphabet.\n• Graph = (V,E), V = vertices, E = edges, undirected.\n• A standard encoding: \n– Vertices = positive integers (represented in binary)\n– Edges = pairs of positive integers \n– Graph = list of vertices, list of edges.\n• Example: ( ( 1, 2, 3 ), ( ( 1, 2 ), (2, 3) ) )\n•W r i t e  <G> for the encoding of G.\n1\n3\n2"
+    },
+    {
+      "page": 26,
+      "text": "Turing Machines that solve graph problems\n• Consider the problem of whether a given graph \nhas a cycle of length > 2.\n• Graph = (V,E), V = vertices, E = edges, \nundirected.\n• Write <G> for the encoding of G.\n• Using this representation for the input, we can \nwrite an algorithm to determine whether or not a \ngiven graph G has a cycle, and formalize the \nalgorithm using a Turing machine.\n– E.g., search and look for repeated vertices.\n• So cyclicity is a decidable property of graphs."
+    },
+    {
+      "page": 27,
+      "text": "Turing Machines that solve problems \nfor other domains\n• We can also consider computability for domains \nthat are sets of machines:\n•D F A s :\n– Encode DFAs using bit strings, by defining standard \nnaming schemes for states and alphabet symbols.\n– Then a DFA tuple is again a list.\n–E x a m p l e :  \nEncode as: \n( (1, 2), (0, 1), ( (1, 1, 1), (1, 0, 2),  (2, 0, 2), (2, 1, 2) ), (1), (2) )\n– Encode the list using bit strings.\n–W r i t e  <M> for the encoding of M.\n– So we can define languages whose elements are (bit \nstrings representing) DFAs.\n1\n1\n2\n0\n0,1\nQ Σδ q0 F"
+    },
+    {
+      "page": 28,
+      "text": "Turing Machines that solve DFA problems\n• Example: L1 = { < M > | L(M) = ∅ } is Turing-decidable\n• Elements of L 1 are bit-string representations of DFAs that \naccept nothing (emptiness problem).\n• Already described an algorithm to decide this, based on \nsearching to determine whether any accepting state is \nreachable from the start state.\n• Could formalize this (painfully) as a Turing machine.\n• Proves that  L 1 is Turing-decidable.\n• Similarly, all the other decision problems we considered for \nDFAs, NFAs, and regular expressions are Turing-decidable \n(not just Turing-recognizable).\n• Just represent the inputs using standard encodings and \nformalize the algorithms that we’ve already discussed, \nusing Turing machines."
+    },
+    {
+      "page": 29,
+      "text": "Turing Machines that solve DFA problems\n• Example: Equivalence for DFAs\nL2 = { < M1, M2 > | L(M1) = L(M2) } is Turing-decidable.\n• Elements of L 2 are bit-string representations of \npairs of DFAs that recognize the same language.\n• Note that the domain we encode is pairs of DFAs.\n• Already described an algorithm to decide this, \nbased on testing inclusion both ways; to test \nwhether L(M1) ⊆ L(M2), just test whether L(M1) ∩\n(L(M2))c = ∅.\n• Formalize as a Turing machine.\n• Proves that  L 2 is Turing-decidable."
+    },
+    {
+      "page": 30,
+      "text": "Turing Machines that solve DFA problems\n• Example: Acceptance for DFAs\nL3 = { < M, w > | w ∈ L(M) } is Turing-decidable.\n• Domain is (DFA, input) pairs.\n• Algorithm simply runs M on w.\n• Formalize as a Turing machine.\n• Proves that  L 3 is Turing-decidable."
+    },
+    {
+      "page": 31,
+      "text": "Moving on…\n• Now, things get more complicated:  we \nconsider inputs that are encodings of Turing \nmachines rather than DFAs.\n• In other words, we will discuss Turing \nmachines that decide questions about \nTuring machines!"
+    },
+    {
+      "page": 32,
+      "text": "Undecidability of the Turing Machine \nAcceptance Problem "
+    },
+    {
+      "page": 33,
+      "text": "Undecidability of TM Acceptance Problem\n• Now (and for a while), we will focus on showing \nthat certain languages are not Turing-decidable, \nand that some are not even Turing-recognizable.\n• It’s easy to see that such languages exist, based \non cardinality considerations.\n• Now we will show some specific languages are not \nTuring decidable, and not Turing-recognizable.\n• These languages will express questions about \nTuring machines."
+    },
+    {
+      "page": 34,
+      "text": "Undecidability of TM Acceptance\n• We have been discussing decidability of problems \ninvolving DFAs, e.g.:\n{ < M > | M is a DFA and L(M) = ∅ }, decidable by Turing machine that \nsearches M’s digraph.\n{ < M, w > | M is a DFA, w is a word in M’s alphabet, and w ∈ L(M) }, \ndecidable by a Turing machine that emulates M on w.\n• Turing machines compute only on strings, but we can \nregard them as computing on DFAs by encoding the DFAs\nas strings (using a standard encoding).\n• Now we consider encoding Turing machines as strings, \nand allowing other Turing machines to compute on these \nstrings.\n• Encoding of Turing machines:  Standard state names, lists, \netc., similar to DFA encoding.\n•< M > = encoding of Turing machine M.\n•< M ,  w >= encoding Turing machine + input string\n•E t c ."
+    },
+    {
+      "page": 35,
+      "text": "Problems we will consider\n•A c cTM = { < M, w > | M is a (basic) Turing machine, w is a \nword in M’s alphabet, and M accepts w }.\n•H a l tTM = { < M, w > | M is a Turing machine, w is a word in \nM’s alphabet, and M halts (either accepts or rejects) on w }.\n•E m p t yTM = { < M > | M is a Turing machine and L(M) = ∅ }\n– Recall:  L(M) refers to the set of strings M accepts.\n•E t c .\n• Thus, we can formulate questions about Turing machines \nas languages.\n• Then we can ask if they are Turing-decidable; that is, can \nsome particular TM answer these questions about all \n(basic) TMs?\n• We’ll prove that they cannot."
+    },
+    {
+      "page": 36,
+      "text": "The Acceptance Problem\n•A c cTM = { < M, w > | M is a (basic) Turing machine and M \naccepts w }.\n• Theorem 1: AccTM is Turing-recognizable.\n•P r o o f :\n– Construct a TM U that recognizes Acc TM.\n– U:  On input < M, w >:\n• Simulate M on input w.\n• If M accepts, accept.\n• If M rejects, reject.\n• Otherwise, U loops forever.\n– Then U accepts exactly < M, w> encodings for which M accepts w.\n• U is sometimes called a universal Turing machine because \nit runs all TMs.\n– Like an interpreter for a programming language."
+    },
+    {
+      "page": 37,
+      "text": "The Acceptance Problem\n•A c cTM = { < M, w > | M is a TM and M accepts w }.\n• U:  On input < M, w >:\n– Simulate M on input w.\n– If M accepts, accept.\n– If M rejects, reject.\n– Otherwise, U loops forever.\n• U recognizes Acc TM.\n• U is a universal Turing machine because it runs all \nTMs.\n• U uses a fixed, finite set of states, and set of \nalphabet symbols, but still simulates TMs with \narbitrarily many states and symbols.\n– All encoded using the fixed symbols, decoded during \nemulation."
+    },
+    {
+      "page": 38,
+      "text": "The Acceptance Problem\n•A c cTM = { < M, w > | M is a TM and M accepts w }.\n• U:  On input < M, w >:\n– Simulate M on input w.\n– If M accepts, accept.\n– If M rejects, reject.\n– Otherwise, U loops forever.\n• U recognizes Acc TM.\n• Does U decide  Acc TM ?\n•N o .   \n– If M loops forever on w, U loops forever on <M,w>, \nnever accepts or rejects.\n– To decide, U would have to detect when M is looping\nand reject.\n– Seems difficult…"
+    },
+    {
+      "page": 39,
+      "text": "Undecidability of Acceptance\n• Theorem 2: AccTM is not Turing-decidable.\n•P r o o f :\n– Assume that AccTM is Turing-decidable and produce a \ncontradiction.\n– Similar to the diagonalization argument that shows that \nwe can’t enumerate all languages.\n– Since (we assume) Acc TM is Turing-decidable, there \nmust be a particular TM H that decides AccTM:\n• H(<M,w>):\n– accepts if M accepts w,\n– rejects if M rejects w,\n– rejects if M loops on w."
+    },
+    {
+      "page": 40,
+      "text": "Undecidability of Acceptance\n• Theorem 2: AccTM is not Turing-decidable.\n• Proof, cont’d:\n– H(<M,w>) accepts if M accepts w, rejects if M rejects w \nor if M loops on w.\n– Use H to construct another TM H′ that decides a special \ncase of the same language.\n– Instead of considering whether M halts on an arbitrary \nw, just consider M on its own representation:\n–H ′(<M>):\n• accepts if M accepts <M>, \n• rejects if M rejects <M> or if M loops on <M>.\n– If H exists, then so does H′:  H′ simply runs H on certain \narguments."
+    },
+    {
+      "page": 41,
+      "text": "Undecidability of Acceptance\n• Theorem 2: AccTM is not Turing-decidable.\n• Proof, cont’d:\n–H ′(<M>):\n• accepts if M accepts <M>, \n• rejects if M rejects <M> or if M loops on <M>.\n– Now define D (the diagonal machine) to do the opposite \nof H′:\n– D(<M>):\n• rejects if M accepts <M>, \n• accepts if M rejects <M> or if M loops on <M>.\n–I f  H′ exists, then so does D:  D runs H′ and outputs the \nopposite."
+    },
+    {
+      "page": 42,
+      "text": "Undecidability of Acceptance\n• Theorem 2: AccTM is not Turing-decidable.\n• Proof, cont’d:\n– D(<M>):\n• rejects if M accepts <M>, \n• accepts if M rejects <M> or if M loops on <M>.\n– Now, what happens if we run D on <D>?  \n– Plug in D for M:\n– D(<D>):\n• rejects if D accepts <D>, \n• accepts if D rejects <D> or if D loops on <D>.\n– Then D accepts <D> if and only if D does not accept <D>, \ncontradiction!\n–S o  A c cTM is not Turing-decidable.\n–! ! !"
+    },
+    {
+      "page": 43,
+      "text": "Diagonalization Proofs\n• This undecidability proof for Acc TM is an example of a \ndiagonalization proof.\n• Earlier, we used diagonalization to show that the set of all \nlanguages is not countable.\n• Consider a big matrix, with TMs labeling rows and strings \nthat represent TMs labeling columns.\n• The major diagonal describes results for M(<M>), for all M.\n•D  i s  a  diagonal machine, constructed explicitly to differ \nfrom the diagonal entries:  D(<M>)’s result differs from \nM(<M>)’s.\n• Implies that D itself can’t appear as a label for a row in the \nmatrix, a contradiction since the matrix is supposed to \ninclude all TMs."
+    },
+    {
+      "page": 44,
+      "text": "Summary:  AccTM\n• We have shown that Acc TM = { < M, w > | M is a \nTuring machine and M accepts w } is Turing-\nrecognizable but not Turing-decidable.\n• Corollary: (AccTM)c is not Turing-recognizable.\n•P r o o f :\n– By Theorem 4.  \n–I f  A c cTM and (AccTM)c were both Turing-recognizable, \nthen AccTM would be Turing-decidable."
+    },
+    {
+      "page": 45,
+      "text": "Undecidability of the Turing Machine \nHalting Problem "
+    },
+    {
+      "page": 46,
+      "text": "The Halting Problem\n•H a l tTM = { < M, w > | M is a Turing machine and M halts on \n(either accepts or rejects) w }.\n• Compare with AccTM = { < M, w > | M is a Turing machine \nand M accepts w }.\n• Terminology caution: Sipser calls AccTM the “halting \nproblem”, and calls HaltTM just HaltTM.\n• Theorem: HaltTM is not Turing-decidable.\n• Proof:  \n– Let’s not use diagonalization.\n– Rather, take advantage of diagon alization work already done for \nAccTM, using new method:  reduction.\n– Prove that, if we could decide Halt TM, then we could decide AccTM.\n– Reduction is a very powerful, useful technique for showing \nundecidability; we’ll use it several times.\n– Also useful (later) to show inherent complexity results."
+    },
+    {
+      "page": 47,
+      "text": "The Halting Problem\n•H a l tTM = { < M, w > | M halts on (accepts or rejects) w }.\n• Theorem: HaltTM is not Turing-decidable.\n• Proof:  \n– Suppose for contradiction that Halt TM is Turing-\ndecidable, say by Turing machine R:\n• R(<M,w>):\n– accepts if M halts on (accepts or rejects) w,\n– rejects if M loops (neither accepts nor rejects) on w.\n– Using R, define new TM S to decide Acc TM:\n• S:  On input <M,w>:\n– Run R on <M,w>; R must either accept or reject; can’t loop, \nby definition of R.\n– If R accepts then  M must halt (accept or reject) on w.  Then \nsimulate M on w, knowing this must terminate.  If M \naccepts, accept.  If M rejects, reject.\n– If R rejects, then reject."
+    },
+    {
+      "page": 48,
+      "text": "The Halting Problem\n• Theorem: HaltTM is not Turing-decidable.\n• Proof:  \n– Suppose Halt TM is Turing-decidable by TM R.\n• S:  On input <M,w>:\n– Run R on <M,w>; R must either accept or reject; can’t loop, \nby definition of R.\n– If R accepts then  M must halt (accept or reject) on w.  Then \nsimulate M on w, knowing this must terminate.  If M \naccepts, accept.  If rejects, reject.\n– If R rejects, then reject.\n– Claim S decides Acc TM:  3 cases:\n• If M accepts w, then R accepts <M,w>, and the simulation leads \nS to accept.\n• If M rejects w, then R accepts <M,w>, and the simulation leads \nS to reject.\n• If M loops on w, then R rejects <M,w>, and S rejects.\n• That’s what’s supposed to happen in three cases, for AccTM."
+    },
+    {
+      "page": 49,
+      "text": "The Three Cases\nM accepts w M loops on wM rejects w\nR distinguishes these two cases\nNow S knows that M will terminate,\nsimulates M on w.\nS knows that M loops, rejects.\nS distinguishes these two cases."
+    },
+    {
+      "page": 50,
+      "text": "The Halting Problem\n• Theorem: Halt TM is not Turing-decidable.\n•P r o o f :   \n– Suppose HaltTM is Turing-decidable by TM R.\n– S:  On input <M,w>:\n– Run R on <M,w>; R must either accept or reject; \ncan’t loop, by definition of R.\n– If R accepts then  M must halt (accept or reject) \non w.  Then simulate M on w, knowing this must \nterminate.  If M accepts, accept.  If rejects, reject.\n– If R rejects, then reject.\n– S decides AccTM.\n–S o  A c cTM is decidable, contradiction.\n– Therefore, HaltTM is not Turing-decidable."
+    },
+    {
+      "page": 51,
+      "text": "The Halting Problem\n• Theorem: Halt TM is not Turing-decidable.\n•A l s o :\n• Theorem: Halt TM is Turing-recognizable.\n•S o :\n• Corollary: ( HaltTM)c is not Turing-recognizable."
+    },
+    {
+      "page": 52,
+      "text": "Next time…\n• More undecidable problems:\n– About Turing machines:\n• Emptiness, etc.\n– About other things:\n• Post Correspondence Problem (a string matching \nproblem).\n• Reading: Sipser Sections 4.2, 5.1."
+    },
+    {
+      "page": 53,
+      "text": "MIT OpenCourseWare\nhttp://ocw.mit.edu \n6.045J / 18.400J Automata, Computability, and Complexity \nSpring 2011 \nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms. "
+    }
+  ]
+}

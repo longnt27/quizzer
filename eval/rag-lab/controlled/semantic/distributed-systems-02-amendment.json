@@ -1,0 +1,22 @@
+{
+  "id": "distributed-systems-02-amendment",
+  "scenarioId": "distributed-systems-02",
+  "family": "distributed-systems",
+  "split": "test",
+  "language": "vi",
+  "title": "Distributed-Systems Lab 41559 / Signed amendment",
+  "pages": [
+    [
+      {
+        "id": "title",
+        "type": "heading",
+        "text": "Distributed-Systems Lab 41559 / Signed amendment"
+      },
+      {
+        "id": "revision",
+        "type": "paragraph",
+        "text": "Phụ lục có chữ ký, hiệu lực từ 2026-01-01: copies đổi thành 7. Các thiết lập và giới hạn khác của bản 2025 giữ nguyên."
+      }
+    ]
+  ]
+}

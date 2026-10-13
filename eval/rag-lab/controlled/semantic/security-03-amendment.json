@@ -1,0 +1,22 @@
+{
+  "id": "security-03-amendment",
+  "scenarioId": "security-03",
+  "family": "security",
+  "split": "test",
+  "language": "en",
+  "title": "Security Lab 37542 / Signed amendment",
+  "pages": [
+    [
+      {
+        "id": "title",
+        "type": "heading",
+        "text": "Security Lab 37542 / Signed amendment"
+      },
+      {
+        "id": "revision",
+        "type": "paragraph",
+        "text": "Signed amendment effective 2026-01-01: copies becomes 8 replicas. All other settings and regional limits of the 2025 baseline remain unchanged."
+      }
+    ]
+  ]
+}

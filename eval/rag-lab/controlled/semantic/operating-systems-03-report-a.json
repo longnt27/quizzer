@@ -1,0 +1,22 @@
+{
+  "id": "operating-systems-03-report-a",
+  "scenarioId": "operating-systems-03",
+  "family": "operating-systems",
+  "split": "test",
+  "language": "en",
+  "title": "Operating-Systems Lab 25860 / Report A",
+  "pages": [
+    [
+      {
+        "id": "title",
+        "type": "heading",
+        "text": "Operating-Systems Lab 25860 / Report A"
+      },
+      {
+        "id": "measurement",
+        "type": "paragraph",
+        "text": "Unsigned report A: project Operating-Systems Lab 25860; event E17; measured at 2026-02-02 10:00 UTC; latency = 53 ms. Neither report has priority over the other. These are conflicting observations of the same event, not two independent runs."
+      }
+    ]
+  ]
+}

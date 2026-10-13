@@ -1,0 +1,22 @@
+{
+  "id": "statistics-03-amendment",
+  "scenarioId": "statistics-03",
+  "family": "statistics",
+  "split": "validation",
+  "language": "en",
+  "title": "Statistics Lab 25172 / Signed amendment",
+  "pages": [
+    [
+      {
+        "id": "title",
+        "type": "heading",
+        "text": "Statistics Lab 25172 / Signed amendment"
+      },
+      {
+        "id": "revision",
+        "type": "paragraph",
+        "text": "Signed amendment effective 2026-01-01: copies becomes 8 replicas. All other settings and regional limits of the 2025 baseline remain unchanged."
+      }
+    ]
+  ]
+}

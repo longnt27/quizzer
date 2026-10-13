@@ -1,0 +1,27 @@
+{
+  "sourceId": "ocw-databases-688deec5f8b0",
+  "sourceSha256": "7e845519227e6992a9b79a665ea472abf7535ef6e07c7d8dd935afeceda6a48d",
+  "method": "pypdf-5.9.0 independent source inspection; NOT extraction ground truth",
+  "pages": [
+    {
+      "page": 1,
+      "text": "Transactions \nModel: \nBegin xact \nSql-1 \nSql-2 \n. \n. \n. \nSql-n \ncommit or abort \nConcurrency control  (Isolation) \nCrash recovery (Atomic, Durable) \nExample:  move $100 from acct-A to acct-B \nAtomic:  all or nothing \nDurable:  once done, it stays done \nIsolation: produces the “right” answer in a concurrent world \nConsistent:  acct cannot go below zero \nConsistent – deals with integrity constraints, which we are not going to talk about. \nConcurrency control first: \nConsider: \nBill shoe 10K \nSam shoe 15K \nGeorge toy 12K \nHugh toy 8K \nFred shoe 14K \nT1: Give a 10% raise to everybody in the shoe dept. \nT2: Move George and Hugh into the shoe dept \nEasy to create a parallel schedule where one receives the raise and the other does not.  \nDefinition:  Want an outcome which is the same as doing T1 first and then T2 or vica-\nversa.  Serializiability.  \nGold standard is to ensure serializiability for any commands, and any amount of \nparallelism. "
+    },
+    {
+      "page": 2,
+      "text": "Gold standard mechanism:\nDivide the data base into granules (bits, bytes, records, …)\nLock everything you touch.\nEnsure that locking is 2-phase, i.e. a growing phase and then a shrinking phase.  \n(In practice grow phase is whole xact, shrink phase is at commit.)\nDeep theorem:  2 phase locking  serializiability\nEasy generalization to Share (read) locks and exclusive (write) locks\nTherefore, lock everything you touch, hold all locks to EOT.  \nGenerally called two phase locking, or dynamic locking.  Used by ALL major DBMSs.\nDevil is in the details:\nHow big a granule to lock?   Records (page level locking gets hammered)\nHowever, what to do with \nselect avg (salary)\nfrom emp\ndon’t want to set 10**7 locks.  \nAnswer lock escalation to table level.  If you set too many record locks in a table, then \ntrade it in for a table lock.\nWhat to do if you can’t get a requested lock? Wait\nWhat about deadlock?  Can happen.  Periodically look for a cycle in the “waits for”\ngraph.  Pick a victim (one who has done less work) and kill him.  I.e. run crash recovery \non his transaction (to be discussed next time).\nAlternative:  time-out and kill yourself.\nPossible to starve.  Repeated execution, retry cycle….\nDoesn’t happen in practice.  In a well designed OLTP system, the average Xact does not\nwait.  If not true, then redesign app to make it true.  Rule of thumb:  probability of\nwaiting is .01 or less.\n"
+    },
+    {
+      "page": 3,
+      "text": "To avoid deadlock possibility:\nAll at once lock request (silly in practice)\nOrder all locks and request in order (silly)\nPre-emption (murder – not really done in practice)\nWhat about auxiliary structures? \nLock table: must use latches, semaphores, etc. to serialize \nBuffer pool:  ditto \nSystem catalogs (table table – drop table does a delete in the table table – other \nXacts read a cached version -- generally finessed.  Often the #blocks is in the \ntable table.  If updated, then do it with latches, not locks, …) \nB-trees:  too expensive to latch the whole tree \nHence, latch single blocks on access.  Go to descendent block, latch it, \nrelease one up  (called latch crabbing).  Get to page to update, and latch it \nfor the update.  \nLehman& Yao have a scheme to avoid the latches (red book paper) – at \nthe expense of noticeable complexity. \nHalloween problem (urban myth that System R guys discovered this on Halloween).  \nAka phantom problem \nT1:  begin xact \nupdate emp (set salary = 1.1 * salary) \nWhere dept = ‘shoe’\n        End xact \nT2:  begin xact \nInsert into emp values (‘George’, 20,000, ‘shoe’) \nInsert into emp values (‘Hugh’, 30,000, ‘shoe’)\n        End xact \nAt beginning of xacts, there are 3 shoe dept employees:  Bill, Sam, and Fred. \nSuppose the emp table is sorted in storage on name, and holes are left for inserts.  \nSuppose query plan for T1 does a scan of emp.  Consider the following sequence of \noperations: \nT1:  update Bill \nT1:  update Sam \nT2:  insert George \nT2: insert Hugh \nT2 commits and releases all locks "
+    },
+    {
+      "page": 4,
+      "text": "T1: update Hugh(!!!!!) \nT1:  update Fred \nT1 commits \nBoth xacts obey locking protocol – but result is not serializiable. \nIssue is lock things you touch – but must guarantee non-existence of any new ones!!! \nHow:  predicate locking (tried – doesn’t work well – need a theorem prover – also, \nconflicts are data dependent) \nHow range locks in a B-tree index (assumes an index on dept).  Otherwise, table lock on \nthe data. \nEscrow transactions \nBegin Xact \nUpdate flights (set seats = seats -1) where flight = 234 \n. \n. \n. \nEnd xact \nLocks 234 for the duration of the transaction.  Nobody else can get a seat.  Two \ntransactions can go on in parallel as long as they perform only increment and decrement \noperations.  Xacts commute, so everything is ok \nHowever, if a Xact aborts, have to be careful with recovery logic.  Forward pointer to \nAries discussion. "
+    },
+    {
+      "page": 5,
+      "text": "MIT OpenCourseWare \nhttp://ocw.mit.edu \n6.830 / 6.814 Database Systems \nFall 2010 \nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms. "
+    }
+  ]
+}
