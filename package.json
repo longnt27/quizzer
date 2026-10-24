@@ -67,7 +67,7 @@
     "antd": "^5.29.3",
     "dexie": "^4.4.6",
     "dexie-react-hooks": "^1.1.7",
-    "electron": "^44.2.0",
+    "electron": "^44.9.1",
     "esbuild": "^0.25.12",
     "eslint": "^9.29.0",
     "eslint-plugin-react-hooks": "^5.2.0",
