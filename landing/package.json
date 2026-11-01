@@ -50,7 +50,7 @@
     "shadcn": "4.18.0",
     "tailwindcss": "4.2.1",
     "typescript": "5.9.3",
-    "vinext": "1.0.0-beta.9",
+    "vinext": "1.4.0",
     "vite": "8.2.2",
     "wrangler": "4.129.0"
   },
